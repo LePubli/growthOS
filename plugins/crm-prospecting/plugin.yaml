@@ -1,0 +1,107 @@
+name: "crm-prospecting"
+displayName: "CRM & Prospecting"
+version: "1.0.0"
+description: "Module complet de prospection B2B — scraping multi-sources, enrichissement, pipeline Kanban, signaux d'affaires, scoring IA"
+author: "GrowthOS"
+authorEmail: "dev@growthos.io"
+category: "PROSPECTING"
+icon: "🎯"
+tags: ["b2b", "crm", "scraping", "pipeline", "enrichissement", "scoring"]
+
+dependencies: []
+
+permissions:
+  - "prospects:read"
+  - "prospects:write"
+  - "prospects:delete"
+  - "pipeline:read"
+  - "pipeline:write"
+  - "signals:read"
+  - "signals:write"
+  - "sourcing:execute"
+  - "ai:use"
+
+routes:
+  - prefix: "/api/v1/prospects"
+    file: "dist/routes/prospects.js"
+  - prefix: "/api/v1/pipeline"
+    file: "dist/routes/pipeline.js"
+  - prefix: "/api/v1/signals"
+    file: "dist/routes/signals.js"
+  - prefix: "/api/v1/sourcing"
+    file: "dist/routes/sourcing.js"
+  - prefix: "/api/v1/scorer"
+    file: "dist/routes/scorer.js"
+  - prefix: "/api/v1/contacts"
+    file: "dist/routes/contacts.js"
+
+migrations:
+  - "migrations/001_prospects.sql"
+  - "migrations/002_pipeline.sql"
+  - "migrations/003_signals.sql"
+  - "migrations/004_sequences.sql"
+  - "migrations/005_sourcing_jobs.sql"
+
+hooks:
+  - event: "tenant.created"
+    handler: "dist/hooks/onTenantCreated.js"
+  - event: "prospect.created"
+    handler: "dist/hooks/onProspectCreated.js"
+
+menuItems:
+  - id: "prospects"
+    label: "Prospects"
+    icon: "Building2"
+    href: "/prospects"
+    section: "CRM & Pipeline"
+    order: 10
+  - id: "pipeline"
+    label: "Pipeline"
+    icon: "GitBranch"
+    href: "/pipeline"
+    section: "CRM & Pipeline"
+    order: 20
+  - id: "activities"
+    label: "Activités"
+    icon: "Activity"
+    href: "/activities"
+    section: "CRM & Pipeline"
+    order: 30
+  - id: "sourcing"
+    label: "Scraping"
+    icon: "Search"
+    href: "/sourcing"
+    section: "Sourcing"
+    order: 10
+  - id: "signals"
+    label: "Signaux"
+    icon: "Zap"
+    href: "/signals"
+    section: "Sourcing"
+    order: 20
+  - id: "contacts"
+    label: "Contact Intel"
+    icon: "User"
+    href: "/contacts"
+    section: "Sourcing"
+    order: 30
+
+settings:
+  - key: "auto_score_on_create"
+    label: "Scorer automatiquement les nouveaux prospects"
+    type: "boolean"
+    default: true
+  - key: "max_prospects_per_job"
+    label: "Prospects max par job de scraping"
+    type: "number"
+    default: 100
+    min: 10
+    max: 1000
+  - key: "email_waterfall_providers"
+    label: "Providers waterfall (ordre de priorité)"
+    type: "array"
+    default: ["website", "smtp-pattern", "hunter", "dropcontact"]
+  - key: "default_pipeline_stages"
+    label: "Étapes de pipeline par défaut"
+    type: "array"
+    default: ["Nouveau", "Contacté", "Qualifié", "Proposition", "Gagné", "Perdu"]
