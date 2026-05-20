@@ -1,0 +1,366 @@
+// ============================================================
+// GrowthOS — Prisma Schema v1.0
+// Multi-tenant SaaS — Schema-per-tenant PostgreSQL
+// ============================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema", "postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  schemas    = ["public"]
+  extensions = [uuidOssp(map: "uuid-ossp", schema: "public"), pgcrypto(schema: "public")]
+}
+
+// ============================================================
+// CORE — Schema public (partagé entre tous les tenants)
+// ============================================================
+
+/// Plan d'abonnement SaaS
+model Plan {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name        String   @unique // starter, pro, agency, enterprise
+  displayName String   @map("display_name")
+  description String?
+  priceMonthly Float   @map("price_monthly")
+  priceYearly  Float   @map("price_yearly")
+  currency     String  @default("EUR")
+  features     Json    @default("{}")  // feature flags
+  limits       Json    @default("{}")  // quotas
+  isActive     Boolean @default(true) @map("is_active")
+  isPublic     Boolean @default(true) @map("is_public")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenants      Tenant[]
+
+  @@map("plans")
+  @@schema("public")
+}
+
+/// Tenant = Organisation/Client SaaS
+model Tenant {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name         String
+  slug         String   @unique  // identifiant unique URL-safe
+  schemaName   String   @unique @map("schema_name") // schema PostgreSQL dédié
+  domain       String?  @unique  // custom domain white-label
+  subdomain    String?  @unique  // subdomain.growthos.io
+  planId       String   @map("plan_id") @db.Uuid
+  plan         Plan     @relation(fields: [planId], references: [id])
+  status       TenantStatus @default(TRIAL)
+  trialEndsAt  DateTime? @map("trial_ends_at")
+
+  // Branding white-label
+  branding     Json     @default("{}")
+  // { logo, favicon, primaryColor, companyName, supportEmail }
+
+  // Settings
+  settings     Json     @default("{}")
+  // { timezone, language, dateFormat, currency }
+
+  // Billing
+  stripeCustomerId     String? @map("stripe_customer_id")
+  stripeSubscriptionId String? @map("stripe_subscription_id")
+
+  // Limites usage
+  usageStats   Json     @default("{}")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  users        TenantUser[]
+  plugins      TenantPlugin[]
+  themes       TenantTheme[]
+  auditLogs    AuditLog[]
+
+  @@index([slug])
+  @@index([domain])
+  @@index([status])
+  @@map("tenants")
+  @@schema("public")
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+  @@schema("public")
+}
+
+/// Utilisateur global (peut appartenir à plusieurs tenants)
+model User {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email        String   @unique
+  passwordHash String?  @map("password_hash")
+  firstName    String?  @map("first_name")
+  lastName     String?  @map("last_name")
+  avatar       String?
+  locale       String   @default("fr")
+  timezone     String   @default("Europe/Paris")
+
+  // Auth
+  emailVerified      Boolean  @default(false) @map("email_verified")
+  emailVerifiedAt    DateTime? @map("email_verified_at")
+  twoFactorEnabled   Boolean  @default(false) @map("two_factor_enabled")
+  twoFactorSecret    String?  @map("two_factor_secret")
+  lastLoginAt        DateTime? @map("last_login_at")
+  lastLoginIp        String?  @map("last_login_ip")
+
+  // OAuth
+  oauthProvider  String? @map("oauth_provider")
+  oauthId        String? @map("oauth_id")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  tenants      TenantUser[]
+  refreshTokens RefreshToken[]
+
+  @@index([email])
+  @@map("users")
+  @@schema("public")
+}
+
+/// Relation User <-> Tenant avec rôle
+model TenantUser {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       String   @default("member") // owner, admin, manager, member, viewer
+  permissions Json    @default("[]")     // permissions granulaires custom
+  isActive   Boolean  @default(true) @map("is_active")
+  invitedAt  DateTime? @map("invited_at")
+  joinedAt   DateTime? @map("joined_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("tenant_users")
+  @@schema("public")
+}
+
+/// Token de refresh JWT
+model RefreshToken {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  expiresAt  DateTime @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  userAgent  String?  @map("user_agent")
+  ipAddress  String?  @map("ip_address")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+  @@schema("public")
+}
+
+/// Plugin disponible dans la marketplace
+model Plugin {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name         String   @unique  // identifiant machine ex: "crm-pro"
+  displayName  String   @map("display_name")
+  description  String?
+  longDesc     String?  @map("long_desc")
+  version      String   @default("1.0.0")
+  author       String   @default("GrowthOS")
+  authorEmail  String?  @map("author_email")
+  authorUrl    String?  @map("author_url")
+  category     PluginCategory @default(TOOLS)
+  icon         String?  // URL ou emoji
+  screenshot   String?  // URL screenshot
+  tags         String[] @default([])
+  dependencies String[] @default([])  // plugins requis
+  permissions  String[] @default([])  // permissions demandées
+
+  // Fichiers
+  archiveUrl   String?  @map("archive_url")  // URL ZIP
+  archivePath  String?  @map("archive_path") // Chemin local
+
+  // Marketplace
+  isPublic     Boolean  @default(false) @map("is_public")
+  isVerified   Boolean  @default(false) @map("is_verified")
+  isCore       Boolean  @default(false) @map("is_core")
+  isFree       Boolean  @default(true)  @map("is_free")
+  price        Float?
+
+  // Stats
+  installCount Int      @default(0) @map("install_count")
+  rating       Float    @default(0)
+
+  // Metadata
+  manifest     Json     @default("{}")
+  changelog    String?
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenantPlugins TenantPlugin[]
+
+  @@index([category])
+  @@index([isPublic])
+  @@map("plugins")
+  @@schema("public")
+}
+
+enum PluginCategory {
+  CORE
+  CRM
+  PROSPECTING
+  MARKETING
+  SEO
+  REPUTATION
+  AI
+  AUTOMATION
+  ANALYTICS
+  COMMUNICATION
+  INTEGRATION
+  TOOLS
+  @@schema("public")
+}
+
+/// Plugin installé sur un tenant
+model TenantPlugin {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  pluginId     String   @map("plugin_id") @db.Uuid
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plugin       Plugin   @relation(fields: [pluginId], references: [id])
+  isActive     Boolean  @default(true) @map("is_active")
+  version      String   @default("1.0.0")
+  config       Json     @default("{}")
+  installedAt  DateTime @default(now()) @map("installed_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  installedBy  String?  @map("installed_by") @db.Uuid
+
+  @@unique([tenantId, pluginId])
+  @@index([tenantId])
+  @@map("tenant_plugins")
+  @@schema("public")
+}
+
+/// Thème disponible
+model Theme {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name         String   @unique
+  slug         String   @unique
+  displayName  String   @map("display_name")
+  description  String?
+  author       String   @default("GrowthOS")
+  version      String   @default("1.0.0")
+  preview      String?  // URL screenshot
+  previewColor String   @default("#714B67") @map("preview_color")
+  previewBg    String   @default("#F9F9F9") @map("preview_bg")
+  isBuiltin    Boolean  @default(false) @map("is_builtin")
+  isPublic     Boolean  @default(false) @map("is_public")
+  isVerified   Boolean  @default(false) @map("is_verified")
+
+  // Design tokens Odoo-like
+  tokens       Json     @default("{}")
+  // {
+  //   colors: { primary, secondary, accent, bg, sidebar, ... }
+  //   typography: { fontFamily, fontSize, ... }
+  //   spacing: { ... }
+  //   radius: { ... }
+  //   shadows: { ... }
+  // }
+
+  layout       Json     @default("{}")
+  components   Json     @default("{}")  // overrides composants
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenantThemes TenantTheme[]
+
+  @@map("themes")
+  @@schema("public")
+}
+
+/// Thème actif sur un tenant
+model TenantTheme {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  themeId   String   @map("theme_id") @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  theme     Theme    @relation(fields: [themeId], references: [id])
+  isActive  Boolean  @default(false) @map("is_active")
+  customTokens Json  @default("{}") @map("custom_tokens")  // overrides custom
+  activatedAt DateTime? @map("activated_at")
+
+  @@unique([tenantId, themeId])
+  @@map("tenant_themes")
+  @@schema("public")
+}
+
+/// Log d'audit global
+model AuditLog {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  tenant     Tenant?  @relation(fields: [tenantId], references: [id])
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   // ex: "plugin.activated", "user.login", "theme.changed"
+  resource   String?  // ex: "Plugin", "User"
+  resourceId String?  @map("resource_id")
+  metadata   Json     @default("{}")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+  @@schema("public")
+}
+
+/// Notification système
+model Notification {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  type       String   // info, success, warning, error
+  title      String
+  message    String?
+  link       String?
+  isRead     Boolean  @default(false) @map("is_read")
+  readAt     DateTime? @map("read_at")
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, userId])
+  @@index([isRead])
+  @@map("notifications")
+  @@schema("public")
+}
+
+/// Événement système (Event Bus persisté)
+model SystemEvent {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  name       String   // ex: "lead.created", "email.sent"
+  payload    Json     @default("{}")
+  source     String?  // plugin source
+  processed  Boolean  @default(false)
+  processedAt DateTime? @map("processed_at")
+  error      String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([name])
+  @@index([processed])
+  @@map("system_events")
+  @@schema("public")
+}
