@@ -21,12 +21,12 @@ RUN npm install --no-audit --no-fund --legacy-peer-deps
 WORKDIR /app
 COPY apps/api/ ./apps/api/
 
-# Génération client Prisma + compilation TS
+# Génération client Prisma + compilation TS avec NestJS CLI
 WORKDIR /app/apps/api
 RUN npx prisma generate
 
-# Compilation manuelle avec tsc — inclut main.ts ET worker.ts
-RUN npx tsc --project tsconfig.json
+# Compilation avec NestJS CLI — gère correctement main.ts et worker.ts
+RUN npx nest build
 
 # Prune des dev deps IN BUILDER — évite une réinstallation dans le stage production
 RUN npm prune --omit=dev
