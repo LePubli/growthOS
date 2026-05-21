@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { ThemeProvider } from '@/components/theme/ThemeProvider';
+import { QueryProvider } from '@/components/providers/QueryProvider';
+import { Toaster } from 'sonner';
 
 export const metadata: Metadata = {
   title: process.env.NEXT_PUBLIC_APP_NAME || 'GrowthOS',
@@ -26,7 +29,14 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <ThemeProvider>
+          <QueryProvider>
+            {children}
+            <Toaster position="top-right" richColors closeButton />
+          </QueryProvider>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }
