@@ -13,10 +13,19 @@ ENV NODE_OPTIONS="--max-old-space-size=4096" \
 
 RUN apk add --no-cache python3 make g++
 
-COPY package.json ./
+# Copier le package.json racine pour les workspaces
+COPY package*.json ./
+COPY apps/web/package*.json ./apps/web/
+COPY packages/*/package*.json ./packages/ 2>/dev/null || true
+
+# Installation depuis la racine avec workspaces
 RUN npm install --no-audit --no-fund --legacy-peer-deps
 
+# Copier tout le code
 COPY . .
+
+# Build spécifique au web
+WORKDIR /app/apps/web
 RUN npm run build
 
 # ── Production ─────────────────────────────────────────────────

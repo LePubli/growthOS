@@ -41,8 +41,8 @@ services:
 
   migrate:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: builder
     command: sh -c "npx prisma migrate deploy && node -e \"require('./dist/prisma/seed')\" 2>/dev/null || npx ts-node --project tsconfig.json prisma/seed.ts"
     environment:
@@ -57,8 +57,8 @@ services:
 
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: production
     restart: unless-stopped
     environment:
@@ -101,8 +101,8 @@ services:
 
   worker:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: production
     command: node dist/worker.js
     restart: unless-stopped
@@ -128,8 +128,8 @@ services:
 
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-GrowthOS}
