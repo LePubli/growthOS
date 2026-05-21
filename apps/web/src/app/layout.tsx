@@ -1,31 +1,32 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { ThemeProvider } from '@/components/theme/ThemeProvider';
-import { Toaster } from 'sonner';
-import { QueryProvider } from '@/components/providers/QueryProvider';
 
 export const metadata: Metadata = {
-  title: 'GrowthOS — B2B Growth Intelligence Platform',
-  description: 'Plateforme SaaS modulaire pour agences marketing et commerciaux B2B',
-  icons: { icon: '/favicon.ico' },
+  title: process.env.NEXT_PUBLIC_APP_NAME || 'GrowthOS',
+  description: 'Plateforme SaaS B2B multi-tenant — Prospection, CRM & Automatisation',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="fr">
+    <html lang="fr" suppressHydrationWarning>
       <head>
-        {/* Noto Sans — police Odoo */}
+        {/*
+          Noto Sans chargé via <link> au RUNTIME navigateur (pas au build Docker).
+          N'utilise PAS @import dans globals.css ni next/font/google
+          (les deux nécessitent un accès réseau pendant le build Docker).
+        */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+          rel="stylesheet"
+        />
       </head>
-      <body>
-        <QueryProvider>
-          <ThemeProvider>
-            {children}
-            <Toaster position="top-right" richColors closeButton />
-          </ThemeProvider>
-        </QueryProvider>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

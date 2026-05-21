@@ -1,528 +1,107 @@
-/* ============================================================
-   GrowthOS — Global Styles
-   Design system inspiré d'Odoo Community
-   Police : Noto Sans (Google Fonts)
-   ============================================================ */
+/* ─── GrowthOS Design System — Odoo-inspired ─────────────────────────────────
+   IMPORTANT: Ne PAS ajouter @import Google Fonts ici.
+   Le chargement de Noto Sans se fait via <link> dans layout.tsx
+   pour éviter un échec du build Docker (réseau restreint).
+   ──────────────────────────────────────────────────────────────────────────── */
 
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Noto+Sans+Mono:wght@400;500&display=swap');
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* ── Design Tokens Odoo-like ─────────────────────────────── */
-:root {
-  /* Couleurs Odoo Community */
-  --color-brand:          #714B67;
-  --color-primary:        #017E84;
-  --color-primary-dark:   #015F63;
-  --color-primary-light:  #E8F5F5;
-  --color-secondary:      #2C3E50;
-
-  /* Sémantique */
-  --color-success:        #28A745;
-  --color-success-light:  #D4EDDA;
-  --color-danger:         #DC3545;
-  --color-danger-light:   #F8D7DA;
-  --color-warning:        #F0AD4E;
-  --color-warning-light:  #FFF3CD;
-  --color-info:           #17A2B8;
-  --color-info-light:     #D1ECF1;
-
-  /* Backgrounds */
-  --bg-app:               #F9F9F9;
-  --bg-card:              #FFFFFF;
-  --bg-sidebar:           #2C3E50;     /* Signature Odoo — sidebar sombre */
-  --bg-sidebar-dark:      #243342;
-  --bg-header:            #FFFFFF;
-  --bg-hover:             rgba(1, 126, 132, 0.06);
-  --bg-active:            rgba(255, 255, 255, 0.12);
-  --bg-input:             #FFFFFF;
-
-  /* Text */
-  --text-primary:         #212529;
-  --text-secondary:       #6C757D;
-  --text-muted:           #ADB5BD;
-  --text-sidebar:         rgba(255, 255, 255, 0.85);
-  --text-sidebar-muted:   rgba(255, 255, 255, 0.5);
-  --text-sidebar-active:  #FFFFFF;
-  --text-inverse:         #FFFFFF;
-  --text-link:            #017E84;
-
-  /* Borders */
-  --border-color:         #DEE2E6;
-  --border-light:         #F0F0F0;
-  --border-focus:         #017E84;
-
-  /* Typography — Noto Sans comme Odoo */
-  --font-family:          'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-  --font-family-mono:     'Noto Sans Mono', 'SFMono-Regular', Consolas, monospace;
-  --font-size-xs:         11px;
-  --font-size-sm:         12px;
-  --font-size-base:       14px;
-  --font-size-md:         15px;
-  --font-size-lg:         16px;
-  --font-size-xl:         20px;
-  --font-size-2xl:        24px;
-
-  /* Spacing */
-  --space-1:  4px;
-  --space-2:  8px;
-  --space-3:  12px;
-  --space-4:  16px;
-  --space-5:  20px;
-  --space-6:  24px;
-  --space-8:  32px;
-  --space-10: 40px;
-  --space-12: 48px;
-
-  /* Radius — Odoo utilise des radius modérés */
-  --radius-sm:   4px;
-  --radius-md:   6px;
-  --radius-lg:   8px;
-  --radius-xl:   12px;
-  --radius-full: 9999px;
-
-  /* Shadows — légères comme Odoo */
-  --shadow-xs:   0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md:   0 2px 8px rgba(0, 0, 0, 0.10);
-  --shadow-lg:   0 4px 20px rgba(0, 0, 0, 0.12);
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
-
-  /* Layout — Odoo dimensions exactes */
-  --sidebar-width:        220px;
-  --sidebar-width-collapsed: 64px;
-  --header-height:        46px;      /* Odoo header est compact */
-  --content-padding:      24px;
-  --content-max-width:    1440px;
-
-  /* Transitions */
-  --transition-fast:   all 0.12s ease;
-  --transition-normal: all 0.2s ease;
-  --transition-slow:   all 0.3s ease;
-
-  /* Z-index */
-  --z-dropdown:  100;
-  --z-sticky:    200;
-  --z-fixed:     300;
-  --z-modal-bg:  400;
-  --z-modal:     500;
-  --z-popover:   600;
-  --z-toast:     700;
+/* ── Reset ───────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-/* ── Reset ───────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
+/* ── Variables CSS — Palette Odoo ────────────────────────────────────────── */
+:root {
+  /* Typographie */
+  --font-sans: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
 
+  /* Couleurs primaires Odoo */
+  --color-primary:    #017E84;   /* vert-bleu Odoo */
+  --color-primary-hover: #016b70;
+  --color-primary-light: #e6f4f5;
+
+  --color-brand:      #714B67;   /* violet Odoo */
+  --color-brand-light: #f3edf1;
+
+  /* Sidebar */
+  --sidebar-bg:       #2C3E50;   /* signature Odoo sombre */
+  --sidebar-width:    220px;
+  --sidebar-text:     #a8b8c8;
+  --sidebar-text-active: #ffffff;
+  --sidebar-item-hover: rgba(255, 255, 255, 0.08);
+  --sidebar-item-active: rgba(1, 126, 132, 0.25);
+
+  /* Header */
+  --header-height:    46px;
+  --header-bg:        #ffffff;
+  --header-border:    #e0e0e0;
+
+  /* Surfaces */
+  --body-bg:          #F9F9F9;
+  --card-bg:          #ffffff;
+  --card-border:      #e5e7eb;
+  --card-radius:      8px;
+
+  /* Texte */
+  --text-primary:     #212529;
+  --text-secondary:   #6b7280;
+  --text-muted:       #9ca3af;
+
+  /* Statuts */
+  --color-success:    #22c55e;
+  --color-warning:    #f59e0b;
+  --color-danger:     #ef4444;
+  --color-info:       #3b82f6;
+
+  /* Shadows */
+  --shadow-sm:        0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md:        0 4px 6px rgba(0, 0, 0, 0.07);
+
+  /* Transitions */
+  --transition-fast:  150ms ease;
+  --transition-base:  200ms ease;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
 html {
-  font-size: var(--font-size-base);
-  -webkit-text-size-adjust: 100%;
-  scroll-behavior: smooth;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  font-family: var(--font-family);
-  font-size: var(--font-size-base);
+  font-family: var(--font-sans);
+  background-color: var(--body-bg);
   color: var(--text-primary);
-  background-color: var(--bg-app);
   line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  overflow: hidden;
 }
 
-#root, body > div { height: 100vh; overflow: hidden; }
+/* ── Scrollbars ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
-/* ── Typography ──────────────────────────────────────────── */
-h1 { font-size: var(--font-size-2xl); font-weight: 600; }
-h2 { font-size: var(--font-size-xl);  font-weight: 600; }
-h3 { font-size: var(--font-size-lg);  font-weight: 600; }
-h4 { font-size: var(--font-size-md);  font-weight: 600; }
-h5, h6 { font-size: var(--font-size-base); font-weight: 600; }
-
-h1,h2,h3,h4,h5,h6 { color: var(--text-primary); line-height: 1.3; margin: 0; }
-p { color: var(--text-secondary); line-height: 1.6; margin: 0; }
-a { color: var(--text-link); text-decoration: none; transition: var(--transition-fast); }
-a:hover { color: var(--color-primary-dark); }
-code, pre, kbd { font-family: var(--font-family-mono); font-size: 0.9em; }
-small { font-size: var(--font-size-sm); }
-
-/* ── Scrollbar ───────────────────────────────────────────── */
-* { scrollbar-width: thin; scrollbar-color: #CBD5E1 transparent; }
-*::-webkit-scrollbar { width: 6px; height: 6px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
-*::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
-
-/* ── Forms ───────────────────────────────────────────────── */
-input, select, textarea, button { font-family: var(--font-family); }
-
-input, select, textarea {
-  font-size: var(--font-size-base);
-  color: var(--text-primary);
-  background: var(--bg-input);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-input:focus, select:focus, textarea:focus {
-  outline: none;
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(1, 126, 132, 0.15);
-}
-
-input::placeholder, textarea::placeholder { color: var(--text-muted); }
-textarea { resize: vertical; }
-button { cursor: pointer; font-size: var(--font-size-base); }
-button:disabled { cursor: not-allowed; opacity: 0.6; }
-
-/* ── Odoo Sidebar ─────────────────────────────────────────── */
-.o-sidebar {
-  background: var(--bg-sidebar);
-  color: var(--text-sidebar);
-  width: var(--sidebar-width);
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-shadow: 2px 0 8px rgba(0,0,0,.15);
-}
-
-.o-sidebar-logo {
-  height: var(--header-height);
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  border-bottom: 1px solid rgba(255,255,255,.08);
-  flex-shrink: 0;
-}
-
-.o-sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
-
-.o-nav-section {
-  padding: 16px 16px 6px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-sidebar-muted);
-}
-
-.o-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  font-size: var(--font-size-base);
-  font-weight: 400;
-  color: var(--text-sidebar);
+/* ── Liens ───────────────────────────────────────────────────────────────── */
+a {
+  color: var(--color-primary);
   text-decoration: none;
-  transition: background 0.12s;
-  border-left: 3px solid transparent;
-  cursor: pointer;
+}
+a:hover {
+  text-decoration: underline;
 }
 
-.o-nav-item:hover {
-  background: rgba(255,255,255,.06);
-  color: #FFFFFF;
+/* ── Focus ───────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
-.o-nav-item.active {
-  background: var(--bg-active);
-  border-left-color: var(--color-primary);
-  color: #FFFFFF;
-  font-weight: 500;
-}
-
-.o-nav-item .o-nav-icon {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  opacity: 0.8;
-}
-
-.o-nav-item.active .o-nav-icon { opacity: 1; }
-
-/* ── Odoo Header ─────────────────────────────────────────── */
-.o-header {
-  height: var(--header-height);
-  background: var(--bg-header);
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  flex-shrink: 0;
-  gap: 12px;
-  box-shadow: var(--shadow-xs);
-}
-
-.o-header-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--font-size-base);
-  flex: 1;
-}
-
-.o-header-breadcrumb-sep { color: var(--text-muted); }
-.o-header-breadcrumb-current { font-weight: 600; color: var(--text-primary); }
-
-/* ── Odoo Cards ──────────────────────────────────────────── */
-.o-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 20px;
-}
-
-.o-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-.o-card-title {
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.o-card-subtitle {
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-/* ── Odoo Buttons ────────────────────────────────────────── */
-.o-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  border: 1px solid transparent;
-  transition: all 0.15s;
-  white-space: nowrap;
-  line-height: 1.4;
-}
-
-.o-btn-sm { padding: 4px 10px; font-size: var(--font-size-sm); }
-.o-btn-lg { padding: 8px 18px; font-size: var(--font-size-md); }
-
-.o-btn-primary {
-  background: var(--color-primary);
-  color: #fff;
-  border-color: var(--color-primary);
-}
-.o-btn-primary:hover { background: var(--color-primary-dark); border-color: var(--color-primary-dark); }
-
-.o-btn-secondary {
-  background: #fff;
-  color: var(--text-secondary);
-  border-color: var(--border-color);
-}
-.o-btn-secondary:hover { background: #F8F9FA; color: var(--text-primary); }
-
-.o-btn-danger { background: var(--color-danger); color: #fff; border-color: var(--color-danger); }
-.o-btn-danger:hover { background: #C82333; }
-
-.o-btn-ghost { background: transparent; color: var(--text-secondary); border-color: transparent; }
-.o-btn-ghost:hover { background: var(--bg-hover); color: var(--color-primary); }
-
-.o-btn-icon { padding: 6px; width: 32px; height: 32px; }
-
-/* ── Odoo KPI Stats ──────────────────────────────────────── */
-.o-stat-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 20px 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.o-stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.o-stat-icon-primary  { background: #E8F5F5; color: var(--color-primary); }
-.o-stat-icon-success  { background: #D4EDDA; color: var(--color-success); }
-.o-stat-icon-danger   { background: #F8D7DA; color: var(--color-danger); }
-.o-stat-icon-warning  { background: #FFF3CD; color: var(--color-warning); }
-.o-stat-icon-info     { background: #D1ECF1; color: var(--color-info); }
-.o-stat-icon-brand    { background: rgba(113,75,103,.1); color: var(--color-brand); }
-
-.o-stat-value { font-size: 28px; font-weight: 700; color: var(--text-primary); line-height: 1; }
-.o-stat-label { font-size: var(--font-size-sm); color: var(--text-muted); margin-top: 4px; }
-.o-stat-trend { font-size: var(--font-size-sm); margin-top: 4px; }
-.o-stat-trend-up   { color: var(--color-success); }
-.o-stat-trend-down { color: var(--color-danger); }
-
-/* ── Odoo Table ──────────────────────────────────────────── */
-.o-table-container {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-}
-
-.o-table { width: 100%; border-collapse: collapse; }
-
-.o-table thead th {
-  background: #F8F9FA;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 10px 16px;
-  border-bottom: 2px solid var(--border-color);
-  text-align: left;
-  white-space: nowrap;
-}
-
-.o-table tbody tr {
-  border-bottom: 1px solid var(--border-light);
-  transition: background 0.1s;
-}
-
-.o-table tbody tr:last-child { border-bottom: none; }
-.o-table tbody tr:hover { background: #F8F9FA; }
-.o-table tbody tr.selected { background: rgba(1,126,132,.05); }
-.o-table tbody td { padding: 10px 16px; font-size: var(--font-size-base); color: var(--text-secondary); vertical-align: middle; }
-
-/* ── Odoo Badges ─────────────────────────────────────────── */
-.o-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.o-badge-primary { background: var(--color-primary-light); color: var(--color-primary); }
-.o-badge-success { background: var(--color-success-light); color: var(--color-success); }
-.o-badge-danger  { background: var(--color-danger-light);  color: var(--color-danger);  }
-.o-badge-warning { background: var(--color-warning-light); color: #856404;              }
-.o-badge-info    { background: var(--color-info-light);    color: var(--color-info);    }
-.o-badge-muted   { background: #F8F9FA; color: var(--text-muted); border: 1px solid var(--border-color); }
-
-/* ── Odoo Forms ──────────────────────────────────────────── */
-.o-form-group { margin-bottom: 16px; }
-
-.o-form-label {
-  display: block;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-.o-form-label.required::after {
-  content: ' *';
-  color: var(--color-danger);
-}
-
-.o-form-control {
-  width: 100%;
-  padding: 7px 12px;
-  font-size: var(--font-size-base);
-  background: var(--bg-input);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.o-form-control:focus {
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(1, 126, 132, 0.15);
-  outline: none;
-}
-
-.o-form-control::placeholder { color: var(--text-muted); }
-.o-form-control-sm { padding: 4px 8px; font-size: var(--font-size-sm); }
-
-/* ── Odoo Plugin Toggle ───────────────────────────────────── */
-.o-switch {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  border-radius: var(--radius-full);
-  background: var(--border-color);
-  border: none;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.o-switch.active { background: var(--color-primary); }
-
-.o-switch::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,.3);
-  transition: left 0.2s;
-}
-
-.o-switch.active::after { left: 19px; }
-
-/* ── Utilities ───────────────────────────────────────────── */
-.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-
-/* ── Animations ──────────────────────────────────────────── */
-@keyframes spin    { to { transform: rotate(360deg); } }
-@keyframes fadeIn  { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes pulse   { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
-@keyframes shimmer {
-  0%   { background-position: -200% center; }
-  100% { background-position: 200% center; }
-}
-@keyframes popIn {
-  from { opacity: 0; transform: scale(0.96); }
-  to   { opacity: 1; transform: scale(1); }
-}
-
-/* ── Skeleton ────────────────────────────────────────────── */
-.o-skeleton {
-  background: linear-gradient(90deg, #F0F0F0 25%, #E8E8E8 50%, #F0F0F0 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: var(--radius-md);
-}
-
-/* ── Focus ring ──────────────────────────────────────────── */
-:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-::selection    { background: rgba(1,126,132,.15); color: var(--text-primary); }
-
-/* ── Odoo Chatter / Activity panel ──────────────────────── */
-.o-chatter { border-left: 1px solid var(--border-color); background: var(--bg-card); }
-
-/* ── Print ───────────────────────────────────────────────── */
-@media print { body { background: white; color: black; } }
+/* ── Utilitaires Odoo-like ───────────────────────────────────────────────── */
+.o-form-view { padding: 16px 24px; }
+.o-statusbar { background: #f8f9fa; border-bottom: 1px solid var(--card-border); padding: 8px 24px; display: flex; align-items: center; gap: 12px; }
+.o-chatter { border-top: 1px solid var(--card-border); padding: 16px 24px; }
