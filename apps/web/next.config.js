@@ -1,29 +1,36 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // OBLIGATOIRE pour le Dockerfile multi-stage (stage production copie .next/standalone)
   output: 'standalone',
-  poweredByHeader: false,
-  reactStrictMode: true,
 
-  async rewrites() {
-    return [
-      {
-        source: '/api/v1/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1/:path*`,
-      },
-    ];
+  // Désactive la télémétrie Next.js
+  telemetry: false,
+
+  // Variables d'environnement exposées au client
+  env: {
+    NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || 'GrowthOS',
   },
 
-  async headers() {
-    return [
+  // Images depuis l'API
+  images: {
+    remotePatterns: [
       {
-        source: '/(.*)',
-        headers: [
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-        ],
+        protocol: 'http',
+        hostname: '**',
       },
-    ];
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
+  },
+
+  // Webpack — désactiver le cache en prod Docker pour éviter les stale builds
+  webpack: (config, { isServer }) => {
+    if (process.env.NODE_ENV === 'production') {
+      config.cache = false;
+    }
+    return config;
   },
 };
 
