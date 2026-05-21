@@ -1,76 +1,45 @@
 ```
 # Dependencies
 node_modules/
+.venv/
+venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+target/
+.gradle/
 
-# Build outputs
+# Build artifacts
 dist/
 build/
-.next/
-out/
+*.pyc
+*.class
+*.o
+*.obj
+*.out
 
-# Logs
-*.log
-
-# Environment variables
+# Environment
 .env
 .env.local
 *.env.*
 
-# IDE files
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-.ENV
-.python-version
-
-# Coverage
-.coverage
-coverage/
-htmlcov/
-
-# Temporary files
-*.tmp
-*.temp
+# System
 .DS_Store
 Thumbs.db
 
-# Compiled files
-*.exe
-*.dll
-*.so
-*.dylib
-*.class
-*.o
-*.obj
-*.a
-*.lib
-*.out
+# Logs
+*.log
 
-# Cache directories
-.mypy_cache/
-.pytest_cache/
-.nyc_output/
+# Coverage
 coverage/
-julia-*/
-zig*/
-
-# Gradle
-.gradle/
-build/
-
-# Rust
-target/
+htmlcov/
+.coverage
 
 # Compressed files
 *.zip

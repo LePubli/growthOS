@@ -28,7 +28,7 @@ ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
 
 # Build Next.js (output: standalone requis dans next.config.js)
 WORKDIR /app/apps/web
-RUN npm run build
+RUN npx next build
 
 # ─── Stage 2: Production ──────────────────────────────────────────────────────
 FROM node:20-alpine AS production
