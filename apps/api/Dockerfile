@@ -3,49 +3,56 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Outils natifs (bcrypt, sharp, node-gyp)
 RUN apk add --no-cache python3 make g++ curl
 
-# Manifests — racine + web (contexte = racine du monorepo)
+# Manifests — racine + api (contexte = racine du monorepo)
 COPY package.json ./
-COPY apps/web/package.json ./apps/web/
+COPY apps/api/package.json ./apps/api/
 
 # Packages locaux partagés
 COPY packages/ ./packages/
 
-# Installation des dépendances
-WORKDIR /app/apps/web
+# Installation TOUTES les deps (dev incluses — nécessaire pour tsc/prisma)
+WORKDIR /app/apps/api
 RUN npm install --no-audit --no-fund --legacy-peer-deps
 
 # Code source
 WORKDIR /app
-COPY apps/web/ ./apps/web/
+COPY apps/api/ ./apps/api/
 
-# Variables de build injectées (NEXT_PUBLIC_* doivent être connues au build)
-ARG NEXT_PUBLIC_API_URL
-ARG NEXT_PUBLIC_APP_NAME=GrowthOS
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
-
-# Build Next.js (output: standalone requis dans next.config.js)
-WORKDIR /app/apps/web
+# Génération client Prisma + compilation TS
+WORKDIR /app/apps/api
+RUN npx prisma generate
 RUN npm run build
 
-# ─── Stage 2: Production ──────────────────────────────────────────────────────
+# Prune des dev deps IN BUILDER — évite une réinstallation dans le stage production
+RUN npm prune --omit=dev
+
+# ─── Stage 2: Production (API server) ─────────────────────────────────────────
 FROM node:20-alpine AS production
 
 WORKDIR /app
 
 RUN apk add --no-cache curl
 
-# Standalone output : Next.js embarque ses propres node_modules minifiés
-# On ne fait PAS de npm install ici
-COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static     ./.next/static
-COPY --from=builder /app/apps/web/public           ./public
+# On copie directement depuis builder — PAS de npm install ici
+COPY --from=builder /app/apps/api/dist            ./apps/api/dist
+COPY --from=builder /app/apps/api/node_modules    ./apps/api/node_modules
+COPY --from=builder /app/apps/api/package.json    ./apps/api/package.json
+COPY --from=builder /app/packages                 ./packages
 
-EXPOSE 3000
+# Prisma : schéma + migrations (pour prisma migrate deploy dans le service migrate)
+COPY apps/api/prisma ./apps/api/prisma
 
-ENV PORT=3000
-ENV HOSTNAME=0.0.0.0
+WORKDIR /app/apps/api
 
-CMD ["node", "server.js"]
+EXPOSE 3001
+
+CMD ["node", "dist/main.js"]
+
+# ─── Stage 3: Worker BullMQ ───────────────────────────────────────────────────
+# Hérite de production — même image, point d'entrée différent
+FROM production AS production-worker
+
+CMD ["node", "dist/worker.js"]
