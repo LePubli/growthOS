@@ -29,8 +29,8 @@ RUN npx prisma generate
 RUN npx nest build
 
 # Compilation manuelle de worker.ts (nest build ne gère pas multi-entry correctement)
-RUN npx tsc -p tsconfig.json --outDir dist-worker --rootDir src && \
-    cp dist-worker/worker.js dist/ && rm -rf dist-worker
+RUN npx tsc -p tsconfig.json --outDir dist-worker --rootDir ./src && \
+    mkdir -p dist && cp dist-worker/worker.js dist/worker.js && rm -rf dist-worker
 
 # Prune des dev deps IN BUILDER — évite une réinstallation dans le stage production
 RUN npm prune --omit=dev
