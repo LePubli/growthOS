@@ -62,8 +62,8 @@ services:
   # ── Migrations (job one-shot) ───────────────────────────────
   migrate:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: builder
     command: sh -c "npx prisma migrate deploy && npx ts-node prisma/seed.ts"
     environment:
@@ -79,8 +79,8 @@ services:
   # ── API NestJS ──────────────────────────────────────────────
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: production
     restart: unless-stopped
     environment:
@@ -130,8 +130,8 @@ services:
   # ── Worker BullMQ ───────────────────────────────────────────
   worker:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: production
     command: node dist/worker.js
     restart: unless-stopped
@@ -156,8 +156,8 @@ services:
   # ── Frontend Next.js ────────────────────────────────────────
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-GrowthOS}
