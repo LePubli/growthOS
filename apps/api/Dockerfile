@@ -13,6 +13,10 @@ COPY apps/api/package*.json ./apps/api/
 COPY packages/*/package*.json ./packages/ 2>/dev/null || true
 
 # Installation depuis la racine avec workspaces
+# Copier UNIQUEMENT les fichiers de ce service
+COPY package.json ./
+
+# Installer sans workspace (pas de workspaces dans ce package.json)
 RUN npm install --no-audit --no-fund --legacy-peer-deps
 
 # Copier tout le code
@@ -23,7 +27,7 @@ WORKDIR /app/apps/api
 RUN npx prisma generate
 RUN npm run build
 
-# ── Stage 2: Production ───────────────────────────────────────
+# ── Stage 2: Production ────────────────────────────────────────
 FROM node:20-alpine AS production
 
 WORKDIR /app/apps/api
@@ -38,11 +42,14 @@ COPY apps/api/package*.json ./apps/api/
 COPY packages/*/package*.json ./packages/ 2>/dev/null || true
 
 RUN npm install --no-audit --no-fund --omit=dev --legacy-peer-deps && npm cache clean --force
+COPY package.json ./
+RUN npm install --no-audit --no-fund --legacy-peer-deps --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY apps/api/prisma ./prisma
+COPY prisma ./prisma
 
 RUN mkdir -p /app/plugins /app/logs
 
