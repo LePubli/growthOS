@@ -100,11 +100,11 @@ services:
       - "3001"
 
   worker:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-      target: production
-    command: node dist/worker.js
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+    target: production-worker  # Changer de 'production' à 'production-worker'
+  command: node dist/worker.js
     restart: unless-stopped
     environment:
       NODE_ENV: production
