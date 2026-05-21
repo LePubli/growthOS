@@ -1,73 +1,48 @@
-```
-# Dependencies
-node_modules/
-
-# Environment
+# ── Environnement — NE JAMAIS COMMITER ────────────────────────────────────────
 .env
 .env.local
-.env.*
+.env.development
+.env.production
+.env.*.local
 
-# Logs and temp files
-*.log
-*.tmp
-
-# Editors
-.vscode/
-.idea/
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-venv/
-.venv/
-.envrc
-.python-version
-
-# Build outputs
-dist/
-build/
-*.egg-info/
-.eggs/
-
-# Tests
-.pytest_cache/
-.coverage
-htmlcov/
-coverage/
-
-# Node.js
+# ── Node ──────────────────────────────────────────────────────────────────────
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
 
-# OS generated files
+# ── Build outputs ─────────────────────────────────────────────────────────────
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# ── Prisma ────────────────────────────────────────────────────────────────────
+# Ne pas ignorer schema.prisma ni les migrations !
+apps/api/src/generated/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
 
-# Compression
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# Ne pas ignorer les Dockerfiles, mais ignorer les volumes locaux
+.docker-volumes/
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ── Plugins uploads (runtime) ─────────────────────────────────────────────────
+plugins/uploads/
 *.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
-```
