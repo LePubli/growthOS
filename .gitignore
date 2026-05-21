@@ -1,48 +1,82 @@
-# ── Environnement — NE JAMAIS COMMITER ────────────────────────────────────────
+```
+# Dependencies
+node_modules/
+
+# Environment variables
 .env
 .env.local
-.env.development
-.env.production
-.env.*.local
+*.env.*
 
-# ── Node ──────────────────────────────────────────────────────────────────────
-node_modules/
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+
+# Build outputs
+dist/
+build/
+target/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/modules/
+*.sublime-workspace
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# Node.js
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
-
-# ── Build outputs ─────────────────────────────────────────────────────────────
+node_modules/
 dist/
-.next/
-out/
 build/
-*.tsbuildinfo
+.nyc_output/
+coverage/
+.nyc_output/
+istanbul/
+.mocha.opts
+.mocha
+.mocha-reports/
+.travis.yml
+circle.yml
+appveyor.yml
+.DS_Store
+Thumbs.db
 
-# ── Prisma ────────────────────────────────────────────────────────────────────
-# Ne pas ignorer schema.prisma ni les migrations !
-apps/api/src/generated/
-
-# ── IDE ───────────────────────────────────────────────────────────────────────
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-
-# ── Logs ──────────────────────────────────────────────────────────────────────
-logs/
-*.log
-
-# ── Docker ────────────────────────────────────────────────────────────────────
-# Ne pas ignorer les Dockerfiles, mais ignorer les volumes locaux
-.docker-volumes/
-
-# ── Tests ─────────────────────────────────────────────────────────────────────
-coverage/
-.nyc_output/
-
-# ── Plugins uploads (runtime) ─────────────────────────────────────────────────
-plugins/uploads/
-*.zip
+```
