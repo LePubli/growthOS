@@ -25,8 +25,12 @@ COPY apps/api/ ./apps/api/
 WORKDIR /app/apps/api
 RUN npx prisma generate
 
-# Compilation avec NestJS CLI — gère correctement main.ts et worker.ts
+# Compilation avec NestJS CLI — compile main.ts par défaut
 RUN npx nest build
+
+# Compilation manuelle de worker.ts (nest build ne gère pas multi-entry correctement)
+RUN npx tsc -p tsconfig.json --outDir dist-worker --rootDir src && \
+    cp dist-worker/worker.js dist/ && rm -rf dist-worker
 
 # Prune des dev deps IN BUILDER — évite une réinstallation dans le stage production
 RUN npm prune --omit=dev
