@@ -3,10 +3,12 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 RUN apk add --no-cache python3 make g++
 
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm install --no-audit --no-fund --legacy-peer-deps
 
 COPY . .
 RUN npx prisma generate
@@ -22,7 +24,7 @@ ENV NODE_ENV=production
 RUN apk add --no-cache dumb-init curl
 
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund --only=production && npm cache clean --force
+RUN npm install --no-audit --no-fund --omit=dev --legacy-peer-deps && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
@@ -33,7 +35,7 @@ RUN mkdir -p /app/plugins /app/logs
 
 EXPOSE 3001
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
   CMD curl -f http://localhost:3001/api/v1/health || exit 1
 
 USER node
