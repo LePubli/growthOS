@@ -1,64 +1,63 @@
-# ── Stage 1: Builder ──────────────────────────────────────────
+# ─── Stage 1: Builder ─────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-ENV NODE_OPTIONS="--max-old-space-size=4096"
+# Outils natifs (bcrypt, sharp, canvas, node-gyp)
+RUN apk add --no-cache python3 make g++ curl
 
-RUN apk add --no-cache python3 make g++
-
-# Copier le package.json racine pour les workspaces
-COPY package*.json ./
-COPY apps/api/package*.json ./apps/api/
-COPY packages/*/package*.json ./packages/ 2>/dev/null || true
-
-# Installation depuis la racine avec workspaces
-# Copier UNIQUEMENT les fichiers de ce service
+# Manifests — racine + api (contexte = racine du monorepo)
 COPY package.json ./
+COPY apps/api/package.json ./apps/api/
 
-# Installer sans workspace (pas de workspaces dans ce package.json)
+# Packages locaux partagés
+COPY packages/ ./packages/
+
+# Installation des dépendances depuis le dossier api
+WORKDIR /app/apps/api
 RUN npm install --no-audit --no-fund --legacy-peer-deps
 
-# Copier tout le code
-COPY . .
+# Code source complet de l'api
+WORKDIR /app
+COPY apps/api/ ./apps/api/
 
-# Générer Prisma et build spécifique à l'API
+# Génération du client Prisma
 WORKDIR /app/apps/api
 RUN npx prisma generate
+
+# Compilation TypeScript
 RUN npm run build
 
-# ── Stage 2: Production ────────────────────────────────────────
+# ─── Stage 2: Production (API server) ─────────────────────────────────────────
 FROM node:20-alpine AS production
 
-WORKDIR /app/apps/api
+WORKDIR /app
 
-ENV NODE_ENV=production
+RUN apk add --no-cache curl
 
-RUN apk add --no-cache dumb-init curl
-
-# Copier package.json racine et apps/api pour les deps de prod
-COPY package*.json ./
-COPY apps/api/package*.json ./apps/api/
-COPY packages/*/package*.json ./packages/ 2>/dev/null || true
-
-RUN npm install --no-audit --no-fund --omit=dev --legacy-peer-deps && npm cache clean --force
+# Manifests + packages locaux
 COPY package.json ./
-RUN npm install --no-audit --no-fund --legacy-peer-deps --omit=dev && npm cache clean --force
+COPY apps/api/package.json ./apps/api/
+COPY packages/ ./packages/
 
-COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY apps/api/prisma ./prisma
-COPY prisma ./prisma
+# Deps de production uniquement
+WORKDIR /app/apps/api
+RUN npm install --no-audit --no-fund --legacy-peer-deps --omit=dev
 
-RUN mkdir -p /app/plugins /app/logs
+# Artefacts de build
+WORKDIR /app
+COPY --from=builder /app/apps/api/dist            ./apps/api/dist
+COPY --from=builder /app/apps/api/node_modules/.prisma ./apps/api/node_modules/.prisma
+COPY apps/api/prisma ./apps/api/prisma
+
+WORKDIR /app/apps/api
 
 EXPOSE 3001
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
-  CMD curl -f http://localhost:3001/api/v1/health || exit 1
+CMD ["node", "dist/main.js"]
 
-USER node
+# ─── Stage 3: Worker BullMQ ───────────────────────────────────────────────────
+# Hérite de production — même image, point d'entrée différent
+FROM production AS production-worker
 
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "dist/main"]
+CMD ["node", "dist/worker.js"]
