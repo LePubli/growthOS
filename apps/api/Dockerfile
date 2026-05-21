@@ -3,61 +3,49 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Outils natifs (bcrypt, sharp, canvas, node-gyp)
 RUN apk add --no-cache python3 make g++ curl
 
-# Manifests — racine + api (contexte = racine du monorepo)
+# Manifests — racine + web (contexte = racine du monorepo)
 COPY package.json ./
-COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
 
 # Packages locaux partagés
 COPY packages/ ./packages/
 
-# Installation des dépendances depuis le dossier api
-WORKDIR /app/apps/api
+# Installation des dépendances
+WORKDIR /app/apps/web
 RUN npm install --no-audit --no-fund --legacy-peer-deps
 
-# Code source complet de l'api
+# Code source
 WORKDIR /app
-COPY apps/api/ ./apps/api/
+COPY apps/web/ ./apps/web/
 
-# Génération du client Prisma
-WORKDIR /app/apps/api
-RUN npx prisma generate
+# Variables de build injectées (NEXT_PUBLIC_* doivent être connues au build)
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_APP_NAME=GrowthOS
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
 
-# Compilation TypeScript
+# Build Next.js (output: standalone requis dans next.config.js)
+WORKDIR /app/apps/web
 RUN npm run build
 
-# ─── Stage 2: Production (API server) ─────────────────────────────────────────
+# ─── Stage 2: Production ──────────────────────────────────────────────────────
 FROM node:20-alpine AS production
 
 WORKDIR /app
 
 RUN apk add --no-cache curl
 
-# Manifests + packages locaux
-COPY package.json ./
-COPY apps/api/package.json ./apps/api/
-COPY packages/ ./packages/
+# Standalone output : Next.js embarque ses propres node_modules minifiés
+# On ne fait PAS de npm install ici
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static     ./.next/static
+COPY --from=builder /app/apps/web/public           ./public
 
-# Deps de production uniquement
-WORKDIR /app/apps/api
-RUN npm install --no-audit --no-fund --legacy-peer-deps --omit=dev
+EXPOSE 3000
 
-# Artefacts de build
-WORKDIR /app
-COPY --from=builder /app/apps/api/dist            ./apps/api/dist
-COPY --from=builder /app/apps/api/node_modules/.prisma ./apps/api/node_modules/.prisma
-COPY apps/api/prisma ./apps/api/prisma
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
-WORKDIR /app/apps/api
-
-EXPOSE 3001
-
-CMD ["node", "dist/main.js"]
-
-# ─── Stage 3: Worker BullMQ ───────────────────────────────────────────────────
-# Hérite de production — même image, point d'entrée différent
-FROM production AS production-worker
-
-CMD ["node", "dist/worker.js"]
+CMD ["node", "server.js"]
