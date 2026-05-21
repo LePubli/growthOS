@@ -24,7 +24,7 @@ COPY apps/api/ ./apps/api/
 # Génération client Prisma + compilation TS
 WORKDIR /app/apps/api
 RUN npx prisma generate
-RUN npm run build
+RUN npx nest build
 
 # Prune des dev deps IN BUILDER — évite une réinstallation dans le stage production
 RUN npm prune --omit=dev
