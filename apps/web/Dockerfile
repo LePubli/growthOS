@@ -12,11 +12,11 @@ COPY apps/web/package.json ./apps/web/
 # Packages locaux partagés
 COPY packages/ ./packages/
 
-# Installation des dépendances depuis le dossier web
+# Installation des dépendances
 WORKDIR /app/apps/web
 RUN npm install --no-audit --no-fund --legacy-peer-deps
 
-# Code source complet du frontend
+# Code source
 WORKDIR /app
 COPY apps/web/ ./apps/web/
 
@@ -26,7 +26,7 @@ ARG NEXT_PUBLIC_APP_NAME=GrowthOS
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
 
-# Build Next.js — output standalone (requis pour le stage production)
+# Build Next.js (output: standalone requis dans next.config.js)
 WORKDIR /app/apps/web
 RUN npm run build
 
@@ -37,8 +37,8 @@ WORKDIR /app
 
 RUN apk add --no-cache curl
 
-# Standalone output: tout ce qu'il faut pour faire tourner Next.js
-# (node_modules minimalistes inclus par Next dans .next/standalone)
+# Standalone output : Next.js embarque ses propres node_modules minifiés
+# On ne fait PAS de npm install ici
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static     ./.next/static
 COPY --from=builder /app/apps/web/public           ./public
@@ -48,5 +48,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# server.js est généré par Next.js output: standalone à la racine du standalone/
 CMD ["node", "server.js"]
