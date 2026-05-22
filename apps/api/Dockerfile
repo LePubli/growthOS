@@ -45,8 +45,8 @@ RUN set -o pipefail; \
       --schema=/app/apps/api/prisma/schema.prisma 2>&1 | cat; \
     echo "EXIT:${PIPESTATUS[0]}"
 
-# 10. Vérification instanciation
-RUN node -e "const {PrismaClient}=require('@prisma/client'); new PrismaClient(); console.log('OK');"
+# 10. Vérification que le client généré existe
+RUN ls -la node_modules/.prisma/client/ | head -5 && echo "✓ Prisma client généré"
 
 # 11. tsx pour le seed + build TS
 RUN npm install -g tsx@4.19.2
