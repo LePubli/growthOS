@@ -1,50 +1,50 @@
 ```
+# Build artifacts
+Dockerfile
+
 # Dependencies
 node_modules/
-venv/
 .venv/
+venv/
 __pycache__/
-.mypy_cache/
-.pytest_cache/
-.julia/
-zig*/
-target/
-.gradle/
-
-# Compiled/Build artifacts
-*.pyc
-*.class
-*.o
-*.exe
-*.dll
-*.so
-*.a
-*.obj
-*.out
+*.egg-info/
 dist/
 build/
+target/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Coverage reports
 coverage/
 htmlcov/
 .coverage
 
-# Environment
-.env
-.env.local
-.env.*
-
-# Editors/IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# System
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
+# Python specific
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
 
 # Compressed files
 *.zip
