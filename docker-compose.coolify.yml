@@ -8,12 +8,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: growthos
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER doit être défini dans Coolify Environment Variables}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD doit être défini dans Coolify Environment Variables}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d growthos"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d growthos"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -23,11 +23,18 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 512mb --maxmemory-policy allkeys-lru
+    # ⭐ Syntaxe ARRAY (exec form) pour éviter le bug d'interpolation shell
+    # Si REDIS_PASSWORD est vide, Coolify échouera proprement avec le :?error
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD doit être défini dans Coolify Environment Variables}
+    # On utilise sh -c avec quotes autour de la var pour éviter qu'un mot vide
+    # casse les arguments suivants
+    command: >
+      sh -c 'exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 512mb --maxmemory-policy allkeys-lru'
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,8 +45,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER doit être défini}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD doit être défini}
     volumes:
       - minio_data:/data
     healthcheck:
@@ -90,13 +97,12 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET doit être défini}
       JWT_EXPIRES_IN: 15m
       CORS_ORIGINS: ${CORS_ORIGINS}
       PLUGINS_DIR: /app/plugins
 
-      # ── IA providers — laisser vide pour désactiver, remplir pour activer ──
-      # Ordre de fallback: Anthropic → OpenAI → Mistral
+      # ── IA providers — laisser vide pour désactiver ──
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
@@ -175,7 +181,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL doit être défini}
         NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-GrowthOS}
     restart: unless-stopped
     environment:
