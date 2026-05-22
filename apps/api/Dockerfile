@@ -15,7 +15,6 @@ COPY turbo.json ./
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 COPY packages/sdk/package.json ./packages/sdk/
-COPY plugins/crm-prospecting/package.json ./plugins/crm-prospecting/
 
 # Installation TOUTES les deps depuis la racine (workspaces)
 RUN npm install --no-audit --no-fund --legacy-peer-deps
