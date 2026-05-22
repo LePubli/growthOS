@@ -1,0 +1,2 @@
+# Dossier pour les certificats Let's Encrypt
+# Les certificats sont générés par certbot et montés dans le conteneur nginx
