@@ -1,10 +1,9 @@
 # ─── Stage 1: Builder ─────────────────────────────────────────────────────────
-# Debian slim au lieu d'Alpine : Prisma fonctionne nativement sans hack OpenSSL/musl
 FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Dépendances système pour Prisma + node-gyp (bcrypt, sharp, etc.)
+# Deps système + outils de debug
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     ca-certificates \
@@ -12,30 +11,66 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     g++ \
     curl \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
-# 1. Manifests d'abord (cache Docker layer)
+# ─── 1. Manifests ─────────────────────────────────────────────────────────────
 COPY package.json ./
 COPY apps/api/package.json ./apps/api/
 
-# 2. Packages locaux partagés
+# ─── 2. Packages locaux partagés ──────────────────────────────────────────────
 COPY packages/ ./packages/
 
-# 3. Code source COMPLET de l'API (INCLUT prisma/schema.prisma)
-# CRITIQUE : doit être fait AVANT prisma generate
+# ─── 3. Code source COMPLET de l'API ──────────────────────────────────────────
 COPY apps/api/ ./apps/api/
 
-# 4. Installation des dépendances (toutes, dev incluses pour le build)
+# ─── 4. DIAGNOSTIC — voir ce qu'on a copié ────────────────────────────────────
+RUN echo "═══════════════════════════════════════════════════════" && \
+    echo "📁 Arborescence /app/apps/api :" && \
+    ls -la /app/apps/api/ && \
+    echo "═══════════════════════════════════════════════════════" && \
+    echo "📁 Dossier prisma :" && \
+    ls -la /app/apps/api/prisma/ && \
+    echo "═══════════════════════════════════════════════════════" && \
+    echo "📄 schema.prisma (bloc generator+datasource) :" && \
+    head -30 /app/apps/api/prisma/schema.prisma && \
+    echo "═══════════════════════════════════════════════════════" && \
+    echo "📦 dependencies dans apps/api/package.json :" && \
+    grep -A 1 '"prisma"\|"@prisma/client"' /app/apps/api/package.json || echo "❌ AUCUN prisma trouvé dans package.json" && \
+    echo "═══════════════════════════════════════════════════════"
+
+# ─── 5. Auto-patch binaryTargets si absent (compatibilité Debian/Alpine) ──────
+RUN if ! grep -q "binaryTargets" /app/apps/api/prisma/schema.prisma; then \
+      echo "⚠️  binaryTargets absent — injection automatique..." && \
+      sed -i '/generator client {/a\  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]' /app/apps/api/prisma/schema.prisma && \
+      echo "✓ binaryTargets injecté :" && \
+      head -10 /app/apps/api/prisma/schema.prisma; \
+    else \
+      echo "✓ binaryTargets déjà présent"; \
+    fi
+
+# ─── 6. Installation des dépendances ─────────────────────────────────────────
 WORKDIR /app/apps/api
-RUN npm install --no-audit --no-fund --legacy-peer-deps
+RUN npm install --no-audit --no-fund --legacy-peer-deps 2>&1 | tail -50
 
-# 5. Génération client Prisma (schema.prisma est maintenant là)
-RUN npx prisma generate
+# ─── 7. Installation prisma CLI globalement (filet de sécurité) ───────────────
+# Si prisma n'est pas dans devDependencies de l'api, npx tenterait de le DL à
+# l'exécution depuis npm registry — ce qui échoue en BuildKit isolé.
+RUN npm install -g prisma@latest --no-audit --no-fund
 
-# 6. Compilation TypeScript
-RUN npm run build
+# ─── 8. Vérifier que prisma est trouvable ─────────────────────────────────────
+RUN which prisma && prisma --version
 
-# 7. Prune des dev deps après le build
+# ─── 9. Génération client Prisma — VERBOSE pour voir l'erreur exacte ─────────
+# DATABASE_URL dummy : Prisma 5+ exige une URL pour `generate` dans certains cas
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy?schema=public"
+RUN DEBUG="prisma:*" prisma generate --schema=/app/apps/api/prisma/schema.prisma 2>&1 | tee /tmp/prisma.log || \
+    (echo "═══ ÉCHEC PRISMA GENERATE ═══" && cat /tmp/prisma.log && exit 1)
+
+# ─── 10. Compilation TypeScript ───────────────────────────────────────────────
+RUN npm run build 2>&1 | tail -100
+
+# ─── 11. Prune des dev deps ───────────────────────────────────────────────────
 RUN npm prune --omit=dev
 
 # ─── Stage 2: Production (API server) ─────────────────────────────────────────
@@ -43,14 +78,12 @@ FROM node:20-slim AS production
 
 WORKDIR /app
 
-# OpenSSL requis au runtime pour le client Prisma
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier les artefacts depuis builder — PAS de npm install ici
 COPY --from=builder /app/apps/api/dist            ./apps/api/dist
 COPY --from=builder /app/apps/api/node_modules    ./apps/api/node_modules
 COPY --from=builder /app/apps/api/package.json    ./apps/api/package.json
