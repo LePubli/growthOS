@@ -4,57 +4,29 @@ FROM node:20-slim AS builder
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
-    curl \
-    ca-certificates \
+    python3 make g++ curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 1. Manifests
 COPY package.json ./
 COPY apps/web/package.json ./apps/web/
-
-# 2. Packages locaux partagés
 COPY packages/ ./packages/
-
-# 3. Code source COMPLET du frontend
 COPY apps/web/ ./apps/web/
 
-# ─── DIAGNOSTIC — voir ce qu'on a copié ───────────────────────────────────────
-RUN echo "═══════════════════════════════════════════════════════" && \
-    echo "📁 Arborescence /app/apps/web :" && \
-    ls -la /app/apps/web/ && \
-    echo "═══════════════════════════════════════════════════════" && \
-    echo "📄 next.config.* :" && \
-    (ls /app/apps/web/next.config.* 2>/dev/null && cat /app/apps/web/next.config.*) || echo "❌ AUCUN next.config trouvé" && \
-    echo "═══════════════════════════════════════════════════════" && \
-    echo "📦 Imports @growthos/* dans le code source :" && \
-    grep -r "@growthos" /app/apps/web/src/ 2>/dev/null | head -20 || echo "✓ Pas d'import @growthos" && \
-    echo "═══════════════════════════════════════════════════════"
-
-# 4. Installation
 WORKDIR /app/apps/web
-RUN npm install --no-audit --no-fund --legacy-peer-deps 2>&1 | tail -30
+RUN npm install --no-audit --no-fund --legacy-peer-deps
 
-# 5. Variables de build NEXT_PUBLIC_*
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_APP_NAME=GrowthOS
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# 6. Build Next.js — VERBOSE pour voir l'erreur exacte
-# Si ça plante, on dump le log complet
-RUN npm run build 2>&1 | tee /tmp/build.log || \
-    (echo "═════ ÉCHEC NEXT BUILD — LOG COMPLET ═════" && \
-     cat /tmp/build.log && \
-     echo "═════ FIN LOG ═════" && \
-     exit 1)
+RUN npm run build
 
-# Vérification que le standalone a bien été généré
-RUN ls -la /app/apps/web/.next/standalone/ || \
-    (echo "❌ .next/standalone introuvable — output: 'standalone' manquant dans next.config.js" && exit 1)
+# ─── DIAGNOSTIC — détecter la structure du standalone ─────────────────────────
+RUN echo "═══ STRUCTURE STANDALONE ═══" && \
+    find /app/apps/web/.next/standalone -maxdepth 3 -name "server.js" 2>/dev/null && \
+    echo "═══ FIN ═══"
 
 # ─── Stage 2: Production ──────────────────────────────────────────────────────
 FROM node:20-slim AS production
@@ -62,14 +34,16 @@ FROM node:20-slim AS production
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
+    curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Standalone output Next.js
+# Copie complète du standalone — peu importe la structure interne
 COPY --from=builder /app/apps/web/.next/standalone ./
+# Static + public : copier aux deux endroits possibles pour gérer les 2 structures
 COPY --from=builder /app/apps/web/.next/static     ./apps/web/.next/static
+COPY --from=builder /app/apps/web/.next/static     ./.next/static
 COPY --from=builder /app/apps/web/public           ./apps/web/public
+COPY --from=builder /app/apps/web/public           ./public
 
 EXPOSE 3000
 
@@ -77,4 +51,18 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
 
-CMD ["node", "apps/web/server.js"]
+# ⭐ Auto-détection : server.js peut être à 2 endroits selon outputFileTracingRoot
+CMD ["sh", "-c", "\
+  if [ -f /app/apps/web/server.js ]; then \
+    echo '→ Lancement: /app/apps/web/server.js (monorepo standalone)' && \
+    node /app/apps/web/server.js; \
+  elif [ -f /app/server.js ]; then \
+    echo '→ Lancement: /app/server.js (flat standalone)' && \
+    node /app/server.js; \
+  else \
+    echo '❌ ERREUR: server.js introuvable. Contenu de /app :' && \
+    ls -la /app/ && \
+    echo '─── /app/apps/web (si existe) ───' && \
+    ls -la /app/apps/web/ 2>/dev/null || echo 'inexistant' && \
+    exit 1; \
+  fi"]
