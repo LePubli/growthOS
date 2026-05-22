@@ -6,20 +6,23 @@ WORKDIR /app
 # Outils natifs (bcrypt, sharp, node-gyp)
 RUN apk add --no-cache python3 make g++ curl
 
-# Manifests — racine + api (contexte = racine du monorepo)
+# Copie des fichiers de configuration racine pour les workspaces
 COPY package.json ./
+COPY package-lock.json ./
+COPY turbo.json ./
+
+# Copie des package.json de tous les apps et packages
 COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY packages/sdk/package.json ./packages/sdk/
+COPY plugins/crm-prospecting/package.json ./plugins/crm-prospecting/
 
-# Packages locaux partagés
-COPY packages/ ./packages/
-
-# Installation TOUTES les deps (dev incluses — nécessaire pour tsc/prisma)
-WORKDIR /app/apps/api
+# Installation TOUTES les deps depuis la racine (workspaces)
 RUN npm install --no-audit --no-fund --legacy-peer-deps
 
-# Code source
-WORKDIR /app
+# Code source complet
 COPY apps/api/ ./apps/api/
+COPY packages/ ./packages/
 
 # Génération client Prisma + compilation TS avec NestJS CLI
 WORKDIR /app/apps/api
