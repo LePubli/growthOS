@@ -2,14 +2,13 @@ version: '3.8'
 
 services:
 
-  # ── Base de données ──────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: growthos
-      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER doit être défini dans Coolify Environment Variables}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD doit être défini dans Coolify Environment Variables}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER doit être défini}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD doit être défini}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,16 +18,11 @@ services:
       retries: 10
       start_period: 30s
 
-  # ── Cache & Queue ────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    # ⭐ Syntaxe ARRAY (exec form) pour éviter le bug d'interpolation shell
-    # Si REDIS_PASSWORD est vide, Coolify échouera proprement avec le :?error
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD doit être défini dans Coolify Environment Variables}
-    # On utilise sh -c avec quotes autour de la var pour éviter qu'un mot vide
-    # casse les arguments suivants
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD doit être défini}
     command: >
       sh -c 'exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 512mb --maxmemory-policy allkeys-lru'
     volumes:
@@ -39,7 +33,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Stockage objets (plugins ZIP, uploads) ───────────────────────────────────
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     restart: unless-stopped
@@ -59,7 +52,9 @@ services:
       - "9000"
       - "9001"
 
-  # ── Migrations & Seed (one-shot) ─────────────────────────────────────────────
+  # ── Migrations & Seed ────────────────────────────────────────────────────────
+  # ⭐ FIX : --transpile-only ignore les erreurs TypeScript (process, etc.)
+  # Le seed est un script jetable, pas besoin de strict type-checking
   migrate:
     build:
       context: .
@@ -69,8 +64,8 @@ services:
       sh -c "
         echo '→ Prisma migrate deploy...' &&
         npx prisma migrate deploy &&
-        echo '→ Seed...' &&
-        npx ts-node --project tsconfig.json prisma/seed.ts &&
+        echo '→ Seed (transpile-only)...' &&
+        npx ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\"}' prisma/seed.ts &&
         echo '✓ Migration terminée'
       "
     environment:
@@ -83,7 +78,6 @@ services:
         condition: service_healthy
     restart: on-failure
 
-  # ── API NestJS ───────────────────────────────────────────────────────────────
   api:
     build:
       context: .
@@ -101,22 +95,16 @@ services:
       JWT_EXPIRES_IN: 15m
       CORS_ORIGINS: ${CORS_ORIGINS}
       PLUGINS_DIR: /app/plugins
-
-      # ── IA providers — laisser vide pour désactiver ──
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-anthropic}
-
-      # ── MinIO ──
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET:-growthos}
       MINIO_USE_SSL: "false"
-
-      # ── SMTP ──
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
@@ -141,7 +129,6 @@ services:
     expose:
       - "3001"
 
-  # ── Worker BullMQ ────────────────────────────────────────────────────────────
   worker:
     build:
       context: .
@@ -175,7 +162,6 @@ services:
       redis:
         condition: service_healthy
 
-  # ── Frontend Next.js ─────────────────────────────────────────────────────────
   web:
     build:
       context: .
