@@ -1,50 +1,48 @@
 ```
-# Build artifacts
-Dockerfile
-
 # Dependencies
 node_modules/
-.venv/
-venv/
-__pycache__/
-*.egg-info/
-dist/
-build/
-target/
 
-# Logs and temporary files
-*.log
-*.tmp
-*.swp
-*.swo
-
-# Environment variables
+# Environment
 .env
 .env.local
-*.env.*
+.env.*
 
 # Editors
 .vscode/
 .idea/
-*.sublime-project
-*.sublime-workspace
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# Logs and temp files
+*.log
+*.tmp
+*.swp
 
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
+# Build artifacts
+dist/
+build/
+target/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
-# Python specific
+# Python
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
 *.so
-*.egg
+.Python
+*.egg-info/
+.eggs/
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
 
 # Compressed files
 *.zip
