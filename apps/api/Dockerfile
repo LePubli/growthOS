@@ -11,32 +11,60 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package.json ./
 COPY apps/api/package.json ./apps/api/
 
-# 2. Packages partagés
+# 2. Packages locaux
 COPY packages/ ./packages/
 
-# 3. Code source COMPLET API
+# 3. Code source COMPLET
 COPY apps/api/ ./apps/api/
 
-# 4. Auto-patch binaryTargets Prisma si absent
+# 4. Auto-patch binaryTargets Prisma (idempotent)
 RUN if ! grep -q "binaryTargets" /app/apps/api/prisma/schema.prisma; then \
-      sed -i '/generator client {/a\  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]' /app/apps/api/prisma/schema.prisma; \
+      sed -i '/generator client {/a\  binaryTargets = ["native", "debian-openssl-3.0.x"]' /app/apps/api/prisma/schema.prisma; \
+      echo "✓ binaryTargets injecté"; \
     fi
 
-# 5. Installation deps
+# 5. Install
 WORKDIR /app/apps/api
-RUN npm install --no-audit --no-fund --legacy-peer-deps
+RUN npm install --no-audit --no-fund --legacy-peer-deps 2>&1 | tail -20
 
-# 6. ⭐ Installer tsx globalement (pour le seed — bypass les erreurs tsconfig)
-RUN npm install -g tsx prisma
+# 6. ⭐ DIAGNOSTIC PRISMA — affiche TOUT avant le generate
+RUN echo "═══════════════════════════════════════════════════════" && \
+    echo "📦 Versions installées :" && \
+    node --version && \
+    npm --version && \
+    echo "─── Prisma :" && \
+    (ls -la node_modules/.bin/prisma 2>/dev/null || echo "❌ prisma binary absent du node_modules") && \
+    (ls -la node_modules/prisma/package.json 2>/dev/null && cat node_modules/prisma/package.json | grep version || echo "❌ prisma package absent") && \
+    (ls -la node_modules/@prisma/client/package.json 2>/dev/null && cat node_modules/@prisma/client/package.json | grep version || echo "❌ @prisma/client absent") && \
+    echo "═══════════════════════════════════════════════════════" && \
+    echo "📄 schema.prisma (50 premières lignes) :" && \
+    head -50 prisma/schema.prisma && \
+    echo "═══════════════════════════════════════════════════════"
 
-# 7. Generate Prisma client
+# 7. Force install prisma globalement comme filet de sécurité
+RUN npm install -g prisma@5.22.0 tsx --no-audit --no-fund 2>&1 | tail -10
+
+# 8. Prisma generate avec output verbose
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy?schema=public"
-RUN npx prisma generate
+ENV DEBUG="prisma:*"
+RUN prisma generate --schema=/app/apps/api/prisma/schema.prisma 2>&1 | tee /tmp/prisma-gen.log; \
+    EXIT_CODE=$?; \
+    if [ $EXIT_CODE -ne 0 ]; then \
+      echo "═══════════════════════════════════════════════════════"; \
+      echo "❌ PRISMA GENERATE ÉCHEC — LOG COMPLET :"; \
+      echo "═══════════════════════════════════════════════════════"; \
+      cat /tmp/prisma-gen.log; \
+      echo "═══════════════════════════════════════════════════════"; \
+      exit $EXIT_CODE; \
+    fi
 
-# 8. Build TypeScript
-RUN npm run build
+# 9. Désactive DEBUG pour la suite
+ENV DEBUG=""
 
-# 9. Prune dev deps
+# 10. Build TypeScript
+RUN npm run build 2>&1 | tail -50
+
+# 11. Prune dev deps
 RUN npm prune --omit=dev
 
 # ─── Stage 2: Production (API server) ─────────────────────────────────────────
