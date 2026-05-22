@@ -1,12 +1,11 @@
-// ── jwt-auth.guard.ts ─────────────────────────────────────────
-import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, Injectable } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
-  constructor(private readonly reflector: Reflector) {
+  constructor(private reflector: Reflector) {
     super();
   }
 
@@ -17,10 +16,5 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     ]);
     if (isPublic) return true;
     return super.canActivate(context);
-  }
-
-  handleRequest(err: any, user: any) {
-    if (err || !user) throw new UnauthorizedException('Token invalide ou expiré');
-    return user;
   }
 }
