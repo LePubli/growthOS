@@ -52,14 +52,16 @@ services:
       - "9000"
       - "9001"
 
-  # ⭐ Seed avec tsx (transpile sans toucher au tsconfig)
+  # ── Migrate : generate + deploy + seed ──────────────────────────────────────
   migrate:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
       target: builder
     command: >
-      sh -c "
+      bash -c "
+        echo '→ Prisma generate...' &&
+        npx prisma generate --schema=prisma/schema.prisma &&
         echo '→ Prisma migrate deploy...' &&
         npx prisma migrate deploy &&
         echo '→ Seed avec tsx...' &&
@@ -76,12 +78,19 @@ services:
         condition: service_healthy
     restart: on-failure
 
+  # ── API NestJS ───────────────────────────────────────────────────────────────
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
       target: production
     restart: unless-stopped
+    # ⭐ prisma generate au démarrage → garantit le binaire natif dans ce container
+    command: >
+      bash -c "
+        npx prisma generate --schema=prisma/schema.prisma &&
+        node dist/main.js
+      "
     environment:
       NODE_ENV: production
       PORT: 3001
@@ -123,16 +132,23 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
     expose:
       - "3001"
 
+  # ── Worker BullMQ ────────────────────────────────────────────────────────────
   worker:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
       target: production-worker
     restart: unless-stopped
+    # ⭐ prisma generate au démarrage → même fix que l'API
+    command: >
+      bash -c "
+        npx prisma generate --schema=prisma/schema.prisma &&
+        node dist/worker.js
+      "
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/growthos
@@ -160,6 +176,7 @@ services:
       redis:
         condition: service_healthy
 
+  # ── Frontend Next.js ─────────────────────────────────────────────────────────
   web:
     build:
       context: .
