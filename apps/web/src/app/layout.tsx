@@ -1,35 +1,39 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { ThemeProvider } from '@/components/theme/ThemeProvider';
-import { QueryProvider } from '@/components/providers/QueryProvider';
+import { ThemeProvider } from '@/providers/theme-provider';
+import { QueryProvider } from '@/providers/query-provider';
 import { Toaster } from 'sonner';
 
 export const metadata: Metadata = {
-  title: process.env.NEXT_PUBLIC_APP_NAME || 'GrowthOS',
+  title: 'GrowthOS',
   description: 'Plateforme SaaS B2B multi-tenant — Prospection, CRM & Automatisation',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
       <head>
-        {/*
-          Noto Sans chargé via <link> au RUNTIME navigateur (pas au build Docker).
-          N'utilise PAS @import dans globals.css ni next/font/google
-          (les deux nécessitent un accès réseau pendant le build Docker).
-        */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
-          rel="stylesheet"
+        {/* Script inline pour appliquer le thème AVANT le rendu (évite le flash) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var id = localStorage.getItem('growthos-theme-id') || 'default';
+                  var themes = ${JSON.stringify(
+                    // On injecte les tokens des thèmes built-in pour un accès synchrone
+                    Object.fromEntries(
+                      ['default','dark','ocean','forest','sunset','minimal'].map(id => [id, id])
+                    )
+                  )};
+                  document.documentElement.setAttribute('data-theme-id', id);
+                } catch(e) {}
+              })();
+            `,
+          }}
         />
       </head>
-      <body>
+      <body style={{ fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)' }}>
         <ThemeProvider>
           <QueryProvider>
             {children}

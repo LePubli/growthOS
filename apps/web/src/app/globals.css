@@ -1,107 +1,72 @@
-/* ─── GrowthOS Design System — Odoo-inspired ─────────────────────────────────
-   IMPORTANT: Ne PAS ajouter @import Google Fonts ici.
-   Le chargement de Noto Sans se fait via <link> dans layout.tsx
-   pour éviter un échec du build Docker (réseau restreint).
-   ──────────────────────────────────────────────────────────────────────────── */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* ── Reset ───────────────────────────────────────────────────────────────── */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-/* ── Variables CSS — Palette Odoo ────────────────────────────────────────── */
+/* ── Tokens par défaut (thème GrowthOS Default) ─────────────────────────── */
 :root {
-  /* Typographie */
-  --font-sans: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
-
-  /* Couleurs primaires Odoo */
-  --color-primary:    #017E84;   /* vert-bleu Odoo */
-  --color-primary-hover: #016b70;
-  --color-primary-light: #e6f4f5;
-
-  --color-brand:      #714B67;   /* violet Odoo */
-  --color-brand-light: #f3edf1;
-
-  /* Sidebar */
-  --sidebar-bg:       #2C3E50;   /* signature Odoo sombre */
-  --sidebar-width:    220px;
-  --sidebar-text:     #a8b8c8;
-  --sidebar-text-active: #ffffff;
-  --sidebar-item-hover: rgba(255, 255, 255, 0.08);
-  --sidebar-item-active: rgba(1, 126, 132, 0.25);
-
-  /* Header */
-  --header-height:    46px;
-  --header-bg:        #ffffff;
-  --header-border:    #e0e0e0;
-
-  /* Surfaces */
-  --body-bg:          #F9F9F9;
-  --card-bg:          #ffffff;
-  --card-border:      #e5e7eb;
-  --card-radius:      8px;
-
-  /* Texte */
-  --text-primary:     #212529;
-  --text-secondary:   #6b7280;
-  --text-muted:       #9ca3af;
-
-  /* Statuts */
-  --color-success:    #22c55e;
-  --color-warning:    #f59e0b;
-  --color-danger:     #ef4444;
-  --color-info:       #3b82f6;
-
-  /* Shadows */
-  --shadow-sm:        0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md:        0 4px 6px rgba(0, 0, 0, 0.07);
-
-  /* Transitions */
-  --transition-fast:  150ms ease;
-  --transition-base:  200ms ease;
+  --color-primary:       #0D9488;
+  --color-primary-light: #CCFBF1;
+  --color-primary-dark:  #0F766E;
+  --color-accent:        #14B8A6;
+  --sidebar-bg:          #1E293B;
+  --sidebar-text:        #CBD5E1;
+  --sidebar-hover:       #334155;
+  --body-bg:             #F8FAFC;
+  --card-bg:             #FFFFFF;
+  --card-border:         #E2E8F0;
+  --text-primary:        #0F172A;
+  --text-secondary:      #475569;
+  --text-muted:          #94A3B8;
+  --radius-card:         1rem;
+  --font-sans:           Inter, system-ui, sans-serif;
 }
 
-/* ── Base ────────────────────────────────────────────────────────────────── */
-html {
-  font-size: 14px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
+/* ── Application des tokens ──────────────────────────────────────────────── */
 body {
-  font-family: var(--font-sans);
   background-color: var(--body-bg);
   color: var(--text-primary);
-  line-height: 1.5;
+  font-family: var(--font-sans);
 }
 
-/* ── Scrollbars ──────────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
-
-/* ── Liens ───────────────────────────────────────────────────────────────── */
-a {
-  color: var(--color-primary);
-  text-decoration: none;
+/* Sidebar */
+[data-sidebar] {
+  background-color: var(--sidebar-bg) !important;
+  color: var(--sidebar-text) !important;
 }
-a:hover {
-  text-decoration: underline;
+[data-sidebar-item]:hover {
+  background-color: var(--sidebar-hover) !important;
+}
+[data-sidebar-item-active] {
+  background-color: var(--color-primary) !important;
+  color: white !important;
 }
 
-/* ── Focus ───────────────────────────────────────────────────────────────── */
-:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+/* Cards */
+[data-card] {
+  background-color: var(--card-bg);
+  border-color: var(--card-border);
+  border-radius: var(--radius-card);
 }
 
-/* ── Utilitaires Odoo-like ───────────────────────────────────────────────── */
-.o-form-view { padding: 16px 24px; }
-.o-statusbar { background: #f8f9fa; border-bottom: 1px solid var(--card-border); padding: 8px 24px; display: flex; align-items: center; gap: 12px; }
-.o-chatter { border-top: 1px solid var(--card-border); padding: 16px 24px; }
+/* Boutons primaires */
+[data-btn-primary] {
+  background-color: var(--color-primary) !important;
+}
+[data-btn-primary]:hover {
+  background-color: var(--color-primary-dark) !important;
+}
+
+/* Badges & accents */
+[data-accent] { color: var(--color-primary) !important; }
+[data-accent-bg] { background-color: var(--color-primary-light) !important; }
+
+/* ── Transition douce lors du changement de thème ───────────────────────── */
+*, *::before, *::after {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Désactiver la transition sur les éléments interactifs pour ne pas nuire à l'UX */
+button, a, input, select, textarea {
+  transition: none;
+}
+button { transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; }
