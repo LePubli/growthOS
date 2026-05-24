@@ -2,26 +2,25 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
-import helmet from 'helmet';
-import compression from 'compression';
-import cookieParser from 'cookie-parser';
+import * as helmet from 'helmet';
+import * as compression from 'compression';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log', 'debug'] });
-
   const config = app.get(ConfigService);
   const port = config.get<number>('PORT', 3001);
   const nodeEnv = config.get<string>('NODE_ENV', 'development');
 
   // ── Sécurité ──────────────────────────────────────────
-  app.use(helmet({
+  app.use((helmet as any)({
     contentSecurityPolicy: nodeEnv === 'production',
     crossOriginEmbedderPolicy: false,
   }));
-  app.use(compression());
-  app.use(cookieParser());
+  app.use((compression as any)());
+  app.use((cookieParser as any)());
 
   // ── CORS ──────────────────────────────────────────────
   app.enableCors({
@@ -51,7 +50,6 @@ async function bootstrap() {
       .addBearerAuth()
       .addApiKey({ type: 'apiKey', name: 'X-Tenant-ID', in: 'header' }, 'tenant-id')
       .build();
-
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api/docs', app, document, {
       customSiteTitle: 'GrowthOS API Docs',
@@ -59,7 +57,7 @@ async function bootstrap() {
     });
   }
 
-  // ── WebSocket ──────────────────────────────────────────
+  // ── Lifecycle hooks ────────────────────────────────────
   app.enableShutdownHooks();
 
   await app.listen(port, '0.0.0.0');
