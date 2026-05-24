@@ -188,14 +188,19 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web-qg3u7f72d9lin10gl2ixlp7x.rule=Host(`e14141ckin09jonhhqiatq39.82.22.77.159.sslip.io`)"
+      - "traefik.http.routers.web-qg3u7f72d9lin10gl2ixlp7x.entrypoints=http"
+      - "traefik.http.services.web-qg3u7f72d9lin10gl2ixlp7x.loadbalancer.server.port=3000"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:3000"]
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/login"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
     expose:
-      - "3001"
+      - "3000"
 
 volumes:
   postgres_data:
