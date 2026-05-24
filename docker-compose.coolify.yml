@@ -185,10 +185,6 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL doit être défini}
         NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-GrowthOS}
     restart: unless-stopped
-    expose:
-      - '3001'
-    ports:
-      - '3001:3001'
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
@@ -199,7 +195,7 @@ services:
       retries: 3
       start_period: 30s
     expose:
-      - "3000"
+      - "3001"
 
 volumes:
   postgres_data:
