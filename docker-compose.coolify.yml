@@ -185,8 +185,10 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL doit être défini}
         NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-GrowthOS}
     restart: unless-stopped
-    labels:
-      - "traefik.http.services.web-qg3u7f72d9lin10gl2ixlp7x.loadbalancer.server.port=3000"
+    expose:
+      - '3001'
+    ports:
+      - '3001:3001'
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
