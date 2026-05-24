@@ -1,14 +1,9 @@
 # ─── Stage 1: Builder ─────────────────────────────────────────────────────────
-FROM node:20-slim AS builder
+FROM node:20 AS builder
 
 WORKDIR /app
 
-# Forcer bash comme shell (évite les bugs /bin/sh avec pipefail, PIPESTATUS etc.)
 SHELL ["/bin/bash", "-c"]
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openssl ca-certificates python3 make g++ curl \
-    && rm -rf /var/lib/apt/lists/*
 
 # 1. Manifests
 COPY package.json ./
@@ -38,7 +33,7 @@ RUN npm install prisma@5.22.0 @prisma/client@5.22.0 \
 # 8. Vérification que le binaire prisma existe
 RUN echo "Prisma binary: $(node_modules/.bin/prisma --version 2>&1)"
 
-# 9. Prisma generate — BASH + pipefail pour capturer l'erreur
+# 9. Prisma generate
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy?schema=public"
 RUN set -o pipefail; \
     node_modules/.bin/prisma generate \
