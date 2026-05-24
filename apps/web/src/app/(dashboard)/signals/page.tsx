@@ -1,233 +1,152 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Zap, CheckCheck, Filter, RefreshCw, AlertTriangle, Info, AlertCircle, XCircle } from 'lucide-react';
-import { apiClient } from '@/lib/api-client';
-import { toast } from 'sonner';
+import {
+  Zap, TrendingUp, Globe, Linkedin, Twitter,
+  Bell, Filter, RefreshCw, ExternalLink, Clock,
+  Building2, ChevronRight, Star, AlertCircle, CheckCircle
+} from 'lucide-react';
 
 interface Signal {
-  id: string; prospect_id: string; prospect_name: string;
-  type: string; title: string; description?: string;
-  source: string; severity: 'low' | 'medium' | 'high' | 'critical';
-  is_read: boolean; signal_date?: string; created_at: string;
+  id: string;
+  type: 'funding' | 'hiring' | 'news' | 'social' | 'technology' | 'intent';
+  company: string;
+  title: string;
+  description: string;
+  time: string;
+  score: number;
+  url?: string;
+  isRead?: boolean;
+  isStarred?: boolean;
 }
 
-interface Summary {
-  total: number; unread: number; last_7_days: number;
-  by_severity: Record<string, number>; by_type: Record<string, number>;
-}
-
-const SEV_CONFIG = {
-  critical: { icon: <XCircle size={14} />,       color: '#DC3545', bg: 'rgba(220,53,69,.08)',  label: 'Critique'  },
-  high:     { icon: <AlertCircle size={14} />,   color: '#FD7E14', bg: 'rgba(253,126,20,.08)', label: 'Haut'      },
-  medium:   { icon: <AlertTriangle size={14} />, color: '#F0AD4E', bg: 'rgba(240,173,78,.08)', label: 'Moyen'     },
-  low:      { icon: <Info size={14} />,          color: '#017E84', bg: 'rgba(1,126,132,.06)',  label: 'Bas'       },
+const SIGNAL_CONFIG = {
+  funding:    { label:'Levée de fonds', color:'text-green-600',  bg:'bg-green-50',   icon:<TrendingUp className="w-4 h-4" /> },
+  hiring:     { label:'Recrutement',    color:'text-blue-600',   bg:'bg-blue-50',    icon:<Building2 className="w-4 h-4" /> },
+  news:       { label:'Actualité',      color:'text-gray-600',   bg:'bg-gray-100',   icon:<Globe className="w-4 h-4" /> },
+  social:     { label:'Social',         color:'text-purple-600', bg:'bg-purple-50',  icon:<Twitter className="w-4 h-4" /> },
+  technology: { label:'Technologie',    color:'text-orange-600', bg:'bg-orange-50',  icon:<Zap className="w-4 h-4" /> },
+  intent:     { label:'Intent signal',  color:'text-red-600',    bg:'bg-red-50',     icon:<Bell className="w-4 h-4" /> },
 };
 
-const TYPE_ICONS: Record<string, string> = {
-  bodacc_new_company: '🆕',   bodacc_capital_change: '💰',
-  bodacc_sale: '🤝',          bodacc_cessation: '⚠️',
-  director_change: '👤',       job_posting_detected: '👥',
-  no_contact: '📭',           no_website: '🌐',
-  hot_lead_no_contact: '🔥',  ai_hot_lead: '🤖',
-};
+const MOCK_SIGNALS: Signal[] = [
+  { id:'1', type:'funding', company:'TechVision', title:'Série A de 5M€ clôturée', description:'TechVision vient de clôturer une levée de fonds Série A de 5 millions d\'euros pour accélérer son développement commercial.', time:'il y a 2h', score:92, isRead:false, isStarred:true },
+  { id:'2', type:'hiring', company:'Acme Corp', title:'3 postes commercial ouverts', description:'Acme Corp recrute activement 3 commerciaux B2B, signal fort d\'une expansion de leur force de vente.', time:'il y a 4h', score:78, isRead:false },
+  { id:'3', type:'intent', company:'StartupX', title:'Recherches CRM détectées', description:'Des recherches intensives sur les solutions CRM et prospection B2B ont été détectées pour ce compte.', time:'il y a 6h', score:85, isRead:false },
+  { id:'4', type:'news', company:'BigCorp', title:'Nouveau directeur commercial nommé', description:'BigCorp annonce la nomination d\'un nouveau VP Sales venant de Salesforce — opportunité de repositionnement.', time:'hier', score:71, isRead:true },
+  { id:'5', type:'technology', company:'GrowthCo', title:'Migration vers HubSpot détectée', description:'GrowthCo semble migrer depuis Pipedrive vers HubSpot, identifié via les offres d\'emploi.', time:'hier', score:65, isRead:true },
+  { id:'6', type:'social', company:'Agency FR', title:'Post LinkedIn sur la croissance', description:'Le CEO d\'Agency FR a publié un post sur leur objectif de doubler le CA d\'ici fin 2026.', time:'il y a 2j', score:58, isRead:true },
+];
 
-export default function SignalsPage() {
-  const qc = useQueryClient();
-  const [filterSev, setFilterSev] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [unreadOnly, setUnreadOnly] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+export default function SignauxPage() {
+  const [signals, setSignals] = useState<Signal[]>(MOCK_SIGNALS);
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [showUnread, setShowUnread] = useState(false);
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['signals', filterSev, filterType, unreadOnly],
-    queryFn: () => apiClient.get<any>('/signals', {
-      severity: filterSev || undefined,
-      signal_type: filterType || undefined,
-      unread_only: unreadOnly || undefined,
-      limit: 200,
-    }),
-    refetchInterval: 30_000,
+  const toggleStar = (id: string) => setSignals(s => s.map(sig => sig.id === id ? {...sig, isStarred: !sig.isStarred} : sig));
+  const markRead = (id: string) => setSignals(s => s.map(sig => sig.id === id ? {...sig, isRead: true} : sig));
+
+  const filtered = signals.filter(s => {
+    const matchType = typeFilter === 'all' || s.type === typeFilter;
+    const matchUnread = !showUnread || !s.isRead;
+    return matchType && matchUnread;
   });
 
-  const { data: summary } = useQuery<Summary>({
-    queryKey: ['signals-summary'],
-    queryFn: () => apiClient.get('/signals/summary'),
-    refetchInterval: 30_000,
-  });
-
-  const markReadMutation = useMutation({
-    mutationFn: (ids: string[]) => apiClient.post('/signals/mark-read', ids),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['signals'] }); qc.invalidateQueries({ queryKey: ['signals-summary'] }); setSelected(new Set()); toast.success('Marqué comme lu'); },
-  });
-
-  const detectMutation = useMutation({
-    mutationFn: () => apiClient.post('/signals/detect', {}),
-    onSuccess: (data: any) => { qc.invalidateQueries({ queryKey: ['signals'] }); toast.success(`${data.detected || 0} nouveaux signaux détectés`); },
-  });
-
-  const signals: Signal[] = data?.items || [];
-  const types = Object.keys(summary?.by_type || {});
-
-  const toggleSelect = (id: string) => {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    setSelected(next);
-  };
-
-  const markAllUnreadRead = () => {
-    const unread = signals.filter(s => !s.is_read).map(s => s.id);
-    if (unread.length) markReadMutation.mutate(unread);
-  };
+  const unreadCount = signals.filter(s => !s.isRead).length;
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden', background: 'var(--bg-app)' }}>
-
-      {/* Sidebar summary */}
-      <div style={{ width: 240, borderRight: '1px solid var(--border-color)', background: 'var(--bg-card)', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
-        <div style={{ padding: '16px', borderBottom: '1px solid var(--border-color)' }}>
-          <h2 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Signaux</h2>
-          {summary && (
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>
-              {summary.unread} non lus · {summary.total} total
-            </p>
-          )}
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Signaux & Intentions</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{unreadCount} nouveaux signaux · Mis à jour automatiquement</p>
         </div>
-
-        <div style={{ padding: '12px', flex: 1, overflow: 'auto' }}>
-          {/* Sévérité filters */}
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Sévérité</div>
-          {Object.entries(SEV_CONFIG).map(([sev, cfg]) => (
-            <button key={sev} onClick={() => setFilterSev(filterSev === sev ? '' : sev)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '7px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', marginBottom: 3, background: filterSev === sev ? cfg.bg : 'transparent', transition: 'background .1s' }}
-              onMouseEnter={e => { if (filterSev !== sev) (e.currentTarget.style.background = '#F8F9FA'); }}
-              onMouseLeave={e => { if (filterSev !== sev) (e.currentTarget.style.background = 'transparent'); }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: filterSev === sev ? cfg.color : 'var(--text-secondary)', fontSize: 13 }}>
-                <span style={{ color: cfg.color }}>{cfg.icon}</span> {cfg.label}
-              </div>
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>
-                {summary?.by_severity?.[sev] || 0}
-              </span>
-            </button>
-          ))}
-
-          {/* Type filters */}
-          {types.length > 0 && (
-            <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', margin: '16px 0 8px' }}>Type</div>
-              {types.slice(0, 8).map(type => (
-                <button key={type} onClick={() => setFilterType(filterType === type ? '' : type)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '6px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', marginBottom: 2, background: filterType === type ? 'rgba(1,126,132,.08)' : 'transparent', fontSize: 12, color: filterType === type ? 'var(--color-primary)' : 'var(--text-secondary)' }}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
-                    {TYPE_ICONS[type] || '📌'} {type.replace(/_/g, ' ')}
-                  </span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>{(summary?.by_type || {})[type]}</span>
-                </button>
-              ))}
-            </>
-          )}
-        </div>
+        <button className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-500">
+          <RefreshCw className="w-4 h-4" /> Actualiser
+        </button>
       </div>
 
-      {/* Main */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-        {/* Toolbar */}
-        <div style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border-color)', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)' }}>
-            <input type="checkbox" checked={unreadOnly} onChange={e => setUnreadOnly(e.target.checked)}
-              style={{ accentColor: 'var(--color-primary)', cursor: 'pointer' }} />
-            Non lus seulement
-          </label>
-          <div style={{ flex: 1 }} />
-          {selected.size > 0 && (
-            <button onClick={() => markReadMutation.mutate(Array.from(selected))} className="o-btn o-btn-secondary o-btn-sm">
-              <CheckCheck size={13} /> Marquer lu ({selected.size})
+      {/* Filtres */}
+      <div className="flex flex-wrap gap-2 mb-5">
+        <button
+          onClick={() => setShowUnread(!showUnread)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+            showUnread ? 'bg-teal-600 text-white' : 'bg-white text-gray-500 border border-gray-200'
+          }`}
+        >
+          <Bell className="w-4 h-4" />
+          Non lus ({unreadCount})
+        </button>
+        {['all', ...Object.keys(SIGNAL_CONFIG)].map(t => {
+          const cfg = SIGNAL_CONFIG[t as keyof typeof SIGNAL_CONFIG];
+          return (
+            <button key={t} onClick={() => setTypeFilter(t)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                typeFilter === t ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 border border-gray-200'
+              }`}>
+              {cfg && <span className={cfg.color}>{cfg.icon}</span>}
+              {t === 'all' ? 'Tous' : cfg?.label}
             </button>
-          )}
-          <button onClick={markAllUnreadRead} className="o-btn o-btn-secondary o-btn-sm">
-            <CheckCheck size={13} /> Tout lire
-          </button>
-          <button onClick={() => detectMutation.mutate()} disabled={detectMutation.isPending} className="o-btn o-btn-primary o-btn-sm">
-            <Zap size={13} />
-            {detectMutation.isPending ? 'Détection...' : 'Détecter signaux'}
-          </button>
-          <button onClick={() => refetch()} className="o-btn o-btn-ghost o-btn-sm"><RefreshCw size={13} /></button>
-        </div>
+          );
+        })}
+      </div>
 
-        {/* Feed */}
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          {isLoading ? (
-            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {Array.from({ length: 8 }).map((_, i) => <div key={i} className="o-skeleton" style={{ height: 72, borderRadius: 8 }} />)}
-            </div>
-          ) : signals.length === 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
-              <Zap size={48} style={{ opacity: .2, marginBottom: 16 }} />
-              <p style={{ fontSize: 15, fontWeight: 500 }}>Aucun signal</p>
-              <p style={{ fontSize: 13 }}>Lancez une détection pour trouver des opportunités</p>
-            </div>
-          ) : (
-            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {signals.map(signal => {
-                const sev = SEV_CONFIG[signal.severity] || SEV_CONFIG.medium;
-                const isSelected = selected.has(signal.id);
-                return (
-                  <div key={signal.id}
-                    style={{ display: 'flex', gap: 12, padding: '14px 16px', background: signal.is_read ? 'var(--bg-card)' : 'rgba(1,126,132,.03)', border: `1px solid ${isSelected ? 'var(--color-primary)' : signal.is_read ? 'var(--border-color)' : 'rgba(1,126,132,.2)'}`, borderRadius: 8, cursor: 'pointer', transition: 'all .12s', boxShadow: 'var(--shadow-card)' }}
-                    onClick={() => toggleSelect(signal.id)}>
-
-                    {/* Checkbox */}
-                    <div style={{ paddingTop: 2, flexShrink: 0 }}>
-                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(signal.id)}
-                        style={{ accentColor: 'var(--color-primary)', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
-                    </div>
-
-                    {/* Severity icon */}
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: sev.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: sev.color, flexShrink: 0 }}>
-                      {sev.icon}
-                    </div>
-
-                    {/* Content */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                        <span style={{ fontWeight: signal.is_read ? 500 : 700, fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                          {TYPE_ICONS[signal.type] || '📌'} {signal.title}
-                        </span>
-                        {!signal.is_read && <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-primary)', flexShrink: 0 }} />}
-                      </div>
-                      <div style={{ display: 'flex', gap: 10, fontSize: 12, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{signal.prospect_name}</span>
-                        <span>·</span>
-                        <span style={{ padding: '1px 7px', borderRadius: 20, background: sev.bg, color: sev.color, fontSize: 11, fontWeight: 600 }}>{sev.label}</span>
-                        <span>·</span>
-                        <span>{signal.source}</span>
-                        <span>·</span>
-                        <span>{new Date(signal.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                      {signal.description && (
-                        <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>{signal.description}</p>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'flex-start' }} onClick={e => e.stopPropagation()}>
-                      {!signal.is_read && (
-                        <button onClick={() => markReadMutation.mutate([signal.id])} className="o-btn o-btn-ghost o-btn-sm" title="Marquer comme lu">
-                          <CheckCheck size={12} />
-                        </button>
-                      )}
-                      <a href={`/prospects/${signal.prospect_id}`} className="o-btn o-btn-ghost o-btn-sm" title="Voir le prospect">
-                        →
-                      </a>
-                    </div>
+      <div className="space-y-3">
+        {filtered.map(signal => {
+          const cfg = SIGNAL_CONFIG[signal.type];
+          return (
+            <div
+              key={signal.id}
+              className={`bg-white rounded-2xl border p-5 transition-all hover:shadow-md ${
+                !signal.isRead ? 'border-teal-200 shadow-sm' : 'border-gray-200'
+              }`}
+              onClick={() => markRead(signal.id)}
+            >
+              <div className="flex items-start gap-4">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${cfg.bg} ${cfg.color}`}>
+                  {cfg.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.color} ${cfg.bg}`}>
+                      {cfg.label}
+                    </span>
+                    <span className="text-sm font-semibold text-gray-700">{signal.company}</span>
+                    {!signal.isRead && (
+                      <span className="w-2 h-2 rounded-full bg-teal-500" />
+                    )}
                   </div>
-                );
-              })}
+                  <h3 className="font-semibold text-gray-900 mb-1">{signal.title}</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">{signal.description}</p>
+                  <div className="flex items-center gap-4 mt-3">
+                    <span className="flex items-center gap-1 text-xs text-gray-400">
+                      <Clock className="w-3 h-3" /> {signal.time}
+                    </span>
+                    {signal.url && (
+                      <a href={signal.url} target="_blank" className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700">
+                        <ExternalLink className="w-3 h-3" /> Source
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-3">
+                  <div className={`text-sm font-bold px-2.5 py-1 rounded-xl ${
+                    signal.score >= 80 ? 'bg-green-50 text-green-600' :
+                    signal.score >= 60 ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {signal.score}
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); toggleStar(signal.id); }} className="text-gray-300 hover:text-amber-400 transition-colors">
+                    <Star className={`w-4 h-4 ${signal.isStarred ? 'text-amber-400 fill-amber-400' : ''}`} />
+                  </button>
+                  <button className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 bg-teal-50 px-2 py-1 rounded-lg">
+                    Contacter <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+          );
+        })}
       </div>
     </div>
   );
