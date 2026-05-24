@@ -32,6 +32,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             `,
           }}
         />
+        <script
+  dangerouslySetInnerHTML={{
+    __html: `window.__API_URL__ = "${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1";`
+  }}
+/>
       </head>
       <body style={{ fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)' }}>
         <ThemeProvider>
