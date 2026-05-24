@@ -1,17 +1,20 @@
 import { Module } from '@nestjs/common';
-import { BullModule } from '@nestjs/bull';
 import { PluginsController } from './plugins.controller';
 import { PluginsService } from './plugins.service';
-import { PluginEngineService } from './plugin-engine.service';
-import { EventsModule } from '../events/events.module';
+import { PluginRegistryService } from './plugin-registry.service';
+import { PluginLoaderService } from './plugin-loader.service';
 
 @Module({
-  imports: [
-    BullModule.registerQueue({ name: 'plugins' }),
-    EventsModule,
-  ],
   controllers: [PluginsController],
-  providers: [PluginsService, PluginEngineService],
-  exports: [PluginsService, PluginEngineService],
+  providers: [
+    PluginsService,
+    PluginRegistryService,
+    PluginLoaderService,
+  ],
+  exports: [
+    PluginsService,
+    PluginRegistryService,  // ← Exporté pour être injecté partout dans l'app
+    PluginLoaderService,
+  ],
 })
 export class PluginsModule {}
