@@ -16,6 +16,11 @@ import { WorkflowsModule }   from './core/workflows/workflows.module';
 import { HealthModule }      from './core/health/health.module';
 import { DashboardModule }   from './core/dashboard/dashboard.module';
 import { AIModule }          from './core/ai/ai.module';
+// ─── Nouveaux modules ─────────────────────────────────────────────────────
+import { ProspectsModule }   from './core/prospects/prospects.module';
+import { DealsModule }       from './core/deals/deals.module';
+import { SequencesModule }   from './core/sequences/sequences.module';
+import { SignalsModule }     from './core/signals/signals.module';
 
 @Module({
   imports: [
@@ -52,6 +57,11 @@ import { AIModule }          from './core/ai/ai.module';
     HealthModule,
     DashboardModule,
     AIModule,
+    // ─── Nouveaux modules ───────────────────────────────────────────────
+    ProspectsModule,
+    DealsModule,
+    SequencesModule,
+    SignalsModule,
   ],
 })
 export class AppModule {}
