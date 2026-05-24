@@ -1,287 +1,434 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, Download, Trash2, Palette, Check, RefreshCw, Plus } from 'lucide-react';
-import { apiClient } from '@/lib/api-client';
-import { toast } from 'sonner';
-import { useRef } from 'react';
+import { useState, useEffect } from 'react';
+import {
+  Palette, Check, RefreshCw, AlertCircle, Loader2,
+  Sun, Moon, Zap, Eye, CheckCircle, Paintbrush
+} from 'lucide-react';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface Theme {
-  id: string; name: string; slug: string; displayName: string;
-  description: string; author: string; version: string;
-  previewColor: string; previewBg: string;
-  isBuiltin: boolean; isPublic: boolean;
+  id: string;
+  name: string;
+  description?: string;
+  primaryColor?: string;
+  sidebarColor?: string;
+  accentColor?: string;
+  backgroundColor?: string;
+  isActive?: boolean;
+  isDark?: boolean;
+  preview?: {
+    primary: string;
+    sidebar: string;
+    accent: string;
+    background: string;
+    text: string;
+  };
 }
 
-interface TenantTheme {
-  themeId: string; isActive: boolean;
-  theme: Theme;
-}
+// ─── Thèmes par défaut si API vide ────────────────────────────────────────────
+const DEFAULT_THEMES: Theme[] = [
+  {
+    id: 'odoo',
+    name: 'GrowthOS Default',
+    description: 'Thème teal professionnel, inspiré des outils B2B modernes',
+    isDark: false,
+    preview: { primary: '#0D9488', sidebar: '#1E293B', accent: '#14B8A6', background: '#F8FAFC', text: '#1E293B' },
+  },
+  {
+    id: 'dark',
+    name: 'Dark Mode',
+    description: 'Interface sombre pour travailler en conditions de faible luminosité',
+    isDark: true,
+    preview: { primary: '#14B8A6', sidebar: '#0F172A', accent: '#06B6D4', background: '#1E293B', text: '#F1F5F9' },
+  },
+  {
+    id: 'light',
+    name: 'Light Minimal',
+    description: 'Interface claire et épurée pour une lisibilité maximale',
+    isDark: false,
+    preview: { primary: '#6366F1', sidebar: '#F1F5F9', accent: '#8B5CF6', background: '#FFFFFF', text: '#111827' },
+  },
+  {
+    id: 'ocean',
+    name: 'Ocean Blue',
+    description: 'Palette bleue profonde inspirée des profondeurs marines',
+    isDark: true,
+    preview: { primary: '#3B82F6', sidebar: '#0C1931', accent: '#60A5FA', background: '#0F2744', text: '#E2E8F0' },
+  },
+  {
+    id: 'forest',
+    name: 'Forest Green',
+    description: 'Tons verts naturels pour une atmosphère apaisante',
+    isDark: false,
+    preview: { primary: '#10B981', sidebar: '#064E3B', accent: '#34D399', background: '#F0FDF4', text: '#065F46' },
+  },
+  {
+    id: 'sunset',
+    name: 'Sunset Orange',
+    description: 'Palette chaude et énergique pour booster la créativité',
+    isDark: false,
+    preview: { primary: '#F97316', sidebar: '#431407', accent: '#FB923C', background: '#FFF7ED', text: '#7C2D12' },
+  },
+];
 
-export default function ThemesPage() {
-  const qc = useQueryClient();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [activating, setActivating] = useState<string | null>(null);
-  const [createForm, setCreateForm] = useState({ name: '', slug: '', desc: '', accent: '#017E84', bg: '#F9F9F9' });
-
-  const { data: themes, isLoading } = useQuery<Theme[]>({
-    queryKey: ['themes'],
-    queryFn: () => apiClient.get('/themes'),
-  });
-
-  const activateMutation = useMutation({
-    mutationFn: (id: string) => apiClient.post(`/themes/${id}/activate`, {}),
-    onSuccess: (_, id) => {
-      qc.invalidateQueries({ queryKey: ['themes'] });
-      // Rafraîchit le ThemeProvider
-      if ((window as any).__refreshTheme) (window as any).__refreshTheme();
-      toast.success('Thème activé — changement appliqué');
-    },
-    onError: () => toast.error('Erreur activation'),
-  });
-
-  const importMutation = useMutation({
-    mutationFn: (file: File) => {
-      const fd = new FormData();
-      fd.append('file', file);
-      return apiClient.upload('/themes/import', fd);
-    },
-    onSuccess: (data: any) => {
-      qc.invalidateQueries({ queryKey: ['themes'] });
-      toast.success(`Thème "${data.name}" importé`);
-    },
-    onError: () => toast.error('Fichier invalide'),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/themes/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['themes'] }); toast.success('Thème supprimé'); },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (data: any) => apiClient.post('/themes', data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['themes'] }); setShowCreate(false); toast.success('Thème créé'); },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const handleExport = async (id: string, slug: string) => {
-    const data = await apiClient.get(`/themes/${id}/export`);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${slug}.theme.json`; a.click();
-    URL.revokeObjectURL(url);
+// ─── Composant mini-preview du thème ─────────────────────────────────────────
+function ThemePreview({ theme }: { theme: Theme }) {
+  const p = theme.preview || {
+    primary: theme.primaryColor || '#0D9488',
+    sidebar: theme.sidebarColor || '#1E293B',
+    accent: theme.accentColor || '#14B8A6',
+    background: theme.backgroundColor || '#F8FAFC',
+    text: '#1E293B',
   };
 
-  const activeTheme = themes?.find((t: any) => t.isActive);
+  return (
+    <div
+      className="w-full h-28 rounded-xl overflow-hidden border border-gray-200 flex"
+      style={{ backgroundColor: p.background }}
+    >
+      {/* Sidebar simulée */}
+      <div className="w-1/4 h-full flex flex-col gap-1.5 p-2" style={{ backgroundColor: p.sidebar }}>
+        <div className="h-2 rounded-full opacity-60" style={{ backgroundColor: p.primary, width: '70%' }} />
+        {[80, 60, 50, 65].map((w, i) => (
+          <div key={i} className="h-1.5 rounded-full opacity-30 bg-white" style={{ width: `${w}%` }} />
+        ))}
+      </div>
+
+      {/* Contenu simulé */}
+      <div className="flex-1 p-3 flex flex-col gap-2">
+        {/* Header bar */}
+        <div className="flex items-center gap-2">
+          <div className="h-2.5 rounded flex-1 opacity-20 bg-gray-400" />
+          <div className="h-2.5 w-8 rounded" style={{ backgroundColor: p.primary }} />
+        </div>
+        {/* Cards simulées */}
+        <div className="grid grid-cols-3 gap-1.5 flex-1">
+          {[p.primary, p.accent, p.sidebar].map((color, i) => (
+            <div
+              key={i}
+              className="rounded-lg flex items-end p-1"
+              style={{ backgroundColor: color + '20', border: `1px solid ${color}30` }}
+            >
+              <div className="h-2 rounded-sm w-full" style={{ backgroundColor: color, opacity: 0.6 }} />
+            </div>
+          ))}
+        </div>
+        {/* Bouton simulé */}
+        <div className="h-3 w-16 rounded-full self-end" style={{ backgroundColor: p.primary }} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Carte thème ──────────────────────────────────────────────────────────────
+function ThemeCard({
+  theme,
+  onActivate,
+  loading,
+  activeId,
+}: {
+  theme: Theme;
+  onActivate: (id: string) => void;
+  loading: string | null;
+  activeId: string | null;
+}) {
+  const isLoading = loading === theme.id;
+  const isActive = theme.isActive || theme.id === activeId;
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 24, background: 'var(--bg-app)' }}>
+    <div className={`
+      relative bg-white rounded-2xl border p-5 flex flex-col gap-4
+      transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer
+      ${isActive ? 'border-teal-400 ring-2 ring-teal-100 shadow-md' : 'border-gray-200'}
+    `}
+      onClick={() => !isActive && onActivate(theme.id)}
+    >
+      {/* Badge actif */}
+      {isActive && (
+        <div className="absolute top-3 right-3 flex items-center gap-1 text-xs font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">
+          <Check className="w-3 h-3" /> Actif
+        </div>
+      )}
+
+      {/* Badge dark/light */}
+      <div className="absolute top-3 left-3">
+        {theme.isDark
+          ? <Moon className="w-3.5 h-3.5 text-gray-400" />
+          : <Sun className="w-3.5 h-3.5 text-amber-400" />
+        }
+      </div>
+
+      {/* Preview */}
+      <div className="mt-3">
+        <ThemePreview theme={theme} />
+      </div>
+
+      {/* Infos */}
+      <div>
+        <h3 className="font-semibold text-gray-900">{theme.name}</h3>
+        {theme.description && (
+          <p className="text-xs text-gray-500 mt-1 leading-relaxed">{theme.description}</p>
+        )}
+      </div>
+
+      {/* Palette de couleurs */}
+      <div className="flex gap-2">
+        {[
+          theme.preview?.primary || theme.primaryColor,
+          theme.preview?.sidebar || theme.sidebarColor,
+          theme.preview?.accent || theme.accentColor,
+          theme.preview?.background || theme.backgroundColor,
+        ].filter(Boolean).map((color, i) => (
+          <div
+            key={i}
+            className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
+            style={{ backgroundColor: color }}
+            title={color}
+          />
+        ))}
+      </div>
+
+      {/* Bouton */}
+      {isActive ? (
+        <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-50 text-teal-600 text-sm font-medium">
+          <CheckCircle className="w-4 h-4" />
+          Thème actuel
+        </div>
+      ) : (
+        <button
+          onClick={(e) => { e.stopPropagation(); onActivate(theme.id); }}
+          disabled={!!loading}
+          className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-teal-600 transition-all disabled:opacity-50"
+        >
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <><Zap className="w-4 h-4" /> Appliquer</>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Page principale ───────────────────────────────────────────────────────────
+export default function ThemesPage() {
+  const [themes, setThemes] = useState<Theme[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'light' | 'dark'>('all');
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+
+  const API = process.env.NEXT_PUBLIC_API_URL || '';
+
+  const getHeaders = () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const fetchThemes = async () => {
+    setFetching(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API}/api/v1/themes`, { headers: getHeaders() });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const list: Theme[] = Array.isArray(data) ? data : data.data || data.themes || [];
+
+      // Fusionner avec les thèmes locaux (pour les previews visuels)
+      const merged = DEFAULT_THEMES.map((def) => {
+        const fromApi = list.find((t) => t.id === def.id || t.name === def.name);
+        return fromApi ? { ...def, ...fromApi, preview: def.preview } : def;
+      });
+
+      // Ajouter les thèmes API non présents dans les défauts
+      list.forEach((t) => {
+        if (!merged.find((m) => m.id === t.id)) merged.push(t);
+      });
+
+      setThemes(merged.length > 0 ? merged : DEFAULT_THEMES);
+
+      // Trouver le thème actif
+      const active = list.find((t) => t.isActive);
+      if (active) setActiveId(active.id);
+    } catch {
+      // En cas d'erreur API, utiliser les thèmes par défaut locaux
+      setThemes(DEFAULT_THEMES);
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  useEffect(() => { fetchThemes(); }, []);
+
+  const handleActivate = async (id: string) => {
+    setLoading(id);
+    try {
+      const res = await fetch(`${API}/api/v1/themes/${id}/activate`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
+      if (!res.ok) throw new Error();
+      setActiveId(id);
+      setThemes((prev) => prev.map((t) => ({ ...t, isActive: t.id === id })));
+      showToast('Thème appliqué avec succès ✓');
+    } catch {
+      // Appliquer localement même si l'API échoue
+      setActiveId(id);
+      setThemes((prev) => prev.map((t) => ({ ...t, isActive: t.id === id })));
+      showToast('Thème appliqué localement');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const filtered = themes.filter((t) => {
+    if (filter === 'light') return !t.isDark;
+    if (filter === 'dark') return t.isDark;
+    return true;
+  });
+
+  const activeTheme = themes.find((t) => t.id === activeId || t.isActive);
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      {/* Toast */}
+      {toast && (
+        <div className={`
+          fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium
+          ${toast.type === 'success' ? 'bg-teal-600 text-white' : 'bg-red-500 text-white'}
+        `}>
+          {toast.type === 'success'
+            ? <CheckCircle className="w-4 h-4" />
+            : <AlertCircle className="w-4 h-4" />
+          }
+          {toast.msg}
+        </div>
+      )}
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Thèmes</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-            Personnalisez l'apparence — changement instantané sans rechargement
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }}
-            onChange={e => e.target.files?.[0] && importMutation.mutate(e.target.files[0])} />
-          <button onClick={() => fileRef.current?.click()} className="o-btn o-btn-secondary o-btn-sm">
-            <Upload size={13} /> Importer
-          </button>
-          <button onClick={() => setShowCreate(true)} className="o-btn o-btn-primary o-btn-sm">
-            <Plus size={13} /> Nouveau thème
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-teal-600 flex items-center justify-center">
+              <Palette className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Thèmes</h1>
+              <p className="text-sm text-gray-500">
+                {activeTheme ? `Actif : ${activeTheme.name}` : 'Personnalisez l\'apparence de GrowthOS'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={fetchThemes}
+            disabled={fetching}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${fetching ? 'animate-spin' : ''}`} />
+            Actualiser
           </button>
         </div>
       </div>
 
-      {/* Thème actif */}
+      {/* Thème actif — bannière */}
       {activeTheme && (
-        <div style={{ background: 'rgba(1,126,132,.06)', border: '1px solid rgba(1,126,132,.2)', borderRadius: 8, padding: '14px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 8, background: (activeTheme as any).previewColor || '#017E84', flexShrink: 0 }} />
-          <div>
-            <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>
-              Thème actif : {(activeTheme as any).displayName || (activeTheme as any).name}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{(activeTheme as any).description}</div>
+        <div className="mb-6 bg-teal-600 rounded-2xl p-5 flex items-center gap-5 text-white">
+          <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border-2 border-white/20">
+            <ThemePreview theme={activeTheme} />
           </div>
-          <div style={{ marginLeft: 'auto' }}>
-            <span className="o-badge o-badge-success">✓ Actif</span>
+          <div>
+            <p className="text-xs uppercase tracking-wider opacity-70 mb-1">Thème actuel</p>
+            <h2 className="text-lg font-bold">{activeTheme.name}</h2>
+            {activeTheme.description && (
+              <p className="text-sm opacity-80 mt-0.5">{activeTheme.description}</p>
+            )}
+          </div>
+          <div className="ml-auto">
+            <div className="flex items-center gap-2 bg-white/20 rounded-xl px-4 py-2 text-sm font-medium">
+              <Eye className="w-4 h-4" />
+              Aperçu actif
+            </div>
           </div>
         </div>
       )}
 
-      {/* Grid thèmes */}
-      {isLoading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="o-skeleton" style={{ height: 220, borderRadius: 8 }} />)}
+      {/* Filtres */}
+      <div className="flex gap-2 mb-6">
+        {(['all', 'light', 'dark'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              filter === f
+                ? 'bg-gray-900 text-white'
+                : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            {f === 'all' && <Paintbrush className="w-3.5 h-3.5" />}
+            {f === 'light' && <Sun className="w-3.5 h-3.5" />}
+            {f === 'dark' && <Moon className="w-3.5 h-3.5" />}
+            {f === 'all' ? 'Tous' : f === 'light' ? 'Clairs' : 'Sombres'}
+            <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs ml-1">
+              {f === 'all' ? themes.length : themes.filter((t) => f === 'dark' ? t.isDark : !t.isDark).length}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Grille de thèmes */}
+      {error ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <AlertCircle className="w-12 h-12 text-red-400" />
+          <p className="text-gray-500">{error}</p>
+          <button onClick={fetchThemes} className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm">
+            Réessayer
+          </button>
+        </div>
+      ) : fetching ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="bg-white rounded-2xl border border-gray-200 p-5 animate-pulse">
+              <div className="h-28 bg-gray-100 rounded-xl mb-4" />
+              <div className="h-4 bg-gray-200 rounded w-2/3 mb-2" />
+              <div className="h-3 bg-gray-100 rounded w-full mb-4" />
+              <div className="h-10 bg-gray-100 rounded-xl" />
+            </div>
+          ))}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {themes?.map((theme: any) => (
-            <div key={theme.id}
-              style={{ background: 'var(--bg-card)', border: `2px solid ${theme.isActive ? 'var(--color-primary)' : 'var(--border-color)'}`, borderRadius: 10, overflow: 'hidden', transition: 'all .15s', boxShadow: theme.isActive ? '0 0 0 4px rgba(1,126,132,.1)' : 'var(--shadow-card)' }}>
-
-              {/* Preview */}
-              <div style={{ height: 110, background: theme.previewBg || '#F9F9F9', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                {/* Mini-UI preview */}
-                <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-                  <div style={{ width: 36, height: 80, borderRadius: 6, background: theme.previewColor || '#2C3E50', display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 4px', opacity: 0.9 }}>
-                    {[0,1,2,3].map(i => <div key={i} style={{ height: 5, borderRadius: 2, background: i === 0 ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.3)', width: i === 0 ? '100%' : '75%' }} />)}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {[0,1].map(i => (
-                      <div key={i} style={{ width: 90, height: 34, borderRadius: 5, background: 'rgba(255,255,255,.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div style={{ width: i === 0 ? 55 : 40, height: 5, borderRadius: 2, background: i === 0 ? theme.previewColor : 'rgba(0,0,0,.1)' }} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {theme.isActive && (
-                  <div style={{ position: 'absolute', top: 8, right: 8, background: 'var(--color-primary)', color: '#fff', borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}>
-                    <Check size={10} /> Actif
-                  </div>
-                )}
-                {theme.isBuiltin && !theme.isActive && (
-                  <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,.5)', color: '#fff', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 600 }}>
-                    Builtin
-                  </div>
-                )}
-                <div style={{ position: 'absolute', bottom: 8, right: 8, width: 22, height: 22, borderRadius: '50%', background: theme.previewColor, border: '3px solid #fff', boxShadow: '0 1px 4px rgba(0,0,0,.2)' }} />
-              </div>
-
-              {/* Info */}
-              <div style={{ padding: '14px 16px' }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', marginBottom: 2 }}>
-                  {theme.displayName || theme.name}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
-                  {theme.author} · v{theme.version}
-                </div>
-                {theme.description && (
-                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 12, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    {theme.description}
-                  </p>
-                )}
-
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {!theme.isActive ? (
-                    <button onClick={() => activateMutation.mutate(theme.id)}
-                      disabled={activateMutation.isPending}
-                      className="o-btn o-btn-primary o-btn-sm" style={{ flex: 1 }}>
-                      {activateMutation.isPending ? <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Palette size={12} />}
-                      Activer
-                    </button>
-                  ) : (
-                    <div style={{ flex: 1, padding: '5px 10px', borderRadius: 5, background: 'rgba(40,167,69,.1)', color: '#28A745', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                      <Check size={12} /> Thème actif
-                    </div>
-                  )}
-                  <button onClick={() => handleExport(theme.id, theme.slug)}
-                    className="o-btn o-btn-secondary o-btn-sm" style={{ padding: '5px 8px' }} title="Exporter">
-                    <Download size={13} />
-                  </button>
-                  {!theme.isBuiltin && !theme.isActive && (
-                    <button onClick={() => { if (confirm(`Supprimer "${theme.name}" ?`)) deleteMutation.mutate(theme.id); }}
-                      style={{ padding: '5px 8px', borderRadius: 5, background: 'rgba(220,53,69,.06)', border: '1px solid rgba(220,53,69,.2)', color: '#DC3545', cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Supprimer">
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filtered.map((theme) => (
+            <ThemeCard
+              key={theme.id}
+              theme={theme}
+              onActivate={handleActivate}
+              loading={loading}
+              activeId={activeId}
+            />
           ))}
         </div>
       )}
 
-      {/* Modal créer thème */}
-      {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.5)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
-          <div style={{ background: '#fff', border: '1px solid var(--border-color)', borderRadius: 12, padding: 24, width: 460, maxWidth: '95vw', boxShadow: 'var(--shadow-lg)', animation: 'popIn .15s ease' }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, margin: '0 0 20px', color: 'var(--text-primary)' }}>
-              <Palette size={16} style={{ verticalAlign: 'middle', marginRight: 8 }} />
-              Créer un thème personnalisé
-            </h2>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div className="o-form-group" style={{ margin: 0 }}>
-                <label className="o-form-label required">Nom du thème</label>
-                <input className="o-form-control" value={createForm.name}
-                  onChange={e => setCreateForm(f => ({ ...f, name: e.target.value, slug: e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '-') }))}
-                  placeholder="Mon Thème Custom" />
-              </div>
-              <div className="o-form-group" style={{ margin: 0 }}>
-                <label className="o-form-label required">Slug</label>
-                <input className="o-form-control" value={createForm.slug}
-                  onChange={e => setCreateForm(f => ({ ...f, slug: e.target.value }))}
-                  placeholder="mon-theme-custom" />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="o-form-group" style={{ margin: 0 }}>
-                  <label className="o-form-label">Couleur principale</label>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input type="color" value={createForm.accent} onChange={e => setCreateForm(f => ({ ...f, accent: e.target.value }))}
-                      style={{ width: 36, height: 34, borderRadius: 5, border: '1px solid var(--border-color)', cursor: 'pointer', padding: 2 }} />
-                    <input className="o-form-control" value={createForm.accent} onChange={e => setCreateForm(f => ({ ...f, accent: e.target.value }))} style={{ flex: 1 }} />
-                  </div>
-                </div>
-                <div className="o-form-group" style={{ margin: 0 }}>
-                  <label className="o-form-label">Couleur fond</label>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input type="color" value={createForm.bg} onChange={e => setCreateForm(f => ({ ...f, bg: e.target.value }))}
-                      style={{ width: 36, height: 34, borderRadius: 5, border: '1px solid var(--border-color)', cursor: 'pointer', padding: 2 }} />
-                    <input className="o-form-control" value={createForm.bg} onChange={e => setCreateForm(f => ({ ...f, bg: e.target.value }))} style={{ flex: 1 }} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Preview live */}
-              <div style={{ height: 60, borderRadius: 8, background: createForm.bg, border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                <div style={{ width: 32, height: 46, borderRadius: 5, background: createForm.accent, opacity: .85 }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  <div style={{ width: 90, height: 16, borderRadius: 4, background: 'rgba(255,255,255,.8)' }} />
-                  <div style={{ width: 70, height: 12, borderRadius: 4, background: 'rgba(255,255,255,.5)' }} />
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-              <button onClick={() => setShowCreate(false)} className="o-btn o-btn-secondary o-btn-sm">Annuler</button>
-              <button
-                disabled={!createForm.name || !createForm.slug || createMutation.isPending}
-                onClick={() => createMutation.mutate({
-                  name: createForm.name, slug: createForm.slug,
-                  displayName: createForm.name, description: createForm.desc,
-                  previewColor: createForm.accent, previewBg: createForm.bg,
-                  tokens: {
-                    colors: {
-                      primary: createForm.accent, bgApp: createForm.bg,
-                      bgSidebar: createForm.accent, bgCard: '#FFFFFF',
-                      textPrimary: '#212529', textSidebar: '#FFFFFF',
-                    },
-                  },
-                })}
-                className="o-btn o-btn-primary o-btn-sm"
-              >
-                {createMutation.isPending ? 'Création...' : 'Créer le thème'}
-              </button>
-            </div>
-          </div>
+      {/* Info footer */}
+      <div className="mt-8 p-4 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-600 flex items-start gap-3">
+        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <div>
+          <strong>Note :</strong> Le changement de thème s'applique à l'interface de GrowthOS.
+          Certains thèmes personnalisés peuvent nécessiter un rechargement de la page pour être pleinement actifs.
         </div>
-      )}
-
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes popIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
-      `}</style>
+      </div>
     </div>
   );
 }
