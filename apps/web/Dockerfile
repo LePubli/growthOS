@@ -21,7 +21,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN npm run build
+RUN npm run build 2>&1 || (echo "=== BUILD ERROR DETAILS ===" && exit 1)
 
 # ─── DIAGNOSTIC — détecter la structure du standalone ─────────────────────────
 RUN echo "═══ STRUCTURE STANDALONE ═══" && \
