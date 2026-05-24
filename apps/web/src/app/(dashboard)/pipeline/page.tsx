@@ -1,183 +1,167 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ChevronRight, Building2 } from 'lucide-react';
-import { apiClient } from '@/lib/api-client';
-import { toast } from 'sonner';
+import { useState } from 'react';
+import {
+  Plus, MoreHorizontal, DollarSign, Calendar,
+  User, ChevronRight, Search, Filter, Building2
+} from 'lucide-react';
 
-interface Stage {
-  id: string; name: string; color: string; order_index: number;
-  count: number; total_value: number; is_won: boolean; is_lost: boolean;
+interface Deal {
+  id: string;
+  title: string;
+  company: string;
+  contact: string;
+  value: number;
+  probability: number;
+  dueDate?: string;
+  stage: string;
+  tags?: string[];
 }
 
-interface Prospect {
-  id: string; company_name: string; city?: string;
-  propensity_score?: number; propensity_category?: string;
-  email?: string; phone?: string; deal_value?: number;
-}
+const STAGES = [
+  { id:'lead',        label:'Leads',         color:'bg-gray-400',   light:'bg-gray-50',   count:0 },
+  { id:'contacted',   label:'Contactés',     color:'bg-blue-500',   light:'bg-blue-50',   count:0 },
+  { id:'qualified',   label:'Qualifiés',     color:'bg-purple-500', light:'bg-purple-50', count:0 },
+  { id:'negotiation', label:'Négociation',   color:'bg-amber-500',  light:'bg-amber-50',  count:0 },
+  { id:'won',         label:'Gagnés',        color:'bg-green-500',  light:'bg-green-50',  count:0 },
+];
 
-interface KanbanData {
-  [stageId: string]: Prospect[];
-}
+const MOCK_DEALS: Deal[] = [
+  { id:'1', title:'Migration CRM',      company:'Acme Corp',    contact:'Sophie Martin', value:12400, probability:75, dueDate:'2026-06-15', stage:'negotiation', tags:['Urgent'] },
+  { id:'2', title:'Audit SEO complet',  company:'TechVision',   contact:'Thomas Durand', value:4800,  probability:50, dueDate:'2026-06-30', stage:'qualified',   tags:[] },
+  { id:'3', title:'Refonte site web',   company:'StartupX',     contact:'Marie Leroy',   value:8500,  probability:30, dueDate:'2026-07-10', stage:'contacted',   tags:['Nouveau'] },
+  { id:'4', title:'Campagne Google Ads',company:'BigCorp',      contact:'Pierre Moreau', value:3200,  probability:90, dueDate:'2026-06-01', stage:'won',         tags:[] },
+  { id:'5', title:'Formation équipe',   company:'GrowthCo',     contact:'Lucie Bernard', value:2100,  probability:20, dueDate:'2026-07-20', stage:'lead',        tags:[] },
+  { id:'6', title:'Automatisation mails',company:'Agency FR',   contact:'Antoine Petit', value:6700,  probability:60, dueDate:'2026-06-20', stage:'qualified',   tags:['Chaud'] },
+  { id:'7', title:'Stratégie LinkedIn', company:'SaaS Plus',    contact:'Julie Simon',   value:5500,  probability:45, dueDate:'2026-07-05', stage:'contacted',   tags:[] },
+  { id:'8', title:'Plugin CRM custom',  company:'Corp XYZ',     contact:'Marc Dupont',   value:15000, probability:80, dueDate:'2026-06-25', stage:'negotiation', tags:['Enterprise'] },
+];
 
-const CAT_DOT: Record<string, string> = { HOT: '#DC3545', WARM: '#F0AD4E', COLD: '#017E84' };
+function DealCard({ deal, onMove }: { deal: Deal; onMove: (id: string, stage: string) => void }) {
+  const stageIdx = STAGES.findIndex(s => s.id === deal.stage);
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-all group cursor-grab">
+      <div className="flex items-start justify-between mb-3">
+        <h3 className="font-medium text-gray-900 text-sm leading-snug flex-1">{deal.title}</h3>
+        <button className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600 ml-2">
+          <MoreHorizontal className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+        <Building2 className="w-3 h-3" />
+        <span>{deal.company}</span>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+        <User className="w-3 h-3" />
+        <span>{deal.contact}</span>
+      </div>
+      {deal.tags && deal.tags.length > 0 && (
+        <div className="flex gap-1 mb-3">
+          {deal.tags.map(t => (
+            <span key={t} className="text-xs bg-teal-50 text-teal-600 px-2 py-0.5 rounded-full">{t}</span>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-bold text-gray-900">{deal.value.toLocaleString()}€</span>
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+          deal.probability >= 70 ? 'bg-green-50 text-green-600' :
+          deal.probability >= 40 ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-500'
+        }`}>{deal.probability}%</span>
+      </div>
+      {deal.dueDate && (
+        <div className="flex items-center gap-1.5 mt-2 text-xs text-gray-400">
+          <Calendar className="w-3 h-3" />
+          <span>{new Date(deal.dueDate).toLocaleDateString('fr-FR')}</span>
+        </div>
+      )}
+      {/* Boutons déplacer */}
+      <div className="flex gap-1 mt-3 pt-3 border-t border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity">
+        {stageIdx > 0 && (
+          <button onClick={() => onMove(deal.id, STAGES[stageIdx-1].id)}
+            className="flex-1 text-xs py-1 bg-gray-50 rounded-lg text-gray-500 hover:bg-gray-100">
+            ← Reculer
+          </button>
+        )}
+        {stageIdx < STAGES.length - 1 && (
+          <button onClick={() => onMove(deal.id, STAGES[stageIdx+1].id)}
+            className="flex-1 text-xs py-1 bg-teal-50 rounded-lg text-teal-600 hover:bg-teal-100">
+            Avancer →
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function PipelinePage() {
-  const qc = useQueryClient();
-  const [dragging, setDragging] = useState<{ id: string; fromStage: string } | null>(null);
-  const [dragOver, setDragOver] = useState<string | null>(null);
+  const [deals, setDeals] = useState<Deal[]>(MOCK_DEALS);
+  const [search, setSearch] = useState('');
 
-  const { data: stages = [], isLoading: stagesLoading } = useQuery<Stage[]>({
-    queryKey: ['pipeline-stages'],
-    queryFn: () => apiClient.get('/pipeline'),
-  });
-
-  const { data: prospectsData } = useQuery({
-    queryKey: ['prospects-all'],
-    queryFn: () => apiClient.get<any>('/prospects', { page_size: 500 }),
-  });
-
-  const moveMutation = useMutation({
-    mutationFn: ({ prospectId, stageId }: { prospectId: string; stageId: string }) =>
-      apiClient.post('/pipeline/move', { prospectId, stageId }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['prospects-all'] }),
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  // Group prospects by stage
-  const kanban: KanbanData = {};
-  const prospects: Prospect[] = prospectsData?.items || [];
-  stages.forEach(s => { kanban[s.id] = []; });
-  prospects.forEach(p => {
-    const stageId = (p as any).stage_id;
-    if (stageId && kanban[stageId]) kanban[stageId].push(p);
-    else if (stages[0]) kanban[stages[0].id]?.push(p);
-  });
-
-  const onDragStart = (prospectId: string, stageId: string) => {
-    setDragging({ id: prospectId, fromStage: stageId });
+  const moveDeal = (id: string, newStage: string) => {
+    setDeals(prev => prev.map(d => d.id === id ? { ...d, stage: newStage } : d));
   };
 
-  const onDrop = (targetStageId: string) => {
-    if (!dragging || dragging.fromStage === targetStageId) { setDragging(null); setDragOver(null); return; }
-    moveMutation.mutate({ prospectId: dragging.id, stageId: targetStageId });
-    setDragging(null);
-    setDragOver(null);
-  };
+  const filtered = deals.filter(d =>
+    !search || `${d.title} ${d.company} ${d.contact}`.toLowerCase().includes(search.toLowerCase())
+  );
 
-  const totalProspects = stages.reduce((a, s) => a + (s.count || 0), 0);
-  const totalValue = stages.filter(s => !s.is_lost).reduce((a, s) => a + (s.total_value || 0), 0);
+  const totalPipeline = deals.filter(d => d.stage !== 'won').reduce((s, d) => s + d.value, 0);
+  const totalWon = deals.filter(d => d.stage === 'won').reduce((s, d) => s + d.value, 0);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg-app)' }}>
-
+    <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
-      <div style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border-color)', padding: '14px 24px', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Pipeline</h1>
-          <p style={{ margin: '3px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-            {totalProspects} prospects · Valeur totale : {totalValue.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+          <h1 className="text-2xl font-bold text-gray-900">Pipeline commercial</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {totalPipeline.toLocaleString()}€ en cours · {totalWon.toLocaleString()}€ gagnés
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <a href="/prospects" className="o-btn o-btn-secondary o-btn-sm">
-            <Building2 size={13} /> Vue liste
-          </a>
+        <div className="flex gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
+              className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+          <button className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl text-sm font-medium hover:bg-teal-700">
+            <Plus className="w-4 h-4" /> Nouvelle opportunité
+          </button>
         </div>
       </div>
 
       {/* Kanban */}
-      <div style={{ flex: 1, overflow: 'auto', padding: 20, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-        {stagesLoading ? (
-          Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="o-skeleton" style={{ width: 260, minWidth: 260, height: 400, borderRadius: 8 }} />
-          ))
-        ) : stages.map(stage => {
-          const stageProspects = kanban[stage.id] || [];
-          const isDragTarget = dragOver === stage.id;
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {STAGES.map(stage => {
+          const stageDeals = filtered.filter(d => d.stage === stage.id);
+          const stageValue = stageDeals.reduce((s, d) => s + d.value, 0);
           return (
-            <div key={stage.id}
-              style={{ width: 260, minWidth: 260, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}
-              onDragOver={e => { e.preventDefault(); setDragOver(stage.id); }}
-              onDragLeave={() => setDragOver(null)}
-              onDrop={() => onDrop(stage.id)}
-            >
-              {/* Stage header */}
-              <div style={{
-                padding: '10px 14px', borderRadius: 8,
-                background: isDragTarget ? 'rgba(1,126,132,.08)' : 'var(--bg-card)',
-                border: `2px solid ${isDragTarget ? 'var(--color-primary)' : 'var(--border-color)'}`,
-                transition: 'all .15s',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: stage.color, flexShrink: 0 }} />
-                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>{stage.name}</span>
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', background: '#F8F9FA', padding: '2px 8px', borderRadius: 20 }}>
-                    {stageProspects.length}
+            <div key={stage.id} className="flex-shrink-0 w-72">
+              {/* Header colonne */}
+              <div className={`flex items-center justify-between px-3 py-2 rounded-xl mb-3 ${stage.light}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${stage.color}`} />
+                  <span className="font-semibold text-sm text-gray-700">{stage.label}</span>
+                  <span className="text-xs bg-white text-gray-500 px-1.5 py-0.5 rounded-full shadow-sm">
+                    {stageDeals.length}
                   </span>
                 </div>
-                {stage.total_value > 0 && (
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    {stage.total_value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
-                  </div>
+                {stageValue > 0 && (
+                  <span className="text-xs font-semibold text-gray-600">
+                    {stageValue.toLocaleString()}€
+                  </span>
                 )}
               </div>
 
               {/* Cards */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 100 }}>
-                {stageProspects.map(p => (
-                  <div key={p.id}
-                    draggable
-                    onDragStart={() => onDragStart(p.id, stage.id)}
-                    style={{
-                      background: 'var(--bg-card)', border: '1px solid var(--border-color)',
-                      borderRadius: 8, padding: '12px 14px', cursor: 'grab',
-                      boxShadow: 'var(--shadow-card)', transition: 'all .15s',
-                      borderLeft: `4px solid ${stage.color}`,
-                      opacity: dragging?.id === p.id ? 0.5 : 1,
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.boxShadow = 'var(--shadow-md)')}
-                    onMouseLeave={e => (e.currentTarget.style.boxShadow = 'var(--shadow-card)')}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                      <a href={`/prospects/${p.id}`}
-                        style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', textDecoration: 'none', lineHeight: 1.3 }}
-                        onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary)')}
-                        onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-primary)')}>
-                        {p.company_name}
-                      </a>
-                      {p.propensity_category && (
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: CAT_DOT[p.propensity_category] || '#ccc', flexShrink: 0, marginTop: 3 }} />
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-                      {p.city && <span>{p.city}</span>}
-                      {p.email && <span style={{ color: 'var(--color-primary)' }}>✉</span>}
-                      {p.phone && <span style={{ color: 'var(--color-success)' }}>📞</span>}
-                      {p.propensity_score && (
-                        <span style={{ marginLeft: 'auto', fontWeight: 700, color: CAT_DOT[p.propensity_category || ''] || 'var(--text-muted)' }}>
-                          {Math.round(p.propensity_score)}
-                        </span>
-                      )}
-                    </div>
-
-                    {p.deal_value && (
-                      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: 'var(--color-primary)' }}>
-                        {p.deal_value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
-                      </div>
-                    )}
-                  </div>
+              <div className="space-y-3">
+                {stageDeals.map(deal => (
+                  <DealCard key={deal.id} deal={deal} onMove={moveDeal} />
                 ))}
-
-                {stageProspects.length === 0 && (
-                  <div style={{ padding: '20px', border: '2px dashed var(--border-light)', borderRadius: 8, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-                    Glisser un prospect ici
-                  </div>
-                )}
+                <button className="w-full flex items-center justify-center gap-2 py-3 text-sm text-gray-400 hover:text-gray-600 border-2 border-dashed border-gray-200 rounded-xl hover:border-gray-300 transition-all">
+                  <Plus className="w-4 h-4" /> Ajouter
+                </button>
               </div>
             </div>
           );
