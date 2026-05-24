@@ -7,13 +7,12 @@ import {
   LayoutDashboard, Building2, GitBranch, Search, Bell,
   Settings, Puzzle, Palette, Mail, Target, RefreshCw,
   Bot, User, Webhook, BarChart2, Download, Zap,
-  ChevronDown, LogOut, Plus, Command, HelpCircle,
-  Globe, Activity,
+  ChevronDown, LogOut, Plus, HelpCircle,
+  Globe, Activity, Store,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
-import { useTheme } from '@/hooks/useTheme';
+import { useTheme } from '@/providers/theme-provider';
 import { cn } from '@/lib/utils';
-import { NotificationsPopover } from '@/components/notifications/NotificationsPopover';
 import { CommandPalette } from '@/components/command/CommandPalette';
 
 interface NavItem {
@@ -65,13 +64,14 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Intelligence',
     items: [
-      { href: '/agent', label: 'Agent IA', icon: <Bot size={16} /> },
+      { href: '/ai', label: 'Agent IA', icon: <Bot size={16} /> },
       { href: '/workflows', label: 'Workflows', icon: <Globe size={16} /> },
     ],
   },
   {
     label: 'Système',
     items: [
+      { href: '/marketplace', label: 'Marketplace', icon: <Store size={16} /> },
       { href: '/plugins', label: 'Plugins', icon: <Puzzle size={16} /> },
       { href: '/themes', label: 'Thèmes', icon: <Palette size={16} /> },
       { href: '/webhooks', label: 'Webhooks', icon: <Webhook size={16} /> },
@@ -84,90 +84,132 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, tenant, logout } = useAuthStore();
   const { theme } = useTheme();
-  const [cmdOpen, setCmdOpen] = useState(false);
+  const [cmdOpen, setCmdOpen]           = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifOpen, setNotifOpen]       = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Keyboard shortcut ⌘K
+  // ⌘K shortcut
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setCmdOpen(p => !p);
-      }
-      if (e.key === 'Escape') {
-        setCmdOpen(false);
-        setUserMenuOpen(false);
-        setNotifOpen(false);
-      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(p => !p); }
+      if (e.key === 'Escape') { setCmdOpen(false); setUserMenuOpen(false); setNotifOpen(false); }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  const isActive = (item: NavItem) => {
-    if (item.exact) return pathname === item.href;
-    return pathname.startsWith(item.href);
-  };
+  const isActive = (item: NavItem) => item.exact ? pathname === item.href : pathname.startsWith(item.href);
 
-  const userInitials = [user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join('').toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U';
+  const userInitials = [user?.firstName?.[0], user?.lastName?.[0]]
+    .filter(Boolean).join('').toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U';
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg-app)' }}>
+    <div style={{
+      display: 'flex', height: '100vh', overflow: 'hidden',
+      background: 'var(--body-bg)',
+      fontFamily: 'var(--font-sans)',
+    }}>
 
-      {/* ── Sidebar Odoo ─────────────────────────────────── */}
-      <aside className="o-sidebar" style={{ width: sidebarCollapsed ? 'var(--sidebar-width-collapsed)' : 'var(--sidebar-width)' }}>
-
+      {/* ══ SIDEBAR ══════════════════════════════════════════════════════════ */}
+      <aside
+        data-sidebar                          /* ← CSS var hook pour ThemeProvider */
+        style={{
+          width: sidebarCollapsed ? 56 : 220,
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100vh',
+          flexShrink: 0,
+          overflow: 'hidden',
+          transition: 'width 0.2s ease',
+          /* ← Toutes les couleurs via CSS variables */
+          background: 'var(--sidebar-bg)',
+          borderRight: '1px solid rgba(255,255,255,.06)',
+        }}
+      >
         {/* Logo */}
-        <div className="o-sidebar-logo">
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '14px 14px 12px',
+          borderBottom: '1px solid rgba(255,255,255,.06)',
+          flexShrink: 0,
+        }}>
           <div style={{
-            width: 28, height: 28, borderRadius: 6,
-            background: 'linear-gradient(135deg, #017E84, #714B67)',
+            width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+            background: 'var(--color-primary)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', fontWeight: 800, fontSize: 14, flexShrink: 0,
+            color: '#fff', fontWeight: 800, fontSize: 14,
           }}>G</div>
           {!sidebarCollapsed && (
-            <div style={{ marginLeft: 10 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: '#fff', lineHeight: 1.2 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--sidebar-text)', lineHeight: 1.2 }}>
                 {(tenant?.branding as any)?.companyName || 'GrowthOS'}
               </div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', lineHeight: 1 }}>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', lineHeight: 1 }}>
                 {user?.email?.split('@')[1] || 'workspace'}
               </div>
             </div>
           )}
         </div>
 
-        {/* Navigation */}
-        <nav className="o-sidebar-nav">
+        {/* Nav */}
+        <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
           {NAV_SECTIONS.map(section => (
             <div key={section.label}>
               {!sidebarCollapsed && (
-                <div className="o-nav-section">{section.label}</div>
+                <div style={{
+                  padding: '12px 14px 4px',
+                  fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,255,255,.3)',
+                }}>
+                  {section.label}
+                </div>
               )}
-              {section.items.map(item => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn('o-nav-item', isActive(item) && 'active')}
-                  title={sidebarCollapsed ? item.label : undefined}
-                >
-                  <span className="o-nav-icon">{item.icon}</span>
-                  {!sidebarCollapsed && (
-                    <>
-                      <span style={{ flex: 1, fontSize: 14 }}>{item.label}</span>
-                      {item.badge !== undefined && item.badge > 0 && (
-                        <span style={{
-                          background: '#DC3545', color: '#fff',
-                          borderRadius: 9999, padding: '1px 6px',
-                          fontSize: 11, fontWeight: 700, lineHeight: 1.4,
-                        }}>{item.badge}</span>
-                      )}
-                    </>
-                  )}
-                </Link>
-              ))}
+              {section.items.map(item => {
+                const active = isActive(item);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    title={sidebarCollapsed ? item.label : undefined}
+                    data-sidebar-item                    /* ← hook CSS */
+                    data-sidebar-item-active={active ? '' : undefined}  /* ← hook CSS actif */
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: sidebarCollapsed ? '8px 0' : '7px 12px',
+                      margin: '1px 6px',
+                      borderRadius: 8,
+                      textDecoration: 'none',
+                      justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                      transition: 'background 0.15s',
+                      /* Actif → couleur primaire, sinon couleur texte sidebar */
+                      background: active ? 'var(--color-primary)' : 'transparent',
+                      color: active ? '#fff' : 'var(--sidebar-text)',
+                    }}
+                    onMouseEnter={e => {
+                      if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--sidebar-hover)';
+                    }}
+                    onMouseLeave={e => {
+                      if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent';
+                    }}
+                  >
+                    <span style={{ flexShrink: 0, opacity: active ? 1 : 0.8 }}>{item.icon}</span>
+                    {!sidebarCollapsed && (
+                      <>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: active ? 600 : 400 }}>{item.label}</span>
+                        {item.badge !== undefined && item.badge > 0 && (
+                          <span style={{
+                            background: '#DC3545', color: '#fff',
+                            borderRadius: 9999, padding: '1px 6px',
+                            fontSize: 11, fontWeight: 700,
+                          }}>{item.badge}</span>
+                        )}
+                      </>
+                    )}
+                  </Link>
+                );
+              })}
             </div>
           ))}
         </nav>
@@ -175,227 +217,242 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Footer sidebar */}
         {!sidebarCollapsed && (
           <div style={{
-            padding: '12px 16px',
-            borderTop: '1px solid rgba(255,255,255,.08)',
+            padding: '10px 12px',
+            borderTop: '1px solid rgba(255,255,255,.06)',
             flexShrink: 0,
           }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 0', cursor: 'pointer',
-            }}
+            <button
               onClick={() => setUserMenuOpen(o => !o)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                background: 'rgba(255,255,255,.05)', border: 'none',
+                borderRadius: 8, padding: '8px 10px', cursor: 'pointer',
+                color: 'var(--sidebar-text)',
+              }}
             >
               <div style={{
-                width: 30, height: 30, borderRadius: 6,
-                background: 'linear-gradient(135deg, #017E84, #714B67)',
+                width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+                background: 'var(--color-primary)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#fff', fontWeight: 700, fontSize: 12, flexShrink: 0,
+                color: '#fff', fontWeight: 700, fontSize: 12,
               }}>{userInitials}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user?.firstName || user?.email?.split('@')[0] || 'Utilisateur'}
+              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--sidebar-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.firstName || user?.email?.split('@')[0]}
                 </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)' }}>En ligne</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>En ligne</div>
               </div>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28A745', flexShrink: 0 }} />
-            </div>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#28A745', flexShrink: 0 }} />
+            </button>
           </div>
         )}
       </aside>
 
-      {/* ── Main ─────────────────────────────────────────── */}
+      {/* ══ MAIN ═════════════════════════════════════════════════════════════ */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
-        {/* ── Header Odoo ──────────────────────────────── */}
-        <header className="o-header">
+        {/* Header */}
+        <header style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '0 16px', height: 48, flexShrink: 0,
+          background: 'var(--card-bg)',
+          borderBottom: '1px solid var(--card-border)',
+        }}>
+          {/* Toggle sidebar */}
+          <button
+            onClick={() => setSidebarCollapsed(c => !c)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: 4, color: 'var(--text-muted)',
+              display: 'flex', alignItems: 'center',
+            }}
+          >
+            <LayoutDashboard size={16} />
+          </button>
+
           {/* Breadcrumb */}
-          <div className="o-header-breadcrumb" style={{ flex: 1 }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>/</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+            {NAV_SECTIONS.flatMap(s => s.items).find(i => isActive(i))?.label || 'Dashboard'}
+          </span>
+
+          <div style={{ flex: 1 }} />
+
+          {/* ⌘K */}
+          <button
+            onClick={() => setCmdOpen(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '5px 12px',
+              background: 'var(--body-bg)', border: '1px solid var(--card-border)',
+              borderRadius: 8, cursor: 'pointer',
+              color: 'var(--text-muted)', fontSize: 13,
+            }}
+          >
+            <Search size={13} />
+            <span>Rechercher...</span>
+            <kbd style={{
+              background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+              borderRadius: 4, padding: '1px 5px', fontSize: 11,
+              color: 'var(--text-muted)',
+            }}>⌘K</kbd>
+          </button>
+
+          {/* Nouveau */}
+          <button
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 12px', fontSize: 13, fontWeight: 500,
+              background: 'var(--color-primary)', color: '#fff',
+              border: 'none', borderRadius: 8, cursor: 'pointer',
+            }}
+          >
+            <Plus size={13} /> Nouveau
+          </button>
+
+          {/* Notifications */}
+          <div style={{ position: 'relative' }}>
             <button
-              onClick={() => setSidebarCollapsed(c => !c)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+              onClick={() => setNotifOpen(o => !o)}
+              style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: 'var(--body-bg)', border: '1px solid var(--card-border)',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--text-secondary)', position: 'relative',
+              }}
             >
-              <LayoutDashboard size={16} />
+              <Bell size={15} />
+              <span style={{
+                position: 'absolute', top: 6, right: 6,
+                width: 6, height: 6, borderRadius: '50%',
+                background: 'var(--color-primary)', border: '2px solid var(--card-bg)',
+              }} />
             </button>
-            <span className="o-header-breadcrumb-sep">/</span>
-            <span className="o-header-breadcrumb-current">
-              {NAV_SECTIONS.flatMap(s => s.items).find(i => isActive(i))?.label || 'Dashboard'}
-            </span>
+            {notifOpen && (
+              <div style={{
+                position: 'absolute', top: 40, right: 0, width: 300,
+                background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+                borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.12)',
+                zIndex: 200, overflow: 'hidden',
+              }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--card-border)', display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>Notifications</span>
+                  <button style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 12, cursor: 'pointer' }}>Tout lire</button>
+                </div>
+                {[
+                  { icon: <Search size={14} />, text: 'Scraping terminé — 47 prospects', time: 'Il y a 5 min', unread: true },
+                  { icon: <Zap size={14} />, text: '3 signaux détectés', time: 'Il y a 12 min', unread: true },
+                  { icon: <Mail size={14} />, text: '8 emails envoyés', time: 'Il y a 1h', unread: false },
+                ].map((n, i) => (
+                  <div key={i} style={{
+                    padding: '10px 16px', display: 'flex', gap: 10,
+                    background: n.unread ? 'rgba(13,148,136,.04)' : 'transparent',
+                    borderBottom: '1px solid var(--card-border)', cursor: 'pointer',
+                  }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 6,
+                      background: 'var(--color-primary-light)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'var(--color-primary)', flexShrink: 0,
+                    }}>{n.icon}</div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.4 }}>{n.text}</p>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{n.time}</span>
+                    </div>
+                    {n.unread && <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-primary)', marginTop: 6 }} />}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Actions header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Aide */}
+          <button style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: 'var(--body-bg)', border: '1px solid var(--card-border)',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--text-secondary)',
+          }}>
+            <HelpCircle size={15} />
+          </button>
 
-            {/* Search ⌘K */}
+          {/* User menu */}
+          <div style={{ position: 'relative' }}>
             <button
-              onClick={() => setCmdOpen(true)}
+              onClick={() => setUserMenuOpen(o => !o)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
-                padding: '5px 12px',
-                background: 'var(--bg-app)', border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                color: 'var(--text-muted)', fontSize: 13,
-                transition: 'border-color 0.15s',
+                padding: '4px 8px 4px 4px',
+                background: 'var(--body-bg)', border: '1px solid var(--card-border)',
+                borderRadius: 8, cursor: 'pointer',
               }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
             >
-              <Search size={13} />
-              <span>Rechercher...</span>
-              <kbd style={{
-                background: '#fff', border: '1px solid var(--border-color)',
-                borderRadius: 4, padding: '1px 5px', fontSize: 11,
-                color: 'var(--text-muted)', boxShadow: '0 1px 2px rgba(0,0,0,.05)',
-              }}>⌘K</kbd>
+              <div style={{
+                width: 26, height: 26, borderRadius: 5,
+                background: 'var(--color-primary)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', fontWeight: 700, fontSize: 11,
+              }}>{userInitials}</div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {user?.firstName || user?.email?.split('@')[0]}
+              </span>
+              <ChevronDown size={12} color="var(--text-muted)" />
             </button>
 
-            {/* Nouveau */}
-            <button className="o-btn o-btn-primary" style={{ padding: '5px 12px', fontSize: 13 }}>
-              <Plus size={13} /> Nouveau
-            </button>
-
-            {/* Notifications */}
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setNotifOpen(o => !o)}
-                style={{
-                  width: 32, height: 32, borderRadius: 'var(--radius-md)',
-                  background: 'var(--bg-app)', border: '1px solid var(--border-color)',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  position: 'relative', transition: 'all 0.15s',
-                  color: 'var(--text-secondary)',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-primary)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-color)'; }}
-              >
-                <Bell size={15} />
-                <span style={{
-                  position: 'absolute', top: 5, right: 5,
-                  width: 7, height: 7, borderRadius: '50%',
-                  background: 'var(--color-danger)', border: '2px solid #fff',
-                }} />
-              </button>
-
-              {notifOpen && (
-                <div style={{
-                  position: 'absolute', top: 40, right: 0,
-                  width: 320, background: '#fff',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
-                  zIndex: 200, animation: 'fadeIn .15s ease', overflow: 'hidden',
-                }}>
-                  <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>Notifications</span>
-                    <button style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Tout lire</button>
+            {userMenuOpen && (
+              <div style={{
+                position: 'absolute', top: 40, right: 0, width: 210,
+                background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+                borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.12)',
+                zIndex: 200, overflow: 'hidden',
+              }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--card-border)' }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>
+                    {user?.firstName} {user?.lastName}
                   </div>
-                  {[
-                    { icon: <Search size={14} />, text: 'Scraping terminé — 47 prospects', time: 'Il y a 5 min', unread: true },
-                    { icon: <Zap size={14} />, text: '3 signaux BODACC détectés', time: 'Il y a 12 min', unread: true },
-                    { icon: <Mail size={14} />, text: '8 emails envoyés via séquence', time: 'Il y a 1h', unread: false },
-                  ].map((n, i) => (
-                    <div key={i} style={{ padding: '10px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', background: n.unread ? 'rgba(1,126,132,.03)' : 'transparent', borderBottom: '1px solid var(--border-light)', cursor: 'pointer' }}>
-                      <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--color-primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary)', flexShrink: 0 }}>
-                        {n.icon}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.4 }}>{n.text}</p>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{n.time}</span>
-                      </div>
-                      {n.unread && <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-primary)', flexShrink: 0, marginTop: 6 }} />}
-                    </div>
-                  ))}
-                  <div style={{ padding: '10px', textAlign: 'center' }}>
-                    <button style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>Voir toutes les notifications</button>
-                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{user?.email}</div>
                 </div>
-              )}
-            </div>
-
-            {/* Aide */}
-            <button style={{ width: 32, height: 32, borderRadius: 'var(--radius-md)', background: 'var(--bg-app)', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
-              <HelpCircle size={15} />
-            </button>
-
-            {/* User dropdown */}
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setUserMenuOpen(o => !o)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '4px 8px 4px 4px',
-                  background: 'var(--bg-app)', border: '1px solid var(--border-color)',
-                  borderRadius: 'var(--radius-md)', cursor: 'pointer', transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
-              >
-                <div style={{
-                  width: 26, height: 26, borderRadius: 5,
-                  background: 'linear-gradient(135deg, #017E84, #714B67)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 700, fontSize: 11,
-                }}>{userInitials}</div>
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>
-                    {user?.firstName || user?.email?.split('@')[0]}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    {(tenant?.branding as any)?.companyName || tenant?.name}
-                  </div>
+                {[
+                  { icon: <User size={14} />, label: 'Mon profil', href: '/settings' },
+                  { icon: <Puzzle size={14} />, label: 'Plugins', href: '/plugins' },
+                  { icon: <Palette size={14} />, label: 'Thèmes', href: '/themes' },
+                ].map(item => (
+                  <Link key={item.href} href={item.href}
+                    onClick={() => setUserMenuOpen(false)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '9px 16px', color: 'var(--text-secondary)',
+                      fontSize: 13, textDecoration: 'none',
+                    }}
+                  >
+                    {item.icon} {item.label}
+                  </Link>
+                ))}
+                <div style={{ borderTop: '1px solid var(--card-border)' }}>
+                  <button
+                    onClick={logout}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      width: '100%', padding: '9px 16px',
+                      background: 'none', border: 'none',
+                      color: '#EF4444', fontSize: 13, cursor: 'pointer',
+                    }}
+                  >
+                    <LogOut size={14} /> Se déconnecter
+                  </button>
                 </div>
-                <ChevronDown size={12} color="var(--text-muted)" />
-              </button>
-
-              {userMenuOpen && (
-                <div style={{
-                  position: 'absolute', top: 40, right: 0,
-                  width: 220, background: '#fff',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
-                  zIndex: 200, overflow: 'hidden', animation: 'fadeIn .15s ease',
-                }}>
-                  <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-light)' }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>
-                      {user?.firstName} {user?.lastName}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{user?.email}</div>
-                  </div>
-                  {[
-                    { icon: <User size={14} />, label: 'Mon profil', href: '/settings/profile' },
-                    { icon: <Settings size={14} />, label: 'Paramètres', href: '/settings' },
-                    { icon: <Puzzle size={14} />, label: 'Plugins', href: '/plugins' },
-                  ].map(item => (
-                    <Link key={item.href} href={item.href}
-                      onClick={() => setUserMenuOpen(false)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', color: 'var(--text-secondary)', fontSize: 13, textDecoration: 'none', transition: 'background 0.1s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      {item.icon} {item.label}
-                    </Link>
-                  ))}
-                  <div style={{ borderTop: '1px solid var(--border-light)' }}>
-                    <button
-                      onClick={logout}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 16px', background: 'none', border: 'none', color: 'var(--color-danger)', fontSize: 13, cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-danger-light)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <LogOut size={14} /> Se déconnecter
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </header>
 
-        {/* ── Content ────────────────────────────────────── */}
-        <main style={{ flex: 1, overflow: 'hidden' }}>
+        {/* Content */}
+        <main style={{ flex: 1, overflow: 'auto', background: 'var(--body-bg)' }}>
           {children}
         </main>
       </div>
 
-      {/* ── Command Palette ───────────────────────────────── */}
+      {/* Command Palette */}
       {cmdOpen && (
         <CommandPalette onClose={() => setCmdOpen(false)} navSections={NAV_SECTIONS} />
       )}
