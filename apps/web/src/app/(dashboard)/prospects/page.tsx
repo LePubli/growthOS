@@ -5,8 +5,7 @@ import {
   Users, Search, Filter, Plus, Upload, Download,
   Mail, Phone, Globe, Building2, Star, StarOff,
   ChevronDown, MoreHorizontal, RefreshCw, X,
-  CheckCircle, Circle, AlertCircle, Loader2,
-  LinkedIn, Tag, Zap
+  CheckCircle, Circle, AlertCircle, Loader2, Tag, Zap
 } from 'lucide-react';
 
 interface Prospect {
