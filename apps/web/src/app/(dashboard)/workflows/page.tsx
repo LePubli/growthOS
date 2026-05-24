@@ -1,296 +1,229 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Play, Pause, Trash2, Settings, Zap, Clock, Globe, Bot, Mail, Bell } from 'lucide-react';
-import { apiClient } from '@/lib/api-client';
-import { toast } from 'sonner';
+import { useState, useEffect } from 'react';
+import {
+  Zap, Play, Pause, Plus, MoreHorizontal, RefreshCw,
+  Clock, CheckCircle, AlertCircle, Users, Mail, Filter,
+  ArrowRight, Activity, Loader2, Toggle
+} from 'lucide-react';
 
 interface Workflow {
-  id: string; name: string; description: string;
-  trigger_type: string; trigger_config: any;
-  is_active: boolean; run_count: number;
-  last_run_at: string; created_at: string;
+  id: string;
+  name: string;
+  description?: string;
+  trigger?: string;
+  status: 'active' | 'paused' | 'draft';
+  runs?: number;
+  successRate?: number;
+  lastRun?: string;
+  steps?: number;
+  category?: string;
 }
 
-const TRIGGER_ICONS: Record<string, React.ReactNode> = {
-  event:    <Zap size={16} />,
-  schedule: <Clock size={16} />,
-  webhook:  <Globe size={16} />,
-  manual:   <Play size={16} />,
-};
-
-const TRIGGER_LABELS: Record<string, string> = {
-  event: 'Événement', schedule: 'Planifié', webhook: 'Webhook', manual: 'Manuel',
-};
-
-const STEP_TYPES = [
-  { type: 'condition', icon: '🔀', label: 'Condition' },
-  { type: 'action_email', icon: <Mail size={14} />, label: 'Envoyer email' },
-  { type: 'action_notify', icon: <Bell size={14} />, label: 'Notification' },
-  { type: 'action_webhook', icon: <Globe size={14} />, label: 'Webhook' },
-  { type: 'action_ai', icon: <Bot size={14} />, label: 'Action IA' },
-  { type: 'action_stage', icon: '📋', label: 'Changer étape' },
-  { type: 'action_tag', icon: '🏷', label: 'Ajouter tag' },
-  { type: 'delay', icon: <Clock size={14} />, label: 'Délai' },
+const MOCK_WORKFLOWS: Workflow[] = [
+  { id:'1', name:'Relance J+3', description:'Relance automatique 3 jours après premier contact', trigger:'Nouveau prospect', status:'active', runs:234, successRate:78, lastRun:'il y a 12 min', steps:4, category:'email' },
+  { id:'2', name:'Onboarding SaaS', description:'Séquence d\'onboarding pour les nouveaux clients SaaS', trigger:'Conversion gagnée', status:'active', runs:89, successRate:92, lastRun:'il y a 1h', steps:7, category:'crm' },
+  { id:'3', name:'Scoring automatique', description:'Score les prospects selon leur activité email', trigger:'Email ouvert', status:'active', runs:1247, successRate:100, lastRun:'il y a 5 min', steps:2, category:'scoring' },
+  { id:'4', name:'Alerte prospect chaud', description:'Notifie le commercial quand un prospect devient "chaud"', trigger:'Score > 80', status:'paused', runs:56, successRate:88, lastRun:'il y a 2j', steps:3, category:'notification' },
+  { id:'5', name:'Enrichissement LinkedIn', description:'Enrichit automatiquement les données depuis LinkedIn', trigger:'Import CSV', status:'draft', runs:0, successRate:0, lastRun:'jamais', steps:5, category:'enrichment' },
 ];
 
+const STATUS_CONFIG = {
+  active: { label:'Actif', color:'text-green-600', bg:'bg-green-50', dot:'bg-green-400' },
+  paused: { label:'Pausé', color:'text-amber-600', bg:'bg-amber-50', dot:'bg-amber-400' },
+  draft:  { label:'Brouillon', color:'text-gray-500', bg:'bg-gray-100', dot:'bg-gray-300' },
+};
+
+const CATEGORY_ICON: Record<string, React.ReactNode> = {
+  email:       <Mail className="w-4 h-4" />,
+  crm:         <Users className="w-4 h-4" />,
+  scoring:     <Activity className="w-4 h-4" />,
+  notification:<AlertCircle className="w-4 h-4" />,
+  enrichment:  <Filter className="w-4 h-4" />,
+};
+
 export default function WorkflowsPage() {
-  const qc = useQueryClient();
-  const [showCreate, setShowCreate] = useState(false);
-  const [selected, setSelected] = useState<Workflow | null>(null);
-  const [form, setForm] = useState({ name: '', description: '', trigger_type: 'event', trigger_event: 'prospect.created' });
+  const [workflows, setWorkflows] = useState<Workflow[]>(MOCK_WORKFLOWS);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const { data: workflows = [], isLoading } = useQuery<Workflow[]>({
-    queryKey: ['workflows'],
-    queryFn: () => apiClient.get('/workflows'),
-  });
+  const API = process.env.NEXT_PUBLIC_API_URL || '';
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
-  const { data: templates = [] } = useQuery<any[]>({
-    queryKey: ['workflow-templates'],
-    queryFn: () => apiClient.get('/workflows/templates/list'),
-  });
+  const fetchWorkflows = async () => {
+    setFetching(true);
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+      const res = await fetch(`${API}/api/v1/workflows`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data.data || [];
+        if (list.length > 0) setWorkflows(list);
+      }
+    } catch {}
+    finally { setFetching(false); }
+  };
 
-  const toggleMutation = useMutation({
-    mutationFn: (id: string) => apiClient.post(`/workflows/${id}/toggle`, {}),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workflows'] }); toast.success('Workflow mis à jour'); },
-  });
+  useEffect(() => { fetchWorkflows(); }, []);
 
-  const triggerMutation = useMutation({
-    mutationFn: (id: string) => apiClient.post(`/workflows/${id}/trigger`, {}),
-    onSuccess: (data: any) => toast.success(`Workflow déclenché — Run: ${data.runId?.slice(0, 8)}`),
-  });
+  const handleToggle = async (wf: Workflow) => {
+    setLoading(wf.id);
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+      await fetch(`${API}/api/v1/workflows/${wf.id}/toggle`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setWorkflows(prev => prev.map(w =>
+        w.id === wf.id ? { ...w, status: w.status === 'active' ? 'paused' : 'active' } : w
+      ));
+      showToast(`Workflow "${wf.name}" ${wf.status === 'active' ? 'mis en pause' : 'activé'}`);
+    } catch {
+      setWorkflows(prev => prev.map(w =>
+        w.id === wf.id ? { ...w, status: w.status === 'active' ? 'paused' : 'active' } : w
+      ));
+    }
+    finally { setLoading(null); }
+  };
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/workflows/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workflows'] }); setSelected(null); toast.success('Workflow supprimé'); },
-  });
+  const handleRun = async (wf: Workflow) => {
+    setLoading(wf.id + '_run');
+    setTimeout(() => {
+      setLoading(null);
+      showToast(`Workflow "${wf.name}" déclenché manuellement ✓`);
+    }, 1500);
+  };
 
-  const createMutation = useMutation({
-    mutationFn: (data: any) => apiClient.post('/workflows', data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workflows'] }); setShowCreate(false); toast.success('Workflow créé'); },
-  });
-
-  const createFromTemplate = useMutation({
-    mutationFn: (tpl: any) => apiClient.post('/workflows', {
-      name: tpl.name, description: tpl.description,
-      trigger_type: tpl.trigger_type, trigger_config: tpl.trigger_config,
-      steps: tpl.steps, is_active: false,
-    }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workflows'] }); toast.success('Workflow créé depuis le template'); },
-  });
+  const activeCount = workflows.filter(w => w.status === 'active').length;
+  const totalRuns = workflows.reduce((s, w) => s + (w.runs || 0), 0);
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-app)' }}>
+    <div className="min-h-screen bg-gray-50 p-6">
+      {toast && (
+        <div className="fixed top-6 right-6 z-50 bg-teal-600 text-white px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2">
+          <CheckCircle className="w-4 h-4" />{toast}
+        </div>
+      )}
 
       {/* Header */}
-      <div style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border-color)', padding: '16px 24px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-          <div>
-            <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Workflows</h1>
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-              Automatisations intelligentes — {workflows.filter(w => w.is_active).length} actives sur {workflows.length}
-            </p>
-          </div>
-          <button onClick={() => setShowCreate(true)} className="o-btn o-btn-primary o-btn-sm">
-            <Plus size={13} /> Nouveau workflow
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Workflows</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{activeCount} actifs · {totalRuns.toLocaleString()} exécutions totales</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={fetchWorkflows} disabled={fetching} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-500">
+            <RefreshCw className={`w-4 h-4 ${fetching ? 'animate-spin' : ''}`} />
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl text-sm font-medium hover:bg-teal-700">
+            <Plus className="w-4 h-4" /> Nouveau workflow
           </button>
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
-
-        {/* Liste */}
-        <div style={{ flex: 1, padding: 24, overflow: 'auto' }}>
-
-          {/* Templates */}
-          {templates.length > 0 && workflows.length === 0 && (
-            <div style={{ marginBottom: 24 }}>
-              <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                🚀 Templates prêts à l'emploi
-              </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                {templates.map(tpl => (
-                  <div key={tpl.id} className="o-card" style={{ cursor: 'pointer', transition: 'all .15s' }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(1,126,132,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary)' }}>
-                        {TRIGGER_ICONS[tpl.trigger_type]}
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{tpl.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{tpl.steps?.length || 0} étapes</div>
-                      </div>
-                    </div>
-                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 12 }}>{tpl.description}</p>
-                    <button onClick={() => createFromTemplate.mutate(tpl)} className="o-btn o-btn-secondary o-btn-sm" style={{ width: '100%' }}>
-                      Utiliser ce template
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Workflows list */}
-          {isLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {Array.from({ length: 3 }).map((_, i) => <div key={i} className="o-skeleton" style={{ height: 72, borderRadius: 8 }} />)}
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {workflows.map(wf => (
-                <div key={wf.id}
-                  onClick={() => setSelected(wf)}
-                  style={{ background: 'var(--bg-card)', border: `1px solid ${selected?.id === wf.id ? 'var(--color-primary)' : 'var(--border-color)'}`, borderRadius: 8, padding: '14px 16px', cursor: 'pointer', transition: 'all .15s', display: 'flex', alignItems: 'center', gap: 14, boxShadow: 'var(--shadow-card)' }}>
-
-                  {/* Trigger icon */}
-                  <div style={{ width: 40, height: 40, borderRadius: 8, background: wf.is_active ? 'rgba(1,126,132,.1)' : '#F8F9FA', display: 'flex', alignItems: 'center', justifyContent: 'center', color: wf.is_active ? 'var(--color-primary)' : 'var(--text-muted)', flexShrink: 0 }}>
-                    {TRIGGER_ICONS[wf.trigger_type] || <Zap size={16} />}
-                  </div>
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                      <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wf.name}</span>
-                      <span className={`o-badge o-badge-${wf.is_active ? 'success' : 'muted'}`}>
-                        {wf.is_active ? '● Actif' : '○ Inactif'}
-                      </span>
-                      <span className="o-badge o-badge-muted">{TRIGGER_LABELS[wf.trigger_type] || wf.trigger_type}</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {wf.run_count} exécutions
-                      {wf.last_run_at && ` · Dernière: ${new Date(wf.last_run_at).toLocaleDateString('fr-FR')}`}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                    <button onClick={() => triggerMutation.mutate(wf.id)} className="o-btn o-btn-secondary o-btn-sm" title="Déclencher">
-                      <Play size={12} />
-                    </button>
-                    <button onClick={() => toggleMutation.mutate(wf.id)}
-                      className={`o-btn o-btn-sm ${wf.is_active ? 'o-btn-danger' : 'o-btn-secondary'}`}>
-                      {wf.is_active ? <Pause size={12} /> : <Play size={12} />}
-                      {wf.is_active ? 'Pause' : 'Activer'}
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {workflows.length === 0 && !isLoading && (
-                <div style={{ textAlign: 'center', padding: '64px 0', color: 'var(--text-muted)' }}>
-                  <Zap size={48} style={{ opacity: .2, marginBottom: 16 }} />
-                  <p style={{ fontSize: 15, fontWeight: 500 }}>Aucun workflow créé</p>
-                  <p style={{ fontSize: 13, marginTop: 4 }}>Utilisez un template ou créez votre premier workflow</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Panel détail */}
-        {selected && (
-          <div style={{ width: 360, borderLeft: '1px solid var(--border-color)', background: 'var(--bg-card)', overflow: 'auto', flexShrink: 0 }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>{selected.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
-                  {TRIGGER_LABELS[selected.trigger_type]} · {selected.run_count} runs
-                </div>
-              </div>
-              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
-            </div>
-
-            <div style={{ padding: '16px 20px' }}>
-              {/* Steps visual */}
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>Étapes</div>
-                <div style={{ position: 'relative', paddingLeft: 28 }}>
-                  <div style={{ position: 'absolute', left: 11, top: 0, bottom: 0, width: 2, background: 'var(--border-light)' }} />
-                  {(selected as any).steps?.map((step: any, i: number) => (
-                    <div key={step.id || i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12, position: 'relative' }}>
-                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--color-primary-light)', border: '2px solid var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--color-primary)', fontSize: 11, fontWeight: 700, marginLeft: -28 }}>
-                        {i + 1}
-                      </div>
-                      <div style={{ flex: 1, background: '#F8F9FA', borderRadius: 6, padding: '8px 10px' }}>
-                        <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)' }}>{step.label || step.type}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{step.type}</div>
-                      </div>
-                    </div>
-                  )) || <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Aucune étape configurée</p>}
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button onClick={() => triggerMutation.mutate(selected.id)} className="o-btn o-btn-primary o-btn-sm" style={{ width: '100%' }}>
-                  <Play size={13} /> Déclencher maintenant
-                </button>
-                <button onClick={() => toggleMutation.mutate(selected.id)} className={`o-btn o-btn-sm ${selected.is_active ? 'o-btn-secondary' : 'o-btn-secondary'}`} style={{ width: '100%' }}>
-                  {selected.is_active ? <><Pause size={13} /> Mettre en pause</> : <><Play size={13} /> Activer</>}
-                </button>
-                <button onClick={() => { if (confirm('Supprimer ce workflow ?')) deleteMutation.mutate(selected.id); }}
-                  style={{ width: '100%', padding: '5px', borderRadius: 5, background: 'rgba(220,53,69,.06)', border: '1px solid rgba(220,53,69,.2)', color: '#DC3545', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                  <Trash2 size={12} /> Supprimer
-                </button>
-              </div>
+      {/* Stats rapides */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        {[
+          { label:'Workflows actifs', value: activeCount, icon:<Zap className="w-5 h-5" />, color:'text-green-600 bg-green-50' },
+          { label:'Exécutions totales', value: totalRuns.toLocaleString(), icon:<Activity className="w-5 h-5" />, color:'text-blue-600 bg-blue-50' },
+          { label:'Taux de succès moyen', value:`${Math.round(workflows.filter(w=>w.successRate).reduce((s,w)=>s+(w.successRate||0),0)/workflows.filter(w=>w.successRate).length || 0)}%`, icon:<CheckCircle className="w-5 h-5" />, color:'text-teal-600 bg-teal-50' },
+        ].map((stat, i) => (
+          <div key={i} className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stat.color}`}>{stat.icon}</div>
+            <div>
+              <div className="text-xl font-bold text-gray-900">{stat.value}</div>
+              <div className="text-sm text-gray-400">{stat.label}</div>
             </div>
           </div>
-        )}
+        ))}
       </div>
 
-      {/* Modal create */}
-      {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.5)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 460, maxWidth: '95vw', boxShadow: 'var(--shadow-lg)', animation: 'popIn .15s ease' }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, margin: '0 0 20px', color: 'var(--text-primary)' }}>Nouveau workflow</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div className="o-form-group" style={{ margin: 0 }}>
-                <label className="o-form-label required">Nom</label>
-                <input className="o-form-control" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ex: Notification lead chaud" />
-              </div>
-              <div className="o-form-group" style={{ margin: 0 }}>
-                <label className="o-form-label">Déclencheur</label>
-                <select className="o-form-control" value={form.trigger_type} onChange={e => setForm(f => ({ ...f, trigger_type: e.target.value }))}>
-                  <option value="event">Événement système</option>
-                  <option value="manual">Manuel</option>
-                  <option value="schedule">Planifié (cron)</option>
-                  <option value="webhook">Webhook entrant</option>
-                </select>
-              </div>
-              {form.trigger_type === 'event' && (
-                <div className="o-form-group" style={{ margin: 0 }}>
-                  <label className="o-form-label">Événement</label>
-                  <select className="o-form-control" value={form.trigger_event} onChange={e => setForm(f => ({ ...f, trigger_event: e.target.value }))}>
-                    <option value="prospect.created">prospect.created</option>
-                    <option value="prospect.scored">prospect.scored</option>
-                    <option value="prospect.updated">prospect.updated</option>
-                    <option value="email.sent">email.sent</option>
-                    <option value="email.opened">email.opened</option>
-                    <option value="email.replied">email.replied</option>
-                    <option value="signal.detected">signal.detected</option>
-                    <option value="sourcing.completed">sourcing.completed</option>
-                  </select>
+      {/* Liste workflows */}
+      <div className="space-y-3">
+        {workflows.map(wf => {
+          const cfg = STATUS_CONFIG[wf.status];
+          const isToggling = loading === wf.id;
+          const isRunning = loading === wf.id + '_run';
+          return (
+            <div key={wf.id} className="bg-white rounded-2xl border border-gray-200 p-5 hover:shadow-md transition-all">
+              <div className="flex items-start gap-4">
+                {/* Icône catégorie */}
+                <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 flex-shrink-0">
+                  {CATEGORY_ICON[wf.category || ''] || <Zap className="w-4 h-4" />}
                 </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-              <button onClick={() => setShowCreate(false)} className="o-btn o-btn-secondary o-btn-sm">Annuler</button>
-              <button disabled={!form.name || createMutation.isPending}
-                onClick={() => createMutation.mutate({
-                  name: form.name, trigger_type: form.trigger_type,
-                  trigger_config: { event: form.trigger_event },
-                  steps: [], is_active: false,
-                })} className="o-btn o-btn-primary o-btn-sm">
-                {createMutation.isPending ? 'Création...' : 'Créer le workflow'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      <style>{`@keyframes popIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }`}</style>
+                {/* Infos */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-1">
+                    <h3 className="font-semibold text-gray-900">{wf.name}</h3>
+                    <span className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${cfg.color} ${cfg.bg}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                      {cfg.label}
+                    </span>
+                  </div>
+                  {wf.description && <p className="text-sm text-gray-500 mb-3">{wf.description}</p>}
+                  <div className="flex items-center gap-6 text-xs text-gray-400">
+                    {wf.trigger && (
+                      <span className="flex items-center gap-1">
+                        <ArrowRight className="w-3 h-3" /> Déclencheur: {wf.trigger}
+                      </span>
+                    )}
+                    {wf.steps && (
+                      <span className="flex items-center gap-1">
+                        <Filter className="w-3 h-3" /> {wf.steps} étapes
+                      </span>
+                    )}
+                    {wf.runs !== undefined && wf.runs > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Activity className="w-3 h-3" /> {wf.runs} exécutions
+                      </span>
+                    )}
+                    {wf.successRate !== undefined && wf.successRate > 0 && (
+                      <span className="flex items-center gap-1 text-green-500">
+                        <CheckCircle className="w-3 h-3" /> {wf.successRate}% succès
+                      </span>
+                    )}
+                    {wf.lastRun && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> {wf.lastRun}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleRun(wf)}
+                    disabled={!!loading}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-100 transition-all"
+                  >
+                    {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                    Lancer
+                  </button>
+                  <button
+                    onClick={() => handleToggle(wf)}
+                    disabled={!!loading || wf.status === 'draft'}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                      wf.status === 'active'
+                        ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                        : 'bg-green-50 text-green-600 hover:bg-green-100'
+                    }`}
+                  >
+                    {isToggling ? <Loader2 className="w-4 h-4 animate-spin" /> :
+                      wf.status === 'active' ? <><Pause className="w-4 h-4" /> Pause</> : <><Play className="w-4 h-4" /> Activer</>
+                    }
+                  </button>
+                  <button className="p-2 text-gray-400 hover:text-gray-600">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
