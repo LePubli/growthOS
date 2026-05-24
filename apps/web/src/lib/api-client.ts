@@ -1,7 +1,8 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-
+const BASE_URL = (typeof window !== 'undefined' && (window as any).__API_URL__) 
+  || process.env.NEXT_PUBLIC_API_URL 
+  || 'http://localhost:3001/api/v1';
 class ApiClient {
   private axios: AxiosInstance;
   private refreshing: Promise<string> | null = null;
