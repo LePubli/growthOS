@@ -5,7 +5,7 @@ import {
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SequencesService, CreateSequenceDto } from './sequences.service';
 
-@Controller('api/v1/sequences')
+@Controller('sequences')
 @UseGuards(JwtAuthGuard)
 export class SequencesController {
   constructor(private readonly svc: SequencesService) {}
