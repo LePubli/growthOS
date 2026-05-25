@@ -11,6 +11,18 @@ import { ThemeEngineService } from './theme-engine.service';
 import { ThemesService } from './themes.service';
 import { PrismaService } from '../../shared/database/prisma.service';
 
+// Map slug built-in → nom complet (pour éviter les doublons avec les thèmes en base)
+const BUILTIN_SLUGS: Record<string, { name: string; displayName: string; previewColor: string }> = {
+  'default':  { name: 'GrowthOS Default', displayName: 'GrowthOS Default',  previewColor: '#0D9488' },
+  'dark':     { name: 'Dark Mode',        displayName: 'Dark Mode',          previewColor: '#14B8A6' },
+  'light':    { name: 'Light Minimal',    displayName: 'Light Minimal',      previewColor: '#6366F1' },
+  'minimal':  { name: 'Light Minimal',    displayName: 'Light Minimal',      previewColor: '#6366F1' },
+  'ocean':    { name: 'Ocean Blue',       displayName: 'Ocean Blue',         previewColor: '#3B82F6' },
+  'forest':   { name: 'Forest Green',     displayName: 'Forest Green',       previewColor: '#10B981' },
+  'sunset':   { name: 'Sunset Orange',    displayName: 'Sunset Orange',      previewColor: '#F97316' },
+  'odoo-default': { name: 'GrowthOS Default', displayName: 'GrowthOS Default', previewColor: '#0D9488' },
+};
+
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('themes')
 export class ThemesController {
@@ -25,13 +37,21 @@ export class ThemesController {
   async getActive(@CurrentUser() user: any) {
     const tenantId = user?.tenantId;
     if (!tenantId) return { slug: 'default', tokens: {}, name: 'GrowthOS Default' };
-    return this.engine.getActiveThemeForTenant(tenantId);
+    try {
+      return await this.engine.getActiveThemeForTenant(tenantId);
+    } catch {
+      return { slug: 'default', tokens: {}, name: 'GrowthOS Default' };
+    }
   }
 
   @Get('css-vars')
   async getCssVars(@CurrentUser() user: any) {
-    const theme = await this.engine.getActiveThemeForTenant(user.tenantId);
-    return this.engine.generateCssVariables(theme.tokens || {});
+    try {
+      const theme = await this.engine.getActiveThemeForTenant(user.tenantId);
+      return this.engine.generateCssVariables(theme.tokens || {});
+    } catch {
+      return {};
+    }
   }
 
   @Get()
@@ -42,7 +62,7 @@ export class ThemesController {
   @Post(':idOrSlug/activate')
   @Roles('admin', 'owner')
   async activate(@Param('idOrSlug') idOrSlug: string, @CurrentUser() user: any) {
-    const theme = await this.findByIdOrSlug(idOrSlug);
+    const theme = await this.findOrCreateTheme(idOrSlug);
     const activated = await this.engine.activateTheme(user.tenantId, theme.id);
     return { message: `Thème "${activated.name}" activé`, theme: activated.name };
   }
@@ -93,32 +113,44 @@ export class ThemesController {
     await this.themes.delete(id);
   }
 
-  // ── Helper : cherche par id ou slug, crée si absent ───────────────────
-  private async findByIdOrSlug(idOrSlug: string) {
+  // ── Trouve un thème par id/slug ou le crée si absent ─────────────────
+  private async findOrCreateTheme(idOrSlug: string) {
+    // 1. UUID → chercher par id
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
-
-    // 1. Chercher par UUID
     if (isUuid) {
       const t = await this.prisma.theme.findUnique({ where: { id: idOrSlug } });
       if (t) return t;
     }
 
-    // 2. Chercher par slug ou name
-    const existing = await this.prisma.theme.findFirst({
-      where: { OR: [{ slug: idOrSlug }, { name: idOrSlug }] },
-    });
-    if (existing) return existing;
+    // 2. Chercher par slug
+    const bySlug = await this.prisma.theme.findFirst({ where: { slug: idOrSlug } });
+    if (bySlug) return bySlug;
 
-    // 3. Créer le thème builtin s'il n'existe pas en base
-    const displayName = idOrSlug.charAt(0).toUpperCase() + idOrSlug.slice(1).replace(/-/g, ' ');
+    // 3. Chercher par name (ex: 'light' → 'Light Minimal')
+    const info = BUILTIN_SLUGS[idOrSlug];
+    if (info) {
+      const byName = await this.prisma.theme.findFirst({ where: { name: info.name } });
+      if (byName) return byName;
+    }
+
+    // 4. Créer le thème builtin — seulement les champs requis sans isActive
+    const meta = BUILTIN_SLUGS[idOrSlug] || {
+      name: idOrSlug.charAt(0).toUpperCase() + idOrSlug.slice(1).replace(/-/g, ' '),
+      displayName: idOrSlug.charAt(0).toUpperCase() + idOrSlug.slice(1).replace(/-/g, ' '),
+      previewColor: '#0D9488',
+    };
+
     return this.prisma.theme.create({
       data: {
-        name: displayName,
+        name: meta.name,
         slug: idOrSlug,
-        displayName,
-        isActive: true,
+        displayName: meta.displayName,
         isBuiltin: true,
+        isPublic: true,
+        previewColor: meta.previewColor,
         tokens: {},
+        layout: {},
+        components: {},
       },
     });
   }
