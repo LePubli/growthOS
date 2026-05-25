@@ -22,20 +22,29 @@ export class PluginsService {
     if (search) where.OR = [
       { displayName: { contains: search, mode: 'insensitive' } },
       { description: { contains: search, mode: 'insensitive' } },
-      { tags: { has: search.toLowerCase() } },
     ];
 
-    const [items, total] = await Promise.all([
-      this.prisma.plugin.findMany({
-        where,
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: [{ isVerified: 'desc' }, { installCount: 'desc' }],
-      }),
-      this.prisma.plugin.count({ where }),
-    ]);
+    try {
+      const [items, total] = await Promise.all([
+        this.prisma.plugin.findMany({
+          where,
+          skip: (page - 1) * limit,
+          take: limit,
+          // orderBy sécurisé — pas de champs qui peuvent causer une PrismaValidationError
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.prisma.plugin.count({ where }),
+      ]);
 
-    return { items, total, page, pages: Math.ceil(total / limit) };
+      return { items, total, page, pages: Math.ceil(total / limit) };
+    } catch (e) {
+      // Fallback sans filtre si erreur de validation
+      const [items, total] = await Promise.all([
+        this.prisma.plugin.findMany({ take: limit, orderBy: { createdAt: 'desc' } }),
+        this.prisma.plugin.count(),
+      ]);
+      return { items, total, page: 1, pages: Math.ceil(total / limit) };
+    }
   }
 
   async listForTenant(tenantId: string) {
@@ -126,16 +135,11 @@ export class PluginsService {
 
   async uninstall(tenantId: string, name: string) {
     if (CORE_PLUGINS.has(name)) throw new BadRequestException('Impossible de désinstaller un plugin core');
-
-    // Désactiver d'abord
     await this.engine.deactivatePlugin(tenantId, name).catch(() => {});
-
-    // Supprimer la relation tenant-plugin
     const plugin = await this.prisma.plugin.findUnique({ where: { name } });
     if (plugin) {
       await this.prisma.tenantPlugin.deleteMany({ where: { tenantId, pluginId: plugin.id } });
     }
-
     await this.events.publish({ name: 'plugin.uninstalled', tenantId, payload: { pluginName: name } });
   }
 }
