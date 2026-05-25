@@ -39,7 +39,6 @@ export class ThemesController {
     return this.themes.list();
   }
 
-  // Accepte id OU slug (ex: 'light', 'dark', 'default', ou UUID)
   @Post(':idOrSlug/activate')
   @Roles('admin', 'owner')
   async activate(@Param('idOrSlug') idOrSlug: string, @CurrentUser() user: any) {
@@ -94,26 +93,26 @@ export class ThemesController {
     await this.themes.delete(id);
   }
 
-  // ── Helper privé ──────────────────────────────────────────────────────
+  // ── Helper : cherche par id ou slug, crée si absent ───────────────────
   private async findByIdOrSlug(idOrSlug: string) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
 
+    // 1. Chercher par UUID
     if (isUuid) {
       const t = await this.prisma.theme.findUnique({ where: { id: idOrSlug } });
       if (t) return t;
     }
 
-    // Chercher par slug ou name
-    const bySlug = await this.prisma.theme.findFirst({
+    // 2. Chercher par slug ou name
+    const existing = await this.prisma.theme.findFirst({
       where: { OR: [{ slug: idOrSlug }, { name: idOrSlug }] },
     });
-    if (bySlug) return bySlug;
+    if (existing) return existing;
 
-    // Créer automatiquement le thème builtin si absent
+    // 3. Créer le thème builtin s'il n'existe pas en base
     const displayName = idOrSlug.charAt(0).toUpperCase() + idOrSlug.slice(1).replace(/-/g, ' ');
-    return this.prisma.theme.upsert({
-      where: { slug: idOrSlug },
-      create: {
+    return this.prisma.theme.create({
+      data: {
         name: displayName,
         slug: idOrSlug,
         displayName,
@@ -121,7 +120,6 @@ export class ThemesController {
         isBuiltin: true,
         tokens: {},
       },
-      update: {},
     });
   }
 }
