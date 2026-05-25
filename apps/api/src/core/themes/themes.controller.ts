@@ -9,6 +9,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles, CurrentUser, Public } from '../../common/decorators';
 import { ThemeEngineService } from './theme-engine.service';
 import { ThemesService } from './themes.service';
+import { PrismaService } from '../../shared/database/prisma.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('themes')
@@ -16,6 +17,7 @@ export class ThemesController {
   constructor(
     private readonly engine: ThemeEngineService,
     private readonly themes: ThemesService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get('active')
@@ -37,7 +39,7 @@ export class ThemesController {
     return this.themes.list();
   }
 
-  // ← Accepte id OU slug (ex: 'light', 'dark', 'default', ou un UUID)
+  // Accepte id OU slug (ex: 'light', 'dark', 'default', ou UUID)
   @Post(':idOrSlug/activate')
   @Roles('admin', 'owner')
   async activate(@Param('idOrSlug') idOrSlug: string, @CurrentUser() user: any) {
@@ -94,28 +96,27 @@ export class ThemesController {
 
   // ── Helper privé ──────────────────────────────────────────────────────
   private async findByIdOrSlug(idOrSlug: string) {
-    // UUID format → chercher par id
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
 
     if (isUuid) {
-      const t = await this.themes['prisma'].theme.findUnique({ where: { id: idOrSlug } });
+      const t = await this.prisma.theme.findUnique({ where: { id: idOrSlug } });
       if (t) return t;
     }
 
-    // Sinon chercher par slug ou name
-    const bySlug = await this.themes['prisma'].theme.findFirst({
+    // Chercher par slug ou name
+    const bySlug = await this.prisma.theme.findFirst({
       where: { OR: [{ slug: idOrSlug }, { name: idOrSlug }] },
     });
-
     if (bySlug) return bySlug;
 
-    // Fallback : créer un thème minimal si inexistant (pour les thèmes built-in)
-    return this.themes['prisma'].theme.upsert({
+    // Créer automatiquement le thème builtin si absent
+    const displayName = idOrSlug.charAt(0).toUpperCase() + idOrSlug.slice(1).replace(/-/g, ' ');
+    return this.prisma.theme.upsert({
       where: { slug: idOrSlug },
       create: {
-        name: idOrSlug.charAt(0).toUpperCase() + idOrSlug.slice(1),
+        name: displayName,
         slug: idOrSlug,
-        displayName: idOrSlug.charAt(0).toUpperCase() + idOrSlug.slice(1),
+        displayName,
         isActive: true,
         isBuiltin: true,
         tokens: {},
