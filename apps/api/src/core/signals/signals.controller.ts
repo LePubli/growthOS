@@ -5,7 +5,7 @@ import {
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SignalsService } from './signals.service';
 
-@Controller('api/v1/signals')
+@Controller('signals')
 @UseGuards(JwtAuthGuard)
 export class SignalsController {
   constructor(private readonly svc: SignalsService) {}
