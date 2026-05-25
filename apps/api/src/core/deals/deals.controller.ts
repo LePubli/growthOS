@@ -5,7 +5,7 @@ import {
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { DealsService, CreateDealDto } from './deals.service';
 
-@Controller('api/v1/deals')
+@Controller('deals')
 @UseGuards(JwtAuthGuard)
 export class DealsController {
   constructor(private readonly svc: DealsService) {}
