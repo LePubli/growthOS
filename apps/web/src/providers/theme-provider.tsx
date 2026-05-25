@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 export interface ThemeTokens {
   '--color-primary':       string;
   '--color-primary-light': string;
@@ -22,11 +21,11 @@ export interface ThemeTokens {
 }
 
 export interface Theme {
-  id:          string;
-  name:        string;
+  id:           string;
+  name:         string;
   description?: string;
-  isDark:      boolean;
-  tokens:      ThemeTokens;
+  isDark:       boolean;
+  tokens:       ThemeTokens;
 }
 
 interface ThemeContextValue {
@@ -36,10 +35,10 @@ interface ThemeContextValue {
   isLoading: boolean;
 }
 
-// ─── Thèmes intégrés (fallback si API non dispo) ──────────────────────────────
+// ─── Slugs qui correspondent EXACTEMENT à la base de données ─────────────
 export const BUILT_IN_THEMES: Theme[] = [
   {
-    id: 'default', name: 'GrowthOS Default', isDark: false,
+    id: 'odoo-default', name: 'GrowthOS Default', isDark: false,
     tokens: {
       '--color-primary':       '#0D9488',
       '--color-primary-light': '#CCFBF1',
@@ -79,22 +78,22 @@ export const BUILT_IN_THEMES: Theme[] = [
     },
   },
   {
-    id: 'ocean', name: 'Ocean Blue', isDark: true,
+    id: 'light', name: 'Light Minimal', isDark: false,
     tokens: {
-      '--color-primary':       '#3B82F6',
-      '--color-primary-light': '#1E3A5F',
-      '--color-primary-dark':  '#2563EB',
-      '--color-accent':        '#60A5FA',
-      '--sidebar-bg':          '#0C1931',
-      '--sidebar-text':        '#93C5FD',
-      '--sidebar-hover':       '#1E3A5F',
-      '--body-bg':             '#0F2744',
-      '--card-bg':             '#0C1931',
-      '--card-border':         '#1E3A5F',
-      '--text-primary':        '#EFF6FF',
-      '--text-secondary':      '#BFDBFE',
-      '--text-muted':          '#60A5FA',
-      '--radius-card':         '0.75rem',
+      '--color-primary':       '#6366F1',
+      '--color-primary-light': '#EEF2FF',
+      '--color-primary-dark':  '#4F46E5',
+      '--color-accent':        '#8B5CF6',
+      '--sidebar-bg':          '#F8FAFC',
+      '--sidebar-text':        '#475569',
+      '--sidebar-hover':       '#E2E8F0',
+      '--body-bg':             '#FFFFFF',
+      '--card-bg':             '#FFFFFF',
+      '--card-border':         '#E2E8F0',
+      '--text-primary':        '#111827',
+      '--text-secondary':      '#374151',
+      '--text-muted':          '#9CA3AF',
+      '--radius-card':         '0.5rem',
       '--font-sans':           'Inter, system-ui, sans-serif',
     },
   },
@@ -139,54 +138,40 @@ export const BUILT_IN_THEMES: Theme[] = [
     },
   },
   {
-    id: 'minimal', name: 'Light Minimal', isDark: false,
+    id: 'dark-pro', name: 'Dark Pro', isDark: true,
     tokens: {
       '--color-primary':       '#6366F1',
-      '--color-primary-light': '#EEF2FF',
+      '--color-primary-light': '#1E1B4B',
       '--color-primary-dark':  '#4F46E5',
       '--color-accent':        '#8B5CF6',
-      '--sidebar-bg':          '#F8FAFC',
-      '--sidebar-text':        '#475569',
-      '--sidebar-hover':       '#E2E8F0',
-      '--body-bg':             '#FFFFFF',
-      '--card-bg':             '#FFFFFF',
-      '--card-border':         '#E2E8F0',
-      '--text-primary':        '#111827',
-      '--text-secondary':      '#374151',
-      '--text-muted':          '#9CA3AF',
-      '--radius-card':         '0.5rem',
+      '--sidebar-bg':          '#0F0F1A',
+      '--sidebar-text':        '#A5B4FC',
+      '--sidebar-hover':       '#1E1B4B',
+      '--body-bg':             '#13131F',
+      '--card-bg':             '#0F0F1A',
+      '--card-border':         '#2D2B55',
+      '--text-primary':        '#EEF2FF',
+      '--text-secondary':      '#C7D2FE',
+      '--text-muted':          '#6366F1',
+      '--radius-card':         '0.75rem',
       '--font-sans':           'Inter, system-ui, sans-serif',
     },
   },
 ];
 
-// ─── Applique les CSS variables sur :root ─────────────────────────────────────
 function applyTokens(tokens: ThemeTokens, isDark: boolean) {
   const root = document.documentElement;
-  Object.entries(tokens).forEach(([key, val]) => {
-    root.style.setProperty(key, val);
-  });
+  Object.entries(tokens).forEach(([key, val]) => root.style.setProperty(key, val));
   root.setAttribute('data-theme', isDark ? 'dark' : 'light');
-  if (isDark) {
-    root.classList.add('dark');
-  } else {
-    root.classList.remove('dark');
-  }
+  isDark ? root.classList.add('dark') : root.classList.remove('dark');
 }
 
-// ─── Persistance locale ───────────────────────────────────────────────────────
 const STORAGE_KEY = 'growthos-theme-id';
-
 function getStoredThemeId(): string {
-  if (typeof window === 'undefined') return 'default';
-  return localStorage.getItem(STORAGE_KEY) || 'default';
+  if (typeof window === 'undefined') return 'odoo-default';
+  return localStorage.getItem(STORAGE_KEY) || 'odoo-default';
 }
 
-function storeThemeId(id: string) {
-  if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY, id);
-}
-
-// ─── Context ──────────────────────────────────────────────────────────────────
 const ThemeContext = createContext<ThemeContextValue>({
   theme: BUILT_IN_THEMES[0],
   themes: BUILT_IN_THEMES,
@@ -194,11 +179,8 @@ const ThemeContext = createContext<ThemeContextValue>({
   isLoading: false,
 });
 
-export function useTheme() {
-  return useContext(ThemeContext);
-}
+export function useTheme() { return useContext(ThemeContext); }
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themes, setThemes]   = useState<Theme[]>(BUILT_IN_THEMES);
   const [current, setCurrent] = useState<Theme>(BUILT_IN_THEMES[0]);
@@ -206,12 +188,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const API = process.env.NEXT_PUBLIC_API_URL || '';
 
-  // Charge les thèmes depuis l'API et fusionne avec les built-in
   const loadThemes = useCallback(async () => {
     try {
-      const token = typeof window !== 'undefined'
-        ? (localStorage.getItem('token') || localStorage.getItem('access_token') || '')
-        : '';
+      const token = localStorage.getItem('access_token') || '';
       const res = await fetch(`${API}/api/v1/themes`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -219,33 +198,32 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       const apiThemes: any[] = Array.isArray(data) ? data : data.data || [];
 
-      // Fusionner : les thèmes API enrichissent les built-in avec les tokens custom
+      // Fusionner API themes avec built-in (garder tokens built-in si API n'en a pas)
       const merged = BUILT_IN_THEMES.map(bt => {
-        const apiVersion = apiThemes.find(at => at.id === bt.id || at.slug === bt.id);
-        if (apiVersion?.tokens) return { ...bt, ...apiVersion, tokens: { ...bt.tokens, ...apiVersion.tokens } };
-        return bt;
+        const api = apiThemes.find(a => a.slug === bt.id || a.id === bt.id);
+        return api ? { ...bt, ...api, id: bt.id, tokens: bt.tokens } : bt;
       });
 
-      // Ajouter les thèmes API custom non présents dans les built-in
+      // Ajouter les thèmes API non présents dans built-in
       apiThemes.forEach(at => {
-        if (!merged.find(m => m.id === at.id)) {
+        if (!merged.find(m => m.id === at.slug)) {
           merged.push({
-            id: at.id, name: at.name, isDark: at.isDark || false,
-            tokens: { ...BUILT_IN_THEMES[0].tokens, ...at.tokens },
+            id: at.slug || at.id,
+            name: at.name || at.displayName,
+            isDark: at.slug?.includes('dark') || false,
+            tokens: { ...BUILT_IN_THEMES[0].tokens, ...(at.tokens || {}) },
           });
         }
       });
 
       setThemes(merged);
 
-      // Appliquer le thème actif depuis l'API ou le localStorage
-      const activeApi = apiThemes.find(at => at.isActive);
-      const storedId  = getStoredThemeId();
-      const toApply   = merged.find(t => t.id === (activeApi?.id || storedId)) || merged[0];
+      // Appliquer le thème actif depuis API ou localStorage
+      const storedId = getStoredThemeId();
+      const toApply = merged.find(t => t.id === storedId) || merged[0];
       setCurrent(toApply);
       applyTokens(toApply.tokens, toApply.isDark);
     } catch {
-      // Fallback : appliquer le thème du localStorage
       const storedId = getStoredThemeId();
       const fallback = BUILT_IN_THEMES.find(t => t.id === storedId) || BUILT_IN_THEMES[0];
       setCurrent(fallback);
@@ -254,12 +232,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [API]);
 
   useEffect(() => {
-    // Appliquer immédiatement le thème stocké (évite le flash)
     const storedId = getStoredThemeId();
-    const instant  = BUILT_IN_THEMES.find(t => t.id === storedId) || BUILT_IN_THEMES[0];
+    const instant = BUILT_IN_THEMES.find(t => t.id === storedId) || BUILT_IN_THEMES[0];
     applyTokens(instant.tokens, instant.isDark);
     setCurrent(instant);
-    // Puis charger depuis l'API
     loadThemes();
   }, [loadThemes]);
 
@@ -268,19 +244,19 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const found = themes.find(t => t.id === id);
     if (!found) { setIsLoading(false); return; }
 
-    // Appliquer immédiatement (UI réactive)
+    // Appliquer immédiatement
     applyTokens(found.tokens, found.isDark);
     setCurrent(found);
-    storeThemeId(id);
+    localStorage.setItem(STORAGE_KEY, id);
 
-    // Persister en API
+    // Persister en API (le slug en base correspond à l'id)
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+      const token = localStorage.getItem('access_token') || '';
       await fetch(`${API}/api/v1/themes/${id}/activate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
-    } catch { /* silencieux — le thème est déjà appliqué localement */ }
+    } catch { /* silencieux — thème déjà appliqué localement */ }
     finally { setIsLoading(false); }
   }, [themes, API]);
 
