@@ -5,7 +5,7 @@ import {
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ProspectsService, CreateProspectDto } from './prospects.service';
 
-@Controller('api/v1/prospects')
+@Controller('prospects')
 @UseGuards(JwtAuthGuard)
 export class ProspectsController {
   constructor(private readonly svc: ProspectsService) {}
