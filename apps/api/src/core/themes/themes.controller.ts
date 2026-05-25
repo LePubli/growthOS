@@ -4,15 +4,12 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { ApiTags, ApiBearerAuth, ApiConsumes, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles, CurrentUser, Public } from '../../common/decorators';
 import { ThemeEngineService } from './theme-engine.service';
 import { ThemesService } from './themes.service';
 
-@ApiTags('Themes')
-@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('themes')
 export class ThemesController {
@@ -23,62 +20,53 @@ export class ThemesController {
 
   @Get('active')
   @Public()
-  @ApiOperation({ summary: 'Thème actif (public — appelé par ThemeProvider)' })
   async getActive(@CurrentUser() user: any) {
     const tenantId = user?.tenantId;
-    if (!tenantId) {
-      return { slug: 'odoo-default', tokens: {}, name: 'GrowthOS Default' };
-    }
+    if (!tenantId) return { slug: 'default', tokens: {}, name: 'GrowthOS Default' };
     return this.engine.getActiveThemeForTenant(tenantId);
   }
 
   @Get('css-vars')
-  @ApiOperation({ summary: 'CSS variables du thème actif' })
   async getCssVars(@CurrentUser() user: any) {
     const theme = await this.engine.getActiveThemeForTenant(user.tenantId);
     return this.engine.generateCssVariables(theme.tokens || {});
   }
 
   @Get()
-  @ApiOperation({ summary: 'Liste tous les thèmes disponibles' })
   async list() {
     return this.themes.list();
   }
 
-  @Post(':id/activate')
+  // ← Accepte id OU slug (ex: 'light', 'dark', 'default', ou un UUID)
+  @Post(':idOrSlug/activate')
   @Roles('admin', 'owner')
-  @ApiOperation({ summary: 'Activer un thème — changement instantané' })
-  async activate(@Param('id') id: string, @CurrentUser() user: any) {
-    const theme = await this.engine.activateTheme(user.tenantId, id);
-    return { message: `Thème "${theme.name}" activé`, theme: theme.name };
+  async activate(@Param('idOrSlug') idOrSlug: string, @CurrentUser() user: any) {
+    const theme = await this.findByIdOrSlug(idOrSlug);
+    const activated = await this.engine.activateTheme(user.tenantId, theme.id);
+    return { message: `Thème "${activated.name}" activé`, theme: activated.name };
   }
 
   @Post()
   @Roles('admin', 'owner')
-  @ApiOperation({ summary: 'Créer un thème custom' })
   async create(@Body() body: any, @CurrentUser() user: any) {
     return this.themes.create(body, user.id);
   }
 
-  @Patch(':id')
-  @Roles('admin', 'owner')
-  @ApiOperation({ summary: 'Modifier un thème' })
-  async update(@Param('id') id: string, @Body() body: any) {
-    return this.themes.update(id, body);
-  }
-
   @Patch('custom-tokens')
   @Roles('admin', 'owner')
-  @ApiOperation({ summary: 'Override CSS tokens sur le thème actif' })
   async updateTokens(@Body() tokens: Record<string, any>, @CurrentUser() user: any) {
     await this.engine.updateCustomTokens(user.tenantId, tokens);
     return { message: 'Tokens mis à jour' };
   }
 
+  @Patch(':id')
+  @Roles('admin', 'owner')
+  async update(@Param('id') id: string, @Body() body: any) {
+    return this.themes.update(id, body);
+  }
+
   @Post('import')
   @Roles('admin', 'owner')
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Importer un thème depuis un fichier JSON' })
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024 },
@@ -93,7 +81,6 @@ export class ThemesController {
   }
 
   @Get(':id/export')
-  @ApiOperation({ summary: 'Exporter un thème en JSON' })
   async export(@Param('id') id: string) {
     return this.themes.exportToJson(id);
   }
@@ -103,5 +90,37 @@ export class ThemesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string) {
     await this.themes.delete(id);
+  }
+
+  // ── Helper privé ──────────────────────────────────────────────────────
+  private async findByIdOrSlug(idOrSlug: string) {
+    // UUID format → chercher par id
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
+
+    if (isUuid) {
+      const t = await this.themes['prisma'].theme.findUnique({ where: { id: idOrSlug } });
+      if (t) return t;
+    }
+
+    // Sinon chercher par slug ou name
+    const bySlug = await this.themes['prisma'].theme.findFirst({
+      where: { OR: [{ slug: idOrSlug }, { name: idOrSlug }] },
+    });
+
+    if (bySlug) return bySlug;
+
+    // Fallback : créer un thème minimal si inexistant (pour les thèmes built-in)
+    return this.themes['prisma'].theme.upsert({
+      where: { slug: idOrSlug },
+      create: {
+        name: idOrSlug.charAt(0).toUpperCase() + idOrSlug.slice(1),
+        slug: idOrSlug,
+        displayName: idOrSlug.charAt(0).toUpperCase() + idOrSlug.slice(1),
+        isActive: true,
+        isBuiltin: true,
+        tokens: {},
+      },
+      update: {},
+    });
   }
 }
