@@ -78,6 +78,8 @@ export class PluginRegistryService {
       }
     }
 
+    // Aussi émettre via EventEmitter2 pour les listeners NestJS natifs
+    this.eventEmitter.emit(hook, payload);
   }
 
   // ── Activer / Désactiver un plugin ────────────────────────────────────────
@@ -108,6 +110,10 @@ export class PluginRegistryService {
 
   get(name: string): PluginMeta | undefined {
     return this.plugins.get(name);
+  }
+
+  getHandlers(hook: HookName): Array<(payload: any) => Promise<void>> {
+    return (this.hookHandlers.get(hook) || []).map(h => h.handler);
   }
 
   isActive(name: string): boolean {
