@@ -78,8 +78,6 @@ export class PluginRegistryService {
       }
     }
 
-    // Aussi émettre via EventEmitter2 pour les listeners NestJS natifs
-    this.eventEmitter.emit(hook, payload);
   }
 
   // ── Activer / Désactiver un plugin ────────────────────────────────────────

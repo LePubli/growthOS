@@ -1,166 +1,187 @@
 'use client';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Plus, Euro, Calendar, MoreHorizontal, Loader2, X, CheckCircle, AlertCircle } from 'lucide-react';
 
-import { useState } from 'react';
-import {
-  Plus, MoreHorizontal, DollarSign, Calendar,
-  User, ChevronRight, Search, Filter, Building2
-} from 'lucide-react';
-
-interface Deal {
-  id: string;
-  title: string;
-  company: string;
-  contact: string;
-  value: number;
-  probability: number;
-  dueDate?: string;
-  stage: string;
-  tags?: string[];
-}
+interface Deal { id:string; title:string; company:string; contact?:string; value:number; probability:number; stage:string; dueDate?:string; tags?:string[]; }
 
 const STAGES = [
-  { id:'lead',        label:'Leads',         color:'bg-gray-400',   light:'bg-gray-50',   count:0 },
-  { id:'contacted',   label:'Contactés',     color:'bg-blue-500',   light:'bg-blue-50',   count:0 },
-  { id:'qualified',   label:'Qualifiés',     color:'bg-purple-500', light:'bg-purple-50', count:0 },
-  { id:'negotiation', label:'Négociation',   color:'bg-amber-500',  light:'bg-amber-50',  count:0 },
-  { id:'won',         label:'Gagnés',        color:'bg-green-500',  light:'bg-green-50',  count:0 },
+  { id:'lead', label:'Lead', color:'bg-gray-50 border-gray-200' },
+  { id:'qualified', label:'Qualifié', color:'bg-blue-50 border-blue-200' },
+  { id:'proposal', label:'Proposition', color:'bg-purple-50 border-purple-200' },
+  { id:'negotiation', label:'Négociation', color:'bg-amber-50 border-amber-200' },
+  { id:'won', label:'Gagné', color:'bg-green-50 border-green-200' },
 ];
 
-const MOCK_DEALS: Deal[] = [
-  { id:'1', title:'Migration CRM',      company:'Acme Corp',    contact:'Sophie Martin', value:12400, probability:75, dueDate:'2026-06-15', stage:'negotiation', tags:['Urgent'] },
-  { id:'2', title:'Audit SEO complet',  company:'TechVision',   contact:'Thomas Durand', value:4800,  probability:50, dueDate:'2026-06-30', stage:'qualified',   tags:[] },
-  { id:'3', title:'Refonte site web',   company:'StartupX',     contact:'Marie Leroy',   value:8500,  probability:30, dueDate:'2026-07-10', stage:'contacted',   tags:['Nouveau'] },
-  { id:'4', title:'Campagne Google Ads',company:'BigCorp',      contact:'Pierre Moreau', value:3200,  probability:90, dueDate:'2026-06-01', stage:'won',         tags:[] },
-  { id:'5', title:'Formation équipe',   company:'GrowthCo',     contact:'Lucie Bernard', value:2100,  probability:20, dueDate:'2026-07-20', stage:'lead',        tags:[] },
-  { id:'6', title:'Automatisation mails',company:'Agency FR',   contact:'Antoine Petit', value:6700,  probability:60, dueDate:'2026-06-20', stage:'qualified',   tags:['Chaud'] },
-  { id:'7', title:'Stratégie LinkedIn', company:'SaaS Plus',    contact:'Julie Simon',   value:5500,  probability:45, dueDate:'2026-07-05', stage:'contacted',   tags:[] },
-  { id:'8', title:'Plugin CRM custom',  company:'Corp XYZ',     contact:'Marc Dupont',   value:15000, probability:80, dueDate:'2026-06-25', stage:'negotiation', tags:['Enterprise'] },
-];
+function CreateDealModal({ onClose, onSave, apiUrl }: { onClose:()=>void; onSave:(deal:Deal)=>void; apiUrl:string }) {
+  const [form, setForm] = useState({ title:'', company:'', contact:'', value:'', probability:'50', stage:'lead', dueDate:'' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string|null>(null);
+  const set = (k:string, v:string) => setForm(f=>({...f,[k]:v}));
 
-function DealCard({ deal, onMove }: { deal: Deal; onMove: (id: string, stage: string) => void }) {
-  const stageIdx = STAGES.findIndex(s => s.id === deal.stage);
+  const save = async () => {
+    if (!form.title) { setError('Le titre est requis'); return; }
+    setLoading(true); setError(null);
+    try {
+      const token = localStorage.getItem('access_token')||'';
+      const res = await fetch(`${apiUrl}/api/v1/deals`, {
+        method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},
+        body:JSON.stringify({...form,value:parseFloat(form.value)||0,probability:parseInt(form.probability)||50}),
+      });
+      if (!res.ok) { const d=await res.json(); throw new Error(d.message||'Erreur'); }
+      const deal = await res.json();
+      onSave(deal); onClose();
+    } catch(e:any) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-all group cursor-grab">
-      <div className="flex items-start justify-between mb-3">
-        <h3 className="font-medium text-gray-900 text-sm leading-snug flex-1">{deal.title}</h3>
-        <button className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600 ml-2">
-          <MoreHorizontal className="w-4 h-4" />
-        </button>
-      </div>
-      <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
-        <Building2 className="w-3 h-3" />
-        <span>{deal.company}</span>
-      </div>
-      <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
-        <User className="w-3 h-3" />
-        <span>{deal.contact}</span>
-      </div>
-      {deal.tags && deal.tags.length > 0 && (
-        <div className="flex gap-1 mb-3">
-          {deal.tags.map(t => (
-            <span key={t} className="text-xs bg-teal-50 text-teal-600 px-2 py-0.5 rounded-full">{t}</span>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-bold text-gray-900">Nouveau deal</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="space-y-3 mb-4">
+          {[{k:'title',l:'Titre *',p:'Ex: Acme Corp — Enterprise'},{k:'company',l:'Entreprise',p:'Nom de l\'entreprise'},{k:'contact',l:'Contact',p:'Nom du contact'}].map(f=>(
+            <div key={f.k}>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{f.l}</label>
+              <input value={(form as any)[f.k]} onChange={e=>set(f.k,e.target.value)} placeholder={f.p} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+            </div>
           ))}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Valeur (€)</label>
+              <input type="number" value={form.value} onChange={e=>set('value',e.target.value)} placeholder="0" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Probabilité (%)</label>
+              <input type="number" min="0" max="100" value={form.probability} onChange={e=>set('probability',e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Étape</label>
+              <select value={form.stage} onChange={e=>set('stage',e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                {STAGES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Date closing</label>
+              <input type="date" value={form.dueDate} onChange={e=>set('dueDate',e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+            </div>
+          </div>
         </div>
-      )}
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-bold text-gray-900">{deal.value.toLocaleString()}€</span>
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-          deal.probability >= 70 ? 'bg-green-50 text-green-600' :
-          deal.probability >= 40 ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-500'
-        }`}>{deal.probability}%</span>
-      </div>
-      {deal.dueDate && (
-        <div className="flex items-center gap-1.5 mt-2 text-xs text-gray-400">
-          <Calendar className="w-3 h-3" />
-          <span>{new Date(deal.dueDate).toLocaleDateString('fr-FR')}</span>
+        {error && <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2 mb-3"><AlertCircle className="w-4 h-4"/>{error}</div>}
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
+          <button onClick={save} disabled={loading} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+            {loading?<Loader2 className="w-4 h-4 animate-spin"/>:<CheckCircle className="w-4 h-4"/>}Créer
+          </button>
         </div>
-      )}
-      {/* Boutons déplacer */}
-      <div className="flex gap-1 mt-3 pt-3 border-t border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity">
-        {stageIdx > 0 && (
-          <button onClick={() => onMove(deal.id, STAGES[stageIdx-1].id)}
-            className="flex-1 text-xs py-1 bg-gray-50 rounded-lg text-gray-500 hover:bg-gray-100">
-            ← Reculer
-          </button>
-        )}
-        {stageIdx < STAGES.length - 1 && (
-          <button onClick={() => onMove(deal.id, STAGES[stageIdx+1].id)}
-            className="flex-1 text-xs py-1 bg-teal-50 rounded-lg text-teal-600 hover:bg-teal-100">
-            Avancer →
-          </button>
-        )}
       </div>
     </div>
   );
 }
 
 export default function PipelinePage() {
-  const [deals, setDeals] = useState<Deal[]>(MOCK_DEALS);
-  const [search, setSearch] = useState('');
+  const router = useRouter();
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [showCreate, setShowCreate] = useState(false);
+  const [toast, setToast] = useState<string|null>(null);
+  const [moving, setMoving] = useState<string|null>(null);
+  const API = process.env.NEXT_PUBLIC_API_URL || '';
 
-  const moveDeal = (id: string, newStage: string) => {
-    setDeals(prev => prev.map(d => d.id === id ? { ...d, stage: newStage } : d));
+  const showToast = (msg:string) => { setToast(msg); setTimeout(()=>setToast(null),3000); };
+
+  const fetchDeals = async () => {
+    try {
+      const token = localStorage.getItem('access_token')||'';
+      const res = await fetch(`${API}/api/v1/deals`,{headers:{Authorization:`Bearer ${token}`}});
+      if (res.ok) { const d=await res.json(); setDeals(Array.isArray(d)?d:d.data||[]); }
+    } catch {}
   };
 
-  const filtered = deals.filter(d =>
-    !search || `${d.title} ${d.company} ${d.contact}`.toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(()=>{ fetchDeals(); },[]);
 
-  const totalPipeline = deals.filter(d => d.stage !== 'won').reduce((s, d) => s + d.value, 0);
-  const totalWon = deals.filter(d => d.stage === 'won').reduce((s, d) => s + d.value, 0);
+  const moveStage = async (dealId:string, newStage:string) => {
+    setMoving(dealId);
+    try {
+      const token = localStorage.getItem('access_token')||'';
+      await fetch(`${API}/api/v1/deals/${dealId}/move`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({stage:newStage})});
+      setDeals(d=>d.map(x=>x.id===dealId?{...x,stage:newStage}:x));
+    } catch { showToast('Erreur lors du déplacement'); }
+    finally { setMoving(null); }
+  };
+
+  const totalPipeline = deals.filter(d=>!['won','lost'].includes(d.stage)).reduce((s,d)=>s+d.value,0);
+  const wonValue = deals.filter(d=>d.stage==='won').reduce((s,d)=>s+d.value,0);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      {toast && <div className="fixed top-6 right-6 z-50 bg-teal-600 text-white px-4 py-3 rounded-xl shadow-lg text-sm flex items-center gap-2"><CheckCircle className="w-4 h-4"/>{toast}</div>}
+      {showCreate && <CreateDealModal apiUrl={API} onClose={()=>setShowCreate(false)} onSave={d=>{setDeals(prev=>[...prev,d]);showToast('Deal créé ✓');}}/>}
+
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Pipeline commercial</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            {totalPipeline.toLocaleString()}€ en cours · {totalWon.toLocaleString()}€ gagnés
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">Pipeline Commercial</h1>
+          <p className="text-sm text-gray-400">{deals.length} deals · {totalPipeline.toLocaleString()}€ en cours · {wonValue.toLocaleString()}€ gagnés</p>
         </div>
-        <div className="flex gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
-              className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-          </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl text-sm font-medium hover:bg-teal-700">
-            <Plus className="w-4 h-4" /> Nouvelle opportunité
-          </button>
-        </div>
+        <button onClick={()=>setShowCreate(true)} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl text-sm font-medium hover:bg-teal-700">
+          <Plus className="w-4 h-4"/>Nouveau deal
+        </button>
       </div>
 
-      {/* Kanban */}
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="flex gap-4 overflow-x-auto pb-4" style={{minHeight:'calc(100vh - 200px)'}}>
         {STAGES.map(stage => {
-          const stageDeals = filtered.filter(d => d.stage === stage.id);
-          const stageValue = stageDeals.reduce((s, d) => s + d.value, 0);
+          const stageDeals = deals.filter(d=>d.stage===stage.id);
+          const stageValue = stageDeals.reduce((s,d)=>s+d.value,0);
           return (
             <div key={stage.id} className="flex-shrink-0 w-72">
-              {/* Header colonne */}
-              <div className={`flex items-center justify-between px-3 py-2 rounded-xl mb-3 ${stage.light}`}>
+              <div className={`${stage.color} border rounded-xl px-3 py-2 mb-3 flex items-center justify-between`}>
+                <span className="font-semibold text-gray-800 text-sm">{stage.label}</span>
                 <div className="flex items-center gap-2">
-                  <div className={`w-2.5 h-2.5 rounded-full ${stage.color}`} />
-                  <span className="font-semibold text-sm text-gray-700">{stage.label}</span>
-                  <span className="text-xs bg-white text-gray-500 px-1.5 py-0.5 rounded-full shadow-sm">
-                    {stageDeals.length}
-                  </span>
+                  <span className="text-xs font-bold text-gray-600">{stageDeals.length}</span>
+                  {stageValue>0 && <span className="text-xs text-gray-400">{stageValue.toLocaleString()}€</span>}
                 </div>
-                {stageValue > 0 && (
-                  <span className="text-xs font-semibold text-gray-600">
-                    {stageValue.toLocaleString()}€
-                  </span>
-                )}
               </div>
-
-              {/* Cards */}
               <div className="space-y-3">
-                {stageDeals.map(deal => (
-                  <DealCard key={deal.id} deal={deal} onMove={moveDeal} />
-                ))}
-                <button className="w-full flex items-center justify-center gap-2 py-3 text-sm text-gray-400 hover:text-gray-600 border-2 border-dashed border-gray-200 rounded-xl hover:border-gray-300 transition-all">
-                  <Plus className="w-4 h-4" /> Ajouter
+                {stageDeals.map(deal => {
+                  const stageIdx = STAGES.findIndex(s=>s.id===deal.stage);
+                  return (
+                    <div key={deal.id} className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-teal-200 transition-all">
+                      <div className="flex items-start justify-between mb-2 cursor-pointer" onClick={()=>router.push(`/pipeline/${deal.id}`)}>
+                        <h3 className="font-medium text-gray-900 text-sm leading-tight flex-1">{deal.title}</h3>
+                        <MoreHorizontal className="w-4 h-4 text-gray-300 ml-1 flex-shrink-0"/>
+                      </div>
+                      <p className="text-xs text-gray-400 mb-3 cursor-pointer" onClick={()=>router.push(`/pipeline/${deal.id}`)}>
+                        {deal.company}{deal.contact?` · ${deal.contact}`:''}
+                      </p>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-bold text-gray-900 text-sm">{deal.value.toLocaleString()}€</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${deal.probability>=70?'bg-green-50 text-green-600':deal.probability>=40?'bg-amber-50 text-amber-600':'bg-gray-100 text-gray-500'}`}>{deal.probability}%</span>
+                      </div>
+                      {deal.dueDate && <div className="flex items-center gap-1 text-xs text-gray-400 mb-3"><Calendar className="w-3 h-3"/>{new Date(deal.dueDate).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</div>}
+                      {/* Boutons déplacer stage */}
+                      <div className="flex gap-1.5 pt-2 border-t border-gray-100">
+                        {stageIdx > 0 && (
+                          <button onClick={()=>moveStage(deal.id,STAGES[stageIdx-1].id)} disabled={moving===deal.id}
+                            className="flex-1 py-1.5 text-xs bg-gray-50 text-gray-500 rounded-lg hover:bg-gray-100 transition-all">
+                            ← {STAGES[stageIdx-1].label}
+                          </button>
+                        )}
+                        {stageIdx < STAGES.length-1 && (
+                          <button onClick={()=>moveStage(deal.id,STAGES[stageIdx+1].id)} disabled={moving===deal.id}
+                            className="flex-1 py-1.5 text-xs bg-teal-50 text-teal-600 rounded-lg hover:bg-teal-100 transition-all font-medium">
+                            {STAGES[stageIdx+1].label} →
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                <button onClick={()=>setShowCreate(true)} className="w-full py-2 text-sm text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-xl border border-dashed border-gray-200 hover:border-teal-300 transition-all">
+                  <Plus className="w-4 h-4 inline mr-1"/>Ajouter
                 </button>
               </div>
             </div>
