@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 export interface CreateProspectDto {
   firstName?:   string;
@@ -18,7 +19,10 @@ export interface CreateProspectDto {
 
 @Injectable()
 export class ProspectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emitter: EventEmitter2,
+  ) {}
 
   async findAll(tenantId: string, filters: {
     search?: string; status?: string;
@@ -52,14 +56,30 @@ export class ProspectsService {
   }
 
   async create(tenantId: string, dto: CreateProspectDto) {
-    return this.prisma.prospect.create({
-      data: { ...dto, tenantId, status: dto.status || 'new', score: dto.score || 0, tags: dto.tags || [] },
+    const prospect = await this.prisma.prospect.create({
+      data: {
+        ...dto,
+        tenantId,
+        status: dto.status || 'new',
+        score:  dto.score  || 0,
+        tags:   dto.tags   || [],
+      },
     });
+
+    // ← Émettre l'événement pour les plugins
+    this.emitter.emit('prospect.created', { tenantId, prospect });
+
+    return prospect;
   }
 
   async update(id: string, tenantId: string, dto: Partial<CreateProspectDto>) {
     await this.findOne(id, tenantId);
-    return this.prisma.prospect.update({ where: { id }, data: dto });
+    const updated = await this.prisma.prospect.update({ where: { id }, data: dto });
+
+    // ← Émettre l'événement pour les plugins
+    this.emitter.emit('prospect.updated', { tenantId, prospect: updated });
+
+    return updated;
   }
 
   async remove(id: string, tenantId: string) {
@@ -72,7 +92,12 @@ export class ProspectsService {
       ...p, tenantId,
       status: p.status || 'new', score: p.score || 0, tags: p.tags || [],
     }));
-    return this.prisma.prospect.createMany({ data, skipDuplicates: true });
+    const result = await this.prisma.prospect.createMany({ data, skipDuplicates: true });
+
+    // Émettre un événement global pour l'import en masse
+    this.emitter.emit('prospects.bulk_created', { tenantId, count: result.count });
+
+    return result;
   }
 
   async getStats(tenantId: string) {
