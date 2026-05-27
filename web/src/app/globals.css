@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ══ THÈME ODOO par défaut ══════════════════════════════════════════════ */
+:root {
+  /* Couleurs Odoo Community */
+  --color-primary:       #875A7B;
+  --color-primary-light: #F3EEF1;
+  --color-primary-dark:  #6D4863;
+  --color-accent:        #00A09D;
+
+  /* Sidebar sombre style Odoo */
+  --sidebar-bg:          #2C3E50;
+  --sidebar-text:        #B8C4CE;
+  --sidebar-hover:       #3D5166;
+
+  /* Body */
+  --body-bg:             #F5F5F5;
+  --card-bg:             #FFFFFF;
+  --card-border:         #E0E0E0;
+
+  /* Texte */
+  --text-primary:        #2C3E50;
+  --text-secondary:      #555555;
+  --text-muted:          #8A8A8A;
+
+  /* Rayon */
+  --radius-card:         0.5rem;
+  --font-sans:           Roboto, system-ui, sans-serif;
+}
+
+/* ── Application globale des tokens ─────────────────────────────────── */
+html, body {
+  background-color: var(--body-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  height: 100%;
+}
+
+/* Sidebar */
+[data-sidebar] {
+  background-color: var(--sidebar-bg) !important;
+  color: var(--sidebar-text) !important;
+}
+[data-sidebar-item]:hover {
+  background-color: var(--sidebar-hover) !important;
+}
+[data-sidebar-item-active] {
+  background-color: var(--color-primary) !important;
+  color: white !important;
+}
+
+/* Cards */
+[data-card] {
+  background-color: var(--card-bg);
+  border-color: var(--card-border);
+  border-radius: var(--radius-card);
+}
+
+/* Boutons primaires — override Tailwind hardcodé */
+[data-btn-primary],
+.btn-primary {
+  background-color: var(--color-primary) !important;
+  color: #fff !important;
+}
+[data-btn-primary]:hover,
+.btn-primary:hover {
+  background-color: var(--color-primary-dark) !important;
+}
+
+/* Badges */
+[data-accent] { color: var(--color-primary) !important; }
+[data-accent-bg] { background-color: var(--color-primary-light) !important; }
+
+/* ── Transition douce changement de thème ───────────────────────────── */
+*, *::before, *::after {
+  transition: background-color 0.25s ease, color 0.15s ease, border-color 0.2s ease;
+}
+button, a, input, select, textarea {
+  transition: none;
+}
+
+/* ── Scrollbar slim ──────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 99px; }
+
+/* ── Override classes Tailwind teal → var() pour compatibilité thème ── */
+.bg-teal-600  { background-color: var(--color-primary) !important; }
+.bg-teal-700  { background-color: var(--color-primary-dark) !important; }
+.bg-teal-50   { background-color: var(--color-primary-light) !important; }
+.text-teal-600 { color: var(--color-primary) !important; }
+.text-teal-700 { color: var(--color-primary-dark) !important; }
+.border-teal-300 { border-color: var(--color-primary) !important; }
+.ring-teal-500 { --tw-ring-color: var(--color-primary) !important; }
+.focus\:ring-teal-500:focus { --tw-ring-color: var(--color-primary) !important; }
