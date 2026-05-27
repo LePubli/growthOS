@@ -2,18 +2,18 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { BookTemplate, usePathname } from 'next/navigation';
-import { BookTemplate,
+import { usePathname } from 'next/navigation';
+import {
   LayoutDashboard, Building2, GitBranch, Search, Bell,
   Settings, Puzzle, Palette, Mail, Target, RefreshCw,
   Bot, User, Webhook, BarChart2, Download, Zap,
   ChevronDown, LogOut, Plus, HelpCircle,
-  Globe, Activity, Store,
+  Globe, Activity, Store, FileText,
 } from 'lucide-react';
-import { BookTemplate, useAuthStore } from '@/stores/auth.store';
-import { BookTemplate, useTheme } from '@/providers/theme-provider';
-import { BookTemplate, cn } from '@/lib/utils';
-import { BookTemplate, CommandPalette } from '@/components/command/CommandPalette';
+import { useAuthStore } from '@/stores/auth.store';
+import { useTheme } from '@/providers/theme-provider';
+import { cn } from '@/lib/utils';
+import { CommandPalette } from '@/components/command/CommandPalette';
 
 interface NavItem {
   href: string;
@@ -58,7 +58,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/sequences', label: 'Séquences Email', icon: <Mail size={16} /> },
       { href: '/inbound', label: 'Inbound', icon: <Download size={16} /> },
       { href: '/abm', label: 'ABM / TAM', icon: <Target size={16} /> },
-      { href: '/templates', label: 'Templates Email', icon: <BookTemplate size={16} /> },
+      { href: '/templates', label: 'Templates Email', icon: <FileText size={16} /> },
       { href: '/crm-sync', label: 'CRM Sync', icon: <RefreshCw size={16} /> },
     ],
   },
