@@ -1,152 +1,103 @@
 'use client';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Zap, Star, CheckCircle, Filter, RefreshCw, TrendingUp, Users, DollarSign, Newspaper, Cpu, AlertCircle } from 'lucide-react';
 
-import { useState } from 'react';
-import {
-  Zap, TrendingUp, Globe, Linkedin, Twitter,
-  Bell, Filter, RefreshCw, ExternalLink, Clock,
-  Building2, ChevronRight, Star, AlertCircle, CheckCircle
-} from 'lucide-react';
-
-interface Signal {
-  id: string;
-  type: 'funding' | 'hiring' | 'news' | 'social' | 'technology' | 'intent';
-  company: string;
-  title: string;
-  description: string;
-  time: string;
-  score: number;
-  url?: string;
-  isRead?: boolean;
-  isStarred?: boolean;
-}
-
-const SIGNAL_CONFIG = {
-  funding:    { label:'Levée de fonds', color:'text-green-600',  bg:'bg-green-50',   icon:<TrendingUp className="w-4 h-4" /> },
-  hiring:     { label:'Recrutement',    color:'text-blue-600',   bg:'bg-blue-50',    icon:<Building2 className="w-4 h-4" /> },
-  news:       { label:'Actualité',      color:'text-gray-600',   bg:'bg-gray-100',   icon:<Globe className="w-4 h-4" /> },
-  social:     { label:'Social',         color:'text-purple-600', bg:'bg-purple-50',  icon:<Twitter className="w-4 h-4" /> },
-  technology: { label:'Technologie',    color:'text-orange-600', bg:'bg-orange-50',  icon:<Zap className="w-4 h-4" /> },
-  intent:     { label:'Intent signal',  color:'text-red-600',    bg:'bg-red-50',     icon:<Bell className="w-4 h-4" /> },
+const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
+  funding:    { label:'Financement',   color:'text-green-700',  bg:'bg-green-50',  icon:<DollarSign className="w-4 h-4"/> },
+  hiring:     { label:'Recrutement',   color:'text-blue-700',   bg:'bg-blue-50',   icon:<Users className="w-4 h-4"/> },
+  news:       { label:'Actualité',     color:'text-purple-700', bg:'bg-purple-50', icon:<Newspaper className="w-4 h-4"/> },
+  technology: { label:'Technologie',   color:'text-yellow-700', bg:'bg-yellow-50', icon:<Cpu className="w-4 h-4"/> },
+  intent:     { label:'Intention',     color:'text-red-700',    bg:'bg-red-50',    icon:<TrendingUp className="w-4 h-4"/> },
 };
 
-const MOCK_SIGNALS: Signal[] = [
-  { id:'1', type:'funding', company:'TechVision', title:'Série A de 5M€ clôturée', description:'TechVision vient de clôturer une levée de fonds Série A de 5 millions d\'euros pour accélérer son développement commercial.', time:'il y a 2h', score:92, isRead:false, isStarred:true },
-  { id:'2', type:'hiring', company:'Acme Corp', title:'3 postes commercial ouverts', description:'Acme Corp recrute activement 3 commerciaux B2B, signal fort d\'une expansion de leur force de vente.', time:'il y a 4h', score:78, isRead:false },
-  { id:'3', type:'intent', company:'StartupX', title:'Recherches CRM détectées', description:'Des recherches intensives sur les solutions CRM et prospection B2B ont été détectées pour ce compte.', time:'il y a 6h', score:85, isRead:false },
-  { id:'4', type:'news', company:'BigCorp', title:'Nouveau directeur commercial nommé', description:'BigCorp annonce la nomination d\'un nouveau VP Sales venant de Salesforce — opportunité de repositionnement.', time:'hier', score:71, isRead:true },
-  { id:'5', type:'technology', company:'GrowthCo', title:'Migration vers HubSpot détectée', description:'GrowthCo semble migrer depuis Pipedrive vers HubSpot, identifié via les offres d\'emploi.', time:'hier', score:65, isRead:true },
-  { id:'6', type:'social', company:'Agency FR', title:'Post LinkedIn sur la croissance', description:'Le CEO d\'Agency FR a publié un post sur leur objectif de doubler le CA d\'ici fin 2026.', time:'il y a 2j', score:58, isRead:true },
+const MOCK_SIGNALS = [
+  { id:'1', type:'funding',    company:'TechVision', title:'Levée de fonds Série A — 5M€', score:92, isRead:false, isStarred:false, createdAt:'il y a 5 min' },
+  { id:'2', type:'hiring',     company:'BigCorp',    title:'Recrute 5 commerciaux B2B',      score:78, isRead:false, isStarred:true,  createdAt:'il y a 30 min' },
+  { id:'3', type:'intent',     company:'StartupX',   title:'Visite répétée page pricing (×7)',score:88, isRead:true,  isStarred:false, createdAt:'il y a 1h' },
+  { id:'4', type:'news',       company:'Acme Corp',  title:'Acme Corp ouvre un bureau à Paris',score:65, isRead:true,  isStarred:false, createdAt:'il y a 2h' },
+  { id:'5', type:'technology', company:'GrowthCo',   title:'Migration vers Salesforce CRM',   score:71, isRead:false, isStarred:false, createdAt:'il y a 3h' },
 ];
 
-export default function SignauxPage() {
-  const [signals, setSignals] = useState<Signal[]>(MOCK_SIGNALS);
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [showUnread, setShowUnread] = useState(false);
+export default function SignalsPage() {
+  const router = useRouter();
+  const [signals, setSignals] = useState(MOCK_SIGNALS);
+  const [filter, setFilter] = useState('all');
+  const [fetching, setFetching] = useState(false);
+  const API = process.env.NEXT_PUBLIC_API_URL || '';
 
-  const toggleStar = (id: string) => setSignals(s => s.map(sig => sig.id === id ? {...sig, isStarred: !sig.isStarred} : sig));
-  const markRead = (id: string) => setSignals(s => s.map(sig => sig.id === id ? {...sig, isRead: true} : sig));
+  useEffect(()=>{
+    const fetch_ = async () => {
+      setFetching(true);
+      try {
+        const token = localStorage.getItem('access_token')||'';
+        const res = await fetch(`${API}/api/v1/signals`,{headers:{Authorization:`Bearer ${token}`}});
+        if (res.ok) { const d=await res.json(); const l=Array.isArray(d)?d:d.data||[]; if(l.length>0) setSignals(l); }
+      } catch {} finally { setFetching(false); }
+    };
+    fetch_();
+  },[]);
 
-  const filtered = signals.filter(s => {
-    const matchType = typeFilter === 'all' || s.type === typeFilter;
-    const matchUnread = !showUnread || !s.isRead;
-    return matchType && matchUnread;
+  const markAllRead = () => setSignals(s=>s.map(x=>({...x,isRead:true})));
+  const toggleStar = (id:string, e:React.MouseEvent) => { e.stopPropagation(); setSignals(s=>s.map(x=>x.id===id?{...x,isStarred:!x.isStarred}:x)); };
+  const markRead = (id:string) => setSignals(s=>s.map(x=>x.id===id?{...x,isRead:true}:x));
+
+  const filtered = signals.filter(s=>{
+    if(filter==='unread') return !s.isRead;
+    if(filter==='starred') return s.isStarred;
+    if(filter!=='all') return s.type===filter;
+    return true;
   });
-
-  const unreadCount = signals.filter(s => !s.isRead).length;
+  const unread = signals.filter(s=>!s.isRead).length;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Signaux & Intentions</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{unreadCount} nouveaux signaux · Mis à jour automatiquement</p>
+        <div><h1 className="text-2xl font-bold text-gray-900">Signaux d'intention</h1>
+          <p className="text-sm text-gray-400">{unread} non lu{unread>1?'s':''}</p></div>
+        <div className="flex gap-2">
+          <button onClick={()=>{}} disabled={fetching} className="p-2 bg-white border border-gray-200 rounded-xl text-gray-500">
+            <RefreshCw className={`w-4 h-4 ${fetching?'animate-spin':''}`}/>
+          </button>
+          <button onClick={markAllRead} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-500 hover:border-teal-300">
+            <CheckCircle className="w-4 h-4"/>Tout marquer lu
+          </button>
         </div>
-        <button className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-500">
-          <RefreshCw className="w-4 h-4" /> Actualiser
-        </button>
       </div>
 
-      {/* Filtres */}
-      <div className="flex flex-wrap gap-2 mb-5">
-        <button
-          onClick={() => setShowUnread(!showUnread)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-            showUnread ? 'bg-teal-600 text-white' : 'bg-white text-gray-500 border border-gray-200'
-          }`}
-        >
-          <Bell className="w-4 h-4" />
-          Non lus ({unreadCount})
-        </button>
-        {['all', ...Object.keys(SIGNAL_CONFIG)].map(t => {
-          const cfg = SIGNAL_CONFIG[t as keyof typeof SIGNAL_CONFIG];
-          return (
-            <button key={t} onClick={() => setTypeFilter(t)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-                typeFilter === t ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 border border-gray-200'
-              }`}>
-              {cfg && <span className={cfg.color}>{cfg.icon}</span>}
-              {t === 'all' ? 'Tous' : cfg?.label}
-            </button>
-          );
-        })}
+      <div className="flex gap-2 mb-5 flex-wrap">
+        {[{k:'all',l:'Tous'},{k:'unread',l:`Non lus (${unread})`},{k:'starred',l:'⭐ Favoris'},...Object.entries(TYPE_CONFIG).map(([k,v])=>({k,l:v.label}))].map(f=>(
+          <button key={f.k} onClick={()=>setFilter(f.k)}
+            className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${filter===f.k?'bg-teal-600 text-white':'bg-white border border-gray-200 text-gray-500 hover:border-teal-300'}`}>{f.l}</button>
+        ))}
       </div>
 
-      <div className="space-y-3">
-        {filtered.map(signal => {
-          const cfg = SIGNAL_CONFIG[signal.type];
+      <div className="space-y-2">
+        {filtered.map(signal=>{
+          const type = TYPE_CONFIG[signal.type]||TYPE_CONFIG.news;
           return (
-            <div
-              key={signal.id}
-              className={`bg-white rounded-2xl border p-5 transition-all hover:shadow-md ${
-                !signal.isRead ? 'border-teal-200 shadow-sm' : 'border-gray-200'
-              }`}
-              onClick={() => markRead(signal.id)}
-            >
-              <div className="flex items-start gap-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${cfg.bg} ${cfg.color}`}>
-                  {cfg.icon}
+            <div key={signal.id} onClick={()=>{markRead(signal.id);router.push(`/signals/${signal.id}`);}}
+              className={`bg-white rounded-2xl border p-4 flex items-center gap-4 cursor-pointer hover:shadow-md transition-all ${!signal.isRead?'border-teal-200':'border-gray-200'}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${type.bg} ${type.color}`}>{type.icon}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-900 text-sm">{signal.company}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${type.bg} ${type.color}`}>{type.label}</span>
+                  {!signal.isRead&&<span className="w-2 h-2 rounded-full bg-teal-500 flex-shrink-0"/>}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-1">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.color} ${cfg.bg}`}>
-                      {cfg.label}
-                    </span>
-                    <span className="text-sm font-semibold text-gray-700">{signal.company}</span>
-                    {!signal.isRead && (
-                      <span className="w-2 h-2 rounded-full bg-teal-500" />
-                    )}
-                  </div>
-                  <h3 className="font-semibold text-gray-900 mb-1">{signal.title}</h3>
-                  <p className="text-sm text-gray-500 leading-relaxed">{signal.description}</p>
-                  <div className="flex items-center gap-4 mt-3">
-                    <span className="flex items-center gap-1 text-xs text-gray-400">
-                      <Clock className="w-3 h-3" /> {signal.time}
-                    </span>
-                    {signal.url && (
-                      <a href={signal.url} target="_blank" className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700">
-                        <ExternalLink className="w-3 h-3" /> Source
-                      </a>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-3">
-                  <div className={`text-sm font-bold px-2.5 py-1 rounded-xl ${
-                    signal.score >= 80 ? 'bg-green-50 text-green-600' :
-                    signal.score >= 60 ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {signal.score}
-                  </div>
-                  <button onClick={e => { e.stopPropagation(); toggleStar(signal.id); }} className="text-gray-300 hover:text-amber-400 transition-colors">
-                    <Star className={`w-4 h-4 ${signal.isStarred ? 'text-amber-400 fill-amber-400' : ''}`} />
-                  </button>
-                  <button className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 bg-teal-50 px-2 py-1 rounded-lg">
-                    Contacter <ChevronRight className="w-3 h-3" />
-                  </button>
-                </div>
+                <p className="text-sm text-gray-700 mt-0.5 truncate">{signal.title}</p>
+                <p className="text-xs text-gray-400">{signal.createdAt}</p>
+              </div>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <span className={`text-sm font-bold px-2.5 py-1 rounded-xl ${signal.score>=80?'bg-green-50 text-green-600':'bg-amber-50 text-amber-600'}`}>{signal.score}</span>
+                <button onClick={e=>toggleStar(signal.id,e)} className={signal.isStarred?'text-amber-400':'text-gray-300 hover:text-amber-400'}>
+                  <Star className={`w-4 h-4 ${signal.isStarred?'fill-amber-400':''}`}/>
+                </button>
               </div>
             </div>
           );
         })}
+        {filtered.length===0&&<div className="text-center py-16"><Zap className="w-10 h-10 text-gray-200 mx-auto mb-3"/><p className="text-gray-400">Aucun signal</p></div>}
       </div>
     </div>
   );
