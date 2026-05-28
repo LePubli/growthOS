@@ -1,0 +1,1 @@
+- [GrowthOS migration](growthos-migration.md) — Next.js → Vite+React migration patterns and sharp edges for this project

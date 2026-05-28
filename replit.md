@@ -1,44 +1,61 @@
-# [Project name]
+# GrowthOS
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+GrowthOS is a French B2B SaaS growth intelligence platform — CRM, prospecting, email sequences, signals, pipeline, analytics, plugins, themes, and workflows — migrated from Next.js to a Vite + React artifact in this pnpm monorepo.
 
 ## Run & Operate
 
+- `pnpm --filter @workspace/growthos run dev` — run GrowthOS frontend (port 20945, preview at `/`)
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **Frontend**: React + Vite, Tailwind CSS v4, wouter (routing), Zustand (auth store), @tanstack/react-query, sonner (toasts), lucide-react, recharts
+- **API client**: Axios with auto-refresh interceptors
+- Theme system: CSS custom properties (`--color-primary`, `--sidebar-bg`, etc.) toggled via ThemeProvider
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/growthos/src/` — main React app
+  - `App.tsx` — all routes (wouter Switch)
+  - `components/layout/AppShell.tsx` — sidebar nav + header
+  - `providers/theme-provider.tsx` — 7 built-in themes, CSS vars on `<html>`
+  - `stores/auth.store.ts` — Zustand persist store (login/register/logout)
+  - `lib/api-client.ts` — Axios instance with 401 refresh + tenant header
+  - `pages/` — one file per route (Dashboard, Prospects, Pipeline, Sequences, Signals, Sourcing, Plugins, Workflows, Themes, Settings/*)
+- `.migration-backup/apps/web/` — original Next.js source (reference only)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- `next/link` → wouter `<Link>`; `useRouter().push()` → wouter `useLocation()` setter; `useParams()` stays identical
+- `process.env.NEXT_PUBLIC_API_URL` → `import.meta.env.VITE_API_URL`
+- `@/plugins/ui-slots` (Next.js plugin system) → stubbed out (not ported)
+- Auth guard via `<RequireAuth>` wrapping `<AppShell>` — unauthenticated users redirected to `/login`
+- Demo mode: "Accès démo" button on login sets Zustand state directly without API call
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Login / Register (+ demo mode without backend)
+- Dashboard with customizable widgets, recent prospects, quick actions
+- CRM: Prospects list + detail, Pipeline (Kanban + list), Activities
+- Marketing: Email Sequences editor, Signals (intent alerts), Inbound, ABM/TAM, Templates
+- Sourcing: Scraping jobs launcher (LinkedIn, Google, Societe.info, custom)
+- Intelligence: AI Agent, Workflows automation builder
+- System: Plugins manager, Themes (7 built-ins), Webhooks, Settings (Profile, Team, API keys, Billing, Integrations)
+
+## Gotchas
+
+- Tailwind v4 uses `@import "tailwindcss"` not `@tailwind base/components/utilities`
+- Theme CSS vars are set on `document.documentElement` via JS (ThemeProvider), not Tailwind config
+- wouter v3 does NOT have an `exact` prop on `<Route>` — order routes from most-specific to least
+- The `@` alias resolves to `artifacts/growthos/src/` (set in vite.config.ts)
+- Demo login bypasses the API by calling `useAuthStore.setState(...)` directly
 
 ## User preferences
 
 _Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
 
 ## Pointers
 
