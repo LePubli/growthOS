@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
-import { Users, DollarSign, TrendingUp, Target, Zap, RefreshCw, Plus, ChevronRight, CheckCircle, BarChart2, Mail } from 'lucide-react';
+import { Users, DollarSign, RefreshCw, Plus, ChevronRight } from 'lucide-react';
 
 const ALL_WIDGETS = [
   { id:'prospects',  label:'Total Prospects',     icon:'👥', color:'blue',   href:'/prospects' },
@@ -19,23 +19,23 @@ const COLOR_MAP: Record<string,{bg:string;text:string}> = {
   indigo:{bg:'#EEF2FF',text:'#3730A3'},
 };
 
-function DashboardWidget({ wid, value, onRemove, href }: any) {
+function DashboardWidget({ wid, value, onRemove }: {wid:string;value:string;onRemove:(id:string)=>void}) {
   const w = ALL_WIDGETS.find(x=>x.id===wid);
   if (!w) return null;
   const c = COLOR_MAP[w.color]||COLOR_MAP.blue;
   return (
-    <Link href={href||w.href} style={{ display: 'block', textDecoration: 'none' }}>
-      <div className="group" style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)', borderRadius: 16, padding: 20, cursor:'pointer', position:'relative', transition:'all 0.15s' }}
+    <Link href={w.href} style={{ display:'block', textDecoration:'none' }}>
+      <div style={{background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:16,padding:20,cursor:'pointer',position:'relative',transition:'all 0.15s'}}
         onMouseEnter={e=>(e.currentTarget as HTMLElement).style.boxShadow='0 4px 16px rgba(0,0,0,.08)'}
         onMouseLeave={e=>(e.currentTarget as HTMLElement).style.boxShadow='none'}>
         <button onClick={e=>{e.preventDefault();e.stopPropagation();onRemove(wid);}}
-          style={{ position:'absolute',top:12,right:12,width:20,height:20,borderRadius:'50%',background:'#f3f4f6',border:'none',color:'#9ca3af',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12 }}>×</button>
-        <div style={{ display:'flex', alignItems:'start', justifyContent:'space-between', marginBottom:16 }}>
-          <div style={{ width:40,height:40,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,background:c.bg }}>{w.icon}</div>
+          style={{position:'absolute',top:12,right:12,width:20,height:20,borderRadius:'50%',background:'#f3f4f6',border:'none',color:'#9ca3af',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12}}>×</button>
+        <div style={{display:'flex',alignItems:'start',justifyContent:'space-between',marginBottom:16}}>
+          <div style={{width:40,height:40,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,background:c.bg}}>{w.icon}</div>
           <ChevronRight size={16} color="var(--color-primary)" style={{opacity:0}}/>
         </div>
-        <div style={{ fontSize:24,fontWeight:700,marginBottom:4,color:'var(--text-primary)' }}>{value}</div>
-        <div style={{ fontSize:14,color:'var(--text-muted)' }}>{w.label}</div>
+        <div style={{fontSize:24,fontWeight:700,marginBottom:4,color:'var(--text-primary)'}}>{value}</div>
+        <div style={{fontSize:14,color:'var(--text-muted)'}}>{w.label}</div>
       </div>
     </Link>
   );
@@ -48,6 +48,7 @@ export default function DashboardPage() {
   const [activeWidgets, setActiveWidgets] = useState(['prospects','pipeline','won','conversion','signals','sequences']);
   const [greeting, setGreeting] = useState('Bonjour');
   const [recentProspects, setRecentProspects] = useState<any[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<any[]>([]);
   const API = (import.meta.env.VITE_API_URL as string) || '';
 
   const fetchStats = useCallback(async () => {
@@ -59,6 +60,7 @@ export default function DashboardPage() {
         const d = await res.json();
         setStats(d.overview||{});
         setRecentProspects(d.recent_prospects||[]);
+        setPipelineStages(d.pipeline_stages||[]);
       }
     } catch {} finally { setLoading(false); }
   },[API]);
@@ -87,97 +89,156 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen p-6" style={{background:'var(--body-bg)'}}>
-      <div style={{display:'flex',alignItems:'start',justifyContent:'space-between',marginBottom:24}}>
+
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 style={{fontSize:24,fontWeight:700,color:'var(--text-primary)',margin:0}}>{greeting} 👋</h1>
-          <p style={{fontSize:14,color:'var(--text-muted)',marginTop:4}}>{new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</p>
+          <h1 className="text-2xl font-bold" style={{color:'var(--text-primary)'}}>{greeting} 👋</h1>
+          <p className="text-sm mt-0.5" style={{color:'var(--text-muted)'}}>{new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</p>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <div style={{display:'flex',gap:4,padding:4,borderRadius:12,background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
-            <button onClick={()=>setCustomizing(c=>!c)} style={{padding:'6px 12px',borderRadius:8,fontSize:13,fontWeight:500,border:'none',cursor:'pointer',background:customizing?'var(--color-primary)':'transparent',color:customizing?'#fff':'var(--text-muted)'}}>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1 p-1 rounded-xl" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
+            <button onClick={()=>setCustomizing(c=>!c)}
+              style={{padding:'6px 12px',borderRadius:8,fontSize:13,fontWeight:500,border:'none',cursor:'pointer',
+                background:customizing?'var(--color-primary)':'transparent',
+                color:customizing?'#fff':'var(--text-muted)'}}>
               ✏️ Personnaliser
             </button>
           </div>
-          <button onClick={fetchStats} disabled={loading} style={{padding:8,borderRadius:12,background:'var(--card-bg)',border:'1px solid var(--card-border)',cursor:'pointer',color:'var(--text-muted)',display:'flex',alignItems:'center'}}>
+          <button onClick={fetchStats} disabled={loading}
+            style={{padding:8,borderRadius:12,background:'var(--card-bg)',border:'1px solid var(--card-border)',cursor:'pointer',color:'var(--text-muted)',display:'flex',alignItems:'center'}}>
             <RefreshCw size={16} className={loading?'animate-spin':''}/>
           </button>
+          <Link href="/prospects" style={{display:'flex',alignItems:'center',gap:8,padding:'8px 16px',borderRadius:12,fontSize:14,fontWeight:500,color:'#fff',background:'var(--color-primary)',textDecoration:'none'}}>
+            <Plus size={16}/>Nouveau
+          </Link>
         </div>
       </div>
 
-      {customizing && availableToAdd.length > 0 && (
-        <div style={{marginBottom:20,padding:16,borderRadius:16,background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
-          <p style={{fontSize:13,fontWeight:600,color:'var(--text-primary)',marginBottom:12}}>Ajouter des widgets</p>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+      {/* Mode personnalisation */}
+      {customizing && (
+        <div className="rounded-2xl border p-5 mb-5" style={{background:'var(--color-primary-light)',borderColor:'var(--color-primary)'}}>
+          <h3 className="font-semibold text-sm mb-3" style={{color:'var(--color-primary)'}}>Personnalisation du dashboard — cliquez × pour retirer, ou ajoutez des widgets</h3>
+          <div className="flex flex-wrap gap-2">
             {availableToAdd.map(w=>(
               <button key={w.id} onClick={()=>setActiveWidgets(a=>[...a,w.id])}
-                style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:8,background:'var(--body-bg)',border:'1px solid var(--card-border)',fontSize:13,cursor:'pointer',color:'var(--text-secondary)'}}>
-                <Plus size={12}/>{w.icon} {w.label}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm border"
+                style={{background:'var(--card-bg)',borderColor:'var(--card-border)',color:'var(--text-secondary)'}}>
+                <span>{w.icon}</span><span>+ {w.label}</span>
               </button>
             ))}
+            {availableToAdd.length===0&&<span className="text-sm" style={{color:'var(--color-primary)'}}>Tous les widgets sont affichés ✓</span>}
           </div>
+          <button onClick={()=>setCustomizing(false)} className="mt-3 text-sm underline" style={{color:'var(--color-primary)'}}>Terminer la personnalisation</button>
         </div>
       )}
 
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:16,marginBottom:24}}>
+      {/* Widgets grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
         {activeWidgets.map(wid=>(
           <DashboardWidget key={wid} wid={wid} value={widgetValues[wid]||'—'} onRemove={(id:string)=>setActiveWidgets(a=>a.filter(x=>x!==id))}/>
         ))}
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 280px',gap:20}}>
-        <div style={{display:'flex',flexDirection:'column',gap:16}}>
-          <div style={{borderRadius:16,padding:20,background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-              <h2 style={{fontWeight:600,color:'var(--text-primary)',margin:0,fontSize:15}}>Prospects récents</h2>
-              <Link href="/prospects" style={{fontSize:13,color:'var(--color-primary)',textDecoration:'none'}}>Voir tout →</Link>
-            </div>
-            {recentProspects.length === 0 ? (
-              <div style={{textAlign:'center',padding:'32px 0',color:'var(--text-muted)',fontSize:14}}>
-                <Users size={32} style={{margin:'0 auto 8px',display:'block',opacity:0.3}}/>
-                Aucun prospect récent
-              </div>
-            ) : (
-              <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                {recentProspects.slice(0,5).map((p:any,i:number)=>(
-                  <Link key={i} href={`/prospects/${p.id}`} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 12px',borderRadius:10,background:'var(--body-bg)',textDecoration:'none'}}>
-                    <div style={{width:32,height:32,borderRadius:8,background:'var(--color-primary)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:12,fontWeight:700,flexShrink:0}}>
-                      {(p.firstName?.[0]||p.company?.[0]||'?').toUpperCase()}
-                    </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:600,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.firstName} {p.lastName} {p.company && `· ${p.company}`}</div>
-                      <div style={{fontSize:12,color:'var(--text-muted)'}}>{p.email}</div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
+      {/* Bottom grid: Pipeline | Prospects récents | Actions rapides */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        {/* Pipeline */}
+        <div className="rounded-2xl p-6" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold" style={{color:'var(--text-primary)'}}>Pipeline</h2>
+            <Link href="/pipeline" className="text-sm flex items-center gap-1" style={{color:'var(--color-primary)',textDecoration:'none'}}>
+              Voir<ChevronRight className="w-4 h-4"/>
+            </Link>
           </div>
+          {pipelineStages.length===0 ? (
+            <div className="text-center py-8">
+              <DollarSign className="w-10 h-10 mx-auto mb-2" style={{color:'var(--card-border)'}}/>
+              <p className="text-sm mb-2" style={{color:'var(--text-muted)'}}>Aucun deal</p>
+              <Link href="/pipeline" className="text-sm px-4 py-2 rounded-xl text-white inline-block" style={{background:'var(--color-primary)',textDecoration:'none'}}>+ Créer un deal</Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pipelineStages.map((s:any,i:number)=>(
+                <Link key={i} href={`/pipeline?stage=${s.stage}`} style={{display:'block',textDecoration:'none'}}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span style={{color:'var(--text-secondary)'}} className="capitalize">{s.stage}</span>
+                    <span className="font-semibold" style={{color:'var(--text-primary)'}}>{s.count} ({s.value?.toLocaleString()||0}€)</span>
+                  </div>
+                  <div className="w-full rounded-full h-1.5" style={{background:'var(--card-border)'}}>
+                    <div className="h-1.5 rounded-full" style={{width:`${Math.min((s.count/(o.total_deals||1))*100,100)}%`,background:'var(--color-primary)'}}/>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div style={{display:'flex',flexDirection:'column',gap:16}}>
-          <div style={{borderRadius:16,padding:20,background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
-            <h2 style={{fontWeight:600,color:'var(--text-primary)',margin:'0 0 12px',fontSize:15}}>Actions rapides</h2>
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {/* Prospects récents */}
+        <div className="rounded-2xl p-6" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold" style={{color:'var(--text-primary)'}}>Prospects récents</h2>
+            <Link href="/prospects" className="text-sm flex items-center gap-1" style={{color:'var(--color-primary)',textDecoration:'none'}}>
+              Tous<ChevronRight className="w-4 h-4"/>
+            </Link>
+          </div>
+          {recentProspects.length===0 ? (
+            <div className="text-center py-8">
+              <Users className="w-10 h-10 mx-auto mb-2" style={{color:'var(--card-border)'}}/>
+              <p className="text-sm mb-2" style={{color:'var(--text-muted)'}}>Aucun prospect</p>
+              <Link href="/prospects" className="text-sm px-4 py-2 rounded-xl text-white inline-block" style={{background:'var(--color-primary)',textDecoration:'none'}}>+ Ajouter</Link>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {recentProspects.slice(0,6).map((p:any,i:number)=>(
+                <Link key={i} href={`/prospects/${p.id}`} className="flex items-center gap-3 p-2 rounded-xl hover:opacity-80 transition-all" style={{background:'var(--body-bg)',textDecoration:'none'}}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:'var(--color-primary)'}}>
+                    {(p.full_name||p.firstName||p.company_name||'?')[0]?.toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate" style={{color:'var(--text-primary)'}}>{p.full_name||`${p.firstName||''} ${p.lastName||''}`.trim()||p.company_name}</div>
+                    <div className="text-xs truncate" style={{color:'var(--text-muted)'}}>{p.company_name||p.company||p.email}</div>
+                  </div>
+                  {(p.propensity_score||p.score)>0 && (
+                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${(p.propensity_score||p.score)>=80?'bg-green-50 text-green-600':'bg-amber-50 text-amber-600'}`}>
+                      {p.propensity_score||p.score}
+                    </span>
+                  )}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Actions rapides + Système */}
+        <div className="space-y-4">
+          <div className="rounded-2xl p-5" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
+            <h2 className="font-semibold mb-3" style={{color:'var(--text-primary)'}}>Actions rapides</h2>
+            <div className="space-y-2">
               {[
                 {l:'+ Nouveau prospect',href:'/prospects',icon:'👤'},
                 {l:'+ Créer une séquence',href:'/sequences/new',icon:'📧'},
                 {l:'+ Lancer un scraping',href:'/sourcing',icon:'🔍'},
-                {l:'Voir les signaux',href:'/signals',icon:'⚡'},
+                {l:'Voir les signaux',href:'/signals',icon:'⚡',badge:o.unread_signals},
                 {l:'Installer un plugin',href:'/plugins',icon:'🧩'},
               ].map((a,i)=>(
-                <Link key={i} href={a.href} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 12px',borderRadius:10,background:'var(--body-bg)',color:'var(--color-primary)',textDecoration:'none',fontSize:13,fontWeight:500}}>
-                  <span>{a.icon}</span><span style={{flex:1}}>{a.l}</span>
+                <Link key={i} href={a.href} className="flex items-center gap-3 p-2.5 rounded-xl hover:opacity-80 transition-all text-sm font-medium"
+                  style={{background:'var(--body-bg)',color:'var(--color-primary)',textDecoration:'none'}}>
+                  <span>{a.icon}</span>
+                  <span className="flex-1">{a.l}</span>
+                  {a.badge&&a.badge>0&&<span className="text-xs px-1.5 py-0.5 rounded-full bg-red-500 text-white">{a.badge}</span>}
                 </Link>
               ))}
             </div>
           </div>
-          <div style={{borderRadius:16,padding:16,background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
-            <h3 style={{fontWeight:600,fontSize:13,marginBottom:12,color:'var(--text-primary)'}}>Système</h3>
+          <div className="rounded-2xl p-4" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
+            <h3 className="font-semibold text-sm mb-3" style={{color:'var(--text-primary)'}}>Système</h3>
             {[{l:'API NestJS',v:'✅'},{l:'PostgreSQL',v:'✅'},{l:'Redis',v:'✅'},{l:'Plugins VM',v:'✅'}].map((s,i)=>(
-              <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:12,padding:'4px 0',color:'var(--text-secondary)'}}><span>{s.l}</span><span>{s.v}</span></div>
+              <div key={i} className="flex justify-between text-xs py-1" style={{color:'var(--text-secondary)'}}><span>{s.l}</span><span>{s.v}</span></div>
             ))}
           </div>
         </div>
+
       </div>
     </div>
   );
