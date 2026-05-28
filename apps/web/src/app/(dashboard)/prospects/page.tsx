@@ -6,6 +6,8 @@ import {
   Loader2, CheckCircle, AlertCircle, X, Upload, FileText,
   Download, RefreshCw, ChevronRight, Building2
 } from 'lucide-react';
+import apiClient from '@/lib/api-client';
+import { ProspectActionsSlot, ProspectListToolbarSlot } from '@/plugins/ui-slots';
 
 const STATUS_OPTIONS = [
   {value:'all',label:'Tous'},{value:'new',label:'Nouveau'},{value:'contacted',label:'Contacté'},
@@ -18,7 +20,7 @@ const STATUS_COLORS: Record<string,string> = {
   won:'bg-green-50 text-green-600', lost:'bg-red-50 text-red-500',
 };
 
-function CreateModal({ onClose, onSave, apiUrl }: { onClose:()=>void; onSave:()=>void; apiUrl:string }) {
+function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void }) {
   const [form, setForm] = useState({ firstName:'', lastName:'', email:'', phone:'', company:'', jobTitle:'', website:'', status:'new' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string|null>(null);
@@ -28,9 +30,7 @@ function CreateModal({ onClose, onSave, apiUrl }: { onClose:()=>void; onSave:()=
     if (!form.firstName && !form.email && !form.company) { setError('Remplissez au moins un champ'); return; }
     setLoading(true); setError(null);
     try {
-      const token = localStorage.getItem('access_token')||'';
-      const res = await fetch(`${apiUrl}/api/v1/prospects`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify(form)});
-      if (!res.ok) { const d=await res.json(); throw new Error(d.message||'Erreur'); }
+      await apiClient.post('/prospects', form);
       onSave(); onClose();
     } catch(e:any) { setError(e.message); }
     finally { setLoading(false); }
@@ -69,7 +69,7 @@ function CreateModal({ onClose, onSave, apiUrl }: { onClose:()=>void; onSave:()=
   );
 }
 
-function ImportCSVModal({ onClose, onSave, apiUrl }: { onClose:()=>void; onSave:()=>void; apiUrl:string }) {
+function ImportCSVModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void }) {
   const [file, setFile] = useState<File|null>(null);
   const [preview, setPreview] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -118,12 +118,7 @@ Thomas,Martin,t.martin@techvision.io,,TechVision,CTO,https://techvision.io,new`;
     try {
       const text = await file.text();
       const prospects = parseCSV(text);
-      const token = localStorage.getItem('access_token')||'';
-      const res = await fetch(`${apiUrl}/api/v1/prospects/bulk`,{
-        method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},
-        body:JSON.stringify({prospects}),
-      });
-      if (!res.ok) throw new Error('Erreur import');
+      await apiClient.post('/prospects/bulk', { prospects });
       setDone(true);
       setTimeout(()=>{onSave();onClose();},2000);
     } catch(e:any) { setError(e.message); }
@@ -214,19 +209,19 @@ export default function ProspectsPage() {
   const [toast, setToast] = useState<string|null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const API = process.env.NEXT_PUBLIC_API_URL || '';
 
   const showToast = (msg:string) => { setToast(msg); setTimeout(()=>setToast(null),3500); };
 
   const fetchProspects = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('access_token')||'';
       const params = new URLSearchParams({ page:String(page), limit:'50' });
       if (status!=='all') params.set('status',status);
       if (search) params.set('search',search);
-      const res = await fetch(`${API}/api/v1/prospects?${params}`,{headers:{Authorization:`Bearer ${token}`}});
-      if (res.ok) { const d=await res.json(); setProspects(Array.isArray(d)?d:d.data||[]); setTotal(d.meta?.total||0); }
+      const result = await apiClient.get('/prospects', Object.fromEntries(params));
+      const data = Array.isArray(result) ? result : result.data || [];
+      setProspects(data);
+      setTotal(result.meta?.total || 0);
     } catch {} finally { setLoading(false); }
   };
 
@@ -236,9 +231,8 @@ export default function ProspectsPage() {
   const toggleStar = async (id:string) => {
     setProspects(ps=>ps.map(p=>p.id===id?{...p,isStarred:!p.isStarred}:p));
     try {
-      const token=localStorage.getItem('access_token')||'';
       const p = prospects.find(x=>x.id===id);
-      await fetch(`${API}/api/v1/prospects/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({isStarred:!p?.isStarred})});
+      await apiClient.patch(`/prospects/${id}`, { isStarred: !p?.isStarred });
     } catch {}
   };
 
@@ -247,8 +241,8 @@ export default function ProspectsPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       {toast && <div className="fixed top-6 right-6 z-50 bg-teal-600 text-white px-4 py-3 rounded-xl shadow-lg text-sm flex items-center gap-2"><CheckCircle className="w-4 h-4"/>{toast}</div>}
-      {showCreate && <CreateModal apiUrl={API} onClose={()=>setShowCreate(false)} onSave={()=>{fetchProspects();showToast('Prospect créé ✓ — plugin SEO Analyzer en cours...');}}/>}
-      {showImport && <ImportCSVModal apiUrl={API} onClose={()=>setShowImport(false)} onSave={()=>{fetchProspects();showToast(`Import réussi ✓`);}}/>}
+      {showCreate && <CreateModal onClose={()=>setShowCreate(false)} onSave={()=>{fetchProspects();showToast('Prospect créé ✓ — plugin SEO Analyzer en cours...');}}/>}
+      {showImport && <ImportCSVModal onClose={()=>setShowImport(false)} onSave={()=>{fetchProspects();showToast(`Import réussi ✓`);}}/>}
 
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -341,6 +335,7 @@ export default function ProspectsPage() {
                   )}
                 </td>
                 <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
+                  <ProspectActionsSlot prospectId={p.id} tenantId="" prospect={p} />
                   <button onClick={()=>router.push(`/prospects/${p.id}`)} className="text-gray-300 hover:text-teal-600"><ChevronRight className="w-5 h-5"/></button>
                 </td>
               </tr>
