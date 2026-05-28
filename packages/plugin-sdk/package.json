@@ -2,8 +2,8 @@
   "name": "@growthos/plugin-sdk",
   "version": "1.0.0",
   "description": "GrowthOS Plugin SDK - Types, interfaces et utilitaires pour développer des plugins",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
     "lint": "eslint src/"

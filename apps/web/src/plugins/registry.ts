@@ -14,7 +14,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { PluginManifest, PluginRegistryEntry } from '@growthos/plugin-sdk/src/index';
+import type { PluginManifest, PluginRegistryEntry } from '@growthos/plugin-sdk/src/index';
 
 // ── Types ────────────────────────────────────────────────────────
 
