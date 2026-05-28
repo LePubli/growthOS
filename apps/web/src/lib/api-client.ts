@@ -1,8 +1,20 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
+/**
+ * ============================================================
+ * GrowthOS — API Client avec Cookies HttpOnly
+ * ============================================================
+ * Remplace localStorage par des cookies httpOnly pour le token JWT
+ * Architecture:
+ * 1. Token stocké dans cookie httpOnly (secure, sameSite)
+ * 2. Refresh automatique via /api/v1/auth/refresh
+ * 3. Interceptors pour injection auto de Authorization + X-Tenant-ID
+ * 4. Gestion erreurs centralisée avec toasts
+ */
 
-const BASE_URL = (typeof window !== 'undefined' && (window as any).__API_URL__) 
-  || process.env.NEXT_PUBLIC_API_URL 
-  || 'http://localhost:3001/api/v1';
+import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+import { toast } from 'sonner';
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+
 class ApiClient {
   private axios: AxiosInstance;
   private refreshing: Promise<string> | null = null;
@@ -11,26 +23,27 @@ class ApiClient {
     this.axios = axios.create({
       baseURL: BASE_URL,
       timeout: 30_000,
-      withCredentials: true,
+      withCredentials: true, // Important pour les cookies
       headers: { 'Content-Type': 'application/json' },
     });
 
-    // Request interceptor — injecte token + tenant
-    this.axios.interceptors.request.use(config => {
-      const token = this.getAccessToken();
-      if (token) config.headers['Authorization'] = `Bearer ${token}`;
+    // Request interceptor — injecte tenant depuis cookie ou state
+    this.axios.interceptors.request.use(
+      (config: InternalAxiosRequestConfig) => {
+        const tenantId = this.getTenantId();
+        if (tenantId && config.headers) {
+          config.headers['X-Tenant-ID'] = tenantId;
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
 
-      const tenantId = this.getTenantId();
-      if (tenantId) config.headers['X-Tenant-ID'] = tenantId;
-
-      return config;
-    });
-
-    // Response interceptor — refresh token auto
+    // Response interceptor — refresh token auto + gestion erreurs
     this.axios.interceptors.response.use(
-      res => res.data,
-      async error => {
-        const original = error.config;
+      (res: AxiosResponse) => res.data,
+      async (error) => {
+        const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
         if (error.response?.status === 401 && !original._retry) {
           original._retry = true;
@@ -43,20 +56,37 @@ class ApiClient {
 
           try {
             const newToken = await this.refreshing;
-            original.headers['Authorization'] = `Bearer ${newToken}`;
+            if (original.headers) {
+              original.headers['Authorization'] = `Bearer ${newToken}`;
+            }
             return this.axios(original);
-          } catch {
+          } catch (refreshError) {
             this.logout();
+            toast.error('Session expirée. Veuillez vous reconnecter.');
             throw error;
           }
         }
 
         // Formater l'erreur
-        const message = error.response?.data?.message || error.response?.data?.detail || error.message;
-        throw new Error(Array.isArray(message) ? message.join(', ') : message);
-      },
+        const message =
+          error.response?.data?.message ||
+          error.response?.data?.detail ||
+          error.message ||
+          'Une erreur est survenue';
+
+        const errorMessage = Array.isArray(message) ? message.join(', ') : message;
+
+        // Toast pour les erreurs 4xx/5xx (sauf 401 géré ci-dessus)
+        if (error.response?.status && error.response.status >= 400 && error.response.status !== 401) {
+          toast.error(errorMessage);
+        }
+
+        throw new Error(errorMessage);
+      }
     );
   }
+
+  // ── HTTP Methods ───────────────────────────────────────────────
 
   async get<T = any>(url: string, params?: Record<string, any>): Promise<T> {
     return this.axios.get(url, { params }) as unknown as T;
@@ -84,54 +114,80 @@ class ApiClient {
     }) as unknown as T;
   }
 
-  // ── Auth ────────────────────────────────────────────────────
+  // ── Auth Methods ───────────────────────────────────────────────
 
   async login(email: string, password: string, tenantSlug?: string) {
     const result = await this.post<any>('/auth/login', { email, password, tenantSlug });
-    this.saveAuth(result);
+    // Le token est maintenant dans un cookie httpOnly, rien à stocker en localStorage
+    if (result.tenant?.id) {
+      sessionStorage.setItem('tenant_id', result.tenant.id);
+      sessionStorage.setItem('tenant_slug', result.tenant.slug || '');
+    }
     return result;
   }
 
-  async register(data: { email: string; password: string; firstName?: string; lastName?: string; companyName?: string }) {
+  async register(data: {
+    email: string;
+    password: string;
+    firstName?: string;
+    lastName?: string;
+    companyName?: string;
+  }) {
     const result = await this.post<any>('/auth/register', data);
-    this.saveAuth(result);
+    if (result.tenant?.id) {
+      sessionStorage.setItem('tenant_id', result.tenant.id);
+      sessionStorage.setItem('tenant_slug', result.tenant.slug || '');
+    }
     return result;
   }
 
-  private saveAuth(result: any) {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem('access_token', result.accessToken);
-    if (result.tenant?.id) localStorage.setItem('tenant_id', result.tenant.id);
-    if (result.tenant?.slug) localStorage.setItem('tenant_slug', result.tenant.slug);
+  async logout() {
+    try {
+      await this.post('/auth/logout', {});
+    } catch {
+      // Ignorer les erreurs de logout
+    } finally {
+      this.clearAuth();
+    }
   }
 
   private async doRefresh(): Promise<string> {
     const result = await this.axios.post('/auth/refresh', {});
     const data = result as any;
-    localStorage.setItem('access_token', data.accessToken);
+    // Le nouveau token est déjà dans le cookie httpOnly
     return data.accessToken;
   }
 
-  logout() {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('tenant_id');
-    localStorage.removeItem('tenant_slug');
+  private clearAuth() {
+    if (typeof window === 'undefined') return;
+    sessionStorage.removeItem('tenant_id');
+    sessionStorage.removeItem('tenant_slug');
     window.location.href = '/login';
-  }
-
-  private getAccessToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('access_token');
   }
 
   private getTenantId(): string | null {
     if (typeof window === 'undefined') return null;
-    return localStorage.getItem('tenant_id');
+    return sessionStorage.getItem('tenant_id');
   }
 
   isAuthenticated(): boolean {
-    return !!this.getAccessToken();
+    // On vérifie la présence du tenant en sessionStorage
+    // Le token est dans le cookie httpOnly, géré automatiquement par axios
+    return !!this.getTenantId();
+  }
+
+  getCurrentTenant(): { id: string; slug: string } | null {
+    if (typeof window === 'undefined') return null;
+    const id = sessionStorage.getItem('tenant_id');
+    const slug = sessionStorage.getItem('tenant_slug');
+    if (!id || !slug) return null;
+    return { id, slug };
   }
 }
 
 export const apiClient = new ApiClient();
+
+// ── Hooks React ──────────────────────────────────────────────────
+
+export { ApiClient };
+export default apiClient;
