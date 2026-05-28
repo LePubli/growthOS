@@ -1,0 +1,82 @@
+{
+  "name": "map-tour",
+  "version": "1.0.0",
+  "description": "Optimisation de tournées commerciales avec géocodage et calcul d'itinéraires",
+  "author": "GrowthOS Team",
+  "license": "MIT",
+  "isActive": true,
+  "permissions": [
+    "prospects:read",
+    "clients:read",
+    "geocoding:write",
+    "routes:write"
+  ],
+  "hooks": {
+    "subscribes": [
+      "prospect:created",
+      "client:created"
+    ],
+    "emits": [
+      "route:optimized",
+      "route:saved",
+      "address:geocoded"
+    ]
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/plugins/map-tour/prospects",
+      "handler": "./api/prospects/route.ts",
+      "description": "Liste des prospects/clients disponibles"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/plugins/map-tour/optimize",
+      "handler": "./api/optimize/route.ts",
+      "description": "Optimiser un itinéraire de tournée"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/plugins/map-tour/routes",
+      "handler": "./api/routes/route.ts",
+      "description": "Liste des tournées sauvegardées"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/plugins/map-tour/routes",
+      "handler": "./api/routes/route.ts",
+      "description": "Créer une nouvelle tournée"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/plugins/map-tour/routes",
+      "handler": "./api/routes/route.ts",
+      "description": "Supprimer une tournée"
+    }
+  ],
+  "uiSlots": [
+    {
+      "slot": "prospect-list-toolbar",
+      "component": "./components/RouteBuilder.tsx",
+      "order": 10,
+      "label": "Créer une tournée"
+    },
+    {
+      "slot": "dashboard-top",
+      "component": "./components/RouteSummary.tsx",
+      "order": 20,
+      "label": "Résumé des tournées"
+    }
+  ],
+  "config": {
+    "autoGeocodeOnProspectCreate": false,
+    "defaultAlgorithm": "nearest-neighbor",
+    "maxWaypoints": 50,
+    "cacheGeocodingResults": true
+  },
+  "dependencies": {
+    "lucide-react": "^0.263.1"
+  },
+  "installedAt": "2024-01-15T10:00:00.000Z",
+  "updatedAt": "2024-01-15T10:00:00.000Z"
+}
