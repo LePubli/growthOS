@@ -11,12 +11,14 @@ WORKDIR /app
 # ── Workspace manifests (cached layer) ──────────────────────
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 
-# Copy only the package.json files needed by pnpm to resolve the workspace
-COPY lib/api-client-react/package.json  ./lib/api-client-react/package.json
-COPY lib/api-spec/package.json          ./lib/api-spec/package.json
-COPY lib/api-zod/package.json           ./lib/api-zod/package.json
-COPY lib/db/package.json                ./lib/db/package.json
-COPY artifacts/growthos/package.json    ./artifacts/growthos/package.json
+# Copy ALL workspace package.json files so pnpm can resolve the full lockfile
+COPY lib/api-client-react/package.json   ./lib/api-client-react/package.json
+COPY lib/api-spec/package.json           ./lib/api-spec/package.json
+COPY lib/api-zod/package.json            ./lib/api-zod/package.json
+COPY lib/db/package.json                 ./lib/db/package.json
+COPY artifacts/growthos/package.json     ./artifacts/growthos/package.json
+COPY artifacts/api-server/package.json   ./artifacts/api-server/package.json
+COPY artifacts/mockup-sandbox/package.json ./artifacts/mockup-sandbox/package.json
 
 # Install all workspace dependencies
 RUN pnpm install --frozen-lockfile
