@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuthStore } from '@/stores/auth.store';
 import { toast } from 'sonner';
-import { Zap } from 'lucide-react';
 
 export default function LoginPage() {
   const [, navigate] = useLocation();
@@ -10,16 +9,6 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', companyName: '' });
-
-  const demoLogin = () => {
-    useAuthStore.setState({
-      isAuthenticated: true,
-      user: { id: 'demo', email: 'demo@growthos.fr', firstName: 'Demo', lastName: 'User', role: 'admin' },
-      tenant: { id: 'demo-tenant', name: 'GrowthOS Demo', slug: 'demo' },
-      accessToken: 'demo-token',
-    });
-    navigate('/dashboard');
-  };
 
   const handle = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,20 +79,9 @@ export default function LoginPage() {
           </form>
 
           {mode === 'login' && (
-            <>
-              <div style={{ textAlign: 'center', marginTop: 12 }}>
-                <a href="#" style={{ fontSize: 13, color: 'var(--color-primary)' }}>Mot de passe oublié ?</a>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 4px' }}>
-                <div style={{ flex: 1, height: 1, background: 'var(--card-border)' }} />
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>ou</span>
-                <div style={{ flex: 1, height: 1, background: 'var(--card-border)' }} />
-              </div>
-              <button type="button" onClick={demoLogin}
-                style={{ width: '100%', padding: '10px', fontSize: 14, fontWeight: 600, background: 'var(--body-bg)', color: 'var(--color-primary)', border: '1px dashed var(--color-primary)', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <Zap size={14} />Accès démo (sans compte)
-              </button>
-            </>
+            <div style={{ textAlign: 'center', marginTop: 12 }}>
+              <a href="#" style={{ fontSize: 13, color: 'var(--color-primary)' }}>Mot de passe oublié ?</a>
+            </div>
           )}
         </div>
         <p style={{ textAlign: 'center', marginTop: 24, fontSize: 12, color: 'var(--text-muted)' }}>© 2026 GrowthOS · Tous droits réservés</p>

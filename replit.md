@@ -33,11 +33,11 @@ GrowthOS is a French B2B SaaS growth intelligence platform — CRM, prospecting,
 - `process.env.NEXT_PUBLIC_API_URL` → `import.meta.env.VITE_API_URL`
 - `@/plugins/ui-slots` (Next.js plugin system) → stubbed out (not ported)
 - Auth guard via `<RequireAuth>` wrapping `<AppShell>` — unauthenticated users redirected to `/login`
-- Demo mode: "Accès démo" button on login sets Zustand state directly without API call
+- Login: email/password form with Connexion and Inscription tabs; redirects to `/dashboard` on success
 
 ## Product
 
-- Login / Register (+ demo mode without backend)
+- Login / Register
 - Dashboard with customizable widgets, recent prospects, quick actions
 - CRM: Prospects list + detail, Pipeline (Kanban + list), Activities
 - Marketing: Email Sequences editor, Signals (intent alerts), Inbound, ABM/TAM, Templates
