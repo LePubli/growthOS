@@ -1,17 +1,31 @@
-```gitignore
+```
 # Dependencies
 node_modules/
 
-# Build outputs
+# Build artifacts
 dist/
 build/
-.next/
-out/
+target/
+
+# Cache directories
+.cache/
+.node_cache/
+.npm/
+.yarn/
 
 # Environment variables
 .env
 .env.local
-*.env.*
+.env.*
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
 
 # IDE files
 .vscode/
@@ -19,34 +33,44 @@ out/
 *.swp
 *.swo
 
-# Logs
-*.log
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Python
+# Python specific
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
+*.so
 .coverage
-.nox/
-```
+coverage/
+htmlcov/
 
-Wait, let me reconsider this. Looking at the modified files, they are all TypeScript/React files in a web application structure, but there are no build artifacts, dependency directories, or temporary files in the changes list. The changes only include source code files (.tsx).
+# Test and coverage
+.mypy_cache/
+.pytest_cache/
+.nyc_output/
+coverage/
 
-Since only source code files are being modified and no build artifacts, dependencies, or temporary files are present in the changes, I should output an empty .gitignore.
-
-```gitignore
-
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
