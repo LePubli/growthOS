@@ -1,0 +1,51 @@
+2026-May-28 14:41:07.964434
+Docker 29.4.0 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-28 14:41:07.980577
+Starting deployment of growth-o-s:main-muen3373qsdm6coff3jcfe7e to localhost.
+2026-May-28 14:41:08.280675
+Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-28 14:41:09.993786
+----------------------------------------
+2026-May-28 14:41:10.006754
+Importing LePubli/growthOS:main (commit sha 17dcc798113c953d329a2394e261d14fdb04a05a) to /artifacts/tkqgrhrx31t9q1hc3vv14jhi.
+2026-May-28 14:41:16.234455
+Added 88 ARG declarations to Dockerfile for service growthos (multi-stage build, added to 2 stages).
+2026-May-28 14:41:16.245029
+Pulling & building required images.
+2026-May-28 14:41:16.830468
+Adding build arguments to Docker Compose build command.
+2026-May-28 14:41:19.320576
+========================================
+2026-May-28 14:41:19.333729
+Deployment failed: Command execution failed (exit code 1): docker exec tkqgrhrx31t9q1hc3vv14jhi bash -c 'DOCKER_BUILDKIT=1 COOLIFY_BRANCH=main COOLIFY_RESOURCE_UUID=qg3u7f72d9lin10gl2ixlp7x  docker compose --env-file /artifacts/build-time.env --project-name qg3u7f72d9lin10gl2ixlp7x --project-directory /artifacts/tkqgrhrx31t9q1hc3vv14jhi -f /artifacts/tkqgrhrx31t9q1hc3vv14jhi/docker-compose.yml build --pull --no-cache --build-arg COOLIFY_FQDN --build-arg CORS_ORIGINS --build-arg ADMIN_COMPANY --build-arg VITE_API_URL --build-arg JWT_EXPIRES_IN --build-arg JWT_SECRET --build-arg SMTP_PASSWORD --build-arg SERVICE_URL_GROWTHOS --build-arg SERVICE_FQDN_GROWTHOS --build-arg REDIS_PASSWORD --build-arg MINIO_ROOT_PASSWORD --build-arg ANTHROPIC_API_KEY --build-arg OPENAI_API_KEY --build-arg SMTP_HOST --build-arg SMTP_PORT --build-arg POSTGRES_USER --build-arg SMTP_USER --build-arg NEXT_PUBLIC_APP_NAME --build-arg STRIPE_SECRET_KEY --build-arg NEXT_PUBLIC_API_URL --build-arg ADMIN_PASSWORD --build-arg SERVICE_FQDN_MINIO --build-arg SERVICE_URL_MIGRATE --build-arg SERVICE_FQDN_MIGRATE --build-arg SERVICE_URL_API --build-arg SERVICE_FQDN_API --build-arg SERVICE_URL_WEB --build-arg SERVICE_FQDN_WEB --build-arg SERVICE_URL_MINIO --build-arg SERVICE_URL_WORKER --build-arg SERVICE_URL_NGINX --build-arg SERVICE_FQDN_NGINX --build-arg SERVICE_FQDN_WORKER --build-arg MISTRAL_API_KEY --build-arg SMTP_FROM_EMAIL --build-arg SMTP_FROM_NAME --build-arg SERVICE_URL_OLLAMA --build-arg SERVICE_FQDN_OLLAMA --build-arg AI_DEFAULT_PROVIDER --build-arg MINIO_BUCKET --build-arg POSTGRES_PASSWORD --build-arg MINIO_ROOT_USER --build-arg OLLAMA_DEFAULT_MODEL --build-arg ADMIN_EMAIL --build-arg COOLIFY_BUILD_SECRETS_HASH=b02ca675252c619a44b12eb569186e56c215273b800b0b27392eab3960703ab4'
+2026-May-28 14:41:19.333729
+Error: Dockerfile:65
+2026-May-28 14:41:19.333729
+2026-May-28 14:41:19.333729
+--------------------
+2026-May-28 14:41:19.333729
+2026-May-28 14:41:19.333729
+63 |     COPY artifacts/growthos/package.json     ./artifacts/growthos/package.json
+2026-May-28 14:41:19.333729
+2026-May-28 14:41:19.333729
+64 |     COPY artifacts/api-server/package.json   ./artifacts/api-server/package.json
+2026-May-28 14:41:19.333729
+2026-May-28 14:41:19.333729
+65 | >>> COPY artifacts/mockup-sandbox/package.json ./artifacts/mockup-sandbox/package.json
+2026-May-28 14:41:19.333729
+2026-May-28 14:41:19.333729
+66 |
+2026-May-28 14:41:19.333729
+2026-May-28 14:41:19.333729
+67 |     # Install all workspace dependencies
+2026-May-28 14:41:19.333729
+2026-May-28 14:41:19.333729
+--------------------
+2026-May-28 14:41:19.333729
+2026-May-28 14:41:19.333729
+failed to solve: failed to compute cache key: failed to calculate checksum of ref ubeo5txk499scartl5go89ej2::os2u2agq9wyu5q0yf1emtmodj: "/artifacts/mockup-sandbox/package.json": not found
+2026-May-28 14:41:19.333729
+2026-May-28 14:41:19.333729
+exit status 1
+2026-May-28 14:41:19.502122
+========================================

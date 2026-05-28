@@ -28,9 +28,14 @@ node_modules
 **/*.spec.*
 coverage/
 
-# Artifacts not needed for the frontend build
-artifacts/api-server/
-artifacts/mockup-sandbox/
+# Exclude source of artifacts not needed for the frontend build,
+# but keep their package.json so pnpm can resolve the full lockfile
+artifacts/api-server/src/
+artifacts/api-server/dist/
+artifacts/api-server/node_modules/
+artifacts/mockup-sandbox/src/
+artifacts/mockup-sandbox/dist/
+artifacts/mockup-sandbox/node_modules/
 
 # Replit-specific
 **/.replit
