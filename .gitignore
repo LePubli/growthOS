@@ -1,21 +1,21 @@
 ```
+# Build artifacts
+Dockerfile
+
 # Dependencies
 node_modules/
-venv/
 .venv/
+venv/
 __pycache__/
-.mypy_cache/
-.pytest_cache/
+*.egg-info/
 dist/
 build/
 target/
-.gradle/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
-*.swo
 
 # Environment
 .env
@@ -25,8 +25,10 @@ target/
 # Editors
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# System files
+# OS
 .DS_Store
 Thumbs.db
 
@@ -35,18 +37,64 @@ coverage/
 htmlcov/
 .coverage
 
-# Compiled files
+# Python specific
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+.pytest_cache/
+.mypy_cache/
+
+# Node specific
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Java specific
 *.class
+*.jar
+*.war
+*.ear
+*.tar
+*.tar.*
+*.zip
+.gradle/
+target/
+
+# C/C++ specific
 *.o
+*.a
+*.so
+*.dll
 *.exe
+*.out
+*.obj
+
+# Go specific
+*.exe
+*.exe~
 *.dll
 *.so
-*.a
-*.obj
-*.out
+*.dylib
+*.test
+*.prof
+vendor/
 
-# Compressed files
+# Ruby specific
+*.gem
+*.rbc
+.bundle/
+vendor/bundle/
+.ruby-version
+.rbenv-vars
+.travis.yml
+.ci/
+
+# Compression
 *.zip
 *.gz
 *.tar
