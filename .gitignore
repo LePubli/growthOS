@@ -15,7 +15,6 @@ target/
 *.log
 *.tmp
 *.swp
-*.swo
 
 # Environment
 .env
@@ -26,7 +25,7 @@ target/
 .vscode/
 .idea/
 
-# System files
+# OS
 .DS_Store
 Thumbs.db
 
@@ -34,17 +33,6 @@ Thumbs.db
 coverage/
 htmlcov/
 .coverage
-
-# Compiled files
-*.pyc
-*.class
-*.o
-*.exe
-*.dll
-*.so
-*.a
-*.obj
-*.out
 
 # Compressed files
 *.zip
