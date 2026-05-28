@@ -7,12 +7,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copie des manifests package pour le cache npm
+# Copie des manifests package pour le cache npm (TOUS les workspaces)
 COPY package.json ./
+COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 COPY packages/plugin-sdk/package.json ./packages/plugin-sdk/
 
-# Installation des dépendances racine (inclut workspaces)
+# Installation des dépendances à la RACINE (gère les workspaces)
 RUN npm install --no-audit --no-fund --legacy-peer-deps || npm install --force
 
 # Copie complète du code source
