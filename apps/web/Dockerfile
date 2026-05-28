@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY package.json ./
 COPY apps/web/package.json ./apps/web/
-COPY packages/ ./packages/ 2>/dev/null || true
 COPY apps/web/ ./apps/web/
 
 WORKDIR /app/apps/web
