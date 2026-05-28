@@ -35,13 +35,6 @@ coverage/
 htmlcov/
 .coverage
 
-# Python specific
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-
 # Compressed files
 *.zip
 *.gz
