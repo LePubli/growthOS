@@ -22,7 +22,8 @@
     "tailwind-merge": "2.3.0",
     "js-cookie": "3.0.5",
     "date-fns": "3.6.0",
-    "class-variance-authority": "0.7.0"
+    "class-variance-authority": "0.7.0",
+    "@growthos/plugin-sdk": "*"
   },
   "devDependencies": {
     "@types/react": "18.3.3",

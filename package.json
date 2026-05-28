@@ -2,14 +2,24 @@
   "name": "growthOS",
   "version": "1.0.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "cd apps/api && npm run dev",
+    "dev:web": "cd apps/web && npm run dev",
+    "build": "npm run build:sdk && npm run build:web",
+    "build:web": "cd apps/web && npm run build",
+    "build:sdk": "cd packages/plugin-sdk && npm run build",
     "db:migrate": "cd apps/api && npx prisma migrate deploy",
     "db:generate": "cd apps/api && npx prisma generate",
-    "db:seed": "cd apps/api && npx ts-node prisma/seed.ts"
+    "db:seed": "cd apps/api && npx ts-node prisma/seed.ts",
+    "test": "vitest run"
   },
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
   },
   "engines": { "node": ">=20.0.0", "npm": ">=10.0.0" }
 }

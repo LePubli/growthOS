@@ -18,9 +18,10 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY apps/web/package.json ./apps/web/
 COPY apps/api/package.json ./apps/api/
+COPY packages/plugin-sdk/package.json ./packages/plugin-sdk/
 
 # Installation des dépendances avec cleanup
-RUN npm ci --ignore-scripts || true
+RUN npm ci --ignore-scripts || npm install --ignore-scripts || true
 
 # ── Stage 2: Builder ─────────────────────────────────────────────
 FROM node:20-alpine AS builder
@@ -30,7 +31,14 @@ WORKDIR /app
 
 # Copie des dépendances
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app/packages/plugin-sdk/node_modules ./packages/plugin-sdk/node_modules || true
+
+# Copie complète du code source
 COPY . .
+
+# Build du SDK plugin en premier
+RUN cd packages/plugin-sdk && npm run build || echo "SDK build skipped"
 
 # Génération de Prisma Client
 RUN cd apps/api && npx prisma generate --schema=./prisma/schema.prisma || true
@@ -40,7 +48,7 @@ WORKDIR /app/apps/web
 ENV NEXT_TELEMETRY_DISABLED 1
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000}
 ENV NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-GrowthOS}
-RUN npm run build || echo "Build failed but continuing..."
+RUN npm run build
 
 # ── Stage 3: Runner (Production) ─────────────────────────────────
 FROM node:20-alpine AS runner
@@ -56,9 +64,6 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder /app/apps/web/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
-
-# Copie du dossier plugins
-COPY --from=builder /app/apps/web/src/plugins ./apps/web/src/plugins
 
 USER nextjs
 
