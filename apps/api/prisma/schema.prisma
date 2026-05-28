@@ -465,3 +465,156 @@ model Signal {
   @@map("signals")
   @@schema("public")
 }
+
+// ============================================================
+// PLUGIN CRM PRO — Modèles additionnels
+// ============================================================
+
+/// Compte Entreprise (CRM)
+model CrmAccount {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  name            String
+  industry        String?
+  website         String?
+  phone           String?
+  billingAddress  Json?    @map("billing_address")
+  shippingAddress Json?    @map("shipping_address")
+  annualRevenue   Float?   @map("annual_revenue")
+  employeeCount   Int?     @map("employee_count")
+  description     String?
+  ownerId         String   @map("owner_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  contacts    CrmContact[]
+  deals       CrmDeal[]
+  activities  CrmActivity[]
+
+  @@index([tenantId])
+  @@index([ownerId])
+  @@map("crm_accounts")
+  @@schema("public")
+}
+
+/// Contact (CRM)
+model CrmContact {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  accountId     String?  @map("account_id") @db.Uuid
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  email         String?
+  phone         String?
+  jobTitle      String?  @map("job_title")
+  isDecisionMaker Boolean @default(false) @map("is_decision_maker")
+  linkedInUrl   String?  @map("linkedin_url")
+  ownerId       String   @map("owner_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  account   CrmAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  deals     CrmDeal[]
+  activities CrmActivity[]
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@map("crm_contacts")
+  @@schema("public")
+}
+
+/// Deal/Opportunité (CRM)
+model CrmDeal {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  title       String
+  stage       String   // new, qualified, proposal, negotiation, closed_won, closed_lost
+  amount      Float?
+  currency    String   @default("EUR")
+  probability Int?     // 0-100
+  closeDate   DateTime? @map("close_date")
+  status      String   @default("open") // open, won, lost
+  description String?
+  accountId   String?  @map("account_id") @db.Uuid
+  ownerId     String   @map("owner_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  account   CrmAccount? @relation(fields: [accountId], references: [id])
+  contacts  CrmContact[]
+  products  CrmDealProduct[]
+  activities CrmActivity[]
+
+  @@index([tenantId])
+  @@index([stage])
+  @@index([status])
+  @@map("crm_deals")
+  @@schema("public")
+}
+
+/// Produit (CRM Catalogue)
+model CrmProduct {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  sku         String?
+  description String?
+  unitPrice   Float    @map("unit_price")
+  currency    String   @default("EUR")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  deals CrmDealProduct[]
+
+  @@index([tenantId])
+  @@map("crm_products")
+  @@schema("public")
+}
+
+/// Relation Deal-Produit
+model CrmDealProduct {
+  id        String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  dealId    String @map("deal_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  quantity  Int    @default(1)
+  unitPrice Float  @map("unit_price")
+  total     Float
+
+  deal    CrmDeal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  product CrmProduct @relation(fields: [productId], references: [id])
+
+  @@unique([dealId, productId])
+  @@map("crm_deal_products")
+  @@schema("public")
+}
+
+/// Activité CRM (appels, réunions, tâches, notes)
+model CrmActivity {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  type          String   // call, meeting, email, task, note
+  subject       String
+  description   String?
+  status        String   // scheduled, completed, cancelled
+  dueDate       DateTime? @map("due_date")
+  completedAt   DateTime? @map("completed_at")
+  relatedToId   String?  @map("related_to_id")
+  relatedToType String?  @map("related_to_type")
+  accountId     String?  @map("account_id") @db.Uuid
+  contactId     String?  @map("contact_id") @db.Uuid
+  dealId        String?  @map("deal_id") @db.Uuid
+  ownerId       String   @map("owner_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  account CrmAccount? @relation(fields: [accountId], references: [id])
+  contact CrmContact? @relation(fields: [contactId], references: [id])
+  deal    CrmDeal?    @relation(fields: [dealId], references: [id])
+
+  @@index([tenantId])
+  @@index([relatedToId])
+  @@index([dueDate])
+  @@map("crm_activities")
+  @@schema("public")
+}
