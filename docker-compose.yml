@@ -1,0 +1,21 @@
+services:
+  growthos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # URL of your NestJS API (baked in at build time by Vite)
+        VITE_API_URL: "${VITE_API_URL:-http://localhost:3001}"
+        BASE_PATH: "/"
+    ports:
+      - "8080:80"
+    environment:
+      # Runtime override — injected into index.html on container start
+      VITE_API_URL: "${VITE_API_URL:-http://localhost:3001}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

@@ -1,0 +1,38 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies (reinstalled inside Docker)
+node_modules
+**/node_modules
+.pnpm-store
+
+# Build outputs (rebuilt inside Docker)
+**/dist
+**/.turbo
+
+# Development & editor files
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.replit
+.local/
+.agents/
+
+# Migration backup (not needed in production image)
+.migration-backup/
+
+# Test and CI
+**/*.test.*
+**/*.spec.*
+coverage/
+
+# Artifacts not needed for the frontend build
+artifacts/api-server/
+artifacts/mockup-sandbox/
+
+# Replit-specific
+**/.replit
+**/replit.nix
+attached_assets/
