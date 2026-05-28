@@ -1,0 +1,57 @@
+2026-May-28 15:08:30.795904
+Docker 29.4.0 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-28 15:08:30.812191
+Starting deployment of growth-o-s:main-muen3373qsdm6coff3jcfe7e to localhost.
+2026-May-28 15:08:31.113178
+Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-28 15:08:32.823502
+----------------------------------------
+2026-May-28 15:08:32.837028
+Importing LePubli/growthOS:main (commit sha 210a10ace71daa0c1cfda347b60f77968a3aa07b) to /artifacts/hhd4gicxiri8sznw7g1lclk5.
+2026-May-28 15:08:39.249183
+Added 88 ARG declarations to Dockerfile for service growthos (multi-stage build, added to 2 stages).
+2026-May-28 15:08:39.263470
+Pulling & building required images.
+2026-May-28 15:08:39.876098
+Adding build arguments to Docker Compose build command.
+2026-May-28 15:08:59.835317
+========================================
+2026-May-28 15:08:59.856502
+Deployment failed: Command execution failed (exit code 1): docker exec hhd4gicxiri8sznw7g1lclk5 bash -c 'DOCKER_BUILDKIT=1 COOLIFY_BRANCH=main COOLIFY_RESOURCE_UUID=qg3u7f72d9lin10gl2ixlp7x  docker compose --env-file /artifacts/build-time.env --project-name qg3u7f72d9lin10gl2ixlp7x --project-directory /artifacts/hhd4gicxiri8sznw7g1lclk5 -f /artifacts/hhd4gicxiri8sznw7g1lclk5/docker-compose.yml build --pull --no-cache --build-arg COOLIFY_FQDN --build-arg CORS_ORIGINS --build-arg ADMIN_COMPANY --build-arg VITE_API_URL --build-arg JWT_EXPIRES_IN --build-arg JWT_SECRET --build-arg SMTP_PASSWORD --build-arg SERVICE_URL_GROWTHOS --build-arg SERVICE_FQDN_GROWTHOS --build-arg REDIS_PASSWORD --build-arg MINIO_ROOT_PASSWORD --build-arg ANTHROPIC_API_KEY --build-arg OPENAI_API_KEY --build-arg SMTP_HOST --build-arg SMTP_PORT --build-arg POSTGRES_USER --build-arg SMTP_USER --build-arg NEXT_PUBLIC_APP_NAME --build-arg STRIPE_SECRET_KEY --build-arg NEXT_PUBLIC_API_URL --build-arg ADMIN_PASSWORD --build-arg SERVICE_FQDN_MINIO --build-arg SERVICE_URL_MIGRATE --build-arg SERVICE_FQDN_MIGRATE --build-arg SERVICE_URL_API --build-arg SERVICE_FQDN_API --build-arg SERVICE_URL_WEB --build-arg SERVICE_FQDN_WEB --build-arg SERVICE_URL_MINIO --build-arg SERVICE_URL_WORKER --build-arg SERVICE_URL_NGINX --build-arg SERVICE_FQDN_NGINX --build-arg SERVICE_FQDN_WORKER --build-arg MISTRAL_API_KEY --build-arg SMTP_FROM_EMAIL --build-arg SMTP_FROM_NAME --build-arg SERVICE_URL_OLLAMA --build-arg SERVICE_FQDN_OLLAMA --build-arg AI_DEFAULT_PROVIDER --build-arg MINIO_BUCKET --build-arg POSTGRES_PASSWORD --build-arg MINIO_ROOT_USER --build-arg OLLAMA_DEFAULT_MODEL --build-arg ADMIN_EMAIL --build-arg COOLIFY_BUILD_SECRETS_HASH=b02ca675252c619a44b12eb569186e56c215273b800b0b27392eab3960703ab4'
+2026-May-28 15:08:59.856502
+Error: Dockerfile:103
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+--------------------
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+102 |     WORKDIR /app/artifacts/growthos
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+103 | >>> RUN PORT=3000 \
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+104 | >>>     BASE_PATH="${BASE_PATH:-/}" \
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+105 | >>>     VITE_API_URL="${VITE_API_URL}" \
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+106 | >>>     NODE_ENV=production \
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+107 | >>>     pnpm run build
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+108 |
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+--------------------
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+failed to solve: process "/bin/sh -c PORT=3000     BASE_PATH=\"${BASE_PATH:-/}\"     VITE_API_URL=\"${VITE_API_URL}\"     NODE_ENV=production     pnpm run build" did not complete successfully: exit code: 1
+2026-May-28 15:08:59.856502
+2026-May-28 15:08:59.856502
+exit status 1
+2026-May-28 15:09:00.057027
+========================================
