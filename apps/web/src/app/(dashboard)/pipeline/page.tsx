@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Euro, Calendar, MoreHorizontal, Loader2, X, CheckCircle, AlertCircle, ChevronRight, User, Trophy, XCircle } from 'lucide-react';
+import { apiClient } from '@/lib/api-client';
+import { PipelineExtensionSlot } from '@/plugins/ui-slots';
 
 interface Deal { id:string; title:string; company:string; contact?:string; value:number; probability:number; stage:string; dueDate?:string; tags?:string[]; prospectId?:string; }
 const STAGES = [
@@ -12,7 +14,7 @@ const STAGES = [
   { id:'won',         label:'Gagné',          color:'bg-green-50 border-green-200',  dot:'bg-green-500' },
 ];
 
-function CreateDealModal({ onClose, onSave, apiUrl }: any) {
+function CreateDealModal({ onClose, onSave }: any) {
   const [form, setForm] = useState({ title:'', company:'', contact:'', value:'', probability:'50', stage:'lead', dueDate:'' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string|null>(null);
@@ -22,10 +24,8 @@ function CreateDealModal({ onClose, onSave, apiUrl }: any) {
     if (!form.title && !form.company) { setError('Titre ou entreprise requis'); return; }
     setLoading(true); setError(null);
     try {
-      const token = localStorage.getItem('access_token')||'';
-      const res = await fetch(`${apiUrl}/api/v1/deals`,{ method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`}, body:JSON.stringify({...form,value:parseFloat(form.value)||0,probability:parseInt(form.probability)||50,title:form.title||form.company}) });
-      if (!res.ok) { const d=await res.json(); throw new Error(d.message||'Erreur'); }
-      onSave(await res.json()); onClose();
+      const res = await apiClient.post('/api/v1/deals', {...form, value:parseFloat(form.value)||0, probability:parseInt(form.probability)||50, title:form.title||form.company});
+      onSave(res.data || res); onClose();
     } catch(e:any) { setError(e.message); }
     finally { setLoading(false); }
   };
@@ -75,15 +75,13 @@ export default function PipelinePage() {
   const [showCreate, setShowCreate] = useState(searchParams.get('new')==='1');
   const [toast, setToast] = useState<string|null>(null);
   const [moving, setMoving] = useState<string|null>(null);
-  const API = process.env.NEXT_PUBLIC_API_URL || '';
 
   const showToast = (msg:string) => { setToast(msg); setTimeout(()=>setToast(null),3000); };
 
   const fetchDeals = useCallback(async () => {
     try {
-      const token = localStorage.getItem('access_token')||'';
-      const res = await fetch(`${API}/api/v1/deals`,{headers:{Authorization:`Bearer ${token}`}});
-      if (res.ok) { const d=await res.json(); setDeals(Array.isArray(d)?d:d.data||[]); }
+      const res = await apiClient.get('/api/v1/deals');
+      setDeals(Array.isArray(res.data)?res.data:res.data?.data||[]);
     } catch {}
   },[]);
 
@@ -93,9 +91,12 @@ export default function PipelinePage() {
     e.stopPropagation();
     setMoving(dealId);
     try {
-      const token = localStorage.getItem('access_token')||'';
-      await fetch(`${API}/api/v1/deals/${dealId}/move`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({stage:newStage})});
+      await apiClient.post(`/api/v1/deals/${dealId}/move`, { stage: newStage });
       setDeals(d=>d.map(x=>x.id===dealId?{...x,stage:newStage}:x));
+      // Émettre un hook pour les plugins
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pipeline:stageChanged', { detail: { dealId, newStage } }));
+      }
     } catch { showToast('Erreur déplacement'); }
     finally { setMoving(null); }
   };
@@ -106,7 +107,7 @@ export default function PipelinePage() {
   return (
     <div className="min-h-screen p-6" style={{background:'var(--body-bg)'}}>
       {toast&&<div className="fixed top-6 right-6 z-50 text-white px-4 py-3 rounded-xl shadow-lg text-sm flex items-center gap-2" style={{background:'var(--color-primary)'}}><CheckCircle className="w-4 h-4"/>{toast}</div>}
-      {showCreate&&<CreateDealModal apiUrl={API} onClose={()=>setShowCreate(false)} onSave={d=>{setDeals(p=>[...p,d]);showToast('Deal créé ✓');}}/>}
+      {showCreate&&<CreateDealModal onClose={()=>setShowCreate(false)} onSave={d=>{setDeals(p=>[...p,d]);showToast('Deal créé ✓');}}/>}
 
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -117,6 +118,9 @@ export default function PipelinePage() {
           <Plus className="w-4 h-4"/>Nouveau deal
         </button>
       </div>
+
+      {/* Slot d'extension pour plugins */}
+      <PipelineExtensionSlot dealId="" tenantId="" stage="" />
 
       <div className="flex gap-4 overflow-x-auto pb-4" style={{minHeight:'calc(100vh - 200px)'}}>
         {STAGES.map(stage=>{

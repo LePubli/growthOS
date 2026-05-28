@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, Mail, Edit2, Save, Play, Pause, Users, Eye, MousePointer, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { apiClient } from '@/lib/api-client';
+import { SequenceExtensionSlot } from '@/plugins/ui-slots';
 
 const MOCK = { id:'new', name:'Nouvelle séquence', description:'', status:'draft', enrolled:0, completed:0, openRate:0, replyRate:0,
   steps:[
@@ -19,16 +21,15 @@ export default function SequenceDetailPage() {
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [toast, setToast] = useState<{msg:string;type:'success'|'error'}|null>(null);
-  const API = process.env.NEXT_PUBLIC_API_URL || '';
+
   const showToast = (msg:string, type:'success'|'error'='success') => { setToast({msg,type}); setTimeout(()=>setToast(null),3000); };
 
   useEffect(() => {
     if (id === 'new') return;
     const fetch_ = async () => {
       try {
-        const token = localStorage.getItem('access_token')||'';
-        const res = await fetch(`${API}/api/v1/sequences/${id}`,{headers:{Authorization:`Bearer ${token}`}});
-        if (res.ok) { const d=await res.json(); setSeq(d); setSelectedStep(d.steps?.[0]?.id||''); }
+        const res = await apiClient.get(`/api/v1/sequences/${id}`);
+        setSeq(res.data || res); setSelectedStep(res.data?.steps?.[0]?.id||'');
       } catch {}
     };
     fetch_();
@@ -37,12 +38,10 @@ export default function SequenceDetailPage() {
   const saveSequence = async () => {
     setSaving(true);
     try {
-      const token = localStorage.getItem('access_token')||'';
-      const url = id==='new'?`${API}/api/v1/sequences`:`${API}/api/v1/sequences/${id}`;
+      const url = id==='new'?`/api/v1/sequences`:`/api/v1/sequences/${id}`;
       const method = id==='new'?'POST':'PATCH';
-      const res = await fetch(url,{method,headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({name:seq.name,description:seq.description,steps:seq.steps,status:seq.status})});
-      if (!res.ok) throw new Error('Erreur sauvegarde');
-      const saved = await res.json();
+      const res = await apiClient[method === 'POST' ? 'post' : 'patch'](url, {name:seq.name,description:seq.description,steps:seq.steps,status:seq.status});
+      const saved = res.data || res;
       setSeq(saved);
       showToast('Séquence sauvegardée ✓');
       if (id==='new') router.replace(`/sequences/${saved.id}`);
@@ -54,9 +53,12 @@ export default function SequenceDetailPage() {
     if (id==='new') return;
     setToggling(true);
     try {
-      const token = localStorage.getItem('access_token')||'';
-      await fetch(`${API}/api/v1/sequences/${id}/toggle`,{method:'POST',headers:{Authorization:`Bearer ${token}`}});
+      await apiClient.post(`/api/v1/sequences/${id}/toggle`);
       setSeq((s:any)=>({...s,status:s.status==='active'?'paused':'active'}));
+      // Émettre un hook pour les plugins
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sequence:toggled', { detail: { sequenceId: id, status: seq.status } }));
+      }
     } catch {} finally { setToggling(false); }
   };
 
@@ -177,6 +179,9 @@ export default function SequenceDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Slot d'extension pour plugins */}
+      {id !== 'new' && <SequenceExtensionSlot sequenceId={id as string} tenantId="" />}
     </div>
   );
 }

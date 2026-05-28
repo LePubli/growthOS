@@ -1,6 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader2, RefreshCw, Copy, CheckCircle, ChevronDown, X, Plus, Settings, Zap, Brain, Target, Mail, BarChart2, Users, Lightbulb } from 'lucide-react';
+import { apiClient } from '@/lib/api-client';
 
 interface Message { id:string; role:'user'|'assistant'; content:string; ts:Date; provider?:string; }
 interface Agent { id:string; name:string; icon:string; system:string; suggestions:{ label:string; prompt:string }[]; }
@@ -54,7 +55,7 @@ export default function AIPage() {
   const [showAgents, setShowAgents] = useState(false);
   const [copied, setCopied] = useState<string|null>(null);
   const endRef = useRef<HTMLDivElement>(null);
-  const API = process.env.NEXT_PUBLIC_API_URL || '';
+  
 
   // Vérifier le provider depuis l'URL
   useEffect(() => {
@@ -85,7 +86,7 @@ export default function AIPage() {
     setInput('');
     setLoading(true);
     try {
-      const token = localStorage.getItem('access_token')||'';
+       
       const history = [...messages, userMsg].filter(m=>m.id!=='0').map(m=>({role:m.role,content:m.content}));
       const res = await fetch(`${API}/api/v1/ai/chat`, {
         method:'POST',
