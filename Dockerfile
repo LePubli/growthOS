@@ -1,7 +1,7 @@
 # ============================================================
 # Stage 1 — Build
 # ============================================================
-FROM node:22-alpine AS builder
+FROM node:22-slim AS builder
 
 # Install pnpm — pin exact version to match pnpm-lock.yaml (lockfileVersion 9.0)
 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
