@@ -49,9 +49,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copie du standalone généré par Next.js (structure monorepo)
 COPY --from=builder /app/apps/web/.next/standalone ./
-# Static + public : copier aux deux endroits possibles
-COPY --from=builder /app/apps/web/.next/static     ./.next/static
-COPY --from=builder /app/apps/web/public           ./public
+# Static files (si existent)
+COPY --from=builder /app/apps/web/.next/static ./.next/static || true
+COPY --from=builder /app/apps/web/public ./public
 
 EXPOSE 3000
 
