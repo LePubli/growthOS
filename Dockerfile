@@ -15,12 +15,13 @@ WORKDIR /app
 # All package.json files must be present so pnpm --frozen-lockfile can
 # validate every importer listed in pnpm-lock.yaml. We do NOT copy source
 # here — that comes after the install step.
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
 
 COPY artifacts/growthos/package.json       ./artifacts/growthos/package.json
 COPY artifacts/api-server/package.json     ./artifacts/api-server/package.json
 COPY artifacts/mockup-sandbox/package.json ./artifacts/mockup-sandbox/package.json
 COPY lib/api-client-react/package.json     ./lib/api-client-react/package.json
+COPY lib/api-client-react/tsconfig.json    ./lib/api-client-react/tsconfig.json
 COPY lib/api-spec/package.json             ./lib/api-spec/package.json
 COPY lib/api-zod/package.json              ./lib/api-zod/package.json
 COPY lib/db/package.json                   ./lib/db/package.json

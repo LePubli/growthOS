@@ -1,0 +1,75 @@
+2026-May-29 03:09:42.646151
+Docker 29.4.0 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-29 03:09:42.662088
+Starting deployment of growth-o-s:main-muen3373qsdm6coff3jcfe7e to localhost.
+2026-May-29 03:09:42.961667
+Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-29 03:09:44.706237
+----------------------------------------
+2026-May-29 03:09:44.723268
+Importing LePubli/growthOS:main (commit sha 393e20ee9b5f91f6701572088b2cbd58847bf708) to /artifacts/db7xyx41t30ks9y3fzt09dp1.
+2026-May-29 03:09:51.005907
+Added 90 ARG declarations to Dockerfile for service growthos (multi-stage build, added to 2 stages).
+2026-May-29 03:09:51.021857
+Pulling & building required images.
+2026-May-29 03:09:51.713537
+Adding build arguments to Docker Compose build command.
+2026-May-29 03:10:14.402019
+========================================
+2026-May-29 03:10:14.425313
+Deployment failed: Command execution failed (exit code 1): docker exec db7xyx41t30ks9y3fzt09dp1 bash -c 'DOCKER_BUILDKIT=1 COOLIFY_BRANCH=main COOLIFY_RESOURCE_UUID=qg3u7f72d9lin10gl2ixlp7x  docker compose --env-file /artifacts/build-time.env --project-name qg3u7f72d9lin10gl2ixlp7x --project-directory /artifacts/db7xyx41t30ks9y3fzt09dp1 -f /artifacts/db7xyx41t30ks9y3fzt09dp1/docker-compose.yml build --pull --no-cache --build-arg COOLIFY_FQDN --build-arg CORS_ORIGINS --build-arg ADMIN_COMPANY --build-arg VITE_API_URL --build-arg JWT_EXPIRES_IN --build-arg SMTP_PASSWORD --build-arg SERVICE_FQDN_GROWTHOS --build-arg SERVICE_URL_GROWTHOS --build-arg JWT_SECRET --build-arg MINIO_ROOT_PASSWORD --build-arg BUILDKIT_PROGRESS --build-arg ANTHROPIC_API_KEY --build-arg REDIS_PASSWORD --build-arg OPENAI_API_KEY --build-arg SMTP_HOST --build-arg SMTP_PORT --build-arg POSTGRES_USER --build-arg SMTP_USER --build-arg NEXT_PUBLIC_APP_NAME --build-arg STRIPE_SECRET_KEY --build-arg NEXT_PUBLIC_API_URL --build-arg ADMIN_PASSWORD --build-arg SERVICE_URL_MIGRATE --build-arg SERVICE_FQDN_MIGRATE --build-arg SERVICE_URL_API --build-arg SERVICE_FQDN_API --build-arg SERVICE_URL_WEB --build-arg SERVICE_FQDN_WEB --build-arg SERVICE_FQDN_MINIO --build-arg SERVICE_URL_MINIO --build-arg SERVICE_URL_WORKER --build-arg SERVICE_URL_NGINX --build-arg SERVICE_FQDN_NGINX --build-arg SERVICE_FQDN_WORKER --build-arg SMTP_FROM_EMAIL --build-arg SMTP_FROM_NAME --build-arg SERVICE_URL_OLLAMA --build-arg OLLAMA_DEFAULT_MODEL --build-arg SERVICE_FQDN_OLLAMA --build-arg AI_DEFAULT_PROVIDER --build-arg MINIO_BUCKET --build-arg POSTGRES_PASSWORD --build-arg MINIO_ROOT_USER --build-arg MISTRAL_API_KEY --build-arg ADMIN_EMAIL --build-arg COOLIFY_BUILD_SECRETS_HASH=8071fd85ebe2a6e946480a36d6df45348a6550e46ce760062f6d96b862614993'
+2026-May-29 03:10:14.425313
+Error: Dockerfile:94
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+--------------------
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+93 |     WORKDIR /app/artifacts/growthos
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+94 | >>> RUN echo "🔍 Starting Vite build..." && \
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+95 | >>>     set +e && \
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+96 | >>>     export NODE_OPTIONS="--max-old-space-size=4096" && \
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+97 | >>>     export VITE_API_URL="${VITE_API_URL}" && \
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+98 | >>>     export BASE_PATH="${BASE_PATH:-/}" && \
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+99 | >>>     ./node_modules/.bin/vite build --config vite.config.ts --mode production > /tmp/vite-build.log 2>&1; \
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+100 | >>>     EXIT_CODE=$?; \
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+101 | >>>     echo "========== 📜 VITE OUTPUT ==========" && \
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+102 | >>>     cat /tmp/vite-build.log && \
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+103 | >>>     echo "==================================" && \
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+104 | >>>     exit $EXIT_CODE
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+105 |
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+--------------------
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+failed to solve: process "/bin/sh -c echo \"🔍 Starting Vite build...\" &&     set +e &&     export NODE_OPTIONS=\"--max-old-space-size=4096\" &&     export VITE_API_URL=\"${VITE_API_URL}\" &&     export BASE_PATH=\"${BASE_PATH:-/}\" &&     ./node_modules/.bin/vite build --config vite.config.ts --mode production > /tmp/vite-build.log 2>&1;     EXIT_CODE=$?;     echo \"========== 📜 VITE OUTPUT ==========\" &&     cat /tmp/vite-build.log &&     echo \"==================================\" &&     exit $EXIT_CODE" did not complete successfully: exit code: 1
+2026-May-29 03:10:14.425313
+2026-May-29 03:10:14.425313
+exit status 1
+2026-May-29 03:10:14.678679
+========================================
