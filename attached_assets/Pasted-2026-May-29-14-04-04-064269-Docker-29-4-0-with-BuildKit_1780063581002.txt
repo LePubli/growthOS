@@ -1,0 +1,46 @@
+2026-May-29 14:04:04.064269
+Docker 29.4.0 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-29 14:04:04.080846
+Starting deployment of growth-o-s:main-muen3373qsdm6coff3jcfe7e to localhost.
+2026-May-29 14:04:04.382064
+Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-29 14:04:06.146767
+----------------------------------------
+2026-May-29 14:04:06.163371
+Importing LePubli/growthOS:main (commit sha e0eef8ff9fddaa598697fa765c7de8db3463e328) to /artifacts/agi76bk5h3lfpnf2by1sur4x.
+2026-May-29 14:04:12.546551
+Added 92 ARG declarations to Dockerfile for service growthos (multi-stage build, added to 2 stages).
+2026-May-29 14:04:13.443646
+Added 92 ARG declarations to Dockerfile for service api-server (multi-stage build, added to 2 stages).
+2026-May-29 14:04:13.462598
+Pulling & building required images.
+2026-May-29 14:04:14.189996
+Adding build arguments to Docker Compose build command.
+2026-May-29 14:04:49.968538
+Removing old containers.
+2026-May-29 14:04:50.162461
+Starting new application.
+2026-May-29 14:04:51.301712
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-140411342146  Creating
+2026-May-29 14:04:51.426264
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-140411342146  Created
+2026-May-29 14:04:51.437928
+Container growthos-qg3u7f72d9lin10gl2ixlp7x-140411329442  Creating
+2026-May-29 14:04:51.519226
+Container growthos-qg3u7f72d9lin10gl2ixlp7x-140411329442  Created
+2026-May-29 14:04:51.540954
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-140411342146  Starting
+2026-May-29 14:04:51.841645
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-140411342146  Started
+2026-May-29 14:04:51.841645
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-140411342146  Waiting
+2026-May-29 14:04:57.344067
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-140411342146  Healthy
+2026-May-29 14:04:57.344067
+Container growthos-qg3u7f72d9lin10gl2ixlp7x-140411329442  Starting
+2026-May-29 14:04:57.600544
+Container growthos-qg3u7f72d9lin10gl2ixlp7x-140411329442  Started
+2026-May-29 14:04:58.102095
+New container started.
+2026-May-29 14:04:58.678704
+Gracefully shutting down build container: agi76bk5h3lfpnf2by1sur4x
