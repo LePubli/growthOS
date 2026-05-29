@@ -1,0 +1,38 @@
+
+*** System restart required ***
+Last login: Wed May 27 15:59:27 2026 from 92.159.27.212
+root@vps:~# curl -I http://localhost:80        # doit répondre 200 ou 301
+curl -I http://localhost:3001/api/healthz
+HTTP/1.1 404 Not Found
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Fri, 29 May 2026 15:33:24 GMT
+Content-Length: 19
+
+curl: (7) Failed to connect to localhost port 3001 after 0 ms: Couldn't connect to server
+root@vps:~# sudo ss -tulnp | grep -E ':(80|3001)\b'
+tcp   LISTEN 0      4096         0.0.0.0:80        0.0.0.0:*    users:(("docker-proxy",pid=1878339,fd=8))               
+tcp   LISTEN 0      4096            [::]:80           [::]:*    users:(("docker-proxy",pid=1878345,fd=8))               
+root@vps:~# # 1️⃣ Frontend
+curl -s -o /dev/null -w "Frontend: %{http_code}\n" -H "Host: igs6f5ezyix8l2my3u3tuxbl.82.22.77.159.sslip.io" http://localhost
+
+# 2️⃣ API
+curl -s -o /dev/null -w "API: %{http_code}\n" -H "Host: vit6buuz2vmqaleuh0z5autx.82.22.77.159.sslip.io" http://localhost/api/healthz
+Frontend: 404
+API: 200
+root@vps:~# # Remplace <nom-container-frontend> par le vrai nom (docker ps | grep growthos)
+docker exec -it <nom-container-frontend> ls -la /usr/share/nginx/html
+-bash: nom-container-frontend: No such file or directory
+root@vps:~# docker ps --format "{{.Names}}" | grep -i growthos
+growthos-qg3u7f72d9lin10gl2ixlp7x-144823712879
+root@vps:~# docker exec -it growthos-qg3u7f72d9lin10gl2ixlp7x-144823712879 ls -la /usr/share/nginx/html
+total 56
+drwxr-xr-x    1 root     root          4096 May 29 14:49 .
+drwxr-xr-x    1 root     root          4096 Apr 16  2025 ..
+-rw-r--r--    1 root     root           497 Apr 16  2025 50x.html
+drwxr-xr-x    2 root     root          4096 May 29 14:48 assets
+-rw-r--r--    1 root     root           163 May 29 14:48 favicon.svg
+-rw-r--r--    1 root     root          1433 May 29 14:49 index.html
+-rw-r--r--    1 root     root         21439 May 29 14:48 opengraph.jpg
+-rw-r--r--    1 root     root            23 May 29 14:48 robots.txt
+root@vps:~#

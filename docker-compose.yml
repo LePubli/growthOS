@@ -14,9 +14,9 @@ services:
       VITE_API_URL: ""
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.growthos-igs6f5ezyix8l2my3u3tuxbl.rule=Host(`igs6f5ezyix8l2my3u3tuxbl.82.22.77.159.sslip.io`)"
-      - "traefik.http.routers.growthos-igs6f5ezyix8l2my3u3tuxbl.entrypoints=http"
-      - "traefik.http.services.growthos-igs6f5ezyix8l2my3u3tuxbl.loadbalancer.server.port=80"
+      - "traefik.http.routers.growthos-qg3u7f72d9lin10gl2ixlp7x.rule=Host(`igs6f5ezyix8l2my3u3tuxbl.82.22.77.159.sslip.io`)"
+      - "traefik.http.routers.growthos-qg3u7f72d9lin10gl2ixlp7x.entrypoints=http"
+      - "traefik.http.services.growthos-qg3u7f72d9lin10gl2ixlp7x.loadbalancer.server.port=80"
     depends_on:
       api-server:
         condition: service_healthy
@@ -40,9 +40,9 @@ services:
       DATABASE_URL: "${DATABASE_URL}"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.api-server-vit6buuz2vmqaleuh0z5autx.rule=Host(`vit6buuz2vmqaleuh0z5autx.82.22.77.159.sslip.io`)"
-      - "traefik.http.routers.api-server-vit6buuz2vmqaleuh0z5autx.entrypoints=http"
-      - "traefik.http.services.api-server-vit6buuz2vmqaleuh0z5autx.loadbalancer.server.port=3001"
+      - "traefik.http.routers.api-server-qg3u7f72d9lin10gl2ixlp7x.rule=Host(`vit6buuz2vmqaleuh0z5autx.82.22.77.159.sslip.io`)"
+      - "traefik.http.routers.api-server-qg3u7f72d9lin10gl2ixlp7x.entrypoints=http"
+      - "traefik.http.services.api-server-qg3u7f72d9lin10gl2ixlp7x.loadbalancer.server.port=3001"
     restart: unless-stopped
     healthcheck:
       test:
