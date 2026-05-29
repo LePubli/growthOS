@@ -1,0 +1,43 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies (reinstalled inside Docker)
+node_modules
+**/node_modules
+.pnpm-store
+
+# Build outputs (rebuilt inside Docker)
+**/dist
+**/.turbo
+
+# Development & editor files
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.replit
+.local/
+.agents/
+
+# Migration backup (not needed in production image)
+.migration-backup/
+
+# Test and CI
+**/*.test.*
+**/*.spec.*
+coverage/
+
+# Exclude sources not needed for the API server build.
+# NOTE: artifacts/api-server/src/ is intentionally NOT excluded here
+# (it IS excluded in .dockerignore for the frontend build).
+artifacts/mockup-sandbox/src/
+artifacts/mockup-sandbox/dist/
+artifacts/mockup-sandbox/node_modules/
+artifacts/growthos/src/
+artifacts/growthos/node_modules/
+
+# Replit-specific
+**/.replit
+**/replit.nix
+attached_assets/

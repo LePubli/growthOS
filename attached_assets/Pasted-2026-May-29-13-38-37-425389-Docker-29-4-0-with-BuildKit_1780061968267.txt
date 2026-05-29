@@ -1,0 +1,31 @@
+2026-May-29 13:38:37.425389
+Docker 29.4.0 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-29 13:38:37.440751
+Starting deployment of growth-o-s:main-muen3373qsdm6coff3jcfe7e to localhost.
+2026-May-29 13:38:37.751034
+Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-29 13:38:39.552792
+----------------------------------------
+2026-May-29 13:38:39.567466
+Importing LePubli/growthOS:main (commit sha 85c81d6b2fee1a673867386e919f95df25fbac52) to /artifacts/izkvr8q0n8qtb5aihuypq8cf.
+2026-May-29 13:38:45.916077
+Added 92 ARG declarations to Dockerfile for service growthos (multi-stage build, added to 2 stages).
+2026-May-29 13:38:46.905051
+Added 92 ARG declarations to Dockerfile for service api-server (multi-stage build, added to 2 stages).
+2026-May-29 13:38:46.923811
+Pulling & building required images.
+2026-May-29 13:38:47.681667
+Adding build arguments to Docker Compose build command.
+2026-May-29 13:39:12.329961
+========================================
+2026-May-29 13:39:12.354861
+Deployment failed: Command execution failed (exit code 1): docker exec izkvr8q0n8qtb5aihuypq8cf bash -c 'DOCKER_BUILDKIT=1 COOLIFY_BRANCH=main COOLIFY_RESOURCE_UUID=qg3u7f72d9lin10gl2ixlp7x  docker compose --env-file /artifacts/build-time.env --project-name qg3u7f72d9lin10gl2ixlp7x --project-directory /artifacts/izkvr8q0n8qtb5aihuypq8cf -f /artifacts/izkvr8q0n8qtb5aihuypq8cf/docker-compose.yml build --pull --no-cache --build-arg COOLIFY_FQDN --build-arg CORS_ORIGINS --build-arg ADMIN_COMPANY --build-arg VITE_API_URL --build-arg JWT_EXPIRES_IN --build-arg SMTP_PASSWORD --build-arg SERVICE_FQDN_GROWTHOS --build-arg SERVICE_URL_GROWTHOS --build-arg JWT_SECRET --build-arg MINIO_ROOT_PASSWORD --build-arg BUILDKIT_PROGRESS --build-arg ANTHROPIC_API_KEY --build-arg REDIS_PASSWORD --build-arg OPENAI_API_KEY --build-arg SMTP_HOST --build-arg SMTP_PORT --build-arg POSTGRES_USER --build-arg DATABASE_URL --build-arg SMTP_USER --build-arg NEXT_PUBLIC_APP_NAME --build-arg STRIPE_SECRET_KEY --build-arg NEXT_PUBLIC_API_URL --build-arg ADMIN_PASSWORD --build-arg SERVICE_URL_MIGRATE --build-arg SERVICE_FQDN_MIGRATE --build-arg SERVICE_URL_API --build-arg SERVICE_FQDN_API --build-arg SERVICE_URL_WEB --build-arg SERVICE_FQDN_WEB --build-arg SERVICE_FQDN_MINIO --build-arg SERVICE_URL_MINIO --build-arg SERVICE_URL_WORKER --build-arg SERVICE_URL_NGINX --build-arg SERVICE_FQDN_NGINX --build-arg SERVICE_FQDN_WORKER --build-arg SMTP_FROM_EMAIL --build-arg SMTP_FROM_NAME --build-arg SERVICE_URL_OLLAMA --build-arg OLLAMA_DEFAULT_MODEL --build-arg SERVICE_FQDN_OLLAMA --build-arg AI_DEFAULT_PROVIDER --build-arg MINIO_BUCKET --build-arg POSTGRES_PASSWORD --build-arg MINIO_ROOT_USER --build-arg MISTRAL_API_KEY --build-arg ADMIN_EMAIL --build-arg COOLIFY_BUILD_SECRETS_HASH=1ffd1f2a06f85fc8d9d97d5790dcaeddab29d130e3b2193864b8c8df21b5b20f'
+2026-May-29 13:39:12.354861
+Error: target api-server: failed to solve: process "/bin/sh -c node build.mjs && pnpm store prune" did not complete successfully: exit code: 1
+2026-May-29 13:39:12.354861
+2026-May-29 13:39:12.354861
+exit status 1
+2026-May-29 13:39:12.584619
+========================================
+2026-May-29 13:39:13.098993
+Gracefully shutting down build container: izkvr8q0n8qtb5aihuypq8cf
