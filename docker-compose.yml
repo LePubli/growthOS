@@ -9,20 +9,20 @@ services:
         VITE_API_URL: ""
         BASE_PATH: "/"
     expose:
-      - "80"
+      - "3000"
     environment:
       VITE_API_URL: ""
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.growthos-qg3u7f72d9lin10gl2ixlp7x.rule=Host(`igs6f5ezyix8l2my3u3tuxbl.82.22.77.159.sslip.io`)"
       - "traefik.http.routers.growthos-qg3u7f72d9lin10gl2ixlp7x.entrypoints=http"
-      - "traefik.http.services.growthos-qg3u7f72d9lin10gl2ixlp7x.loadbalancer.server.port=80"
+      - "traefik.http.services.growthos-qg3u7f72d9lin10gl2ixlp7x.loadbalancer.server.port=3000"
     depends_on:
       api-server:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
