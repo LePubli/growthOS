@@ -4,14 +4,14 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # URL of the API (baked in at build time by Vite, overridable at runtime)
-        VITE_API_URL: "${VITE_API_URL:-http://api-server:3001}"
+        # Leave VITE_API_URL empty so the frontend uses the relative path /api/v1
+        # nginx proxies /api/* to the api-server container (see nginx.conf)
+        VITE_API_URL: ""
         BASE_PATH: "/"
     expose:
       - "80"
     environment:
-      # Runtime override — injected into index.html on container start
-      VITE_API_URL: "${VITE_API_URL:-http://api-server:3001}"
+      VITE_API_URL: ""
     depends_on:
       api-server:
         condition: service_healthy
