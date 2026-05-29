@@ -1,0 +1,42 @@
+2026-May-29 13:57:45.347699
+Docker 29.4.0 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-29 13:57:45.366164
+Starting deployment of growth-o-s:main-muen3373qsdm6coff3jcfe7e to localhost.
+2026-May-29 13:57:45.682624
+Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-29 13:57:47.597840
+----------------------------------------
+2026-May-29 13:57:47.612701
+Importing LePubli/growthOS:main (commit sha 5b3ce82806b9a2c2d29d5cf59a60e87384bc5d1f) to /artifacts/wn635g85mnu7e9qowmjoupef.
+2026-May-29 13:57:53.946962
+Added 92 ARG declarations to Dockerfile for service growthos (multi-stage build, added to 2 stages).
+2026-May-29 13:57:54.854495
+Added 92 ARG declarations to Dockerfile for service api-server (multi-stage build, added to 2 stages).
+2026-May-29 13:57:54.868650
+Pulling & building required images.
+2026-May-29 13:57:55.549845
+Adding build arguments to Docker Compose build command.
+2026-May-29 13:58:33.898297
+Removing old containers.
+2026-May-29 13:58:34.123532
+Starting new application.
+2026-May-29 13:58:35.437203
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-135752711820  Creating
+2026-May-29 13:58:35.566911
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-135752711820  Created
+2026-May-29 13:58:35.566911
+Container growthos-qg3u7f72d9lin10gl2ixlp7x-135752698837  Creating
+2026-May-29 13:58:35.709050
+Container growthos-qg3u7f72d9lin10gl2ixlp7x-135752698837  Created
+2026-May-29 13:58:35.759885
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-135752711820  Starting
+2026-May-29 13:58:36.121386
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-135752711820  Started
+2026-May-29 13:58:36.121386
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-135752711820  Waiting
+2026-May-29 13:58:37.152533
+Container api-server-qg3u7f72d9lin10gl2ixlp7x-135752711820  Error
+2026-May-29 13:58:37.152533
+dependency failed to start: container api-server-qg3u7f72d9lin10gl2ixlp7x-135752711820 is unhealthy
+2026-May-29 13:58:37.168842
+exit status 1
