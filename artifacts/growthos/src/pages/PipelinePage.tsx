@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Plus, DollarSign, TrendingUp, Trophy, Loader2 } from 'lucide-react';
+import apiClient from '@/lib/api-client';
 
 const STAGES = [
   { id:'lead', label:'Lead', color:'#6B7280' },
@@ -24,18 +25,17 @@ export default function PipelinePage() {
   const [deals, setDeals] = useState(MOCK_DEALS);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<'kanban'|'list'>('kanban');
-  const API = (import.meta.env.VITE_API_URL as string) || '';
 
   useEffect(()=>{
-    const fetch_ = async () => {
+    const load = async () => {
       setLoading(true);
       try {
-        const token = localStorage.getItem('access_token')||'';
-        const res = await fetch(`${API}/api/v1/pipeline`,{headers:{Authorization:`Bearer ${token}`}});
-        if (res.ok) { const d=await res.json(); const l=Array.isArray(d)?d:d.data||[]; if(l.length>0) setDeals(l); }
+        const d: any = await apiClient.get('/pipeline');
+        const l = Array.isArray(d) ? d : d.data || [];
+        if (l.length > 0) setDeals(l);
       } catch {} finally { setLoading(false); }
     };
-    fetch_();
+    load();
   },[]);
 
   const totalPipeline = deals.filter(d=>d.stage!=='won'&&d.stage!=='lost').reduce((s,d)=>s+d.value,0);

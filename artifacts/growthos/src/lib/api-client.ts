@@ -21,6 +21,10 @@ class ApiClient {
         if (tenantId && config.headers) {
           config.headers['X-Tenant-ID'] = tenantId;
         }
+        const token = this.getAccessToken();
+        if (token && config.headers) {
+          config.headers['Authorization'] = `Bearer ${token}`;
+        }
         return config;
       },
       (error) => Promise.reject(error)
@@ -127,6 +131,18 @@ class ApiClient {
   private getTenantId(): string | null {
     if (typeof window === 'undefined') return null;
     return sessionStorage.getItem('tenant_id');
+  }
+
+  private getAccessToken(): string | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('growthos-auth');
+      if (!raw) return null;
+      const state = JSON.parse(raw);
+      return state?.state?.accessToken ?? state?.accessToken ?? null;
+    } catch {
+      return null;
+    }
   }
 
   isAuthenticated(): boolean {

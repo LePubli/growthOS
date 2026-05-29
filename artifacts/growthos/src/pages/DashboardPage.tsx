@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
 import { Users, DollarSign, RefreshCw, Plus, ChevronRight } from 'lucide-react';
+import apiClient from '@/lib/api-client';
 
 const ALL_WIDGETS = [
   { id:'prospects',  label:'Total Prospects',     icon:'👥', color:'blue',   href:'/prospects' },
@@ -49,21 +50,16 @@ export default function DashboardPage() {
   const [greeting, setGreeting] = useState('Bonjour');
   const [recentProspects, setRecentProspects] = useState<any[]>([]);
   const [pipelineStages, setPipelineStages] = useState<any[]>([]);
-  const API = (import.meta.env.VITE_API_URL as string) || '';
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('access_token')||'';
-      const res = await fetch(`${API}/api/v1/dashboard/stats`,{headers:{Authorization:`Bearer ${token}`}});
-      if (res.ok) {
-        const d = await res.json();
-        setStats(d.overview||{});
-        setRecentProspects(d.recent_prospects||[]);
-        setPipelineStages(d.pipeline_stages||[]);
-      }
+      const d: any = await apiClient.get('/dashboard/stats');
+      setStats(d.overview||{});
+      setRecentProspects(d.recent_prospects||[]);
+      setPipelineStages(d.pipeline_stages||[]);
     } catch {} finally { setLoading(false); }
-  },[API]);
+  },[]);
 
   useEffect(()=>{
     const h=new Date().getHours();

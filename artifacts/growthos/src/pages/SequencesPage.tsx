@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Mail, Play, Pause, Plus, Loader2, Users } from 'lucide-react';
+import apiClient from '@/lib/api-client';
 
 const MOCK = [
   { id:'1', name:'Onboarding SaaS', description:'Séquence de bienvenue', status:'active', steps:[{},{},{}], enrolled:47, completed:12, openRate:48.2, replyRate:8.4 },
@@ -12,17 +13,18 @@ export default function SequencesPage() {
   const [, navigate] = useLocation();
   const [sequences, setSequences] = useState(MOCK);
   const [toggling, setToggling] = useState<string|null>(null);
-  const API = (import.meta.env.VITE_API_URL as string) || '';
 
   useEffect(()=>{
-    fetch(`${API}/api/v1/sequences`,{headers:{Authorization:`Bearer ${localStorage.getItem('access_token')||''}`}})
-      .then(r=>r.ok?r.json():null).then(d=>{if(d){const l=Array.isArray(d)?d:d.data||[];if(l.length>0)setSequences(l);}}).catch(()=>{});
+    apiClient.get('/sequences').then((d: any) => {
+      const l = Array.isArray(d) ? d : d.data || [];
+      if (l.length > 0) setSequences(l);
+    }).catch(()=>{});
   },[]);
 
   const toggle = async (id:string, e:React.MouseEvent) => {
     e.stopPropagation(); setToggling(id);
     try {
-      await fetch(`${API}/api/v1/sequences/${id}/toggle`,{method:'POST',headers:{Authorization:`Bearer ${localStorage.getItem('access_token')||''}`}});
+      await apiClient.post(`/sequences/${id}/toggle`, {});
       setSequences(s=>s.map(x=>x.id===id?{...x,status:x.status==='active'?'paused':'active'}:x));
     } catch {} finally { setToggling(null); }
   };

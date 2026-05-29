@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Zap, Star, CheckCircle, RefreshCw, TrendingUp, Users, DollarSign, Newspaper, Cpu } from 'lucide-react';
+import apiClient from '@/lib/api-client';
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   funding:    { label:'Financement',   color:'text-green-700',  bg:'bg-green-50',  icon:<DollarSign size={14}/> },
@@ -23,18 +24,13 @@ export default function SignalsPage() {
   const [signals, setSignals] = useState(MOCK_SIGNALS);
   const [filter, setFilter] = useState('all');
   const [fetching, setFetching] = useState(false);
-  const API = (import.meta.env.VITE_API_URL as string) || '';
 
   useEffect(()=>{
-    const fetch_ = async () => {
-      setFetching(true);
-      try {
-        const token = localStorage.getItem('access_token')||'';
-        const res = await fetch(`${API}/api/v1/signals`,{headers:{Authorization:`Bearer ${token}`}});
-        if (res.ok) { const d=await res.json(); const l=Array.isArray(d)?d:d.data||[]; if(l.length>0) setSignals(l); }
-      } catch {} finally { setFetching(false); }
-    };
-    fetch_();
+    setFetching(true);
+    apiClient.get('/signals').then((d: any) => {
+      const l = Array.isArray(d) ? d : d.data || [];
+      if (l.length > 0) setSignals(l);
+    }).catch(()=>{}).finally(()=>setFetching(false));
   },[]);
 
   const markAllRead = () => setSignals(s=>s.map(x=>({...x,isRead:true})));
