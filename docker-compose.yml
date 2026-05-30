@@ -4,14 +4,9 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # VITE_API_URL vide → frontend utilise /api/v1 (URL relative)
-        # nginx proxifie /api/* vers api-server:3001 (voir nginx.conf)
-        VITE_API_URL: ""
         BASE_PATH: "/"
     expose:
       - "3000"
-    environment:
-      VITE_API_URL: ""
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.growthos-qg3u7f72d9lin10gl2ixlp7x.rule=Host(`igs6f5ezyix8l2my3u3tuxbl.82.22.77.159.sslip.io`)"
