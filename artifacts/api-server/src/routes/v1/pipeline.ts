@@ -29,6 +29,14 @@ router.get("/", async (req, res) => {
   res.json(deals);
 });
 
+router.get("/:id", async (req, res) => {
+  const [deal] = await db.select().from(dealsTable)
+    .where(and(eq(dealsTable.id, req.params.id), eq(dealsTable.tenantId, req.auth!.tenantId)))
+    .limit(1);
+  if (!deal) { res.status(404).json({ error: "Deal introuvable" }); return; }
+  res.json({ ...deal, value: Number(deal.value) });
+});
+
 router.post("/", async (req, res) => {
   const parse = dealSchema.safeParse(req.body);
   if (!parse.success) {

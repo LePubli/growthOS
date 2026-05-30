@@ -4,3 +4,7 @@ export * from "./prospects";
 export * from "./deals";
 export * from "./sequences";
 export * from "./signals";
+export * from "./activities";
+export * from "./workflows";
+export * from "./templates";
+export * from "./webhooks";

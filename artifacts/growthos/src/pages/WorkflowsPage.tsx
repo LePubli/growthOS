@@ -19,8 +19,11 @@ export default function WorkflowsPage() {
   const API = (import.meta.env.VITE_API_URL as string) || '';
 
   useEffect(()=>{
-    fetch(`${API}/api/v1/workflows`,{headers:{Authorization:`Bearer ${localStorage.getItem('access_token')||''}`}})
-      .then(r=>r.ok?r.json():null).then(d=>{if(d){const l=Array.isArray(d)?d:d.data||[];if(l.length>0)setWorkflows(l);}}).catch(()=>{});
+    const token = localStorage.getItem('access_token') || '';
+    fetch(`${API}/api/v1/workflows`,{headers:{Authorization:`Bearer ${token}`}})
+      .then(r=>r.ok?r.json():null)
+      .then(d=>{if(d&&Array.isArray(d)&&d.length>0)setWorkflows(d.map((w:any)=>({...w,actions:Array.isArray(w.actions)?w.actions:[],trigger:w.trigger||'prospect_created'})));})
+      .catch(()=>{});
   },[]);
 
   const toggle = async (id:string, e:React.MouseEvent) => {

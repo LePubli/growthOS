@@ -26,6 +26,14 @@ router.get("/", async (req, res) => {
   res.json(sequences);
 });
 
+router.get("/:id", async (req, res) => {
+  const [seq] = await db.select().from(sequencesTable)
+    .where(and(eq(sequencesTable.id, req.params.id), eq(sequencesTable.tenantId, req.auth!.tenantId)))
+    .limit(1);
+  if (!seq) { res.status(404).json({ error: "Séquence introuvable" }); return; }
+  res.json({ ...seq, openRate: Number(seq.openRate), replyRate: Number(seq.replyRate) });
+});
+
 router.post("/", async (req, res) => {
   const parse = sequenceSchema.safeParse(req.body);
   if (!parse.success) {

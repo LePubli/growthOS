@@ -83,6 +83,71 @@ CREATE TABLE IF NOT EXISTS signals (
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS activities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type TEXT NOT NULL DEFAULT 'note',
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'done',
+  prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  deal_id UUID REFERENCES deals(id) ON DELETE SET NULL,
+  scheduled_at TIMESTAMP,
+  done_at TIMESTAMP,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS workflows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  description TEXT,
+  trigger TEXT NOT NULL DEFAULT 'prospect_created',
+  trigger_config JSONB DEFAULT '{}',
+  actions JSONB DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'draft',
+  executions INTEGER DEFAULT 0,
+  last_run_at TIMESTAMP,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'outreach',
+  variables JSONB DEFAULT '[]',
+  used_count INTEGER DEFAULT 0,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS webhooks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  events JSONB DEFAULT '[]',
+  secret TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  deliveries INTEGER DEFAULT 0,
+  last_triggered_at TIMESTAMP,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS notes TEXT;
 `;
 
 function sleep(ms: number): Promise<void> {

@@ -9,12 +9,17 @@ import LoginPage from '@/pages/LoginPage';
 import DashboardPage from '@/pages/DashboardPage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import ProspectsPage from '@/pages/ProspectsPage';
+import ProspectDetailPage from '@/pages/ProspectDetailPage';
 import PipelinePage from '@/pages/PipelinePage';
+import DealDetailPage from '@/pages/DealDetailPage';
 import SequencesPage from '@/pages/SequencesPage';
+import SequenceDetailPage from '@/pages/SequenceDetailPage';
 import SignalsPage from '@/pages/SignalsPage';
+import SignalDetailPage from '@/pages/SignalDetailPage';
 import SourcingPage from '@/pages/SourcingPage';
 import PluginsPage from '@/pages/PluginsPage';
 import WorkflowsPage from '@/pages/WorkflowsPage';
+import WorkflowDetailPage from '@/pages/WorkflowDetailPage';
 import ThemesPage from '@/pages/ThemesPage';
 import SettingsPage from '@/pages/SettingsPage';
 import ProfilePage from '@/pages/settings/ProfilePage';
@@ -22,6 +27,12 @@ import TeamPage from '@/pages/settings/TeamPage';
 import ApiPage from '@/pages/settings/ApiPage';
 import BillingPage from '@/pages/settings/BillingPage';
 import IntegrationsPage from '@/pages/settings/IntegrationsPage';
+import ActivitiesPage from '@/pages/ActivitiesPage';
+import TemplatesPage from '@/pages/TemplatesPage';
+import WebhooksPage from '@/pages/WebhooksPage';
+import InboundPage from '@/pages/InboundPage';
+import ABMPage from '@/pages/ABMPage';
+import AIAgentPage from '@/pages/AIAgentPage';
 import { GenericPage } from '@/pages/GenericPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -60,28 +71,28 @@ function AppRoutes() {
         {() => <DashboardLayout><ProspectsPage /></DashboardLayout>}
       </Route>
       <Route path="/prospects/:id">
-        {(p) => <DashboardLayout><GenericPage title={`Prospect #${p.id}`} icon="👤" description="Fiche détaillée du prospect : enrichissement, activités, emails, deals." /></DashboardLayout>}
+        {() => <DashboardLayout><ProspectDetailPage /></DashboardLayout>}
       </Route>
 
       <Route path="/pipeline">
         {() => <DashboardLayout><PipelinePage /></DashboardLayout>}
       </Route>
       <Route path="/pipeline/:id">
-        {(p) => <DashboardLayout><GenericPage title={`Deal #${p.id}`} icon="💼" description="Détails du deal, historique d'activités, modification du stade." /></DashboardLayout>}
+        {() => <DashboardLayout><DealDetailPage /></DashboardLayout>}
       </Route>
 
       <Route path="/sequences">
         {() => <DashboardLayout><SequencesPage /></DashboardLayout>}
       </Route>
       <Route path="/sequences/:id">
-        {(p) => <DashboardLayout><GenericPage title={`Séquence ${p.id === 'new' ? '(nouvelle)' : `#${p.id}`}`} icon="📧" description="Éditeur de séquence email — étapes, délais, templates personnalisés." /></DashboardLayout>}
+        {() => <DashboardLayout><SequenceDetailPage /></DashboardLayout>}
       </Route>
 
       <Route path="/signals">
         {() => <DashboardLayout><SignalsPage /></DashboardLayout>}
       </Route>
       <Route path="/signals/:id">
-        {(p) => <DashboardLayout><GenericPage title={`Signal #${p.id}`} icon="⚡" description="Détail du signal d'intention — analyse, actions recommandées." /></DashboardLayout>}
+        {() => <DashboardLayout><SignalDetailPage /></DashboardLayout>}
       </Route>
 
       <Route path="/sourcing">
@@ -102,7 +113,7 @@ function AppRoutes() {
         {() => <DashboardLayout><WorkflowsPage /></DashboardLayout>}
       </Route>
       <Route path="/workflows/:id">
-        {(p) => <DashboardLayout><GenericPage title={`Workflow ${p.id === 'new' ? '(nouveau)' : `#${p.id}`}`} icon="⚙️" description="Éditeur de workflow — déclencheurs, conditions, actions." /></DashboardLayout>}
+        {() => <DashboardLayout><WorkflowDetailPage /></DashboardLayout>}
       </Route>
 
       <Route path="/themes">
@@ -129,31 +140,32 @@ function AppRoutes() {
       </Route>
 
       <Route path="/activities">
-        {() => <DashboardLayout><GenericPage title="Activités" icon="📋" description="Journal d'activités CRM — appels, réunions, notes, emails." /></DashboardLayout>}
-      </Route>
-      <Route path="/contacts">
-        {() => <DashboardLayout><GenericPage title="Contact Intel" icon="🔎" description="Intelligence contact — enrichissement, doublons, historique." /></DashboardLayout>}
-      </Route>
-      <Route path="/inbound">
-        {() => <DashboardLayout><GenericPage title="Inbound" icon="📥" description="Gestion des leads entrants — formulaires, landing pages, scoring." /></DashboardLayout>}
-      </Route>
-      <Route path="/abm">
-        {() => <DashboardLayout><GenericPage title="ABM / TAM" icon="🎯" description="Account-Based Marketing — ciblage stratégique et marché adressable." /></DashboardLayout>}
+        {() => <DashboardLayout><ActivitiesPage /></DashboardLayout>}
       </Route>
       <Route path="/templates">
-        {() => <DashboardLayout><GenericPage title="Templates Email" icon="📄" description="Bibliothèque de templates email — personnalisation et variables." /></DashboardLayout>}
+        {() => <DashboardLayout><TemplatesPage /></DashboardLayout>}
+      </Route>
+      <Route path="/webhooks">
+        {() => <DashboardLayout><WebhooksPage /></DashboardLayout>}
+      </Route>
+      <Route path="/inbound">
+        {() => <DashboardLayout><InboundPage /></DashboardLayout>}
+      </Route>
+      <Route path="/abm">
+        {() => <DashboardLayout><ABMPage /></DashboardLayout>}
+      </Route>
+      <Route path="/ai">
+        {() => <DashboardLayout><AIAgentPage /></DashboardLayout>}
+      </Route>
+
+      <Route path="/contacts">
+        {() => <DashboardLayout><GenericPage title="Contact Intel" icon="🔎" description="Intelligence contact — enrichissement, doublons, historique." /></DashboardLayout>}
       </Route>
       <Route path="/crm-sync">
         {() => <DashboardLayout><GenericPage title="CRM Sync" icon="🔄" description="Synchronisation bidirectionnelle avec HubSpot, Salesforce, etc." /></DashboardLayout>}
       </Route>
-      <Route path="/ai">
-        {() => <DashboardLayout><GenericPage title="Agent IA" icon="🤖" description="Assistant commercial IA — suggestions, rédaction, analyse prédictive." /></DashboardLayout>}
-      </Route>
       <Route path="/marketplace">
         {() => <DashboardLayout><GenericPage title="Marketplace" icon="🛒" description="Découvrez et installez des plugins et connecteurs GrowthOS." /></DashboardLayout>}
-      </Route>
-      <Route path="/webhooks">
-        {() => <DashboardLayout><GenericPage title="Webhooks" icon="🔗" description="Configurez des webhooks pour intégrer GrowthOS à vos systèmes." /></DashboardLayout>}
       </Route>
 
       <Route>

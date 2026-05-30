@@ -47,6 +47,15 @@ router.get("/", async (req, res) => {
   res.json({ data: rows, total: Number(total), page: parseInt(page), limit: parseInt(limit) });
 });
 
+router.get("/:id", async (req, res) => {
+  const { id } = req.params;
+  const [prospect] = await db.select().from(prospectsTable)
+    .where(and(eq(prospectsTable.id, id), eq(prospectsTable.tenantId, req.auth!.tenantId)))
+    .limit(1);
+  if (!prospect) { res.status(404).json({ error: "Prospect introuvable" }); return; }
+  res.json(prospect);
+});
+
 router.post("/", async (req, res) => {
   const parse = prospectSchema.safeParse(req.body);
   if (!parse.success) {
