@@ -1,0 +1,443 @@
+2026-May-30 04:14:18.400255 Docker 29.4.0 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-30 04:14:18.415094 Starting deployment of growth-o-s:main-muen3373qsdm6coff3jcfe7e to localhost.
+2026-May-30 04:14:18.714418 Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-30 04:14:18.900626 [CMD]: docker stop -t 30 egy25pf48opb2ov7air3j9a1
+2026-May-30 04:14:18.900626 Error response from daemon: No such container: egy25pf48opb2ov7air3j9a1
+2026-May-30 04:14:19.195947 [CMD]: docker run -d --network 'coolify' --name egy25pf48opb2ov7air3j9a1  --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-30 04:14:19.195947 3c640eb1978def6904f1463b12e437b19d4660c4830498c15814d2168e83daf4
+2026-May-30 04:14:20.469923 [CMD]: docker exec egy25pf48opb2ov7air3j9a1 bash -c 'GIT_SSH_COMMAND="ssh -o ConnectTimeout=30 -p 22 -o Port=22 -o LogLevel=ERROR -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" git ls-remote https://github.com/LePubli/growthOS refs/heads/main'
+2026-May-30 04:<REDACTED>@\(.*\):#https://\1/#g" '\''/artifacts/egy25pf48opb2ov7air3j9a1'\''/.gitmodules || true && git submodule sync && GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" git submodule update --init --recursive --depth=1; fi && cd '\''/artifacts/egy25pf48opb2ov7air3j9a1'\'' && GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" git lfs pull'
+2026-May-30 04:<REDACTED>@tailwindcss/oxide/lightningcss
+2026-May-30 04:14:26.314094 # native binaries excluded by pnpm-workspace.yaml overrides.
+2026-May-30 04:14:26.314094 FROM node:24-slim AS builder
+2026-May-30 04:14:26.314094 
+2026-May-30 04:14:26.314094 # Install pnpm — exact version matching pnpm-lock.yaml (lockfileVersion 9.0)
+2026-May-30 04:14:26.314094 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+2026-May-30 04:14:26.314094 
+2026-May-30 04:14:26.314094 WORKDIR /app
+2026-May-30 04:14:26.314094 
+2026-May-30 04:14:26.314094 # ── Workspace manifests only (cache layer) ───────────────────
+2026-May-30 04:14:26.314094 # All package.json files must be present so pnpm --frozen-lockfile can
+2026-May-30 04:14:26.314094 # validate every importer listed in pnpm-lock.yaml. We do NOT copy source
+2026-May-30 04:14:26.314094 # here — that comes after the install step.
+2026-May-30 04:14:26.314094 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+2026-May-30 04:14:26.314094 
+2026-May-30 04:14:26.314094 COPY artifacts/growthos/package.json       ./artifacts/growthos/package.json
+2026-May-30 04:14:26.314094 COPY artifacts/api-server/package.json     ./artifacts/api-server/package.json
+2026-May-30 04:14:26.314094 COPY artifacts/mockup-sandbox/package.json ./artifacts/mockup-sandbox/package.json
+2026-May-30 04:14:26.314094 COPY lib/api-client-react/package.json     ./lib/api-client-react/package.json
+2026-May-30 04:14:26.314094 COPY lib/api-client-react/tsconfig.json    ./lib/api-client-react/tsconfig.json
+2026-May-30 04:14:26.314094 COPY lib/api-spec/package.json             ./lib/api-spec/package.json
+2026-May-30 04:14:26.314094 COPY lib/api-zod/package.json              ./lib/api-zod/package.json
+2026-May-30 04:14:26.314094 COPY lib/db/package.json                   ./lib/db/package.json
+2026-May-30 04:14:26.314094 COPY scripts/package.json                  ./scripts/package.json
+2026-May-30 04:14:26.314094 
+2026-May-30 04:14:26.314094 # ── Install ONLY growthos + its direct workspace deps ────────
+2026-May-30 04:14:26.314094 # --filter @workspace/growthos... installs growthos and its recursive
+2026-May-30 04:14:26.314094 # workspace dependencies (api-client-react) but skips api-server,
+2026-May-30 04:14:26.314094 # mockup-sandbox, api-spec, api-zod, db, scripts — saving ~500MB of disk.
+2026-May-30 04:14:26.314094 # --frozen-lockfile: deterministic, bypasses minimumReleaseAge.
+2026-May-30 04:14:26.314094 RUN pnpm install --frozen-lockfile --filter @workspace/growthos...
+2026-May-30 04:14:26.314094 
+2026-May-30 04:14:26.314094 # Free the pnpm content-addressable store immediately after install.
+2026-May-30 04:14:26.314094 # The packages are already linked into node_modules; the store is no longer needed.
+2026-May-30 04:14:26.314094 RUN pnpm store prune 2>/dev/null || true
+2026-May-30 04:14:26.314094 
+2026-May-30 04:14:26.314094 # ── Source files (only what the frontend build needs) ────────
+2026-May-30 04:14:26.314094 COPY artifacts/growthos/ ./artifacts/growthos/
+2026-May-30 04:14:26.314094 # api-client-react source is a workspace dep; pnpm already created the symlink.
+2026-May-30 04:14:26.314094 # The package.json was copied above; source not needed (growthos only uses types).
+2026-May-30 04:14:26.314094 COPY lib/api-client-react/src/ ./lib/api-client-react/src/
+2026-May-30 04:14:26.314094 
+2026-May-30 04:14:26.314094 # ── Build arguments (configure in Coolify → Build Variables) ─
+2026-May-30 04:14:26.314094 # VITE_API_URL : URL of your NestJS backend, e.g. https://api.yourdomain.com
+2026-May-30 04:<REDACTED>@10 --quiet
+2026-May-30 04:14:27.193846 
+2026-May-30 04:14:27.193846 # ── Workspace manifests only (cache layer) ───────────────────────────────────
+2026-May-30 04:14:27.193846 # All package.json files must be present so pnpm --frozen-lockfile can
+2026-May-30 04:14:27.193846 # validate every importer listed in pnpm-lock.yaml.
+2026-May-30 04:14:27.193846 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+2026-May-30 04:14:27.193846 
+2026-May-30 04:14:27.193846 COPY artifacts/api-server/package.json     ./artifacts/api-server/package.json
+2026-May-30 04:14:27.193846 COPY artifacts/growthos/package.json       ./artifacts/growthos/package.json
+2026-May-30 04:14:27.193846 COPY artifacts/mockup-sandbox/package.json ./artifacts/mockup-sandbox/package.json
+2026-May-30 04:14:27.193846 COPY lib/api-client-react/package.json     ./lib/api-client-react/package.json
+2026-May-30 04:14:27.193846 COPY lib/api-client-react/tsconfig.json    ./lib/api-client-react/tsconfig.json
+2026-May-30 04:14:27.193846 COPY lib/api-spec/package.json             ./lib/api-spec/package.json
+2026-May-30 04:14:27.193846 COPY lib/api-zod/package.json              ./lib/api-zod/package.json
+2026-May-30 04:14:27.193846 COPY lib/db/package.json                   ./lib/db/package.json
+2026-May-30 04:14:27.193846 COPY scripts/package.json                  ./scripts/package.json
+2026-May-30 04:14:27.193846 
+2026-May-30 04:14:27.193846 # Install only api-server and its workspace dependencies
+2026-May-30 04:14:27.193846 RUN pnpm install --frozen-lockfile --filter @workspace/api-server...
+2026-May-30 04:14:27.193846 
+2026-May-30 04:14:27.193846 # ── Source code ───────────────────────────────────────────────────────────────
+2026-May-30 04:14:27.193846 COPY artifacts/api-server/ ./artifacts/api-server/
+2026-May-30 04:14:27.193846 COPY lib/api-zod/           ./lib/api-zod/
+2026-May-30 04:14:27.193846 COPY lib/db/                ./lib/db/
+2026-May-30 04:14:27.193846 
+2026-May-30 04:14:27.193846 # ── Build (esbuild bundles everything into dist/index.mjs) ───────────────────
+2026-May-30 04:14:27.193846 WORKDIR /app/artifacts/api-server
+2026-May-30 04:14:27.193846 RUN node build.mjs && pnpm store prune
+2026-May-30 04:14:27.193846 
+2026-May-30 04:14:27.193846 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+2026-May-30 04:14:27.193846 # esbuild bundles all JS dependencies into dist/ — no node_modules needed.
+2026-May-30 04:14:27.193846 # In production NODE_ENV, pino uses JSON transport (not pino-pretty workers).
+2026-May-30 04:14:27.193846 FROM node:24-slim AS runner
+2026-May-30 04:14:27.193846 WORKDIR /app
+2026-May-30 04:14:27.193846 
+2026-May-30 04:14:27.193846 COPY --from=builder /app/artifacts/api-server/dist ./dist
+2026-May-30 04:14:27.193846 
+2026-May-30 04:14:27.193846 ENV NODE_ENV=production
+2026-May-30 04:14:27.193846 ENV PORT=3001
+2026-May-30 04:14:27.193846 
+2026-May-30 04:14:27.193846 EXPOSE 3001
+2026-May-30 04:14:27.193846 
+2026-May-30 04:14:27.193846 # Node 24 ships with native fetch — no wget/curl needed
+2026-May-30 04:14:27.193846 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+2026-May-30 04:14:27.193846 CMD node -e "fetch('http://localhost:<REDACTED>@sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc
+2026-May-30 04:14:30.503726 #8 resolve docker.io/docker/dockerfile:1.4@sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc 0.0s done
+2026-May-30 04:14:30.625106 #8 sha256:1328b32c40fca9bcf9d70d8eccb72eb873d1124d72dadce04db8badbe7b08546 0B / 9.94MB 0.2s
+2026-May-30 04:14:30.739119 #8 ...
+2026-May-30 04:14:30.739119 
+2026-May-30 04:14:30.739119 #9 [growthos internal] load build context
+2026-May-30 04:14:30.739119 #9 transferring context: 654.43kB 0.1s done
+2026-May-30 04:14:30.739119 #9 DONE 0.1s
+2026-May-30 04:14:30.739119 
+2026-May-30 04:14:30.739119 #10 [growthos builder  1/21] FROM docker.io/library/node:24-slim@sha256:242549cd46785b480c832479a730f4f2a20865d61ea2e404fdb2a5c3d3b73ecf
+2026-May-30 04:14:30.739119 #10 resolve docker.io/library/node:24-slim@sha256:242549cd46785b480c832479a730f4f2a20865d61ea2e404fdb2a5c3d3b73ecf 0.0s done
+2026-May-30 04:14:30.739119 #10 DONE 0.2s
+2026-May-30 04:14:30.852258 #8 [api-server] docker-image://docker.io/docker/dockerfile:1.4@sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc
+2026-May-30 04:14:30.852258 #8 sha256:1328b32c40fca9bcf9d70d8eccb72eb873d1124d72dadce04db8badbe7b08546 9.94MB / 9.94MB 0.4s done
+2026-May-30 04:14:31.076715 #8 ...
+2026-May-30 04:14:31.076715 
+2026-May-30 04:14:31.076715 #11 [growthos runner 1/6] FROM docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+2026-May-30 04:14:31.076715 #11 resolve docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 0.0s done
+2026-May-30 04:14:31.076715 #11 DONE 0.4s
+2026-May-30 04:14:31.076715 
+2026-May-30 04:14:31.076715 #8 [api-server] docker-image://docker.io/docker/dockerfile:1.4@sha256:9ba7531bd80fb0a858632727cf7a112fbfd19b17e94c4e84ced81e24ef1a0dbc
+2026-May-30 04:14:31.076715 #8 extracting sha256:1328b32c40fca9bcf9d70d8eccb72eb873d1124d72dadce04db8badbe7b08546
+2026-May-30 04:14:31.237348 #8 extracting sha256:1328b32c40fca9bcf9d70d8eccb72eb873d1124d72dadce04db8badbe7b08546 0.4s done
+2026-May-30 04:14:31.237348 #8 DONE 0.8s
+2026-May-30 04:14:31.237348 
+2026-May-30 04:14:31.237348 #12 [growthos runner 2/6] RUN rm -rf /etc/nginx/conf.d/default.conf
+2026-May-30 04:14:31.595112 #12 DONE 0.6s
+2026-May-30 04:14:31.595112 
+2026-May-30 04:14:31.595112 #13 [api-server internal] load build definition from Dockerfile.api
+2026-May-30 04:14:31.602966 #13 transferring dockerfile: 5.67kB 0.0s done
+2026-May-30 04:14:31.602966 #13 DONE 0.1s
+2026-May-30 04:14:31.602966 
+2026-May-30 04:14:31.602966 #14 [api-server internal] load .dockerignore
+2026-May-30 04:14:31.602966 #14 transferring context: 819B done
+2026-May-30 04:14:31.602966 #14 DONE 0.1s
+2026-May-30 04:14:31.602966 
+2026-May-30 04:14:31.602966 #5 [api-server internal] load metadata for docker.io/library/node:24-slim
+2026-May-30 04:14:31.746610 #5 ...
+2026-May-30 04:14:31.746610 
+2026-May-30 04:14:31.746610 #15 [growthos runner 3/6] COPY docker/nginx.conf /etc/nginx/conf.d/growthos.conf
+2026-May-30 04:14:31.746610 #15 DONE 0.1s
+2026-May-30 04:14:31.779347 #5 [api-server internal] load metadata for docker.io/library/node:24-slim
+2026-May-30 04:14:31.903003 #5 DONE 1.6s
+2026-May-30 04:14:31.903003 
+2026-May-30 04:14:31.903003 #10 [api-server builder  1/21] FROM docker.io/library/node:24-slim@sha256:242549cd46785b480c832479a730f4f2a20865d61ea2e404fdb2a5c3d3b73ecf
+2026-May-30 04:14:31.903003 #10 resolve docker.io/library/node:24-slim@sha256:242549cd46785b480c832479a730f4f2a20865d61ea2e404fdb2a5c3d3b73ecf 0.0s done
+2026-May-30 04:14:31.903003 #10 DONE 0.2s
+2026-May-30 04:14:31.903003 
+2026-May-30 04:14:31.903003 #16 [api-server builder  2/19] WORKDIR /app
+2026-May-30 04:14:31.903003 #16 DONE 0.0s
+2026-May-30 04:14:31.903003 
+2026-May-30 04:14:31.903003 #17 [api-server internal] load build context
+2026-May-30 04:14:32.066408 #17 transferring context: 279.66kB 0.0s done
+2026-May-30 04:14:32.066408 #17 DONE 0.1s
+2026-May-30 04:14:32.066408 
+2026-May-30 04:14:32.066408 #18 [api-server builder  3/19] RUN npm install -g pnpm@10 --quiet
+2026-May-30 04:14:34.027412 #18 ...
+2026-May-30 04:14:34.027412 
+2026-May-30 04:14:34.027412 #19 [growthos builder  2/21] RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+2026-May-30 04:14:34.027412 #19 0.773 Preparing pnpm@10.26.1 for immediate activation...
+2026-May-30 04:14:34.027412 #19 DONE 3.3s
+2026-May-30 04:14:34.165893 #20 [growthos builder  3/21] WORKDIR /app
+2026-May-30 04:14:34.165893 #20 DONE 0.1s
+2026-May-30 04:14:34.165893 
+2026-May-30 04:14:34.165893 #21 [growthos builder  4/21] COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+2026-May-30 04:14:34.165893 #21 DONE 0.1s
+2026-May-30 04:14:34.165893 
+2026-May-30 04:14:34.165893 #18 [api-server builder  3/19] RUN npm install -g pnpm@10 --quiet
+2026-May-30 04:14:34.266787 #18 ...
+2026-May-30 04:14:34.266787 
+2026-May-30 04:14:34.266787 #22 [growthos builder  5/21] COPY artifacts/growthos/package.json       ./artifacts/growthos/package.json
+2026-May-30 04:14:34.266787 #22 DONE 0.1s
+2026-May-30 04:14:34.266787 
+2026-May-30 04:14:34.266787 #23 [growthos builder  6/21] COPY artifacts/api-server/package.json     ./artifacts/api-server/package.json
+2026-May-30 04:14:34.266787 #23 DONE 0.0s
+2026-May-30 04:14:34.388263 #24 [growthos builder  7/21] COPY artifacts/mockup-sandbox/package.json ./artifacts/mockup-sandbox/package.json
+2026-May-30 04:14:34.388263 #24 DONE 0.0s
+2026-May-30 04:14:34.388263 
+2026-May-30 04:14:34.388263 #25 [growthos builder  8/21] COPY lib/api-client-react/package.json     ./lib/api-client-react/package.json
+2026-May-30 04:14:34.388263 #25 DONE 0.1s
+2026-May-30 04:14:34.388263 
+2026-May-30 04:14:34.388263 #18 [api-server builder  3/19] RUN npm install -g pnpm@10 --quiet
+2026-May-30 04:14:34.571962 #18 ...
+2026-May-30 04:14:34.571962 
+2026-May-30 04:14:34.571962 #26 [growthos builder  9/21] COPY lib/api-client-react/tsconfig.json    ./lib/api-client-react/tsconfig.json
+2026-May-30 04:14:34.571962 #26 DONE 0.0s
+2026-May-30 04:14:34.571962 
+2026-May-30 04:14:34.571962 #27 [growthos builder 10/21] COPY lib/api-spec/package.json             ./lib/api-spec/package.json
+2026-May-30 04:14:34.571962 #27 DONE 0.0s
+2026-May-30 04:14:34.571962 
+2026-May-30 04:14:34.571962 #28 [growthos builder 11/21] COPY lib/api-zod/package.json              ./lib/api-zod/package.json
+2026-May-30 04:14:34.571962 #28 DONE 0.1s
+2026-May-30 04:14:34.759704 #29 [growthos builder 12/21] COPY lib/db/package.json                   ./lib/db/package.json
+2026-May-30 04:14:34.759704 #29 DONE 0.1s
+2026-May-30 04:14:34.759704 
+2026-May-30 04:14:34.759704 #30 [growthos builder 13/21] COPY scripts/package.json                  ./scripts/package.json
+2026-May-30 04:14:34.759704 #30 DONE 0.1s
+2026-May-30 04:14:34.759704 
+2026-May-30 04:14:34.759704 #18 [api-server builder  3/19] RUN npm install -g pnpm@10 --quiet
+2026-May-30 04:14:35.510954 #18 3.606
+2026-May-30 04:14:35.510954 #18 3.606 added 1 package in 3s
+2026-May-30 04:14:35.666940 #18 3.611
+2026-May-30 04:14:35.666940 #18 3.611 1 package is looking for funding
+2026-May-30 04:14:35.666940 #18 3.611   run `npm fund` for details
+2026-May-30 04:14:35.666940 #18 3.611 npm notice
+2026-May-30 04:14:35.666940 #18 3.611 npm notice New minor version of npm available! 11.13.0 -> 11.16.0
+2026-May-30 04:14:35.666940 #18 3.611 npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.16.0
+2026-May-30 04:<REDACTED>@11.16.0
+2026-May-30 04:14:35.666940 #18 3.611 npm notice
+2026-May-30 04:14:35.724699 #18 DONE 3.8s
+2026-May-30 04:14:35.724699 
+2026-May-30 04:14:35.724699 #31 [growthos builder 14/21] RUN pnpm install --frozen-lockfile --filter @workspace/growthos...
+2026-May-30 04:14:35.825926 #31 ...
+2026-May-30 04:14:35.825926 
+2026-May-30 04:14:35.825926 #32 [api-server builder  4/19] COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+2026-May-30 04:14:35.825926 #32 DONE 0.1s
+2026-May-30 04:14:35.957678 #33 [api-server builder  5/19] COPY artifacts/api-server/package.json     ./artifacts/api-server/package.json
+2026-May-30 04:14:35.957678 #33 DONE 0.0s
+2026-May-30 04:14:35.957678 
+2026-May-30 04:14:35.957678 #34 [api-server builder  6/19] COPY artifacts/growthos/package.json       ./artifacts/growthos/package.json
+2026-May-30 04:14:35.957678 #34 DONE 0.0s
+2026-May-30 04:14:35.964813 #35 [api-server builder  7/19] COPY artifacts/mockup-sandbox/package.json ./artifacts/mockup-sandbox/package.json
+2026-May-30 04:14:35.964813 #35 DONE 0.0s
+2026-May-30 04:14:35.964813 
+2026-May-30 04:14:35.964813 #31 [growthos builder 14/21] RUN pnpm install --frozen-lockfile --filter @workspace/growthos...
+2026-May-30 04:14:36.082133 #31 ...
+2026-May-30 04:14:36.082133 
+2026-May-30 04:14:36.082133 #36 [api-server builder  8/19] COPY lib/api-client-react/package.json     ./lib/api-client-react/package.json
+2026-May-30 04:14:36.082133 #36 DONE 0.0s
+2026-May-30 04:14:36.082133 
+2026-May-30 04:14:36.082133 #37 [api-server builder  9/19] COPY lib/api-client-react/tsconfig.json    ./lib/api-client-react/tsconfig.json
+2026-May-30 04:14:36.082133 #37 DONE 0.0s
+2026-May-30 04:14:36.082133 
+2026-May-30 04:14:36.082133 #38 [api-server builder 10/19] COPY lib/api-spec/package.json             ./lib/api-spec/package.json
+2026-May-30 04:14:36.082133 #38 DONE 0.0s
+2026-May-30 04:14:36.221886 #39 [api-server builder 11/19] COPY lib/api-zod/package.json              ./lib/api-zod/package.json
+2026-May-30 04:14:36.221886 #39 DONE 0.0s
+2026-May-30 04:14:36.221886 
+2026-May-30 04:14:36.221886 #40 [api-server builder 12/19] COPY lib/db/package.json                   ./lib/db/package.json
+2026-May-30 04:14:36.221886 #40 DONE 0.1s
+2026-May-30 04:14:36.221886 
+2026-May-30 04:14:36.221886 #41 [api-server builder 13/19] COPY scripts/package.json                  ./scripts/package.json
+2026-May-30 04:14:36.221886 #41 DONE 0.0s
+2026-May-30 04:14:36.221886 
+2026-May-30 04:14:36.221886 #31 [growthos builder 14/21] RUN pnpm install --frozen-lockfile --filter @workspace/growthos...
+2026-May-30 04:14:36.221886 #31 1.338 Scope: 2 of 9 workspace projects
+2026-May-30 04:14:36.348998 #31 1.488 Lockfile is up to date, resolution step is skipped
+2026-May-30 04:14:36.348998 #31 1.583 Progress: resolved 1, reused 0, downloaded 0, added 0
+2026-May-30 04:14:36.500608 #31 1.737 .                                        | +265 +++++++++++++++++++++++++++
+2026-May-30 04:14:37.349670 #31 2.584 Progress: resolved 265, reused 0, downloaded 87, added 52
+2026-May-30 04:14:37.498189 #31 2.731
+2026-May-30 04:14:37.498189 #31 2.731    ╭──────────────────────────────────────────────╮
+2026-May-30 04:14:37.498189 #31 2.731    │                                              │
+2026-May-30 04:14:37.498189 #31 2.731    │     Update available! 10.26.1 → 11.5.0.      │
+2026-May-30 04:14:37.498189 #31 2.731    │     Changelog: https://pnpm.io/v/11.5.0      │
+2026-May-30 04:<REDACTED>@11.5.0   │
+2026-May-30 04:14:37.498189 #31 2.731    │                                              │
+2026-May-30 04:14:37.498189 #31 2.731    ╰──────────────────────────────────────────────╯
+2026-May-30 04:14:37.498189 #31 2.731
+2026-May-30 04:14:38.352257 #31 3.584 Progress: resolved 265, reused 0, downloaded 159, added 97
+2026-May-30 04:14:39.351523 #31 4.588 Progress: resolved 265, reused 0, downloaded 197, added 113
+2026-May-30 04:14:40.357145 #31 5.591 Progress: resolved 265, reused 0, downloaded 202, added 117
+2026-May-30 04:14:41.360800 #31 6.597 Progress: resolved 265, reused 0, downloaded 206, added 117
+2026-May-30 04:14:42.369113 #31 7.606 Progress: resolved 265, reused 0, downloaded 240, added 130
+2026-May-30 04:14:43.409419 #31 8.494 Progress: resolved 265, reused 0, downloaded 265, added 265, done
+2026-May-30 04:14:43.642612 #31 8.878 .../esbuild@0.27.3/node_modules/esbuild postinstall$ node install.js
+2026-May-30 04:14:43.813194 #31 9.048 .../esbuild@0.27.3/node_modules/esbuild postinstall: Done
+2026-May-30 04:14:44.085752 #31 9.322 . preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+2026-May-30 04:14:44.229417 #31 9.371 . preinstall: Done
+2026-May-30 04:14:44.229417 #31 9.461 Done in 8.9s using pnpm v10.26.1
+2026-May-30 04:14:44.811687 #31 ...
+2026-May-30 04:14:44.823385 #42 [api-server builder 14/19] RUN pnpm install --frozen-lockfile --filter @workspace/api-server...
+2026-May-30 04:14:44.823385 #42 1.401 Scope: 3 of 9 workspace projects
+2026-May-30 04:14:44.823385 #42 1.776 Lockfile is up to date, resolution step is skipped
+2026-May-30 04:14:44.823385 #42 1.896 Progress: resolved 1, reused 0, downloaded 0, added 0
+2026-May-30 04:14:44.823385 #42 1.952 .                                        | +155 ++++++++++++++++
+2026-May-30 04:14:44.823385 #42 2.918 Progress: resolved 155, reused 0, downloaded 25, added 4
+2026-May-30 04:14:44.823385 #42 3.946 Progress: resolved 155, reused 0, downloaded 115, added 47
+2026-May-30 04:14:44.823385 #42 4.229
+2026-May-30 04:14:44.823385 #42 4.229    ╭─────────────────────────────────────────╮
+2026-May-30 04:14:44.823385 #42 4.229    │                                         │
+2026-May-30 04:14:44.823385 #42 4.229    │   Update available! 10.34.1 → 11.5.0.   │
+2026-May-30 04:14:44.823385 #42 4.229    │   Changelog: https://pnpm.io/v/11.5.0   │
+2026-May-30 04:<REDACTED>@0.27.3/node_modules/esbuild postinstall$ node install.js
+2026-May-30 04:14:44.823385 #42 5.886 .../esbuild@0.27.3/node_modules/esbuild postinstall: Done
+2026-May-30 04:14:44.823385 #42 6.514 . preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+2026-May-30 04:14:44.823385 #42 6.578 . preinstall: Done
+2026-May-30 04:14:44.823385 #42 6.961 Done in 6.5s using pnpm v10.34.1
+2026-May-30 04:14:44.823385 #42 DONE 8.6s
+2026-May-30 04:14:44.974127 #31 [growthos builder 14/21] RUN pnpm install --frozen-lockfile --filter @workspace/growthos...
+2026-May-30 04:14:44.974127 #31 DONE 10.1s
+2026-May-30 04:14:44.974127 
+2026-May-30 04:14:44.974127 #43 [growthos builder 15/21] RUN pnpm store prune 2>/dev/null || true
+2026-May-30 04:14:45.687196 #43 ...
+2026-May-30 04:14:45.687196 
+2026-May-30 04:14:45.687196 #44 [api-server builder 15/19] COPY artifacts/api-server/ ./artifacts/api-server/
+2026-May-30 04:14:45.687196 #44 DONE 0.9s
+2026-May-30 04:14:45.793218 #45 [api-server builder 16/19] COPY lib/api-zod/           ./lib/api-zod/
+2026-May-30 04:14:45.793218 #45 DONE 0.1s
+2026-May-30 04:14:45.793218 
+2026-May-30 04:14:45.793218 #43 [growthos builder 15/21] RUN pnpm store prune 2>/dev/null || true
+2026-May-30 04:14:45.899729 #43 ...
+2026-May-30 04:14:45.899729 
+2026-May-30 04:14:45.899729 #46 [api-server builder 17/19] COPY lib/db/                ./lib/db/
+2026-May-30 04:14:45.899729 #46 DONE 0.1s
+2026-May-30 04:14:45.899729 
+2026-May-30 04:14:45.899729 #47 [api-server builder 18/19] WORKDIR /app/artifacts/api-server
+2026-May-30 04:14:45.899729 #47 DONE 0.0s
+2026-May-30 04:14:46.054824 #48 [api-server builder 19/19] RUN node build.mjs && pnpm store prune
+2026-May-30 04:14:47.210566 #48 1.307
+2026-May-30 04:14:47.210566 #48 1.307   dist/index.mjs                       2.3mb ⚠️
+2026-May-30 04:14:47.210566 #48 1.307   dist/pino-worker.mjs               153.4kb
+2026-May-30 04:14:47.210566 #48 1.307   dist/pino-file.mjs                 142.0kb
+2026-May-30 04:14:47.210566 #48 1.307   dist/pino-pretty.mjs               114.6kb
+2026-May-30 04:14:47.210566 #48 1.307   dist/thread-stream-worker.mjs        7.3kb
+2026-May-30 04:14:47.210566 #48 1.307   dist/index.mjs.map                   4.0mb
+2026-May-30 04:14:47.210566 #48 1.307   dist/pino-worker.mjs.map           256.9kb
+2026-May-30 04:14:47.210566 #48 1.307   dist/pino-file.mjs.map             229.0kb
+2026-May-30 04:14:47.210566 #48 1.307   dist/pino-pretty.mjs.map           204.0kb
+2026-May-30 04:14:47.210566 #48 1.307   dist/thread-stream-worker.mjs.map   12.0kb
+2026-May-30 04:14:47.210566 #48 1.307
+2026-May-30 04:14:47.210566 #48 1.307 ⚡ Done in 826ms
+2026-May-30 04:14:48.025120 #48 2.117 Removed all cached metadata files
+2026-May-30 04:14:48.416675 #48 2.420 Removed 7 files
+2026-May-30 04:14:48.416675 #48 2.513 Removed 1 package
+2026-May-30 04:14:48.693910 #48 ...
+2026-May-30 04:14:48.693910 
+2026-May-30 04:14:48.693910 #43 [growthos builder 15/21] RUN pnpm store prune 2>/dev/null || true
+2026-May-30 04:14:48.693910 #43 2.009 Removed all cached metadata files
+2026-May-30 04:14:48.693910 #43 3.325 Removed 7 files
+2026-May-30 04:14:48.693910 #43 3.485 Removed 1 package
+2026-May-30 04:14:48.693910 #43 DONE 3.9s
+2026-May-30 04:14:48.798878 #48 [api-server builder 19/19] RUN node build.mjs && pnpm store prune
+2026-May-30 04:14:48.798878 #48 DONE 2.9s
+2026-May-30 04:14:48.798878 
+2026-May-30 04:14:48.798878 #49 [growthos builder 16/21] COPY artifacts/growthos/ ./artifacts/growthos/
+2026-May-30 04:14:48.798878 #49 DONE 0.1s
+2026-May-30 04:14:48.798878 
+2026-May-30 04:14:48.798878 #50 [api-server runner 3/3] COPY --from=builder /app/artifacts/api-server/dist ./dist
+2026-May-30 04:14:48.941302 #50 DONE 0.1s
+2026-May-30 04:14:48.941302 
+2026-May-30 04:14:48.941302 #51 [growthos builder 17/21] COPY lib/api-client-react/src/ ./lib/api-client-react/src/
+2026-May-30 04:14:48.941302 #51 DONE 0.1s
+2026-May-30 04:14:48.941302 
+2026-May-30 04:14:48.941302 #52 [growthos builder 18/21] RUN node --version &&     pnpm --version &&     echo "BASE_PATH=/ VITE_API_URL= NODE_ENV=production" &&     echo "Disk after install:" && df -h /app &&     ls /app/artifacts/growthos/node_modules/.bin/vite &&     echo "vite OK"
+2026-May-30 04:14:49.224650 #52 0.391 v24.16.0
+2026-May-30 04:14:49.976970 #52 ...
+2026-May-30 04:14:49.976970 
+2026-May-30 04:14:49.976970 #53 [api-server] exporting to image
+2026-May-30 04:14:49.976970 #53 exporting layers 0.7s done
+2026-May-30 04:14:49.976970 #53 exporting manifest sha256:28bdbe6e9d3f7215e51b2dd76ffb84fb123d07e1ebd08c8c26288c67c5fe072f done
+2026-May-30 04:14:49.976970 #53 exporting config sha256:cb2853b74d5dcff26abb4f3b363aae48bbdc43f35af8b2db45bc48874250797f done
+2026-May-30 04:14:49.976970 #53 exporting attestation manifest sha256:c1a9f6cf2815863394eb65851827efb15ef35f2f9ff11f783cf95c6d79628933 0.0s done
+2026-May-30 04:14:49.976970 #53 exporting manifest list sha256:b11968c58bec9c13036fafd4e3062a9024ee3a2f4e1fc85e4f47fc94c37189ec done
+2026-May-30 04:14:49.976970 #53 naming to docker.io/library/qg3u7f72d9lin10gl2ixlp7x_api-server:d28aa5d4eaf3d4984e8ec61f89181c5dc8aec0d8 done
+2026-May-30 04:14:49.976970 #53 unpacking to docker.io/library/qg3u7f72d9lin10gl2ixlp7x_api-server:d28aa5d4eaf3d4984e8ec61f89181c5dc8aec0d8 0.1s done
+2026-May-30 04:14:49.976970 #53 DONE 1.0s
+2026-May-30 04:14:49.976970 
+2026-May-30 04:14:49.976970 #52 [growthos builder 18/21] RUN node --version &&     pnpm --version &&     echo "BASE_PATH=/ VITE_API_URL= NODE_ENV=production" &&     echo "Disk after install:" && df -h /app &&     ls /app/artifacts/growthos/node_modules/.bin/vite &&     echo "vite OK"
+2026-May-30 04:14:49.976970 #52 1.142 10.26.1
+2026-May-30 04:14:50.095893 #52 1.163 BASE_PATH=/ VITE_API_URL= NODE_ENV=production
+2026-May-30 04:14:50.095893 #52 1.163 Disk after install:
+2026-May-30 04:14:50.095893 #52 1.165 Filesystem      Size  Used Avail Use% Mounted on
+2026-May-30 04:14:50.095893 #52 1.165 overlay          92G   31G   62G  34% /
+2026-May-30 04:14:50.095893 #52 1.167 /app/artifacts/growthos/node_modules/.bin/vite
+2026-May-30 04:14:50.095893 #52 1.167 vite OK
+2026-May-30 04:14:50.095893 #52 DONE 1.3s
+2026-May-30 04:14:50.279943 #54 [growthos builder 19/21] WORKDIR /app/artifacts/growthos
+2026-May-30 04:14:50.279943 #54 DONE 0.1s
+2026-May-30 04:14:50.279943 
+2026-May-30 04:14:50.279943 #55 [api-server] resolving provenance for metadata file
+2026-May-30 04:14:50.449970 #55 DONE 0.0s
+2026-May-30 04:14:50.449970 
+2026-May-30 04:14:50.449970 #56 [growthos builder 20/21] RUN PORT=3000     BASE_PATH="/"     VITE_API_URL=""     NODE_ENV=production     ./node_modules/.bin/vite build --config vite.config.ts
+2026-May-30 04:14:51.267302 #56 1.100 vite v7.3.3 building client environment for production...
+2026-May-30 04:14:51.456506 #56 1.290 transforming...
+2026-May-30 04:14:56.486381 #56 6.319 ✓ 1816 modules transformed.
+2026-May-30 04:14:57.018553 #56 6.851 rendering chunks...
+2026-May-30 04:14:57.215307 #56 6.871 computing gzip size...
+2026-May-30 04:14:57.215307 #56 6.896 dist/public/index.html                   1.36 kB │ gzip:   0.54 kB
+2026-May-30 04:14:57.215307 #56 6.896 dist/public/assets/index-C0QhIBzU.css  100.91 kB │ gzip:  16.55 kB
+2026-May-30 04:14:57.215307 #56 6.897 dist/public/assets/index-7RP1VMcT.js   439.93 kB │ gzip: 129.54 kB
+2026-May-30 04:14:57.215307 #56 6.897 ✓ built in 5.73s
+2026-May-30 04:14:57.271372 #56 DONE 7.1s
+2026-May-30 04:14:57.425910 #57 [growthos builder 21/21] RUN rm -rf /app/artifacts/growthos/node_modules            /app/lib            /app/node_modules
+2026-May-30 04:15:00.068984 #57 DONE 2.8s
+2026-May-30 04:15:00.253438 #58 [growthos runner 4/6] COPY --from=builder /app/artifacts/growthos/dist/public /usr/share/nginx/html
+2026-May-30 04:15:00.253438 #58 DONE 0.1s
+2026-May-30 04:15:00.489187 #59 [growthos runner 5/6] COPY docker/entrypoint.sh /docker-entrypoint.d/40-inject-env.sh
+2026-May-30 04:15:00.489187 #59 DONE 0.1s
+2026-May-30 04:15:00.489187 
+2026-May-30 04:15:00.489187 #60 [growthos runner 6/6] RUN chmod +x /docker-entrypoint.d/40-inject-env.sh
+2026-May-30 04:15:00.662868 #60 DONE 0.3s
+2026-May-30 04:15:00.820635 #61 [growthos] exporting to image
+2026-May-30 04:15:00.820635 #61 exporting layers
+2026-May-30 04:15:00.872311 #61 exporting layers 0.2s done
+2026-May-30 04:15:01.077305 #61 exporting manifest sha256:0130a21db90357a648677b7ab451343a4c59860af762309e7d6a643a8b27cb9e 0.0s done
+2026-May-30 04:15:01.077305 #61 exporting config sha256:6a6588bd6ed928e3d06dbc0228abfb7c75680f1ca14669616d56811829fbe02f 0.0s done
+2026-May-30 04:15:01.077305 #61 exporting attestation manifest sha256:e2fcbb29bb0b0b0333c1b64d0d8ad95ac24c8f74ca479344e09b3b4df1c4cf4b 0.0s done
+2026-May-30 04:15:01.077305 #61 exporting manifest list sha256:21847a164ac1eb5c86d0140073317511cb13963fe4d1159d106b80b5733b6163 0.0s done
+2026-May-30 04:15:01.077305 #61 naming to docker.io/library/qg3u7f72d9lin10gl2ixlp7x_growthos:d28aa5d4eaf3d4984e8ec61f89181c5dc8aec0d8 done
+2026-May-30 04:15:01.077305 #61 unpacking to docker.io/library/qg3u7f72d9lin10gl2ixlp7x_growthos:d28aa5d4eaf3d4984e8ec61f89181c5dc8aec0d8 0.1s done
+2026-May-30 04:15:01.296255 #61 DONE 0.5s
+2026-May-30 04:15:01.731669 #62 [growthos] resolving provenance for metadata file
+2026-May-30 04:15:01.888608 #62 DONE 0.0s
+2026-May-30 04:15:01.902456 growthos  Built
+2026-May-30 04:15:01.902456 api-server  Built
+2026-May-30 04:15:02.251853 Creating .env file with runtime variables for container.
+2026-May-30 04:15:02.766652 Removing old containers.
+2026-May-30 04:15:02.980101 Starting new application.
+2026-May-30 04:15:03.554600 [CMD]: docker exec egy25pf48opb2ov7air3j9a1 bash -c 'COOLIFY_BRANCH=main COOLIFY_RESOURCE_UUID=qg3u7f72d9lin10gl2ixlp7x  docker compose --env-file /artifacts/egy25pf48opb2ov7air3j9a1/.env --project-name qg3u7f72d9lin10gl2ixlp7x --project-directory /artifacts/egy25pf48opb2ov7air3j9a1 -f /artifacts/egy25pf48opb2ov7air3j9a1/docker-compose.yml up -d'
+2026-May-30 04:15:04.127118 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Creating
+2026-May-30 04:15:04.247592 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Created
+2026-May-30 04:15:04.247592 Container growthos-qg3u7f72d9lin10gl2ixlp7x-041425441042  Creating
+2026-May-30 04:15:04.339181 Container growthos-qg3u7f72d9lin10gl2ixlp7x-041425441042  Created
+2026-May-30 04:15:04.368300 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Starting
+2026-May-30 04:15:04.775060 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Started
+2026-May-30 04:15:04.775060 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Waiting
+2026-May-30 04:16:50.229327 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Error
+2026-May-30 04:16:50.229327 dependency failed to start: container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029 is unhealthy
+2026-May-30 04:16:50.244616 exit status 1
+2026-May-30 04:16:50.348464 ========================================
+2026-May-30 04:16:50.386071 Deployment failed: Command execution failed (exit code 1): docker exec egy25pf48opb2ov7air3j9a1 bash -c 'COOLIFY_BRANCH=main COOLIFY_RESOURCE_UUID=qg3u7f72d9lin10gl2ixlp7x  docker compose --env-file /artifacts/egy25pf48opb2ov7air3j9a1/.env --project-name qg3u7f72d9lin10gl2ixlp7x --project-directory /artifacts/egy25pf48opb2ov7air3j9a1 -f /artifacts/egy25pf48opb2ov7air3j9a1/docker-compose.yml up -d'
+2026-May-30 04:16:50.386071 Error:  Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Creating
+2026-May-30 04:16:50.386071 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Created
+2026-May-30 04:16:50.386071 Container growthos-qg3u7f72d9lin10gl2ixlp7x-041425441042  Creating
+2026-May-30 04:16:50.386071 Container growthos-qg3u7f72d9lin10gl2ixlp7x-041425441042  Created
+2026-May-30 04:16:50.386071 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Starting
+2026-May-30 04:16:50.386071 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Started
+2026-May-30 04:16:50.386071 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Waiting
+2026-May-30 04:16:50.386071 Container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029  Error
+2026-May-30 04:16:50.386071 dependency failed to start: container api-server-qg3u7f72d9lin10gl2ixlp7x-041425457029 is unhealthy
+2026-May-30 04:16:50.386071 exit status 1
+2026-May-30 04:16:50.419717 Error type: App\Exceptions\DeploymentException
+2026-May-30 04:16:50.448774 Error code: 0
+2026-May-30 04:16:50.482892 Location: /var/www/html/app/Traits/ExecuteRemoteCommand.php:242
+2026-May-30 04:16:50.521463 Stack trace (first 5 lines):
+2026-May-30 04:16:50.550330 #0 /var/www/html/app/Traits/ExecuteRemoteCommand.php(106): App\Jobs\ApplicationDeploymentJob->executeCommandWithProcess()
+2026-May-30 04:16:50.578207 #1 /var/www/html/vendor/laravel/framework/src/Illuminate/Collections/Traits/EnumeratesValues.php(275): App\Jobs\ApplicationDeploymentJob->{closure:App\Traits\ExecuteRemoteCommand::execute_remote_command():72}()
+2026-May-30 04:16:50.602285 #2 /var/www/html/app/Traits/ExecuteRemoteCommand.php(72): Illuminate\Support\Collection->each()
+2026-May-30 04:16:50.626826 #3 /var/www/html/app/Jobs/ApplicationDeploymentJob.php(860): App\Jobs\ApplicationDeploymentJob->execute_remote_command()
+2026-May-30 04:16:50.657727 #4 /var/www/html/app/Jobs/ApplicationDeploymentJob.php(482): App\Jobs\ApplicationDeploymentJob->deploy_docker_compose_buildpack()
+2026-May-30 04:16:50.684864 ========================================
+2026-May-30 04:16:51.208997 Gracefully shutting down build container: egy25pf48opb2ov7air3j9a1
+2026-May-30 04:16:51.781194 [CMD]: docker stop -t 30 egy25pf48opb2ov7air3j9a1
+2026-May-30 04:16:51.781194 egy25pf48opb2ov7air3j9a1
