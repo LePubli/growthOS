@@ -55,13 +55,18 @@ Coolify/Traefik utilise le port 80 comme entrypoint HTTP. Utiliser le port 80 au
 resolver 127.0.0.11 valid=30s ipv6=off;  # DNS Docker interne
 
 location /api/ {
-    set $api_upstream http://api-server:3001;
-    proxy_pass $api_upstream/api/;  # résolution DNS par requête, pas au démarrage
+    set $api_upstream api-server:3001;
+    proxy_pass http://$api_upstream;  # variable sur host:port UNIQUEMENT, sans chemin
 }
 ```
 
 **Pourquoi resolver + variable ?**  
-Avec `proxy_pass http://api-server:3001/api/` statique, nginx tente de résoudre `api-server` au DÉMARRAGE. Si api-server n'est pas encore ready → nginx crashe → restart loop. La variable force la résolution par requête.
+Avec `proxy_pass http://api-server:3001` statique, nginx résout `api-server` au DÉMARRAGE. Si api-server n'est pas encore ready → nginx crashe → restart loop. La variable force la résolution par requête.
+
+**GOTCHA CRITIQUE — double /api/ avec variable + chemin :**  
+`proxy_pass $var/api/` où `$var = http://api-server:3001` → nginx ne fait PAS la substitution d'URI quand une variable est utilisée → l'api-server reçoit `/api/api/v1/...` → 404.  
+**Règle** : la variable doit contenir UNIQUEMENT `host:port` (pas de schéma, pas de chemin), et le `http://` est un préfixe littéral : `proxy_pass http://$upstream;`  
+Sans chemin dans proxy_pass, nginx passe l'URI originale telle quelle → `/api/v1/auth/register` arrive intact.
 
 ## Fichiers Coolify proxy
 
