@@ -30,17 +30,20 @@ Coolify/Traefik utilise le port 80 comme entrypoint HTTP. Utiliser le port 80 au
 
 ## GOTCHA CRITIQUE — Réseaux Docker et accès postgres
 
-- Le postgres Coolify (`helium`) est sur le réseau **`coolify`** (réseau partagé de toutes les ressources Coolify)
-- Les containers de l'app sont sur le réseau **`qg3u7f72d9lin10gl2ixlp7x`** (réseau isolé de ce compose)
-- Un container qui n'est que sur `qg3u7f72d9lin10gl2ixlp7x` → `getaddrinfo ENOTFOUND helium` → healthcheck échoue → déploiement bloqué
-- **Fix** : ajouter le réseau `coolify` comme réseau externe dans docker-compose + l'attacher au service api-server :
+- Le postgres Coolify est le container **`coolify-db`** (image `postgres:15-alpine`)
+- Il est sur le réseau **`coolify`** avec IP `10.0.1.8` et aliases `[coolify-db postgres]`
+- **`helium` n'est PAS un alias Docker** — c'est le nom Coolify de la ressource, mais Docker ne le connaît pas
+- Le DATABASE_URL correct : `postgresql://postgres:password@coolify-db/heliumdb?sslmode=disable`
+  - hostname = `coolify-db` (le vrai alias Docker, pas le nom Coolify)
+  - base de données = `heliumdb` (à vérifier avec `docker exec coolify-db psql -U postgres -l`)
+- Pour accéder à `coolify-db`, l'api-server doit être sur le réseau `coolify` :
 
 ```yaml
 services:
   api-server:
     networks:
       - default        # réseau isolé de l'app
-      - coolify        # réseau partagé Coolify (pour accès à helium)
+      - coolify        # réseau partagé Coolify (pour accéder à coolify-db)
 
 networks:
   coolify:
@@ -48,6 +51,7 @@ networks:
 ```
 
 - `growthos` (nginx) n'a pas besoin d'accéder à postgres → reste sur `default` uniquement
+- **Leçon** : Coolify génère un DATABASE_URL avec son nom interne de ressource (ex: `helium`) qui ne correspond PAS forcément au container/alias Docker réel — toujours vérifier avec `docker inspect <container>`
 
 ## Traefik — fonctionnement
 
