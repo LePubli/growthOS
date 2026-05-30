@@ -85,6 +85,21 @@ CREATE TABLE IF NOT EXISTS signals (
 );
 `;
 
-export async function runMigrations(): Promise<void> {
-  await pool.query(SQL);
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function runMigrations(maxAttempts = 10): Promise<void> {
+  let attempt = 0;
+  while (attempt < maxAttempts) {
+    try {
+      await pool.query(SQL);
+      return;
+    } catch (err) {
+      attempt++;
+      if (attempt >= maxAttempts) throw err;
+      const delay = Math.min(1000 * 2 ** attempt, 15000);
+      await sleep(delay);
+    }
+  }
 }

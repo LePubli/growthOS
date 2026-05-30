@@ -1,0 +1,39 @@
+2026-May-30 03:40:51.482534 Docker 29.4.0 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-30 03:40:51.497788 Starting deployment of growth-o-s:main-muen3373qsdm6coff3jcfe7e to localhost.
+2026-May-30 03:40:51.798746 Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-30 03:40:53.443061 ----------------------------------------
+2026-May-30 03:40:53.457802 Importing LePubli/growthOS:main (commit sha 2e4e3b913377a50a7553b763b08f7637f9e4c322) to /artifacts/flpa2tan5hzdiugt77arqf4h.
+2026-May-30 03:40:59.549205 Added 94 ARG declarations to Dockerfile for service growthos (multi-stage build, added to 2 stages).
+2026-May-30 03:41:00.482641 Added 94 ARG declarations to Dockerfile for service api-server (multi-stage build, added to 2 stages).
+2026-May-30 03:41:00.499860 Pulling & building required images.
+2026-May-30 03:41:01.146831 Adding build arguments to Docker Compose build command.
+2026-May-30 03:41:35.602182 Removing old containers.
+2026-May-30 03:41:36.746235 Starting new application.
+2026-May-30 03:41:37.722355 Network qg3u7f72d9lin10gl2ixlp7x_default  Creating
+2026-May-30 03:41:37.794962 Network qg3u7f72d9lin10gl2ixlp7x_default  Created
+2026-May-30 03:41:37.804740 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Creating
+2026-May-30 03:41:37.911882 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Created
+2026-May-30 03:41:37.911882 Container growthos-qg3u7f72d9lin10gl2ixlp7x-034058282502  Creating
+2026-May-30 03:41:37.994164 Container growthos-qg3u7f72d9lin10gl2ixlp7x-034058282502  Created
+2026-May-30 03:41:38.021793 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Starting
+2026-May-30 03:41:38.404225 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Started
+2026-May-30 03:41:38.404225 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Waiting
+2026-May-30 03:41:39.594749 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Error
+2026-May-30 03:41:39.608240 dependency failed to start: container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882 is unhealthy
+2026-May-30 03:41:39.608240 exit status 1
+2026-May-30 03:41:39.716406 ========================================
+2026-May-30 03:41:39.740796 Deployment failed: Command execution failed (exit code 1): docker exec flpa2tan5hzdiugt77arqf4h bash -c 'COOLIFY_BRANCH=main COOLIFY_RESOURCE_UUID=qg3u7f72d9lin10gl2ixlp7x  docker compose --env-file /artifacts/flpa2tan5hzdiugt77arqf4h/.env --project-name qg3u7f72d9lin10gl2ixlp7x --project-directory /artifacts/flpa2tan5hzdiugt77arqf4h -f /artifacts/flpa2tan5hzdiugt77arqf4h/docker-compose.yml up -d'
+2026-May-30 03:41:39.740796 Error:  Network qg3u7f72d9lin10gl2ixlp7x_default  Creating
+2026-May-30 03:41:39.740796 Network qg3u7f72d9lin10gl2ixlp7x_default  Created
+2026-May-30 03:41:39.740796 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Creating
+2026-May-30 03:41:39.740796 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Created
+2026-May-30 03:41:39.740796 Container growthos-qg3u7f72d9lin10gl2ixlp7x-034058282502  Creating
+2026-May-30 03:41:39.740796 Container growthos-qg3u7f72d9lin10gl2ixlp7x-034058282502  Created
+2026-May-30 03:41:39.740796 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Starting
+2026-May-30 03:41:39.740796 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Started
+2026-May-30 03:41:39.740796 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Waiting
+2026-May-30 03:41:39.740796 Container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882  Error
+2026-May-30 03:41:39.740796 dependency failed to start: container api-server-qg3u7f72d9lin10gl2ixlp7x-034058293882 is unhealthy
+2026-May-30 03:41:39.740796 exit status 1
+2026-May-30 03:41:39.986547 ========================================
+2026-May-30 03:41:40.558434 Gracefully shutting down build container: flpa2tan5hzdiugt77arqf4h
