@@ -28,6 +28,27 @@ description: Architecture, réseaux, Traefik et gotchas du VPS Coolify pour le p
 **Pourquoi port 3000 pour nginx (pas 80) ?**  
 Coolify/Traefik utilise le port 80 comme entrypoint HTTP. Utiliser le port 80 aussi comme backend provoquait un conflit — Traefik ne routait pas vers le container. Port 3000 fonctionne correctement.
 
+## GOTCHA CRITIQUE — Réseaux Docker et accès postgres
+
+- Le postgres Coolify (`helium`) est sur le réseau **`coolify`** (réseau partagé de toutes les ressources Coolify)
+- Les containers de l'app sont sur le réseau **`qg3u7f72d9lin10gl2ixlp7x`** (réseau isolé de ce compose)
+- Un container qui n'est que sur `qg3u7f72d9lin10gl2ixlp7x` → `getaddrinfo ENOTFOUND helium` → healthcheck échoue → déploiement bloqué
+- **Fix** : ajouter le réseau `coolify` comme réseau externe dans docker-compose + l'attacher au service api-server :
+
+```yaml
+services:
+  api-server:
+    networks:
+      - default        # réseau isolé de l'app
+      - coolify        # réseau partagé Coolify (pour accès à helium)
+
+networks:
+  coolify:
+    external: true     # réseau existant, géré par Coolify
+```
+
+- `growthos` (nginx) n'a pas besoin d'accéder à postgres → reste sur `default` uniquement
+
 ## Traefik — fonctionnement
 
 - Coolify gère Traefik via labels Docker **et** un fichier statique `/data/coolify/proxy/dynamic/coolify.yaml` (uniquement pour le panel Coolify lui-même)

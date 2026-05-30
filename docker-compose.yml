@@ -38,6 +38,9 @@ services:
       - "traefik.http.routers.api-server-qg3u7f72d9lin10gl2ixlp7x.rule=Host(`vit6buuz2vmqaleuh0z5autx.82.22.77.159.sslip.io`)"
       - "traefik.http.routers.api-server-qg3u7f72d9lin10gl2ixlp7x.entrypoints=http"
       - "traefik.http.services.api-server-qg3u7f72d9lin10gl2ixlp7x.loadbalancer.server.port=3001"
+    networks:
+      - default
+      - coolify
     restart: unless-stopped
     healthcheck:
       test:
@@ -49,3 +52,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+networks:
+  coolify:
+    external: true
