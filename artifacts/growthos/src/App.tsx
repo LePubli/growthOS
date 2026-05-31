@@ -37,6 +37,10 @@ import { GenericPage } from '@/pages/GenericPage';
 import MarketplacePage from '@/pages/MarketplacePage';
 import CRMMapPage from '@/pages/CRMMapPage';
 import ImportPage from '@/pages/ImportPage';
+import ContactIntelPage from '@/pages/ContactIntelPage';
+import CRMSyncPage from '@/pages/CRMSyncPage';
+import SourcingJobPage from '@/pages/SourcingJobPage';
+import PluginDetailPage from '@/pages/PluginDetailPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -102,14 +106,14 @@ function AppRoutes() {
         {() => <DashboardLayout><SourcingPage /></DashboardLayout>}
       </Route>
       <Route path="/sourcing/:id">
-        {(p) => <DashboardLayout><GenericPage title={`Scraping #${p.id}`} icon="🔍" description="Configuration et résultats du scraping — prospects collectés." /></DashboardLayout>}
+        {() => <DashboardLayout><SourcingJobPage /></DashboardLayout>}
       </Route>
 
       <Route path="/plugins">
         {() => <DashboardLayout><PluginsPage /></DashboardLayout>}
       </Route>
       <Route path="/plugins/:name">
-        {(p) => <DashboardLayout><GenericPage title={`Plugin : ${p.name}`} icon="🧩" description="Configuration, logs et statut du plugin installé." /></DashboardLayout>}
+        {() => <DashboardLayout><PluginDetailPage /></DashboardLayout>}
       </Route>
 
       <Route path="/workflows">
@@ -162,10 +166,10 @@ function AppRoutes() {
       </Route>
 
       <Route path="/contacts">
-        {() => <DashboardLayout><GenericPage title="Contact Intel" icon="🔎" description="Intelligence contact — enrichissement, doublons, historique." /></DashboardLayout>}
+        {() => <DashboardLayout><ContactIntelPage /></DashboardLayout>}
       </Route>
       <Route path="/crm-sync">
-        {() => <DashboardLayout><GenericPage title="CRM Sync" icon="🔄" description="Synchronisation bidirectionnelle avec HubSpot, Salesforce, etc." /></DashboardLayout>}
+        {() => <DashboardLayout><CRMSyncPage /></DashboardLayout>}
       </Route>
       <Route path="/marketplace">
         {() => <DashboardLayout><MarketplacePage /></DashboardLayout>}
