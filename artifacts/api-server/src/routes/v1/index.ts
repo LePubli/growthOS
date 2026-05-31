@@ -16,6 +16,7 @@ import searchRouter from "./search";
 import usersRouter from "./users";
 import teamRouter from "./team";
 import apiKeysRouter from "./api-keys";
+import analyticsRouter from "./analytics";
 
 const router = Router();
 
@@ -35,5 +36,6 @@ router.use("/search", requireAuth, searchRouter);
 router.use("/users", requireAuth, usersRouter);
 router.use("/team", requireAuth, teamRouter);
 router.use("/api-keys", requireAuth, apiKeysRouter);
+router.use("/analytics", requireAuth, analyticsRouter);
 
 export default router;
