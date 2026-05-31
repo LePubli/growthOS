@@ -1,2 +1,3 @@
 - [GrowthOS migration](growthos-migration.md) — Next.js → Vite+React migration patterns and sharp edges for this project
 - [Coolify VPS setup](coolify-vps-setup.md) — architecture VPS, Traefik, réseaux Docker, gotchas critiques (healthcheck IPv6, VITE_API_URL, port 80 conflict)
+- [GrowthOS feature progress](growthos-features.md) — which of the 16 requested improvements are built and which remain

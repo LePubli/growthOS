@@ -10,6 +10,8 @@ import activitiesRouter from "./activities";
 import workflowsRouter from "./workflows-api";
 import templatesRouter from "./templates-api";
 import webhooksRouter from "./webhooks-api";
+import accountsRouter from "./accounts";
+import emailRouter from "./email";
 
 const router = Router();
 
@@ -23,5 +25,7 @@ router.use("/activities", requireAuth, activitiesRouter);
 router.use("/workflows", requireAuth, workflowsRouter);
 router.use("/templates", requireAuth, templatesRouter);
 router.use("/webhooks", requireAuth, webhooksRouter);
+router.use("/accounts", requireAuth, accountsRouter);
+router.use("/email", requireAuth, emailRouter);
 
 export default router;

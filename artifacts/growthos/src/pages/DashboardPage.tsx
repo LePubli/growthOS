@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
 import { Users, DollarSign, RefreshCw, Plus, ChevronRight } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { OnboardingWizard } from '@/components/common/OnboardingWizard';
 
 const ALL_WIDGETS = [
   { id:'prospects',  label:'Total Prospects',     icon:'👥', color:'blue',   href:'/prospects' },
@@ -84,6 +85,7 @@ export default function DashboardPage() {
   const availableToAdd = ALL_WIDGETS.filter(w=>!activeWidgets.includes(w.id));
 
   return (
+    <>
     <div className="min-h-screen p-6" style={{background:'var(--body-bg)'}}>
 
       {/* Header */}
@@ -237,5 +239,7 @@ export default function DashboardPage() {
 
       </div>
     </div>
+    <OnboardingWizard />
+    </>
   );
 }

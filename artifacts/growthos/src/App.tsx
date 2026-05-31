@@ -41,6 +41,10 @@ import ContactIntelPage from '@/pages/ContactIntelPage';
 import CRMSyncPage from '@/pages/CRMSyncPage';
 import SourcingJobPage from '@/pages/SourcingJobPage';
 import PluginDetailPage from '@/pages/PluginDetailPage';
+import AccountsPage from '@/pages/AccountsPage';
+import TeamMetricsPage from '@/pages/TeamMetricsPage';
+import CalendarPage from '@/pages/CalendarPage';
+import ProposalsPage from '@/pages/ProposalsPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -179,6 +183,19 @@ function AppRoutes() {
       </Route>
       <Route path="/import">
         {() => <DashboardLayout><ImportPage /></DashboardLayout>}
+      </Route>
+
+      <Route path="/accounts">
+        {() => <DashboardLayout><AccountsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/team">
+        {() => <DashboardLayout><TeamMetricsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/calendar">
+        {() => <DashboardLayout><CalendarPage /></DashboardLayout>}
+      </Route>
+      <Route path="/proposals">
+        {() => <DashboardLayout><ProposalsPage /></DashboardLayout>}
       </Route>
 
       <Route>

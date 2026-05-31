@@ -3,6 +3,7 @@ import { useParams, useLocation } from 'wouter';
 import { ArrowLeft, Edit2, Save, Loader2, Trash2, CheckCircle } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
+import { CommentsPanel } from '@/components/common/CommentsPanel';
 
 const STAGES = [
   { value: 'lead', label: 'Lead', color: '#6B7280', prob: 10 },
@@ -194,27 +195,17 @@ export default function DealDetailPage() {
 
         <div className="space-y-4">
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>TIMELINE</h2>
-            <div className="space-y-3">
-              <div className="flex gap-3 items-start">
-                <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: 'var(--color-primary)' }} />
-                <div>
-                  <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Deal créé</div>
-                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {new Date(deal.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </div>
-                </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16, fontSize: 12, color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div className="w-2 h-2 rounded-full" style={{ background: 'var(--color-primary)' }} />
+                <span>Créé {new Date(deal.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
               </div>
-              <div className="flex gap-3 items-start">
-                <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: stageInfo.color }} />
-                <div>
-                  <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Stade actuel : {stageInfo.label}</div>
-                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {new Date(deal.updatedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </div>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div className="w-2 h-2 rounded-full" style={{ background: stageInfo.color }} />
+                <span>Stade : {stageInfo.label}</span>
               </div>
             </div>
+            <CommentsPanel entityType="deal" entityId={deal.id} />
           </div>
         </div>
       </div>

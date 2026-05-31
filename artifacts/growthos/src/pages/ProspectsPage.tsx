@@ -10,7 +10,7 @@ import apiClient from '@/lib/api-client';
 const STATUS_OPTIONS = [
   {value:'all',label:'Tous'},{value:'new',label:'Nouveau'},{value:'contacted',label:'Contacté'},
   {value:'qualified',label:'Qualifié'},{value:'negotiation',label:'Négociation'},
-  {value:'won',label:'Gagné'},{value:'lost',label:'Perdu'},
+  {value:'won',label:'Gagné'},{value:'lost',label:'Perdu'},{value:'archived',label:'Archivés'},
 ];
 const STATUS_COLORS: Record<string,string> = {
   new:'bg-gray-100 text-gray-600', contacted:'bg-blue-50 text-blue-600',

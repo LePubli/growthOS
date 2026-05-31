@@ -123,8 +123,10 @@ export default function PipelinePage() {
   const onDragStart = (e: React.DragEvent, id: string) => { draggingId.current = id; e.dataTransfer.effectAllowed = 'move'; };
   const onDrop = (e: React.DragEvent, stageId: string) => {
     e.preventDefault();
-    if (!draggingId.current) return;
-    setDeals(ds => ds.map(d => d.id === draggingId.current ? { ...d, stage: stageId } : d));
+    const id = draggingId.current;
+    if (!id) return;
+    setDeals(ds => ds.map(d => d.id === id ? { ...d, stage: stageId } : d));
+    apiClient.patch(`/pipeline/${id}`, { stage: stageId }).catch(() => {});
     draggingId.current = null;
     setDragOver(null);
   };

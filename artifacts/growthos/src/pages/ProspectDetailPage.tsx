@@ -4,9 +4,11 @@ import {
   ArrowLeft, Edit2, Save, X, Star, Mail, Phone, Globe, Building2,
   Briefcase, Loader2, Plus, Trash2, CheckCircle, AlertCircle,
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
+  Archive, RotateCcw, Brain, TrendingUp, TrendingDown, Minus,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
+import { CommentsPanel } from '@/components/common/CommentsPanel';
 
 const STATUS_OPTIONS = [
   { value: 'new', label: 'Nouveau' }, { value: 'contacted', label: 'Contacté' },
@@ -156,6 +158,30 @@ export default function ProspectDetailPage() {
 
   const sf = (k: string, v: string) => setForm((f: any) => ({ ...f, [k]: v }));
 
+  const archiveProspect = async () => {
+    const isArchived = prospect.status === 'archived';
+    try {
+      const updated = await apiClient.patch(`/prospects/${id}`, { status: isArchived ? 'new' : 'archived' });
+      setProspect(updated);
+      toast.success(isArchived ? 'Prospect restauré' : 'Prospect archivé');
+      if (!isArchived) navigate('/prospects');
+    } catch { toast.error('Erreur lors de l\'archivage'); }
+  };
+
+  // AI Scoring: compute a breakdown from available fields
+  const computeScoring = (p: any) => {
+    const criteria = [
+      { label: 'Email renseigné', weight: 20, met: !!p.email },
+      { label: 'Téléphone renseigné', weight: 15, met: !!p.phone },
+      { label: 'Entreprise identifiée', weight: 15, met: !!p.company },
+      { label: 'Poste / rôle décisionnel', weight: 20, met: !!p.jobTitle },
+      { label: 'En cours de négociation', weight: 20, met: ['negotiation', 'qualified'].includes(p.status) },
+      { label: 'Mis en favori', weight: 10, met: !!p.isStarred },
+    ];
+    const computedScore = criteria.reduce((s, c) => s + (c.met ? c.weight : 0), 0);
+    return { criteria, computedScore };
+  };
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--body-bg)' }}>
       <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--color-primary)' }} />
@@ -195,6 +221,11 @@ export default function ProspectDetailPage() {
         <div className="flex gap-2">
           <button onClick={toggleStar} className={`p-2 rounded-xl ${prospect.isStarred ? 'bg-amber-50' : 'hover:bg-gray-100'}`}>
             <Star size={18} className={prospect.isStarred ? 'fill-amber-400 text-amber-400' : 'text-gray-400'} />
+          </button>
+          <button onClick={archiveProspect} title={prospect.status === 'archived' ? 'Restaurer' : 'Archiver'}
+            className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
+            style={{ color: prospect.status === 'archived' ? '#059669' : 'var(--text-muted)' }}>
+            {prospect.status === 'archived' ? <RotateCcw size={18} /> : <Archive size={18} />}
           </button>
           {editing ? (
             <>
@@ -362,6 +393,55 @@ export default function ProspectDetailPage() {
             </div>
           </div>
 
+          {/* AI Scoring Panel */}
+          {(() => {
+            const { criteria, computedScore } = computeScoring(prospect);
+            const score = prospect.score || computedScore;
+            const color = score >= 70 ? '#059669' : score >= 40 ? '#D97706' : '#DC2626';
+            const label = score >= 70 ? 'Chaud 🔥' : score >= 40 ? 'Tiède' : 'Froid';
+            const TrendIcon = score >= 70 ? TrendingUp : score >= 40 ? Minus : TrendingDown;
+            return (
+              <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <Brain size={14} style={{ color: 'var(--color-primary)' }} />
+                  <h2 className="font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>SCORING IA</h2>
+                </div>
+                {/* Score ring */}
+                <div className="flex items-center gap-4 mb-4">
+                  <div style={{ position: 'relative', width: 60, height: 60, flexShrink: 0 }}>
+                    <svg viewBox="0 0 60 60" style={{ transform: 'rotate(-90deg)', width: 60, height: 60 }}>
+                      <circle cx="30" cy="30" r="24" fill="none" stroke="var(--body-bg)" strokeWidth="6" />
+                      <circle cx="30" cy="30" r="24" fill="none" stroke={color} strokeWidth="6"
+                        strokeDasharray={`${2 * Math.PI * 24 * score / 100} ${2 * Math.PI * 24 * (1 - score / 100)}`}
+                        strokeLinecap="round" />
+                    </svg>
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color }}>
+                      {score}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color }} className="flex items-center gap-1.5">
+                      <TrendIcon size={16} />{label}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Score de qualification</div>
+                  </div>
+                </div>
+                {/* Criteria */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {criteria.map((c, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
+                      <div style={{ width: 16, height: 16, borderRadius: '50%', background: c.met ? '#ECFDF5' : 'var(--body-bg)', border: `1.5px solid ${c.met ? '#059669' : 'var(--card-border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {c.met && <CheckCircle size={9} style={{ color: '#059669' }} />}
+                      </div>
+                      <span style={{ flex: 1, color: c.met ? 'var(--text-primary)' : 'var(--text-muted)' }}>{c.label}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: c.met ? '#059669' : 'var(--text-muted)' }}>+{c.weight}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>ACTIONS RAPIDES</h2>
             <div className="space-y-2">
@@ -390,6 +470,13 @@ export default function ProspectDetailPage() {
                 <MessageSquare size={14} style={{ color: '#D97706' }} />Créer un deal
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Collaboration & Activité */}
+        <div className="px-6 pb-6">
+          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+            <CommentsPanel entityType="prospect" entityId={prospect.id} />
           </div>
         </div>
       </div>

@@ -5,11 +5,12 @@ import {
   Settings, Puzzle, Palette, Mail, Target, RefreshCw,
   Bot, User, Webhook, BarChart2, Download, Zap,
   ChevronDown, LogOut, Plus, HelpCircle,
-  Globe, Activity, Store, FileText, Menu, X, Map, Upload,
+  Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
 import { CommandPalette } from '@/components/command/CommandPalette';
+import { NotificationsDrawer } from '@/components/common/NotificationsDrawer';
 
 interface NavItem {
   href: string;
@@ -36,6 +37,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'CRM & Pipeline',
     items: [
       { href: '/prospects', label: 'Prospects', icon: <Building2 size={16} /> },
+      { href: '/accounts', label: 'Comptes', icon: <Users size={16} /> },
       { href: '/pipeline', label: 'Pipeline', icon: <GitBranch size={16} /> },
       { href: '/activities', label: 'Activités', icon: <Activity size={16} /> },
     ],
@@ -54,6 +56,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Marketing',
     items: [
       { href: '/sequences', label: 'Séquences Email', icon: <Mail size={16} /> },
+      { href: '/proposals', label: 'Propositions', icon: <FileText size={16} /> },
       { href: '/inbound', label: 'Inbound', icon: <Download size={16} /> },
       { href: '/abm', label: 'ABM / TAM', icon: <Target size={16} /> },
       { href: '/templates', label: 'Templates Email', icon: <FileText size={16} /> },
@@ -65,6 +68,13 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/ai', label: 'Agent IA', icon: <Bot size={16} /> },
       { href: '/workflows', label: 'Workflows', icon: <Globe size={16} /> },
+      { href: '/calendar', label: 'Calendrier', icon: <CalIcon size={16} /> },
+    ],
+  },
+  {
+    label: 'Équipe',
+    items: [
+      { href: '/team', label: 'Métriques Équipe', icon: <Trophy size={16} /> },
     ],
   },
   {
@@ -196,14 +206,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isMobile = useMobile();
   const [cmdOpen, setCmdOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(p => !p); }
-      if (e.key === 'Escape') { setCmdOpen(false); setUserMenuOpen(false); setNotifOpen(false); setMobileSidebarOpen(false); }
+      if (e.key === 'Escape') { setCmdOpen(false); setUserMenuOpen(false); setMobileSidebarOpen(false); }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
@@ -333,33 +342,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
 
           {/* Notifications */}
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <button onClick={() => setNotifOpen(o => !o)} style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--body-bg)', border: '1px solid var(--card-border)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', position: 'relative' }}>
-              <Bell size={15} />
-              <span style={{ position: 'absolute', top: 6, right: 6, width: 6, height: 6, borderRadius: '50%', background: 'var(--color-primary)', border: '2px solid var(--card-bg)' }} />
-            </button>
-            {notifOpen && (
-              <div style={{ position: 'fixed', top: 56, right: 12, width: Math.min(300, window.innerWidth - 24), background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.12)', zIndex: 200, overflow: 'hidden' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--card-border)', display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>Notifications</span>
-                  <button onClick={() => setNotifOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 12, cursor: 'pointer' }}>Tout lire</button>
+          <div style={{ flexShrink: 0 }}>
+            <NotificationsDrawer
+              trigger={
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--body-bg)', border: '1px solid var(--card-border)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+                  <Bell size={15} />
                 </div>
-                {[
-                  { icon: <Search size={14} />, text: 'Scraping terminé — 47 prospects', time: 'Il y a 5 min', unread: true },
-                  { icon: <Zap size={14} />, text: '3 signaux détectés', time: 'Il y a 12 min', unread: true },
-                  { icon: <Mail size={14} />, text: '8 emails envoyés', time: 'Il y a 1h', unread: false },
-                ].map((n, i) => (
-                  <div key={i} style={{ padding: '10px 16px', display: 'flex', gap: 10, background: n.unread ? 'rgba(13,148,136,.04)' : 'transparent', borderBottom: '1px solid var(--card-border)', cursor: 'pointer' }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--color-primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary)', flexShrink: 0 }}>{n.icon}</div>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.4 }}>{n.text}</p>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{n.time}</span>
-                    </div>
-                    {n.unread && <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-primary)', marginTop: 6 }} />}
-                  </div>
-                ))}
-              </div>
-            )}
+              }
+            />
           </div>
 
           {/* Help — hidden on mobile */}
