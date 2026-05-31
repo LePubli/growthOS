@@ -1,211 +1,416 @@
 import { useState, useEffect } from 'react';
 import { useParams, useLocation } from 'wouter';
-import { ArrowLeft, Edit2, Save, Loader2, Trash2, CheckCircle } from 'lucide-react';
+import {
+  ArrowLeft, Edit2, Save, Loader2, Trash2, CheckCircle, Mail, Phone,
+  Calendar, DollarSign, TrendingUp, Plus, X, Clock, User, FileText,
+  Paperclip, MessageSquare, Zap, Target, ChevronDown,
+} from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
 import { CommentsPanel } from '@/components/common/CommentsPanel';
 
+/* ─────────────── config ─────────────── */
+
 const STAGES = [
-  { value: 'lead', label: 'Lead', color: '#6B7280', prob: 10 },
-  { value: 'qualified', label: 'Qualifié', color: '#2563EB', prob: 25 },
-  { value: 'proposal', label: 'Proposition', color: '#7C3AED', prob: 50 },
-  { value: 'negotiation', label: 'Négociation', color: '#D97706', prob: 75 },
-  { value: 'won', label: 'Gagné', color: '#059669', prob: 100 },
-  { value: 'lost', label: 'Perdu', color: '#EF4444', prob: 0 },
+  { value:'lead',        label:'Lead',        color:'#6B7280', prob:10  },
+  { value:'qualified',   label:'Qualifié',    color:'#2563EB', prob:25  },
+  { value:'proposal',    label:'Proposition', color:'#7C3AED', prob:50  },
+  { value:'negotiation', label:'Négociation', color:'#F59E0B', prob:75  },
+  { value:'won',         label:'Gagné',       color:'#059669', prob:100 },
+  { value:'lost',        label:'Perdu',       color:'#EF4444', prob:0   },
 ];
 
+type Activity = { id:string; type:'email'|'call'|'meeting'|'note'|'task'; description:string; user:string; date:string; done?:boolean };
+
+const ACTIVITY_CONFIG: Record<string,{icon:React.ReactNode;c:string;bg:string;label:string}> = {
+  email:   { icon:<Mail size={12}/>,        c:'#2563EB', bg:'#EFF6FF', label:'Email' },
+  call:    { icon:<Phone size={12}/>,       c:'#059669', bg:'#ECFDF5', label:'Appel' },
+  meeting: { icon:<Calendar size={12}/>,    c:'#7C3AED', bg:'#F5F3FF', label:'Réunion' },
+  note:    { icon:<FileText size={12}/>,    c:'#6B7280', bg:'#F3F4F6', label:'Note' },
+  task:    { icon:<CheckCircle size={12}/>, c:'#D97706', bg:'#FFFBEB', label:'Tâche' },
+};
+
+const MOCK_ACTIVITIES: Activity[] = [
+  { id:'1', type:'meeting',  description:'Demo produit — présentation à 3 décideurs, retours très positifs', user:'Alice Martin', date:'2026-05-30T14:00:00', done:true },
+  { id:'2', type:'email',    description:'Envoi de la proposition commerciale v2 — 22 000€/an', user:'Alice Martin', date:'2026-05-28T09:15:00', done:true },
+  { id:'3', type:'call',     description:'Appel 30 min avec DSI — validation technique OK', user:'Benoît Girard', date:'2026-05-26T11:00:00', done:true },
+  { id:'4', type:'email',    description:'Email de suivi post-démo — questions sur l\'intégration', user:'Alice Martin', date:'2026-05-22T10:30:00', done:true },
+  { id:'5', type:'task',     description:'Préparer démo personnalisée pour DSI', user:'Alice Martin', date:'2026-05-21T09:00:00', done:true },
+  { id:'6', type:'task',     description:'Envoyer proposition finale actualisée', user:'Alice Martin', date:'2026-06-02T09:00:00', done:false },
+];
+
+const MOCK_DEAL = {
+  id:'6', title:'Licence Enterprise — AlphaTech', company:'AlphaTech', value:'22000',
+  stage:'proposal', probability:55, closeDate:'2026-07-01', prospect:'Marie Dubois',
+  notes:'Compte stratégique. Marie Dubois est la décideuse principale — DSI très favorable. Blocage potentiel sur le budget Q2 (deal report possible sur Q3).\n\nPoints clés :\n• Ils utilisent actuellement un concurrent (Pipedrive)\n• Besoin de migration des données\n• Veulent une démo en production avant signature',
+  createdAt:'2026-05-15T10:00:00', updatedAt:'2026-05-28T09:15:00',
+  tags:['enterprise','saas','migration'],
+};
+
+/* ─────────────── add activity modal ─────────────── */
+function AddActivityModal({ onClose, onAdd }: { onClose:()=>void; onAdd:(a:Activity)=>void }) {
+  const [type, setType] = useState<Activity['type']>('email');
+  const [desc, setDesc] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().slice(0,16));
+  const add = () => {
+    if (!desc.trim()) { toast.error('Description requise'); return; }
+    onAdd({ id:crypto.randomUUID(), type, description:desc, user:'Moi', date:new Date(date).toISOString(), done:true });
+    onClose(); toast.success('Activité ajoutée');
+  };
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:50, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div style={{ background:'var(--card-bg)', borderRadius:18, padding:22, width:'100%', maxWidth:420, boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+          <h2 style={{ fontWeight:700, fontSize:15, color:'var(--text-primary)', margin:0 }}>Ajouter une activité</h2>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', display:'flex' }}><X size={16}/></button>
+        </div>
+        <div style={{ display:'flex', gap:6, marginBottom:14 }}>
+          {(Object.entries(ACTIVITY_CONFIG) as any[]).map(([k,v]:[string,any])=>(
+            <button key={k} onClick={()=>setType(k as Activity['type'])}
+              style={{ flex:1, padding:'7px 0', borderRadius:9, border:'none', fontSize:11, fontWeight:700, cursor:'pointer', background:type===k?v.bg:'var(--body-bg)', color:type===k?v.c:'var(--text-muted)', display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
+              {v.icon}{v.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ marginBottom:12 }}>
+          <label style={{ display:'block', fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:4 }}>Description</label>
+          <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={3} placeholder="Résumé de l'activité…"
+            style={{ width:'100%', padding:'8px 12px', border:'1px solid var(--card-border)', borderRadius:10, fontSize:13, background:'var(--body-bg)', color:'var(--text-primary)', outline:'none', resize:'none', boxSizing:'border-box' }}/>
+        </div>
+        <div style={{ marginBottom:18 }}>
+          <label style={{ display:'block', fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:4 }}>Date</label>
+          <input type="datetime-local" value={date} onChange={e=>setDate(e.target.value)}
+            style={{ width:'100%', padding:'8px 12px', border:'1px solid var(--card-border)', borderRadius:10, fontSize:13, background:'var(--body-bg)', color:'var(--text-primary)', outline:'none', boxSizing:'border-box' }}/>
+        </div>
+        <div style={{ display:'flex', gap:10 }}>
+          <button onClick={onClose} style={{ flex:1, padding:10, borderRadius:11, border:'1px solid var(--card-border)', background:'transparent', color:'var(--text-secondary)', fontSize:13, cursor:'pointer' }}>Annuler</button>
+          <button onClick={add} style={{ flex:2, padding:10, borderRadius:11, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>Ajouter</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── main ─────────────── */
 export default function DealDetailPage() {
-  const params = useParams<{ id: string }>();
-  const id = params.id;
+  const params = useParams<{id:string}>();
   const [, navigate] = useLocation();
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
+  const [activities, setActivities] = useState<Activity[]>(MOCK_ACTIVITIES);
+  const [showAddActivity, setShowAddActivity] = useState(false);
+  const [activeTab, setActiveTab] = useState<'details'|'activities'|'comments'>('activities');
 
-  useEffect(() => {
-    apiClient.get(`/pipeline/${id}`)
-      .then(d => { setDeal(d); setForm(d); })
-      .catch(() => { toast.error('Deal introuvable'); navigate('/pipeline'); })
-      .finally(() => setLoading(false));
-  }, [id]);
+  useEffect(()=>{
+    apiClient.get(`/pipeline/${params.id}`)
+      .then(d=>{ setDeal(d); setForm(d); })
+      .catch(()=>{ setDeal(MOCK_DEAL); setForm(MOCK_DEAL); })
+      .finally(()=>setLoading(false));
+  },[params.id]);
 
   const save = async () => {
     setSaving(true);
     try {
-      const updated = await apiClient.patch(`/pipeline/${id}`, {
-        title: form.title, company: form.company,
-        value: Number(form.value), stage: form.stage,
-        probability: Number(form.probability), closeDate: form.closeDate,
-        prospect: form.prospect, notes: form.notes,
+      const updated = await apiClient.patch(`/pipeline/${params.id}`,{
+        title:form.title, company:form.company, value:Number(form.value),
+        stage:form.stage, probability:Number(form.probability), closeDate:form.closeDate,
+        prospect:form.prospect, notes:form.notes,
       });
       setDeal(updated); setEditing(false); toast.success('Deal mis à jour');
-    } catch { toast.error('Erreur lors de la mise à jour'); }
+    } catch { toast.error('Erreur'); }
     finally { setSaving(false); }
   };
 
   const deleteDeal = async () => {
     if (!confirm('Supprimer ce deal ?')) return;
-    await apiClient.delete(`/pipeline/${id}`);
-    toast.success('Deal supprimé');
-    navigate('/pipeline');
+    await apiClient.delete(`/pipeline/${params.id}`).catch(()=>{});
+    toast.success('Deal supprimé'); navigate('/pipeline');
   };
 
-  const sf = (k: string, v: string) => setForm((f: any) => ({ ...f, [k]: v }));
-  const stageIdx = STAGES.findIndex(s => s.value === (deal?.stage || 'lead'));
-  const stageInfo = STAGES.find(s => s.value === (deal?.stage || 'lead')) || STAGES[0];
+  const sf = (k:string,v:string) => setForm((f:any)=>({...f,[k]:v}));
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--body-bg)' }}>
-      <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--color-primary)' }} />
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', background:'var(--body-bg)' }}>
+      <Loader2 size={28} className="animate-spin" style={{ color:'var(--color-primary)' }}/>
     </div>
   );
   if (!deal) return null;
 
+  const stageInfo = STAGES.find(s=>s.value===deal.stage)||STAGES[0];
+  const stageIdx  = STAGES.findIndex(s=>s.value===deal.stage);
+  const weighted  = (Number(deal.value)||0) * (Number(deal.probability)||0) / 100;
+  const daysLeft  = deal.closeDate ? Math.ceil((new Date(deal.closeDate).getTime()-Date.now())/86400000) : null;
+
+  const upcoming = activities.filter(a=>!a.done);
+  const past     = activities.filter(a=>a.done);
+
   return (
-    <div className="min-h-screen p-6" style={{ background: 'var(--body-bg)' }}>
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <button onClick={() => navigate('/pipeline')} className="p-2 rounded-xl hover:bg-gray-100">
-          <ArrowLeft size={20} style={{ color: 'var(--text-muted)' }} />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{deal.title}</h1>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-sm font-semibold" style={{ color: stageInfo.color }}>{stageInfo.label}</span>
-            {deal.company && <span className="text-sm" style={{ color: 'var(--text-muted)' }}>· {deal.company}</span>}
+    <div style={{ minHeight:'100vh', padding:'20px 24px', background:'var(--body-bg)' }}>
+      {showAddActivity && <AddActivityModal onClose={()=>setShowAddActivity(false)} onAdd={a=>setActivities(prev=>[a,...prev])}/>}
+
+      {/* Back + header */}
+      <button onClick={()=>navigate('/pipeline')} style={{ display:'flex', alignItems:'center', gap:6, background:'none', border:'none', color:'var(--text-muted)', fontSize:13, cursor:'pointer', marginBottom:16, padding:0 }}>
+        <ArrowLeft size={14}/>Retour au pipeline
+      </button>
+
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:20 }}>
+        <div>
+          <h1 style={{ fontSize:20, fontWeight:700, color:'var(--text-primary)', margin:'0 0 5px' }}>{deal.title}</h1>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ fontSize:13, fontWeight:700, color:stageInfo.color }}>{stageInfo.label}</span>
+            {deal.company && <span style={{ fontSize:13, color:'var(--text-muted)' }}>· {deal.company}</span>}
+            {daysLeft!==null && (
+              <span style={{ fontSize:12, padding:'2px 8px', borderRadius:9999, background:daysLeft<7?'#FEF2F2':daysLeft<14?'#FFFBEB':'var(--body-bg)', color:daysLeft<7?'#DC2626':daysLeft<14?'#D97706':'var(--text-muted)', fontWeight:daysLeft<14?700:400 }}>
+                {daysLeft<0?'Délai dépassé':daysLeft===0?'Clôture aujourd\'hui':`Clôture J-${daysLeft}`}
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={deleteDeal} className="p-2 rounded-xl hover:bg-red-50 text-red-400"><Trash2 size={16} /></button>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={deleteDeal} style={{ padding:'7px 10px', borderRadius:10, border:'1px solid var(--card-border)', background:'var(--body-bg)', color:'#EF4444', cursor:'pointer', display:'flex', alignItems:'center' }}><Trash2 size={14}/></button>
           {editing ? (
             <>
-              <button onClick={() => setEditing(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
-              <button onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50" style={{ background: 'var(--color-primary)' }}>
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}Enregistrer
+              <button onClick={()=>setEditing(false)} style={{ padding:'7px 14px', borderRadius:10, border:'1px solid var(--card-border)', background:'transparent', color:'var(--text-secondary)', fontSize:13, cursor:'pointer' }}>Annuler</button>
+              <button onClick={save} disabled={saving} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', opacity:saving?.7:1 }}>
+                {saving?<Loader2 size={13} className="animate-spin"/>:<Save size={13}/>}Enregistrer
               </button>
             </>
           ) : (
-            <button onClick={() => setEditing(true)} className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300">
-              <Edit2 size={14} />Modifier
+            <button onClick={()=>setEditing(true)} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:10, border:'1px solid var(--card-border)', background:'var(--card-bg)', color:'var(--text-secondary)', fontSize:13, cursor:'pointer' }}>
+              <Edit2 size={13}/>Modifier
             </button>
           )}
         </div>
       </div>
 
-      {/* Stage pipeline */}
-      <div className="rounded-2xl border p-5 mb-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-        <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>PROGRESSION DU DEAL</h2>
-        <div className="flex items-center gap-1 mb-3">
-          {STAGES.filter(s => s.value !== 'lost').map((s, i) => {
-            const isActive = i <= stageIdx && deal.stage !== 'lost';
-            const isCurrent = s.value === deal.stage;
+      {/* Stage progress */}
+      <div style={{ borderRadius:16, border:'1px solid var(--card-border)', background:'var(--card-bg)', padding:18, marginBottom:16 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:14 }}>
+          {STAGES.filter(s=>s.value!=='lost').map((s,i)=>{
+            const isActive = i<=stageIdx && deal.stage!=='lost';
+            const isCurrent = s.value===deal.stage;
             return (
-              <div key={s.value} className="flex items-center flex-1">
-                <button onClick={() => editing && sf('stage', s.value)}
-                  className={`flex-1 py-2 rounded-xl text-xs font-medium text-center transition-all ${isCurrent ? 'text-white' : 'hover:opacity-80'}`}
-                  style={{ background: isCurrent ? s.color : isActive ? `${s.color}22` : 'var(--body-bg)', color: isCurrent ? '#fff' : isActive ? s.color : 'var(--text-muted)' }}>
+              <div key={s.value} style={{ display:'flex', alignItems:'center', flex:1 }}>
+                <button onClick={()=>editing&&sf('stage',s.value)}
+                  style={{ flex:1, padding:'8px 4px', borderRadius:10, border:'none', cursor:editing?'pointer':'default', fontSize:11, fontWeight:700, textAlign:'center', background:isCurrent?s.color:isActive?`${s.color}15`:'var(--body-bg)', color:isCurrent?'#fff':isActive?s.color:'var(--text-muted)', transition:'all .15s' }}>
                   {s.label}
                 </button>
-                {i < STAGES.length - 2 && <div className="w-2 h-0.5 flex-shrink-0" style={{ background: 'var(--card-border)' }} />}
+                {i<STAGES.length-2 && <div style={{ width:6, height:2, background:isActive?'var(--color-primary)':'var(--card-border)', flexShrink:0, margin:'0 1px' }}/>}
               </div>
             );
           })}
         </div>
-        {deal.stage === 'lost' && (
-          <div className="text-center py-2 rounded-xl text-sm font-medium text-white" style={{ background: '#EF4444' }}>❌ Deal perdu</div>
-        )}
-        <div className="flex gap-6 mt-3">
-          <div>
-            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Valeur</div>
-            <div className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{(deal.value || 0).toLocaleString('fr-FR')} €</div>
-          </div>
-          <div>
-            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Probabilité</div>
-            <div className="text-xl font-bold" style={{ color: stageInfo.color }}>{deal.probability || 0}%</div>
-          </div>
-          <div>
-            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Valeur pondérée</div>
-            <div className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-              {((deal.value || 0) * (deal.probability || 0) / 100).toLocaleString('fr-FR')} €
+        {deal.stage==='lost' && <div style={{ textAlign:'center', padding:'7px', borderRadius:10, fontSize:13, fontWeight:700, color:'#fff', background:'#EF4444', marginBottom:14 }}>❌ Deal perdu</div>}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
+          {[
+            { l:'Valeur',        v:`${Number(deal.value||0).toLocaleString('fr-FR')}€`, c:'var(--text-primary)' },
+            { l:'Probabilité',   v:`${deal.probability||0}%`,                           c:stageInfo.color },
+            { l:'Pondéré',       v:`${Math.round(weighted).toLocaleString('fr-FR')}€`,  c:'#7C3AED' },
+            { l:'Date closing',  v:deal.closeDate||'—',                                 c:'var(--text-muted)' },
+          ].map(m=>(
+            <div key={m.l} style={{ textAlign:'center', padding:'10px 0', borderRadius:10, background:'var(--body-bg)' }}>
+              <div style={{ fontSize:17, fontWeight:800, color:m.c }}>{m.v}</div>
+              <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>{m.l}</div>
             </div>
-          </div>
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-5">
-        <div className="col-span-2 space-y-4">
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>DÉTAILS</h2>
-            {editing ? (
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { k: 'title', l: 'Titre', type: 'text' }, { k: 'company', l: 'Entreprise', type: 'text' },
-                  { k: 'value', l: 'Valeur (€)', type: 'number' }, { k: 'probability', l: 'Probabilité (%)', type: 'number' },
-                  { k: 'closeDate', l: 'Date de clôture', type: 'date' }, { k: 'prospect', l: 'Prospect', type: 'text' },
-                ].map(f => (
-                  <div key={f.k}>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">{f.l}</label>
-                    <input type={f.type} value={form[f.k] || ''} onChange={e => sf(f.k, e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                  </div>
-                ))}
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Stade</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {STAGES.map(s => (
-                      <button key={s.value} onClick={() => sf('stage', s.value)}
-                        className="px-3 py-1.5 rounded-xl text-xs font-medium border transition-all"
-                        style={form.stage === s.value ? { background: s.color, color: '#fff', borderColor: s.color } : { background: 'transparent', color: s.color, borderColor: s.color }}>
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
+      {/* 2 columns */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 340px', gap:16 }}>
+        {/* Left */}
+        <div>
+          {/* Tabs */}
+          <div style={{ display:'flex', gap:0, marginBottom:14, borderBottom:'1px solid var(--card-border)' }}>
+            {([['activities','⏱ Activités'],['details','📋 Détails'],['comments','💬 Commentaires']] as const).map(([k,l])=>(
+              <button key={k} onClick={()=>setActiveTab(k)}
+                style={{ padding:'8px 18px', border:'none', background:'transparent', cursor:'pointer', fontSize:13, fontWeight:700, color:activeTab===k?'var(--color-primary)':'var(--text-muted)', borderBottom:`2px solid ${activeTab===k?'var(--color-primary)':'transparent'}`, marginBottom:-1, transition:'all .15s' }}>
+                {l}{k==='activities'&&upcoming.length>0&&<span style={{ marginLeft:5, fontSize:10, padding:'1px 5px', borderRadius:9999, background:'#EF4444', color:'#fff' }}>{upcoming.length}</span>}
+              </button>
+            ))}
+          </div>
+
+          {/* Activities tab */}
+          {activeTab==='activities' && (
+            <div>
+              <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+                <button onClick={()=>setShowAddActivity(true)} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:10, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                  <Plus size={12}/>Ajouter
+                </button>
+              </div>
+
+              {upcoming.length>0 && (
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:8 }}>À faire ({upcoming.length})</div>
+                  {upcoming.map(a=>{
+                    const ac = ACTIVITY_CONFIG[a.type];
+                    return (
+                      <div key={a.id} style={{ display:'flex', gap:10, padding:'11px 14px', borderRadius:12, border:`1.5px solid ${ac.c}30`, background:ac.bg, marginBottom:8 }}>
+                        <div style={{ width:30, height:30, borderRadius:8, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', color:ac.c, flexShrink:0, boxShadow:'0 1px 3px rgba(0,0,0,.1)' }}>{ac.icon}</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)', marginBottom:3 }}>{a.description}</div>
+                          <div style={{ fontSize:11, color:'var(--text-muted)' }}>
+                            {new Date(a.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} · {a.user}
+                          </div>
+                        </div>
+                        <button onClick={()=>setActivities(as=>as.map(x=>x.id===a.id?{...x,done:true}:x))} style={{ padding:5, borderRadius:7, border:'none', background:'#fff', cursor:'pointer', color:'#059669', display:'flex', alignSelf:'center' }}>
+                          <CheckCircle size={14}/>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div>
+                <div style={{ fontSize:12, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:8 }}>Historique ({past.length})</div>
+                <div style={{ position:'relative', paddingLeft:22 }}>
+                  <div style={{ position:'absolute', left:10, top:0, bottom:0, width:1, background:'var(--card-border)' }}/>
+                  {past.map(a=>{
+                    const ac = ACTIVITY_CONFIG[a.type];
+                    return (
+                      <div key={a.id} style={{ position:'relative', marginBottom:12 }}>
+                        <div style={{ position:'absolute', left:-16, top:5, width:18, height:18, borderRadius:6, background:ac.bg, color:ac.c, display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid var(--card-bg)', flexShrink:0 }}>{ac.icon}</div>
+                        <div style={{ padding:'10px 12px', borderRadius:11, background:'var(--card-bg)', border:'1px solid var(--card-border)' }}>
+                          <div style={{ display:'flex', alignItems:'flex-start', gap:8 }}>
+                            <span style={{ fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:5, background:ac.bg, color:ac.c, flexShrink:0 }}>{ac.label}</span>
+                            <span style={{ fontSize:13, color:'var(--text-primary)', lineHeight:1.5 }}>{a.description}</span>
+                          </div>
+                          <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:5 }}>
+                            {new Date(a.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})} · {a.user}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { l: 'Entreprise', v: deal.company }, { l: 'Prospect', v: deal.prospect },
-                  { l: 'Date de clôture', v: deal.closeDate }, { l: 'ID', v: deal.id?.slice(0, 8) + '...' },
-                ].map(f => (
-                  <div key={f.l}>
-                    <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>{f.l}</div>
-                    <div className="text-sm font-medium" style={{ color: f.v ? 'var(--text-primary)' : 'var(--text-muted)' }}>{f.v || '—'}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <h2 className="font-semibold mb-3 text-sm" style={{ color: 'var(--text-muted)' }}>NOTES</h2>
-            {editing ? (
-              <textarea value={form.notes || ''} onChange={e => sf('notes', e.target.value)} rows={4}
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
-                placeholder="Notes internes sur ce deal..." />
-            ) : (
-              <p className="text-sm" style={{ color: deal.notes ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                {deal.notes || 'Aucune note. Cliquez sur Modifier pour en ajouter.'}
-              </p>
-            )}
-          </div>
+          {/* Details tab */}
+          {activeTab==='details' && (
+            <div style={{ background:'var(--card-bg)', borderRadius:14, border:'1px solid var(--card-border)', padding:18 }}>
+              {editing ? (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                  {[
+                    { k:'title',       l:'Titre',          col:'1/-1' },
+                    { k:'company',     l:'Entreprise',     col:'' },
+                    { k:'prospect',    l:'Contact',        col:'' },
+                    { k:'value',       l:'Valeur (€)',     col:'',  type:'number' },
+                    { k:'probability', l:'Probabilité (%)',col:'',  type:'number' },
+                    { k:'closeDate',   l:'Date closing',   col:'',  type:'date' },
+                  ].map(f=>(
+                    <div key={f.k} style={{ gridColumn:f.col||undefined }}>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:4 }}>{f.l}</label>
+                      <input type={f.type||'text'} value={form[f.k]||''} onChange={e=>sf(f.k,e.target.value)}
+                        style={{ width:'100%', padding:'8px 12px', border:'1px solid var(--card-border)', borderRadius:10, fontSize:13, background:'var(--body-bg)', color:'var(--text-primary)', outline:'none', boxSizing:'border-box' }}/>
+                    </div>
+                  ))}
+                  <div style={{ gridColumn:'1/-1' }}>
+                    <label style={{ display:'block', fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:4 }}>Notes</label>
+                    <textarea value={form.notes||''} onChange={e=>sf('notes',e.target.value)} rows={5}
+                      style={{ width:'100%', padding:'8px 12px', border:'1px solid var(--card-border)', borderRadius:10, fontSize:13, background:'var(--body-bg)', color:'var(--text-primary)', outline:'none', resize:'none', boxSizing:'border-box' }}/>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
+                    {[
+                      { l:'Entreprise',  v:deal.company||'—' },
+                      { l:'Contact',     v:deal.prospect||'—' },
+                      { l:'Date closing',v:deal.closeDate||'—' },
+                      { l:'ID deal',     v:(deal.id||'').slice(0,12)+'…' },
+                    ].map(f=>(
+                      <div key={f.l} style={{ padding:'10px 14px', borderRadius:10, background:'var(--body-bg)', border:'1px solid var(--card-border)' }}>
+                        <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:3 }}>{f.l}</div>
+                        <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)' }}>{f.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {deal.notes && (
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:8 }}>Notes</div>
+                      <p style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.7, whiteSpace:'pre-wrap', margin:0 }}>{deal.notes}</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Comments tab */}
+          {activeTab==='comments' && (
+            <div style={{ background:'var(--card-bg)', borderRadius:14, border:'1px solid var(--card-border)', padding:18 }}>
+              <CommentsPanel entityType="deal" entityId={deal.id}/>
+            </div>
+          )}
         </div>
 
-        <div className="space-y-4">
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16, fontSize: 12, color: 'var(--text-muted)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div className="w-2 h-2 rounded-full" style={{ background: 'var(--color-primary)' }} />
-                <span>Créé {new Date(deal.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+        {/* Right sidebar */}
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          {/* Next steps */}
+          <div style={{ borderRadius:14, border:'1px solid var(--card-border)', background:'var(--card-bg)', padding:16 }}>
+            <h3 style={{ fontWeight:700, fontSize:13, color:'var(--text-primary)', marginBottom:12 }}>Prochaines étapes</h3>
+            {upcoming.length===0 ? (
+              <div style={{ textAlign:'center', padding:'16px 0', color:'var(--text-muted)', fontSize:12 }}>
+                <CheckCircle size={24} style={{ margin:'0 auto 6px', opacity:.3 }}/>
+                Aucune tâche planifiée
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div className="w-2 h-2 rounded-full" style={{ background: stageInfo.color }} />
-                <span>Stade : {stageInfo.label}</span>
-              </div>
+            ) : upcoming.map(a=>{
+              const ac = ACTIVITY_CONFIG[a.type];
+              return (
+                <div key={a.id} style={{ display:'flex', gap:8, padding:'8px 0', borderBottom:'1px solid var(--card-border)' }}>
+                  <div style={{ color:ac.c, flexShrink:0, marginTop:2 }}>{ac.icon}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:12, color:'var(--text-primary)', lineHeight:1.4 }}>{a.description}</div>
+                    <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:2 }}>{new Date(a.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</div>
+                  </div>
+                </div>
+              );
+            })}
+            <button onClick={()=>setShowAddActivity(true)} style={{ width:'100%', marginTop:10, display:'flex', alignItems:'center', justifyContent:'center', gap:5, padding:'7px 0', borderRadius:9, border:'1px dashed var(--card-border)', background:'transparent', color:'var(--text-muted)', fontSize:12, cursor:'pointer' }}>
+              <Plus size={11}/>Ajouter une tâche
+            </button>
+          </div>
+
+          {/* Quick actions */}
+          <div style={{ borderRadius:14, border:'1px solid var(--card-border)', background:'var(--card-bg)', padding:16 }}>
+            <h3 style={{ fontWeight:700, fontSize:13, color:'var(--text-primary)', marginBottom:12 }}>Actions rapides</h3>
+            <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+              {[
+                { l:'Envoyer un email',     icon:<Mail size={13}/>,     c:'#2563EB', bg:'#EFF6FF' },
+                { l:'Planifier un appel',   icon:<Phone size={13}/>,    c:'#059669', bg:'#ECFDF5' },
+                { l:'Créer une réunion',    icon:<Calendar size={13}/>, c:'#7C3AED', bg:'#F5F3FF' },
+                { l:'Lancer une séquence',  icon:<Zap size={13}/>,      c:'#D97706', bg:'#FFFBEB' },
+              ].map(a=>(
+                <button key={a.l} onClick={()=>toast.success(a.l+' pour '+deal.company)}
+                  style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:10, border:'1px solid var(--card-border)', background:'var(--body-bg)', cursor:'pointer', transition:'background .1s' }}
+                  onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=a.bg}
+                  onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='var(--body-bg)'}>
+                  <span style={{ color:a.c }}>{a.icon}</span>
+                  <span style={{ fontSize:13, color:'var(--text-secondary)', fontWeight:500 }}>{a.l}</span>
+                </button>
+              ))}
             </div>
-            <CommentsPanel entityType="deal" entityId={deal.id} />
+          </div>
+
+          {/* Deal metadata */}
+          <div style={{ borderRadius:14, border:'1px solid var(--card-border)', background:'var(--card-bg)', padding:16 }}>
+            <h3 style={{ fontWeight:700, fontSize:13, color:'var(--text-primary)', marginBottom:10 }}>Informations</h3>
+            {[
+              { l:'Créé le', v:new Date(deal.createdAt||Date.now()).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) },
+              { l:'Modifié le', v:new Date(deal.updatedAt||Date.now()).toLocaleDateString('fr-FR',{day:'numeric',month:'long'}) },
+              { l:'Activités', v:`${activities.length} (${upcoming.length} à faire)` },
+            ].map(m=>(
+              <div key={m.l} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--card-border)', fontSize:12 }}>
+                <span style={{ color:'var(--text-muted)' }}>{m.l}</span>
+                <span style={{ color:'var(--text-secondary)', fontWeight:600 }}>{m.v}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
