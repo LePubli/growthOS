@@ -34,6 +34,9 @@ import InboundPage from '@/pages/InboundPage';
 import ABMPage from '@/pages/ABMPage';
 import AIAgentPage from '@/pages/AIAgentPage';
 import { GenericPage } from '@/pages/GenericPage';
+import MarketplacePage from '@/pages/MarketplacePage';
+import CRMMapPage from '@/pages/CRMMapPage';
+import ImportPage from '@/pages/ImportPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -165,7 +168,13 @@ function AppRoutes() {
         {() => <DashboardLayout><GenericPage title="CRM Sync" icon="🔄" description="Synchronisation bidirectionnelle avec HubSpot, Salesforce, etc." /></DashboardLayout>}
       </Route>
       <Route path="/marketplace">
-        {() => <DashboardLayout><GenericPage title="Marketplace" icon="🛒" description="Découvrez et installez des plugins et connecteurs GrowthOS." /></DashboardLayout>}
+        {() => <DashboardLayout><MarketplacePage /></DashboardLayout>}
+      </Route>
+      <Route path="/map">
+        {() => <DashboardLayout><CRMMapPage /></DashboardLayout>}
+      </Route>
+      <Route path="/import">
+        {() => <DashboardLayout><ImportPage /></DashboardLayout>}
       </Route>
 
       <Route>

@@ -5,7 +5,7 @@ import {
   Settings, Puzzle, Palette, Mail, Target, RefreshCw,
   Bot, User, Webhook, BarChart2, Download, Zap,
   ChevronDown, LogOut, Plus, HelpCircle,
-  Globe, Activity, Store, FileText, Menu, X,
+  Globe, Activity, Store, FileText, Menu, X, Map, Upload,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -46,6 +46,8 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/sourcing', label: 'Scraping', icon: <Search size={16} /> },
       { href: '/signals', label: 'Signaux', icon: <Zap size={16} /> },
       { href: '/contacts', label: 'Contact Intel', icon: <User size={16} /> },
+      { href: '/map', label: 'Carte & Tournée', icon: <Map size={16} /> },
+      { href: '/import', label: 'Import CSV', icon: <Upload size={16} /> },
     ],
   },
   {
@@ -68,7 +70,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Système',
     items: [
-      { href: '/marketplace', label: 'Marketplace', icon: <Store size={16} /> },
+      { href: '/marketplace', label: 'Marketplace', icon: <Store size={16} />, badge: 1 },
       { href: '/plugins', label: 'Plugins', icon: <Puzzle size={16} /> },
       { href: '/themes', label: 'Thèmes', icon: <Palette size={16} /> },
       { href: '/webhooks', label: 'Webhooks', icon: <Webhook size={16} /> },
