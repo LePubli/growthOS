@@ -13,6 +13,9 @@ import webhooksRouter from "./webhooks-api";
 import accountsRouter from "./accounts";
 import emailRouter from "./email";
 import searchRouter from "./search";
+import usersRouter from "./users";
+import teamRouter from "./team";
+import apiKeysRouter from "./api-keys";
 
 const router = Router();
 
@@ -29,5 +32,8 @@ router.use("/webhooks", requireAuth, webhooksRouter);
 router.use("/accounts", requireAuth, accountsRouter);
 router.use("/email", requireAuth, emailRouter);
 router.use("/search", requireAuth, searchRouter);
+router.use("/users", requireAuth, usersRouter);
+router.use("/team", requireAuth, teamRouter);
+router.use("/api-keys", requireAuth, apiKeysRouter);
 
 export default router;
