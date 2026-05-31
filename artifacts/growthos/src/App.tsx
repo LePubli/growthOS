@@ -36,6 +36,8 @@ import AIAgentPage from '@/pages/AIAgentPage';
 import { GenericPage } from '@/pages/GenericPage';
 import MarketplacePage from '@/pages/MarketplacePage';
 import CRMMapPage from '@/pages/CRMMapPage';
+import MapPage from '@/pages/MapPage';
+import ContactsPage from '@/pages/ContactsPage';
 import ImportPage from '@/pages/ImportPage';
 import ContactIntelPage from '@/pages/ContactIntelPage';
 import CRMSyncPage from '@/pages/CRMSyncPage';
@@ -171,6 +173,9 @@ function AppRoutes() {
       </Route>
 
       <Route path="/contacts">
+        {() => <DashboardLayout><ContactsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/contact-intel">
         {() => <DashboardLayout><ContactIntelPage /></DashboardLayout>}
       </Route>
       <Route path="/crm-sync">
@@ -180,7 +185,7 @@ function AppRoutes() {
         {() => <DashboardLayout><MarketplacePage /></DashboardLayout>}
       </Route>
       <Route path="/map">
-        {() => <DashboardLayout><CRMMapPage /></DashboardLayout>}
+        {() => <DashboardLayout><MapPage /></DashboardLayout>}
       </Route>
       <Route path="/import">
         {() => <DashboardLayout><ImportPage /></DashboardLayout>}

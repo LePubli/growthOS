@@ -1,8 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
-import { Users, DollarSign, RefreshCw, Plus, ChevronRight } from 'lucide-react';
+import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { OnboardingWizard } from '@/components/common/OnboardingWizard';
+
+const MOCK_FEED = [
+  { id:'f1', type:'deal',    icon:<Trophy size={12}/>,   color:'#10B981', bg:'#ECFDF5', text:'GrowthCo · Deal gagné 🎉 9 600€', time:'il y a 5 min' },
+  { id:'f2', type:'email',   icon:<Mail size={12}/>,     color:'#7C3AED', bg:'#EDE9FE', text:'Emma Leroy a ouvert votre email ×3', time:'il y a 18 min' },
+  { id:'f3', type:'signal',  icon:<Zap size={12}/>,      color:'#F59E0B', bg:'#FEF3C7', text:'TechCorp vient de lever des fonds', time:'il y a 32 min' },
+  { id:'f4', type:'call',    icon:<Phone size={12}/>,    color:'#2563EB', bg:'#EFF6FF', text:'Appel terminé · Paul Dupont · BigSales', time:'il y a 1h' },
+  { id:'f5', type:'note',    icon:<FileText size={12}/>, color:'#6B7280', bg:'#F3F4F6', text:'Alice a ajouté une note sur AlphaTech', time:'il y a 2h' },
+  { id:'f6', type:'signal',  icon:<Zap size={12}/>,      color:'#F59E0B', bg:'#FEF3C7', text:'BigSales SAS recrute un VP Sales', time:'il y a 3h' },
+];
 
 const ALL_WIDGETS = [
   { id:'prospects',  label:'Total Prospects',     icon:'👥', color:'blue',   href:'/prospects' },
@@ -138,8 +147,8 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Bottom grid: Pipeline | Prospects récents | Actions rapides */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* Bottom grid: Pipeline | Prospects récents | Actions rapides | Activité */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
 
         {/* Pipeline */}
         <div className="rounded-2xl p-6" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
@@ -231,13 +240,80 @@ export default function DashboardPage() {
           </div>
           <div className="rounded-2xl p-4" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
             <h3 className="font-semibold text-sm mb-3" style={{color:'var(--text-primary)'}}>Système</h3>
-            {[{l:'API NestJS',v:'✅'},{l:'PostgreSQL',v:'✅'},{l:'Redis',v:'✅'},{l:'Plugins VM',v:'✅'}].map((s,i)=>(
+            {[{l:'API',v:'✅'},{l:'PostgreSQL',v:'✅'},{l:'Redis',v:'✅'},{l:'Plugins VM',v:'✅'}].map((s,i)=>(
               <div key={i} className="flex justify-between text-xs py-1" style={{color:'var(--text-secondary)'}}><span>{s.l}</span><span>{s.v}</span></div>
             ))}
           </div>
         </div>
 
       </div>
+
+      {/* Activity feed row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+        {/* Fil d'activité */}
+        <div className="rounded-2xl p-5" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Activity size={16} style={{color:'var(--color-primary)'}}/>
+              <h2 className="font-semibold" style={{color:'var(--text-primary)'}}>Activité récente</h2>
+            </div>
+            <Link href="/activities" className="text-sm flex items-center gap-1" style={{color:'var(--color-primary)',textDecoration:'none'}}>
+              Toutes<ChevronRight className="w-4 h-4"/>
+            </Link>
+          </div>
+          <div className="relative">
+            <div className="absolute left-3.5 top-0 bottom-0 w-px" style={{background:'var(--card-border)'}}/>
+            <div className="space-y-0">
+              {MOCK_FEED.map((item,i)=>(
+                <div key={item.id} className="relative flex items-start gap-3 pb-4 last:pb-0 pl-8">
+                  <div className="absolute left-0 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{background:item.bg,color:item.color,border:`2px solid var(--card-bg)`}}>
+                    {item.icon}
+                  </div>
+                  <div className="flex-1 pt-0.5">
+                    <div className="text-sm" style={{color:'var(--text-primary)'}}>{item.text}</div>
+                    <div className="text-xs mt-0.5" style={{color:'var(--text-muted)'}}>{item.time}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Performance hebdo */}
+        <div className="rounded-2xl p-5" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold" style={{color:'var(--text-primary)'}}>Performance hebdo</h2>
+            <Link href="/analytics" className="text-sm flex items-center gap-1" style={{color:'var(--color-primary)',textDecoration:'none'}}>
+              Voir<ChevronRight className="w-4 h-4"/>
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {[
+              { label:'Emails envoyés',   value:48,  max:60,  color:'#7C3AED', icon:'📧' },
+              { label:'Appels passés',    value:12,  max:20,  color:'#2563EB', icon:'📞' },
+              { label:'Prospects ajoutés',value:23,  max:30,  color:'#0F766E', icon:'👤' },
+              { label:'Deals créés',      value:5,   max:10,  color:'#D97706', icon:'💰' },
+              { label:'RDV planifiés',    value:8,   max:15,  color:'#059669', icon:'📅' },
+            ].map(m=>(
+              <div key={m.label}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5 text-sm" style={{color:'var(--text-secondary)'}}>
+                    <span>{m.icon}</span>{m.label}
+                  </div>
+                  <span className="text-sm font-bold" style={{color:'var(--text-primary)'}}>{m.value}<span className="font-normal text-xs" style={{color:'var(--text-muted)'}}>/{m.max}</span></span>
+                </div>
+                <div className="w-full rounded-full h-2" style={{background:'var(--body-bg)'}}>
+                  <div className="h-2 rounded-full transition-all" style={{width:`${Math.round(m.value/m.max*100)}%`,background:m.color}}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+      </div>
+
     </div>
     <OnboardingWizard />
     </>
