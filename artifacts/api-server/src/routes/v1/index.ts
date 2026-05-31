@@ -12,6 +12,7 @@ import templatesRouter from "./templates-api";
 import webhooksRouter from "./webhooks-api";
 import accountsRouter from "./accounts";
 import emailRouter from "./email";
+import searchRouter from "./search";
 
 const router = Router();
 
@@ -27,5 +28,6 @@ router.use("/templates", requireAuth, templatesRouter);
 router.use("/webhooks", requireAuth, webhooksRouter);
 router.use("/accounts", requireAuth, accountsRouter);
 router.use("/email", requireAuth, emailRouter);
+router.use("/search", requireAuth, searchRouter);
 
 export default router;

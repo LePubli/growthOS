@@ -5,7 +5,7 @@ import {
   Settings, Puzzle, Palette, Mail, Target, RefreshCw,
   Bot, User, Webhook, BarChart2, Download, Zap,
   ChevronDown, LogOut, Plus, HelpCircle,
-  Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon,
+  Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -74,6 +74,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Équipe',
     items: [
+      { href: '/shared-dashboards', label: 'Dashboards Partagés', icon: <Share2 size={16} /> },
       { href: '/team', label: 'Métriques Équipe', icon: <Trophy size={16} /> },
     ],
   },

@@ -45,6 +45,7 @@ import AccountsPage from '@/pages/AccountsPage';
 import TeamMetricsPage from '@/pages/TeamMetricsPage';
 import CalendarPage from '@/pages/CalendarPage';
 import ProposalsPage from '@/pages/ProposalsPage';
+import SharedDashboardsPage from '@/pages/SharedDashboardsPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -196,6 +197,9 @@ function AppRoutes() {
       </Route>
       <Route path="/proposals">
         {() => <DashboardLayout><ProposalsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/shared-dashboards">
+        {() => <DashboardLayout><SharedDashboardsPage /></DashboardLayout>}
       </Route>
 
       <Route>

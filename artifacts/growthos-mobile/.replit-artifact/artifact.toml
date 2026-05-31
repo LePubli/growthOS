@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/growthos-mobile/"
+title = "GrowthOS Mobile"
+version = "1.0.0"
+id = "artifacts/growthos-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/growthos-mobile/" ]
+localPort = 22560
+
+[services.development]
+run = "pnpm --filter @workspace/growthos-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/growthos-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/growthos-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "22560"
+BASE_PATH = "/growthos-mobile/"

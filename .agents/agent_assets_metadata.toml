@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "vqRmN923c2aG1scOrat-E"
+uri = "file://artifacts/growthos-mobile/assets/images/icon.png"
+type = "image"
+title = "GrowthOS mobile icon"
