@@ -1,0 +1,64 @@
+# ============================================================
+# GrowthOS — Docker Compose (Coolify / self-hosted)
+#
+# ⚠️  Les labels Traefik/Coolify sont gérés automatiquement
+#     par Coolify — ne pas les ajouter ici.
+#
+# Variables d'environnement à configurer dans Coolify :
+#   DATABASE_URL  — ex: postgresql://user:pass@host:5432/growthos
+#   JWT_SECRET    — clé secrète JWT (min 32 chars)
+#   JWT_REFRESH_SECRET — clé secrète JWT refresh (min 32 chars)
+#   VITE_API_URL  — URL publique de l'API, ex: https://api.tondomaine.com
+# ============================================================
+
+services:
+  growthos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BASE_PATH: "/"
+        VITE_API_URL: "${VITE_API_URL:-}"
+    expose:
+      - "3000"
+    depends_on:
+      api-server:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  api-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    expose:
+      - "3001"
+    environment:
+      PORT: "3001"
+      NODE_ENV: "production"
+      DATABASE_URL: "${DATABASE_URL}"
+      JWT_SECRET: "${JWT_SECRET:-growthos-change-this-secret}"
+      JWT_REFRESH_SECRET: "${JWT_REFRESH_SECRET:-growthos-change-this-refresh-secret}"
+    networks:
+      - default
+      - coolify
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "fetch('http://localhost:3001/api/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+networks:
+  coolify:
+    external: true

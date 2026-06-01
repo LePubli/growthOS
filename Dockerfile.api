@@ -1,0 +1,59 @@
+# ============================================================
+# GrowthOS — API Server (Express + esbuild → Node.js)
+# Build context: workspace root
+# ============================================================
+
+# syntax=docker/dockerfile:1.4
+
+# Stage 1: Builder
+FROM node:24-slim AS builder
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+# ── Workspace manifests only (cache layer) ───────────────────
+# All package.json files must be present so pnpm --frozen-lockfile can
+# validate every importer listed in pnpm-lock.yaml.
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+
+COPY artifacts/api-server/package.json         ./artifacts/api-server/package.json
+COPY artifacts/growthos/package.json           ./artifacts/growthos/package.json
+COPY artifacts/mockup-sandbox/package.json     ./artifacts/mockup-sandbox/package.json
+COPY artifacts/growthos-mobile/package.json    ./artifacts/growthos-mobile/package.json
+COPY lib/api-client-react/package.json         ./lib/api-client-react/package.json
+COPY lib/api-client-react/tsconfig.json        ./lib/api-client-react/tsconfig.json
+COPY lib/api-spec/package.json                 ./lib/api-spec/package.json
+COPY lib/api-zod/package.json                  ./lib/api-zod/package.json
+COPY lib/db/package.json                       ./lib/db/package.json
+COPY scripts/package.json                      ./scripts/package.json
+
+# Install only api-server and its workspace dependencies
+RUN pnpm install --frozen-lockfile --filter @workspace/api-server...
+
+# ── Source code ───────────────────────────────────────────────
+COPY artifacts/api-server/ ./artifacts/api-server/
+COPY lib/api-zod/           ./lib/api-zod/
+COPY lib/db/                ./lib/db/
+
+# ── Build (esbuild bundles everything into dist/index.mjs) ───
+WORKDIR /app/artifacts/api-server
+RUN node build.mjs && pnpm store prune
+
+# Stage 2: Runtime
+# esbuild bundles all JS dependencies into dist/ — no node_modules needed.
+# In production NODE_ENV, pino uses JSON transport (not pino-pretty workers).
+FROM node:24-slim AS runner
+WORKDIR /app
+
+COPY --from=builder /app/artifacts/api-server/dist ./dist
+
+ENV NODE_ENV=production
+ENV PORT=3001
+
+EXPOSE 3001
+
+# Node 24 ships with native fetch — no wget/curl needed
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://localhost:3001/api/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "--enable-source-maps", "./dist/index.mjs"]
