@@ -1,7 +1,13 @@
 import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { toast } from 'sonner';
 
-const BASE_URL = (import.meta.env.VITE_API_URL as string) || '/api/v1';
+// Runtime injection via docker/entrypoint.sh takes priority over build-time env.
+// This allows changing the API URL without a full Docker rebuild:
+// set VITE_API_URL as an environment variable in Coolify → restart container.
+const BASE_URL =
+  (window as any).__ENV__?.VITE_API_URL ||
+  (import.meta.env.VITE_API_URL as string) ||
+  '/api/v1';
 
 class ApiClient {
   private axios: AxiosInstance;
