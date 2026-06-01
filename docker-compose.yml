@@ -1,16 +1,3 @@
-# ============================================================
-# GrowthOS — Docker Compose (Coolify / self-hosted)
-#
-# ⚠️  Les labels Traefik/Coolify sont gérés automatiquement
-#     par Coolify — ne pas les ajouter ici.
-#
-# Variables d'environnement à configurer dans Coolify :
-#   DATABASE_URL  — ex: postgresql://user:pass@host:5432/growthos
-#   JWT_SECRET    — clé secrète JWT (min 32 chars)
-#   JWT_REFRESH_SECRET — clé secrète JWT refresh (min 32 chars)
-#   VITE_API_URL  — URL publique de l'API, ex: https://api.tondomaine.com
-# ============================================================
-
 services:
   growthos:
     build:
@@ -21,6 +8,11 @@ services:
         VITE_API_URL: "${VITE_API_URL:-}"
     expose:
       - "3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.growthos-qg3u7f72d9lin10gl2ixlp7x.rule=Host(`igs6f5ezyix8l2my3u3tuxbl.82.22.77.159.sslip.io`)"
+      - "traefik.http.routers.growthos-qg3u7f72d9lin10gl2ixlp7x.entrypoints=http"
+      - "traefik.http.services.growthos-qg3u7f72d9lin10gl2ixlp7x.loadbalancer.server.port=3000"
     depends_on:
       api-server:
         condition: service_healthy
@@ -44,6 +36,11 @@ services:
       DATABASE_URL: "${DATABASE_URL}"
       JWT_SECRET: "${JWT_SECRET:-growthos-change-this-secret}"
       JWT_REFRESH_SECRET: "${JWT_REFRESH_SECRET:-growthos-change-this-refresh-secret}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api-server-qg3u7f72d9lin10gl2ixlp7x.rule=Host(`vit6buuz2vmqaleuh0z5autx.82.22.77.159.sslip.io`)"
+      - "traefik.http.routers.api-server-qg3u7f72d9lin10gl2ixlp7x.entrypoints=http"
+      - "traefik.http.services.api-server-qg3u7f72d9lin10gl2ixlp7x.loadbalancer.server.port=3001"
     networks:
       - default
       - coolify

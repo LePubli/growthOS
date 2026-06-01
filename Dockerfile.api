@@ -9,7 +9,7 @@
 FROM node:24-slim AS builder
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+RUN npm install -g pnpm@10.26.1 --quiet
 
 # ── Workspace manifests only (cache layer) ───────────────────
 # All package.json files must be present so pnpm --frozen-lockfile can
