@@ -1,10 +1,16 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { requireAuth } from "../../middlewares/auth";
 import { pluginManager } from "../../lib/plugin-runtime";
 import { logger } from "../../lib/logger";
 import { writeAuditLog, fetchAuditLogs } from "../../lib/plugin-runtime/audit";
 
 const router = Router();
+
+// Helper to safely extract user info from request
+const getUserInfo = (req: Request) => ({
+  userId: req.auth?.userId ?? req.user?.userId ?? "system",
+  email: req.auth?.email ?? req.user?.email ?? "system@growthos.io",
+});
 
 /**
  * GET /api/v1/plugins/status
@@ -29,7 +35,6 @@ router.get("/active", requireAuth, (_req, res) => {
 /**
  * GET /api/v1/plugins/audit
  * Audit trail of all plugin lifecycle events (most recent first).
- * Query params: plugin_id, limit, offset
  */
 router.get("/audit", requireAuth, async (req, res) => {
   try {
@@ -50,20 +55,21 @@ router.get("/audit", requireAuth, async (req, res) => {
  */
 router.post("/register", requireAuth, async (req, res) => {
   try {
+    const { userId, email } = getUserInfo(req);
     const record = pluginManager.register(req.body);
     await pluginManager.activateAll();
 
     const latest = pluginManager.all().find((r) => r.manifest.id === record.manifest.id)!;
     const status = pluginManager.toStatusResponse(latest);
 
-    logger.info({ pluginId: record.manifest.id, userId: req.auth!.userId }, "Plugin registered via API");
+    logger.info({ pluginId: record.manifest.id, userId }, "Plugin registered via API");
 
     await writeAuditLog({
       pluginId: record.manifest.id,
       pluginName: record.manifest.name,
       action: latest.state === "ACTIVE" ? "REGISTERED" : "ACTIVATION_FAILED",
-      actorUserId: req.auth!.userId,
-      actorEmail: req.auth!.email,
+      actorUserId: userId,
+      actorEmail: email,
       metadata: {
         version: record.manifest.version,
         state: latest.state,
@@ -75,7 +81,7 @@ router.post("/register", requireAuth, async (req, res) => {
     res.status(201).json(status);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    logger.warn({ err, userId: req.auth!.userId }, "Plugin registration failed");
+    logger.warn({ err, userId: getUserInfo(req).userId }, "Plugin registration failed");
     res.status(400).json({ error: message });
   }
 });
@@ -85,23 +91,32 @@ router.post("/register", requireAuth, async (req, res) => {
  * Disable an active plugin.
  */
 router.post("/:id/disable", requireAuth, async (req, res) => {
-  const pluginId = req.params.id;
+  const { id: pluginId } = req.params;
+  const { userId, email } = getUserInfo(req);
   const record = pluginManager.all().find((r) => r.manifest.id === pluginId);
+
+  if (!record) {
+    return res.status(404).json({ error: `Plugin '${pluginId}' not found` });
+  }
+
   try {
     await pluginManager.disable(pluginId);
 
     await writeAuditLog({
       pluginId,
-      pluginName: record?.manifest.name ?? pluginId,
+      pluginName: record.manifest.name,
       action: "DISABLED",
-      actorUserId: req.auth!.userId,
-      actorEmail: req.auth!.email,
-      metadata: { version: record?.manifest.version },
+      actorUserId: userId,
+      actorEmail: email,
+      metadata: { version: record.manifest.version },
     });
 
-    res.json({ ok: true });
+    logger.info({ pluginId, userId }, "Plugin disabled successfully");
+    res.json({ ok: true, message: `Plugin ${pluginId} disabled` });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
+    // 🔍 LOG EXPLICITE POUR DEBUGUER LE 400
+    logger.error({ err, pluginId, userId }, "Failed to disable plugin");
+    const message = err instanceof Error ? err.message : "Invalid state or dependency conflict";
     res.status(400).json({ error: message });
   }
 });
@@ -111,8 +126,14 @@ router.post("/:id/disable", requireAuth, async (req, res) => {
  * Re-enable a previously disabled plugin.
  */
 router.post("/:id/enable", requireAuth, async (req, res) => {
-  const pluginId = req.params.id;
+  const { id: pluginId } = req.params;
+  const { userId, email } = getUserInfo(req);
   const record = pluginManager.all().find((r) => r.manifest.id === pluginId);
+
+  if (!record) {
+    return res.status(404).json({ error: `Plugin '${pluginId}' not found` });
+  }
+
   try {
     await pluginManager.enable(pluginId);
 
@@ -121,20 +142,23 @@ router.post("/:id/enable", requireAuth, async (req, res) => {
 
     await writeAuditLog({
       pluginId,
-      pluginName: record?.manifest.name ?? pluginId,
+      pluginName: record.manifest.name,
       action: succeeded ? "ENABLED" : "ACTIVATION_FAILED",
-      actorUserId: req.auth!.userId,
-      actorEmail: req.auth!.email,
+      actorUserId: userId,
+      actorEmail: email,
       metadata: {
-        version: record?.manifest.version,
+        version: record.manifest.version,
         state: after?.state,
         error: after?.error,
       },
     });
 
-    res.json({ ok: true });
+    logger.info({ pluginId, userId, succeeded }, "Plugin enable attempt completed");
+    res.json({ ok: true, message: succeeded ? `Plugin ${pluginId} enabled` : `Plugin ${pluginId} failed to activate` });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
+    // 🔍 LOG EXPLICITE POUR DEBUGUER LE 400
+    logger.error({ err, pluginId, userId }, "Failed to enable plugin");
+    const message = err instanceof Error ? err.message : "Dependency or configuration error";
     res.status(400).json({ error: message });
   }
 });
