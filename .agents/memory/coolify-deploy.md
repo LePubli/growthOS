@@ -17,9 +17,13 @@ PAS seulement comme build arg. Le `docker/entrypoint.sh` l'injecte dans window._
 api-client.ts lit `window.__ENV__?.VITE_API_URL` en priorité.
 Valeur: `https://<api-domain>/api/v1` (avec /api/v1 en suffixe).
 
-**Erreur 405 login/register** — cause: nginx try_files retourne 405 pour POST quand
-api-server:3001 n'est pas joignable par le container frontend. Fix: error_page 405 =200 /index.html
-dans nginx.conf + VITE_API_URL pour bypasser le proxy nginx.
+**proxy_method dans nginx** — NE PAS utiliser `proxy_method $request_method` dans nginx.conf.
+Cette directive n'accepte que des valeurs fixes, PAS de variables. Avec une variable,
+nginx envoie la chaîne littérale "$request_method" comme méthode HTTP → 405 sur tous les POST
+(login, register, etc.). Sans cette directive, nginx passe automatiquement la méthode originale.
+
+**Erreur 405 login/register** — cause confirmée: `proxy_method $request_method` dans la location
+/api/ de nginx.conf. Fix: supprimer entièrement la ligne. Rebuild frontend requis pour appliquer.
 
 **growthos-mobile** — doit être inclus dans les COPY package.json des Dockerfiles
 (frontend et api) pour que pnpm --frozen-lockfile valide tous les importers du lockfile.
