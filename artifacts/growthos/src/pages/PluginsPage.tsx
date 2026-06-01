@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { useLocation } from 'wouter';
 import {
   Puzzle, Play, Pause, Star, Search, Download, CheckCircle, Loader2,
-  X, Settings, Plus, Package, Sparkles, TrendingUp, Bell, BarChart2,
-  RefreshCw, ExternalLink, ChevronRight, Zap, Shield,
+  X, Package, Sparkles, TrendingUp, Bell, BarChart2,
+  RefreshCw, Zap, Shield, AlertCircle, Activity, Cpu,
+  ChevronRight, Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import apiClient from '@/lib/api-client';
+import { useRuntimePlugins, useEnablePlugin, useDisablePlugin, type RuntimePlugin } from '@/hooks/use-plugins';
 
-/* ─────────────── data ─────────────── */
+/* ─────────────── static marketplace data ─────────────── */
 
 type Plugin = {
   id: string; name: string; slug: string; description: string;
@@ -44,6 +45,8 @@ const CATEGORIES = [
   { id:'automation',  label:'Automation',       icon:<Zap size={13}/> },
 ];
 
+/* ─────────────── helpers ─────────────── */
+
 function Stars({ rating, size = 11 }: { rating: number; size?: number }) {
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -53,6 +56,14 @@ function Stars({ rating, size = 11 }: { rating: number; size?: number }) {
     </span>
   );
 }
+
+const STATE_COLORS: Record<string, { bg: string; color: string; label: string }> = {
+  ACTIVE:     { bg: '#ECFDF5', color: '#059669', label: '● Actif' },
+  DISABLED:   { bg: '#F3F4F6', color: '#6B7280', label: '○ Désactivé' },
+  ERROR:      { bg: '#FEF2F2', color: '#DC2626', label: '✕ Erreur' },
+  DISCOVERED: { bg: '#EFF6FF', color: '#2563EB', label: '◌ Découvert' },
+  RESOLVING:  { bg: '#FFF7ED', color: '#D97706', label: '⟳ Résolution' },
+};
 
 /* ─────────────── install modal ─────────────── */
 function InstallModal({ plugin, onClose, onInstall }: { plugin: Plugin; onClose: () => void; onInstall: () => void }) {
@@ -73,75 +84,73 @@ function InstallModal({ plugin, onClose, onInstall }: { plugin: Plugin; onClose:
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 460, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '20px 24px', borderBottom: '1px solid #F1F5F9' }}>
-          <div style={{ width: 52, height: 52, borderRadius: 14, background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>{plugin.icon}</div>
+      <div style={{ background: 'var(--card-bg)', borderRadius: 20, width: '100%', maxWidth: 460, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '20px 24px', borderBottom: '1px solid var(--card-border)' }}>
+          <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--body-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>{plugin.icon}</div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-              <h2 style={{ fontWeight: 700, fontSize: 16, color: '#111827', margin: 0 }}>{plugin.name}</h2>
+              <h2 style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-primary)', margin: 0 }}>{plugin.name}</h2>
               {plugin.isNew && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 9999, background: '#EDE9FE', color: '#7C3AED', fontWeight: 700 }}>NOUVEAU</span>}
               {plugin.isPro && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 9999, background: '#FEF3C7', color: '#D97706', fontWeight: 700 }}>PRO</span>}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Stars rating={plugin.rating} />
-              <span style={{ fontSize: 12, color: '#6B7280' }}>{plugin.rating} · {plugin.reviews} avis · {(plugin.installs/1000).toFixed(1)}k installs</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{plugin.rating} · {plugin.reviews} avis · {(plugin.installs/1000).toFixed(1)}k installs</span>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}><X size={18} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={18} /></button>
         </div>
-
         <div style={{ padding: 24 }}>
           {step === 'done' ? (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
                 <CheckCircle size={28} color="#059669" />
               </div>
-              <h3 style={{ fontWeight: 700, fontSize: 18, color: '#111827', marginBottom: 6 }}>Plugin installé !</h3>
-              <p style={{ fontSize: 14, color: '#6B7280' }}>{plugin.name} est maintenant actif</p>
+              <h3 style={{ fontWeight: 700, fontSize: 18, color: 'var(--text-primary)', marginBottom: 6 }}>Plugin installé !</h3>
+              <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>{plugin.name} est maintenant actif</p>
             </div>
           ) : step === 'config' ? (
             <>
-              <h3 style={{ fontWeight: 600, fontSize: 14, color: '#111827', marginBottom: 14 }}>Configuration</h3>
+              <h3 style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', marginBottom: 14 }}>Configuration</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
                 {(plugin.configFields || []).map(f => (
                   <div key={f.key}>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>{f.label}</label>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>{f.label}</label>
                     <input type={f.type || 'text'} value={config[f.key] || ''} onChange={e => set(f.key, e.target.value)}
                       placeholder={f.placeholder}
-                      style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                      style={{ width: '100%', padding: '9px 12px', border: '1px solid var(--card-border)', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--body-bg)', color: 'var(--text-primary)' }} />
                   </div>
                 ))}
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={() => setStep('info')} style={{ flex: 1, padding: 10, borderRadius: 12, border: '1px solid #E5E7EB', background: 'transparent', fontSize: 14, cursor: 'pointer', color: '#6B7280' }}>Retour</button>
-                <button onClick={install} disabled={installing} style={{ flex: 2, padding: 10, borderRadius: 12, border: 'none', background: '#6D28D9', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: installing ? 0.7 : 1 }}>
+                <button onClick={() => setStep('info')} style={{ flex: 1, padding: 10, borderRadius: 12, border: '1px solid var(--card-border)', background: 'transparent', fontSize: 14, cursor: 'pointer', color: 'var(--text-muted)' }}>Retour</button>
+                <button onClick={install} disabled={installing} style={{ flex: 2, padding: 10, borderRadius: 12, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: installing ? 0.7 : 1 }}>
                   {installing ? <><Loader2 size={14} className="animate-spin" />Installation...</> : <><CheckCircle size={14} />Installer</>}
                 </button>
               </div>
             </>
           ) : (
             <>
-              <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.7, marginBottom: 16 }}>{plugin.description}</p>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 16 }}>{plugin.description}</p>
               {plugin.features && (
                 <div style={{ marginBottom: 16 }}>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Fonctionnalités</p>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Fonctionnalités</p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {plugin.features.map(f => (
                       <span key={f} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '4px 10px', borderRadius: 9999, background: '#F5F3FF', color: '#6D28D9', fontWeight: 500 }}>
-                        <CheckCircle size={11} />{ f}
+                        <CheckCircle size={11} />{f}
                       </span>
                     ))}
                   </div>
                 </div>
               )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20, padding: '10px 14px', borderRadius: 10, background: '#F8FAFC', border: '1px solid #E5E7EB' }}>
-                <Shield size={13} color="#6B7280" />
-                <span style={{ fontSize: 12, color: '#6B7280' }}>Par <strong>{plugin.author}</strong> · v{plugin.version}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20, padding: '10px 14px', borderRadius: 10, background: 'var(--body-bg)', border: '1px solid var(--card-border)' }}>
+                <Shield size={13} color="var(--text-muted)" />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Par <strong>{plugin.author}</strong> · v{plugin.version}</span>
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 12, border: '1px solid #E5E7EB', background: 'transparent', fontSize: 14, cursor: 'pointer', color: '#6B7280' }}>Annuler</button>
-                <button onClick={install} style={{ flex: 2, padding: 10, borderRadius: 12, border: 'none', background: '#6D28D9', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 12, border: '1px solid var(--card-border)', background: 'transparent', fontSize: 14, cursor: 'pointer', color: 'var(--text-muted)' }}>Annuler</button>
+                <button onClick={install} style={{ flex: 2, padding: 10, borderRadius: 12, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <Download size={14} />Installer{plugin.configFields?.length ? ' →' : ''}
                 </button>
               </div>
@@ -153,16 +162,260 @@ function InstallModal({ plugin, onClose, onInstall }: { plugin: Plugin; onClose:
   );
 }
 
+/* ─────────────── runtime engine card ─────────────── */
+function RuntimePluginCard({ plugin, onDetail }: { plugin: RuntimePlugin; onDetail: (p: RuntimePlugin) => void }) {
+  const enable = useEnablePlugin();
+  const disable = useDisablePlugin();
+  const s = STATE_COLORS[plugin.state] || STATE_COLORS.DISABLED;
+  const isActive = plugin.state === 'ACTIVE';
+  const isDisabled = plugin.state === 'DISABLED';
+  const busy = enable.isPending || disable.isPending;
+
+  return (
+    <div
+      onClick={() => onDetail(plugin)}
+      style={{ borderRadius: 16, border: `1.5px solid ${isActive ? 'var(--color-primary)' : 'var(--card-border)'}`, background: 'var(--card-bg)', overflow: 'hidden', cursor: 'pointer', transition: 'all .15s' }}>
+      <div style={{ padding: '16px 16px 12px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ width: 46, height: 46, borderRadius: 12, background: 'var(--body-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, position: 'relative' }}>
+          <Cpu size={22} style={{ color: 'var(--text-muted)' }} />
+          {isActive && <div style={{ position: 'absolute', bottom: -2, right: -2, width: 10, height: 10, borderRadius: '50%', background: '#22C55E', border: '2px solid var(--card-bg)' }} />}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+            <h3 style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', margin: 0 }}>{plugin.name}</h3>
+            <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 9999, background: s.bg, color: s.color, fontWeight: 600, whiteSpace: 'nowrap' }}>{s.label}</span>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 4px', fontFamily: 'monospace' }}>{plugin.id} · v{plugin.version}</p>
+          {plugin.error && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#DC2626', background: '#FEF2F2', padding: '4px 8px', borderRadius: 6, marginTop: 4 }}>
+              <AlertCircle size={11} />{plugin.error}
+            </div>
+          )}
+          {plugin.permissions.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+              {plugin.permissions.slice(0, 3).map(p => (
+                <span key={p} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--body-bg)', color: 'var(--text-muted)', border: '1px solid var(--card-border)' }}>{p}</span>
+              ))}
+              {plugin.permissions.length > 3 && (
+                <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--body-bg)', color: 'var(--text-muted)' }}>+{plugin.permissions.length - 3}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ padding: '10px 14px', borderTop: '1px solid var(--card-border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--body-bg)' }}>
+        {plugin.activatedAt && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+            <Clock size={11} />
+            {new Date(plugin.activatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        {(isActive || isDisabled) && (
+          <button
+            onClick={e => {
+              e.stopPropagation();
+              if (isActive) disable.mutate(plugin.id);
+              else enable.mutate(plugin.id);
+            }}
+            disabled={busy}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600, cursor: busy ? 'default' : 'pointer', background: isActive ? '#FEF3C7' : '#ECFDF5', color: isActive ? '#D97706' : '#059669', opacity: busy ? 0.6 : 1 }}>
+            {busy ? <Loader2 size={11} className="animate-spin" /> : isActive ? <><Pause size={11} />Désactiver</> : <><Play size={11} />Activer</>}
+          </button>
+        )}
+        <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── runtime engine panel ─────────────── */
+function RuntimeEnginePanel({ onDetail }: { onDetail: (p: RuntimePlugin) => void }) {
+  const { data, isLoading, isError, refetch, isFetching } = useRuntimePlugins();
+  const plugins = data?.plugins ?? [];
+  const active = plugins.filter(p => p.state === 'ACTIVE');
+  const disabled = plugins.filter(p => p.state === 'DISABLED');
+  const errors = plugins.filter(p => p.state === 'ERROR');
+
+  return (
+    <div>
+      {/* Runtime stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+        {[
+          { l: 'Total', v: plugins.length, color: '#6D28D9', bg: '#F5F3FF' },
+          { l: 'Actifs', v: active.length, color: '#059669', bg: '#ECFDF5' },
+          { l: 'Désactivés', v: disabled.length, color: '#6B7280', bg: '#F3F4F6' },
+          { l: 'Erreurs', v: errors.length, color: errors.length > 0 ? '#DC2626' : '#059669', bg: errors.length > 0 ? '#FEF2F2' : '#ECFDF5' },
+        ].map(s => (
+          <div key={s.l} style={{ borderRadius: 12, border: '1px solid var(--card-border)', background: 'var(--card-bg)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: s.color }}>{s.v}</div>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>{s.l}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Header with refresh */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Activity size={15} style={{ color: 'var(--color-primary)' }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Plugins enregistrés au runtime</span>
+        </div>
+        <button onClick={() => refetch()} disabled={isFetching}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer' }}>
+          <RefreshCw size={12} style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
+          Actualiser
+        </button>
+      </div>
+
+      {isLoading && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '48px 0', color: 'var(--text-muted)' }}>
+          <Loader2 size={18} className="animate-spin" />
+          <span style={{ fontSize: 14 }}>Connexion au Runtime Engine…</span>
+        </div>
+      )}
+
+      {isError && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 0' }}>
+          <AlertCircle size={32} style={{ color: '#DC2626' }} />
+          <p style={{ fontSize: 14, color: '#DC2626', fontWeight: 600 }}>Runtime Engine inaccessible</p>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>Vérifiez que l'API server est démarré et que vous êtes connecté.</p>
+          <button onClick={() => refetch()} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--card-border)', background: 'var(--card-bg)', fontSize: 13, cursor: 'pointer', color: 'var(--text-secondary)' }}>Réessayer</button>
+        </div>
+      )}
+
+      {!isLoading && !isError && plugins.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '48px 0' }}>
+          <Cpu size={36} style={{ margin: '0 auto 12px', color: 'var(--card-border)' }} />
+          <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>Aucun plugin enregistré dans le runtime</p>
+        </div>
+      )}
+
+      {!isLoading && !isError && plugins.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14 }}>
+          {plugins.map(p => <RuntimePluginCard key={p.id} plugin={p} onDetail={onDetail} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────── runtime detail drawer ─────────────── */
+function RuntimeDetailDrawer({ plugin, onClose }: { plugin: RuntimePlugin; onClose: () => void }) {
+  const enable = useEnablePlugin();
+  const disable = useDisablePlugin();
+  const s = STATE_COLORS[plugin.state] || STATE_COLORS.DISABLED;
+  const isActive = plugin.state === 'ACTIVE';
+  const isDisabled = plugin.state === 'DISABLED';
+  const busy = enable.isPending || disable.isPending;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)' }} onClick={onClose} />
+      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 420, background: 'var(--card-bg)', boxShadow: '-4px 0 40px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--card-border)', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--body-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Cpu size={24} style={{ color: 'var(--text-muted)' }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+              <h2 style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-primary)', margin: 0 }}>{plugin.name}</h2>
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 9999, background: s.bg, color: s.color, fontWeight: 600 }}>{s.label}</span>
+            </div>
+            <p style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--text-muted)', margin: 0 }}>{plugin.id} · v{plugin.version}</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, flexShrink: 0 }}><X size={18} /></button>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+          {plugin.error && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '12px 14px', borderRadius: 10, background: '#FEF2F2', border: '1px solid #FECACA', marginBottom: 20 }}>
+              <AlertCircle size={14} color="#DC2626" style={{ marginTop: 1, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: '#DC2626' }}>{plugin.error}</span>
+            </div>
+          )}
+
+          {/* Metadata */}
+          <div style={{ background: 'var(--body-bg)', borderRadius: 12, border: '1px solid var(--card-border)', marginBottom: 16, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--card-border)' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Informations</span>
+            </div>
+            {[
+              { l: 'Identifiant', v: plugin.id, mono: true },
+              { l: 'Version', v: `v${plugin.version}` },
+              { l: 'État', v: s.label },
+              { l: 'Activé le', v: plugin.activatedAt ? new Date(plugin.activatedAt).toLocaleString('fr-FR') : '—' },
+              { l: 'UI Slots', v: plugin.uiSlots.length ? plugin.uiSlots.join(', ') : '—' },
+              { l: 'Routes', v: plugin.routes.length ? `${plugin.routes.length} route(s)` : '—' },
+            ].map(row => (
+              <div key={row.l} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--card-border)', fontSize: 13 }}>
+                <span style={{ color: 'var(--text-muted)' }}>{row.l}</span>
+                <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontFamily: row.mono ? 'monospace' : 'inherit', fontSize: row.mono ? 11 : 13 }}>{row.v}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Permissions */}
+          {plugin.permissions.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Permissions</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {plugin.permissions.map(perm => (
+                  <span key={perm} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '4px 10px', borderRadius: 6, background: '#F0FDF4', color: '#059669', border: '1px solid #BBF7D0', fontFamily: 'monospace' }}>
+                    <Shield size={10} />{perm}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Routes */}
+          {plugin.routes.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Routes injectées</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {plugin.routes.map(r => (
+                  <div key={r.path} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--body-bg)', border: '1px solid var(--card-border)' }}>
+                    <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--color-primary)' }}>{r.path}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>→ {r.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        {(isActive || isDisabled) && (
+          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--card-border)' }}>
+            <button
+              onClick={() => { isActive ? disable.mutate(plugin.id) : enable.mutate(plugin.id); onClose(); }}
+              disabled={busy}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px 0', borderRadius: 12, border: 'none', background: isActive ? '#FEF3C7' : 'var(--color-primary)', color: isActive ? '#D97706' : '#fff', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : isActive ? <><Pause size={14} />Désactiver le plugin</> : <><Play size={14} />Activer le plugin</>}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────── main ─────────────── */
 export default function PluginsPage() {
   const [, navigate] = useLocation();
   const [plugins, setPlugins] = useState<Plugin[]>(ALL_PLUGINS);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
-  const [view, setView] = useState<'marketplace' | 'installed'>('marketplace');
+  const [view, setView] = useState<'marketplace' | 'installed' | 'runtime'>('marketplace');
   const [installing, setInstalling] = useState<Plugin | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
-  const [selectedPlugin, setSelectedPlugin] = useState<Plugin | null>(null);
+  const [runtimeDetail, setRuntimeDetail] = useState<RuntimePlugin | null>(null);
+
+  const { data: runtimeData } = useRuntimePlugins();
+  const runtimePlugins = runtimeData?.plugins ?? [];
+  const runtimeActive = runtimePlugins.filter(p => p.state === 'ACTIVE').length;
 
   const installed = plugins.filter(p => p.status !== 'not_installed');
   const active = plugins.filter(p => p.status === 'active');
@@ -192,111 +445,124 @@ export default function PluginsPage() {
   return (
     <div style={{ minHeight: '100vh', padding: 24, background: 'var(--body-bg)' }}>
       {installing && <InstallModal plugin={installing} onClose={() => setInstalling(null)} onInstall={() => handleInstall(installing)} />}
+      {runtimeDetail && <RuntimeDetailDrawer plugin={runtimeDetail} onClose={() => setRuntimeDetail(null)} />}
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 2px' }}>Plugins</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{active.length} actif{active.length > 1 ? 's' : ''} · {installed.length} installé{installed.length > 1 ? 's' : ''} · {plugins.length} disponibles</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
+            {active.length} actif{active.length > 1 ? 's' : ''} marketplace
+            {runtimePlugins.length > 0 && ` · ${runtimeActive}/${runtimePlugins.length} runtime`}
+          </p>
         </div>
         {/* View toggle */}
         <div style={{ display: 'flex', gap: 1, padding: 4, borderRadius: 12, background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-          {(['marketplace', 'installed'] as const).map(v => (
+          {([
+            ['marketplace', '🛒 Marketplace'],
+            ['installed', `📦 Installés (${installed.length})`],
+            ['runtime', `⚙️ Runtime${runtimePlugins.length > 0 ? ` (${runtimePlugins.length})` : ''}`],
+          ] as const).map(([v, label]) => (
             <button key={v} onClick={() => setView(v)}
               style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, background: view === v ? 'var(--color-primary)' : 'transparent', color: view === v ? '#fff' : 'var(--text-muted)', transition: 'all .15s' }}>
-              {v === 'marketplace' ? '🛒 Marketplace' : `📦 Installés (${installed.length})`}
+              {label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Stats bar */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
-        {[
-          { l: 'Installés', v: installed.length, color: '#6D28D9', bg: '#F5F3FF' },
-          { l: 'Actifs', v: active.length, color: '#059669', bg: '#ECFDF5' },
-          { l: 'Inactifs', v: installed.filter(p => p.status === 'inactive').length, color: '#D97706', bg: '#FFFBEB' },
-          { l: 'Disponibles', v: plugins.filter(p => p.status === 'not_installed').length, color: '#2563EB', bg: '#EFF6FF' },
-        ].map(s => (
-          <div key={s.l} style={{ borderRadius: 12, border: '1px solid var(--card-border)', background: 'var(--card-bg)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: s.color }}>{s.v}</div>
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>{s.l}</span>
+      {/* Runtime Engine view */}
+      {view === 'runtime' && <RuntimeEnginePanel onDetail={setRuntimeDetail} />}
+
+      {/* Marketplace / Installed views */}
+      {view !== 'runtime' && (
+        <>
+          {/* Stats bar */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+            {[
+              { l: 'Installés', v: installed.length, color: '#6D28D9', bg: '#F5F3FF' },
+              { l: 'Actifs', v: active.length, color: '#059669', bg: '#ECFDF5' },
+              { l: 'Inactifs', v: installed.filter(p => p.status === 'inactive').length, color: '#D97706', bg: '#FFFBEB' },
+              { l: 'Disponibles', v: plugins.filter(p => p.status === 'not_installed').length, color: '#2563EB', bg: '#EFF6FF' },
+            ].map(s => (
+              <div key={s.l} style={{ borderRadius: 12, border: '1px solid var(--card-border)', background: 'var(--card-bg)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: s.color }}>{s.v}</div>
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>{s.l}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <Search size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher un plugin…"
-            style={{ width: '100%', paddingLeft: 36, paddingRight: 12, paddingTop: 10, paddingBottom: 10, borderRadius: 12, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-        </div>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {CATEGORIES.map(c => (
-            <button key={c.id} onClick={() => setCategory(c.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: category === c.id ? 'var(--color-primary)' : 'var(--card-bg)', color: category === c.id ? '#fff' : 'var(--text-secondary)', boxShadow: category === c.id ? 'none' : '0 0 0 1px var(--card-border)' }}>
-              {c.icon}{c.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14 }}>
-        {filtered.map(plugin => {
-          const isInstalled = plugin.status !== 'not_installed';
-          const isActive = plugin.status === 'active';
-          return (
-            <div key={plugin.id}
-              style={{ borderRadius: 16, border: `1.5px solid ${isActive ? 'var(--color-primary)' : 'var(--card-border)'}`, background: 'var(--card-bg)', overflow: 'hidden', transition: 'all .15s', cursor: 'pointer' }}
-              onClick={() => navigate(`/plugins/${plugin.slug}`)}>
-              {/* Card header */}
-              <div style={{ padding: '16px 16px 12px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <div style={{ width: 46, height: 46, borderRadius: 12, background: 'var(--body-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0, position: 'relative' }}>
-                  {plugin.icon}
-                  {isActive && <div style={{ position: 'absolute', bottom: -2, right: -2, width: 10, height: 10, borderRadius: '50%', background: '#22C55E', border: '2px solid var(--card-bg)' }} />}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                    <h3 style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', margin: 0 }}>{plugin.name}</h3>
-                    {plugin.isNew && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 9999, background: '#EDE9FE', color: '#7C3AED', fontWeight: 700 }}>NOUVEAU</span>}
-                    {plugin.isPro && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 9999, background: '#FEF3C7', color: '#D97706', fontWeight: 700 }}>PRO</span>}
-                  </div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 6px', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{plugin.description}</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Stars rating={plugin.rating} />
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{plugin.rating} ({plugin.reviews}) · {(plugin.installs / 1000).toFixed(1)}k</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card footer */}
-              <div style={{ padding: '10px 14px', borderTop: '1px solid var(--card-border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--body-bg)' }}>
-                <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 9999, background: 'var(--card-bg)', color: 'var(--text-muted)', border: '1px solid var(--card-border)' }}>{plugin.category}</span>
-                <div style={{ flex: 1 }} />
-                {isInstalled ? (
-                  <button onClick={e => toggle(plugin, e)} disabled={toggling === plugin.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: isActive ? '#FEF3C7' : '#ECFDF5', color: isActive ? '#D97706' : '#059669', opacity: toggling === plugin.id ? 0.6 : 1 }}>
-                    {toggling === plugin.id ? <Loader2 size={11} className="animate-spin" /> : isActive ? <><Pause size={11} />Désactiver</> : <><Play size={11} />Activer</>}
-                  </button>
-                ) : (
-                  <button onClick={e => { e.stopPropagation(); setInstalling(plugin); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'var(--color-primary)', color: '#fff' }}>
-                    <Download size={11} />Installer
-                  </button>
-                )}
-              </div>
+          {/* Filters */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+              <Search size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher un plugin…"
+                style={{ width: '100%', paddingLeft: 36, paddingRight: 12, paddingTop: 10, paddingBottom: 10, borderRadius: 12, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
             </div>
-          );
-        })}
-      </div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {CATEGORIES.map(c => (
+                <button key={c.id} onClick={() => setCategory(c.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: category === c.id ? 'var(--color-primary)' : 'var(--card-bg)', color: category === c.id ? '#fff' : 'var(--text-secondary)', boxShadow: category === c.id ? 'none' : '0 0 0 1px var(--card-border)' }}>
+                  {c.icon}{c.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {filtered.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '64px 0' }}>
-          <Puzzle size={40} style={{ margin: '0 auto 12px', color: 'var(--card-border)' }} />
-          <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>Aucun plugin trouvé</p>
-        </div>
+          {/* Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14 }}>
+            {filtered.map(plugin => {
+              const isInstalled = plugin.status !== 'not_installed';
+              const isActive = plugin.status === 'active';
+              return (
+                <div key={plugin.id}
+                  style={{ borderRadius: 16, border: `1.5px solid ${isActive ? 'var(--color-primary)' : 'var(--card-border)'}`, background: 'var(--card-bg)', overflow: 'hidden', transition: 'all .15s', cursor: 'pointer' }}
+                  onClick={() => navigate(`/plugins/${plugin.slug}`)}>
+                  <div style={{ padding: '16px 16px 12px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <div style={{ width: 46, height: 46, borderRadius: 12, background: 'var(--body-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0, position: 'relative' }}>
+                      {plugin.icon}
+                      {isActive && <div style={{ position: 'absolute', bottom: -2, right: -2, width: 10, height: 10, borderRadius: '50%', background: '#22C55E', border: '2px solid var(--card-bg)' }} />}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                        <h3 style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', margin: 0 }}>{plugin.name}</h3>
+                        {plugin.isNew && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 9999, background: '#EDE9FE', color: '#7C3AED', fontWeight: 700 }}>NOUVEAU</span>}
+                        {plugin.isPro && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 9999, background: '#FEF3C7', color: '#D97706', fontWeight: 700 }}>PRO</span>}
+                      </div>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 6px', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{plugin.description}</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Stars rating={plugin.rating} />
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{plugin.rating} ({plugin.reviews}) · {(plugin.installs / 1000).toFixed(1)}k</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ padding: '10px 14px', borderTop: '1px solid var(--card-border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--body-bg)' }}>
+                    <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 9999, background: 'var(--card-bg)', color: 'var(--text-muted)', border: '1px solid var(--card-border)' }}>{plugin.category}</span>
+                    <div style={{ flex: 1 }} />
+                    {isInstalled ? (
+                      <button onClick={e => toggle(plugin, e)} disabled={toggling === plugin.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: isActive ? '#FEF3C7' : '#ECFDF5', color: isActive ? '#D97706' : '#059669', opacity: toggling === plugin.id ? 0.6 : 1 }}>
+                        {toggling === plugin.id ? <Loader2 size={11} className="animate-spin" /> : isActive ? <><Pause size={11} />Désactiver</> : <><Play size={11} />Activer</>}
+                      </button>
+                    ) : (
+                      <button onClick={e => { e.stopPropagation(); setInstalling(plugin); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'var(--color-primary)', color: '#fff' }}>
+                        <Download size={11} />Installer
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {filtered.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '64px 0' }}>
+              <Puzzle size={40} style={{ margin: '0 auto 12px', color: 'var(--card-border)' }} />
+              <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>Aucun plugin trouvé</p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
