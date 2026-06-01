@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { runMigrations } from "@workspace/db";
+import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 
 const rawPort = process.env["PORT"];
 
@@ -17,8 +18,11 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 runMigrations()
-  .then(() => {
+  .then(async () => {
     logger.info("Database migrations applied");
+
+    await seedBuiltInPlugins();
+
     app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");
