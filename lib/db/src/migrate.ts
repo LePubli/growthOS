@@ -148,6 +148,20 @@ CREATE TABLE IF NOT EXISTS webhooks (
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS notes TEXT;
+
+CREATE TABLE IF NOT EXISTS plugin_audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  plugin_id TEXT NOT NULL,
+  plugin_name TEXT NOT NULL,
+  action TEXT NOT NULL,
+  actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  actor_email TEXT,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS plugin_audit_logs_plugin_id_idx ON plugin_audit_logs(plugin_id);
+CREATE INDEX IF NOT EXISTS plugin_audit_logs_created_at_idx ON plugin_audit_logs(created_at DESC);
 `;
 
 function sleep(ms: number): Promise<void> {

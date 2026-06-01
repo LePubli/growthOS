@@ -7,7 +7,7 @@ import {
   ChevronRight, Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useRuntimePlugins, useEnablePlugin, useDisablePlugin, type RuntimePlugin } from '@/hooks/use-plugins';
+import { useRuntimePlugins, useEnablePlugin, useDisablePlugin, usePluginAudit, type RuntimePlugin, type AuditLog } from '@/hooks/use-plugins';
 
 /* ─────────────── static marketplace data ─────────────── */
 
@@ -230,8 +230,133 @@ function RuntimePluginCard({ plugin, onDetail }: { plugin: RuntimePlugin; onDeta
 }
 
 /* ─────────────── runtime engine panel ─────────────── */
+/* ─────────────── audit timeline ─────────────── */
+const AUDIT_META: Record<string, { icon: React.ReactNode; color: string; bg: string; label: string }> = {
+  REGISTERED:          { icon: <Download size={13} />,    color: '#2563EB', bg: '#EFF6FF', label: 'Enregistré' },
+  ENABLED:             { icon: <Play size={13} />,        color: '#059669', bg: '#ECFDF5', label: 'Activé' },
+  DISABLED:            { icon: <Pause size={13} />,       color: '#D97706', bg: '#FFFBEB', label: 'Désactivé' },
+  ACTIVATION_SUCCEEDED:{ icon: <CheckCircle size={13} />, color: '#059669', bg: '#ECFDF5', label: 'Activation OK' },
+  ACTIVATION_FAILED:   { icon: <AlertCircle size={13} />, color: '#DC2626', bg: '#FEF2F2', label: 'Échec activation' },
+};
+
+function AuditTimeline() {
+  const { data, isLoading, isError, refetch, isFetching } = usePluginAudit();
+  const logs = data?.logs ?? [];
+
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Activity size={15} style={{ color: 'var(--color-primary)' }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+            Journal d'audit — {data?.total ?? 0} événement{(data?.total ?? 0) !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <button onClick={() => refetch()} disabled={isFetching}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer' }}>
+          <RefreshCw size={12} style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
+          Actualiser
+        </button>
+      </div>
+
+      {isLoading && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '48px 0', color: 'var(--text-muted)' }}>
+          <Loader2 size={18} className="animate-spin" />
+          <span style={{ fontSize: 14 }}>Chargement des logs…</span>
+        </div>
+      )}
+
+      {isError && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 0' }}>
+          <AlertCircle size={28} style={{ color: '#DC2626' }} />
+          <p style={{ fontSize: 14, color: '#DC2626', fontWeight: 600 }}>Impossible de charger l'audit</p>
+          <button onClick={() => refetch()} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--card-border)', background: 'var(--card-bg)', fontSize: 13, cursor: 'pointer', color: 'var(--text-secondary)' }}>Réessayer</button>
+        </div>
+      )}
+
+      {!isLoading && !isError && logs.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '48px 0' }}>
+          <Activity size={36} style={{ margin: '0 auto 12px', color: 'var(--card-border)' }} />
+          <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>Aucun événement enregistré</p>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Les actions enable / disable / register apparaîtront ici.</p>
+        </div>
+      )}
+
+      {!isLoading && !isError && logs.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {logs.map((log: AuditLog, i: number) => {
+            const meta = AUDIT_META[log.action] ?? AUDIT_META.ENABLED;
+            const isLast = i === logs.length - 1;
+            return (
+              <div key={log.id} style={{ display: 'flex', gap: 0, position: 'relative' }}>
+                {/* Timeline line */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 32, flexShrink: 0 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: meta.color, flexShrink: 0, zIndex: 1, border: `2px solid ${meta.color}22` }}>
+                    {meta.icon}
+                  </div>
+                  {!isLast && <div style={{ width: 2, flex: 1, background: 'var(--card-border)', minHeight: 16 }} />}
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, paddingLeft: 14, paddingBottom: isLast ? 0 : 16 }}>
+                  <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 12, padding: '10px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 9999, background: meta.bg, color: meta.color, fontWeight: 700 }}>{meta.label}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{log.pluginName}</span>
+                      <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-muted)' }}>{log.pluginId}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                        <Clock size={10} />{fmt(log.createdAt)}
+                      </span>
+                      {log.actorEmail && (
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>par <strong>{log.actorEmail}</strong></span>
+                      )}
+                      {(log.metadata as any)?.version && (
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>v{(log.metadata as any).version}</span>
+                      )}
+                    </div>
+
+                    {/* Error detail */}
+                    {(log.metadata as any)?.error && (
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 6, padding: '6px 10px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                        <AlertCircle size={11} color="#DC2626" style={{ marginTop: 1, flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: '#DC2626' }}>{String((log.metadata as any).error)}</span>
+                      </div>
+                    )}
+
+                    {/* Permissions badge row */}
+                    {Array.isArray((log.metadata as any)?.permissions) && (log.metadata as any).permissions.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                        {((log.metadata as any).permissions as string[]).slice(0, 4).map((p: string) => (
+                          <span key={p} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: '#F0FDF4', color: '#059669', border: '1px solid #BBF7D0', fontFamily: 'monospace' }}>{p}</span>
+                        ))}
+                        {((log.metadata as any).permissions as string[]).length > 4 && (
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', padding: '2px 4px' }}>+{((log.metadata as any).permissions as string[]).length - 4}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────── runtime engine panel ─────────────── */
 function RuntimeEnginePanel({ onDetail }: { onDetail: (p: RuntimePlugin) => void }) {
   const { data, isLoading, isError, refetch, isFetching } = useRuntimePlugins();
+  const [tab, setTab] = useState<'plugins' | 'audit'>('plugins');
   const plugins = data?.plugins ?? [];
   const active = plugins.filter(p => p.state === 'ACTIVE');
   const disabled = plugins.filter(p => p.state === 'DISABLED');
@@ -254,46 +379,66 @@ function RuntimeEnginePanel({ onDetail }: { onDetail: (p: RuntimePlugin) => void
         ))}
       </div>
 
-      {/* Header with refresh */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Activity size={15} style={{ color: 'var(--color-primary)' }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Plugins enregistrés au runtime</span>
-        </div>
-        <button onClick={() => refetch()} disabled={isFetching}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer' }}>
-          <RefreshCw size={12} style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
-          Actualiser
-        </button>
+      {/* Sub-tabs */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--card-border)', marginBottom: 20 }}>
+        {([
+          ['plugins', <><Cpu size={13} />Plugins</>],
+          ['audit',   <><Activity size={13} />Audit</>],
+        ] as const).map(([t, label]) => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: tab === t ? 'var(--color-primary)' : 'var(--text-muted)', borderBottom: tab === t ? '2px solid var(--color-primary)' : '2px solid transparent' }}>
+            {label}
+          </button>
+        ))}
       </div>
 
-      {isLoading && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '48px 0', color: 'var(--text-muted)' }}>
-          <Loader2 size={18} className="animate-spin" />
-          <span style={{ fontSize: 14 }}>Connexion au Runtime Engine…</span>
-        </div>
-      )}
+      {/* Audit tab */}
+      {tab === 'audit' && <AuditTimeline />}
 
-      {isError && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 0' }}>
-          <AlertCircle size={32} style={{ color: '#DC2626' }} />
-          <p style={{ fontSize: 14, color: '#DC2626', fontWeight: 600 }}>Runtime Engine inaccessible</p>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>Vérifiez que l'API server est démarré et que vous êtes connecté.</p>
-          <button onClick={() => refetch()} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--card-border)', background: 'var(--card-bg)', fontSize: 13, cursor: 'pointer', color: 'var(--text-secondary)' }}>Réessayer</button>
-        </div>
-      )}
+      {/* Plugins tab */}
+      {tab === 'plugins' && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Cpu size={15} style={{ color: 'var(--color-primary)' }} />
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Plugins enregistrés au runtime</span>
+            </div>
+            <button onClick={() => refetch()} disabled={isFetching}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer' }}>
+              <RefreshCw size={12} style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
+              Actualiser
+            </button>
+          </div>
 
-      {!isLoading && !isError && plugins.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Cpu size={36} style={{ margin: '0 auto 12px', color: 'var(--card-border)' }} />
-          <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>Aucun plugin enregistré dans le runtime</p>
-        </div>
-      )}
+          {isLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '48px 0', color: 'var(--text-muted)' }}>
+              <Loader2 size={18} className="animate-spin" />
+              <span style={{ fontSize: 14 }}>Connexion au Runtime Engine…</span>
+            </div>
+          )}
 
-      {!isLoading && !isError && plugins.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14 }}>
-          {plugins.map(p => <RuntimePluginCard key={p.id} plugin={p} onDetail={onDetail} />)}
-        </div>
+          {isError && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 0' }}>
+              <AlertCircle size={32} style={{ color: '#DC2626' }} />
+              <p style={{ fontSize: 14, color: '#DC2626', fontWeight: 600 }}>Runtime Engine inaccessible</p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>Vérifiez que l'API server est démarré et que vous êtes connecté.</p>
+              <button onClick={() => refetch()} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--card-border)', background: 'var(--card-bg)', fontSize: 13, cursor: 'pointer', color: 'var(--text-secondary)' }}>Réessayer</button>
+            </div>
+          )}
+
+          {!isLoading && !isError && plugins.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '48px 0' }}>
+              <Cpu size={36} style={{ margin: '0 auto 12px', color: 'var(--card-border)' }} />
+              <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>Aucun plugin enregistré dans le runtime</p>
+            </div>
+          )}
+
+          {!isLoading && !isError && plugins.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14 }}>
+              {plugins.map(p => <RuntimePluginCard key={p.id} plugin={p} onDetail={onDetail} />)}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
