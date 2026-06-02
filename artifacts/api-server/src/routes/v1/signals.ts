@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@workspace/db";
 import { signalsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
+import { signalService } from "../../lib/plugin-signal-intelligence/SignalService";
 
 const router = Router();
 
@@ -54,6 +55,50 @@ router.patch("/:id", async (req, res) => {
     .returning();
   if (!updated) { res.status(404).json({ error: "Signal introuvable" }); return; }
   res.json(updated);
+});
+
+
+// POST /signals/generate — trigger mock signal generation for all accounts
+router.post("/generate", async (req, res) => {
+  try {
+    const tenantId = req.auth!.tenantId;
+    const signals = await signalService.generateForAllAccounts(tenantId);
+    res.status(201).json({ generated: signals.length, signals });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /signals/account/:company — signals for a specific account
+router.get("/account/:company", async (req, res) => {
+  try {
+    const tenantId = req.auth!.tenantId;
+    const company = decodeURIComponent(req.params.company);
+    const signals = await signalService.getSignalsByAccount(company, tenantId);
+    res.json(signals);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PATCH /signals/:id/status — update signal status
+router.patch("/:id/status", async (req, res) => {
+  try {
+    const tenantId = req.auth!.tenantId;
+    const { status } = req.body;
+    if (!["new", "read", "actioned"].includes(status)) {
+      res.status(400).json({ error: "Invalid status. Must be one of: new, read, actioned" });
+      return;
+    }
+    const signal = await signalService.updateStatus(req.params.id, tenantId, status);
+    if (!signal) { res.status(404).json({ error: "Signal introuvable" }); return; }
+    res.json(signal);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 export default router;

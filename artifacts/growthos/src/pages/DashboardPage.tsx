@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
-import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity } from 'lucide-react';
+import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity, Building, TrendingUp } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/lib/api-client';
 import { OnboardingWizard } from '@/components/common/OnboardingWizard';
 
@@ -49,6 +50,64 @@ function DashboardWidget({ wid, value, onRemove }: {wid:string;value:string;onRe
         <div style={{fontSize:14,color:'var(--text-muted)'}}>{w.label}</div>
       </div>
     </Link>
+  );
+}
+
+function AccountHealthWidget() {
+  const { data: accounts = [], isLoading } = useQuery<any[]>({
+    queryKey: ['accounts-health-dash'],
+    queryFn: () => apiClient.get('/accounts'),
+    staleTime: 60000,
+  });
+
+  const top = [...accounts]
+    .sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, 5);
+
+  const getColor = (s: number) => s >= 75 ? '#059669' : s >= 50 ? '#2563EB' : s >= 25 ? '#D97706' : '#DC2626';
+  const getBg    = (s: number) => s >= 75 ? '#ECFDF5' : s >= 50 ? '#EFF6FF' : s >= 25 ? '#FFFBEB' : '#FEF2F2';
+
+  if (isLoading || top.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl p-5 mb-5" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Building size={16} style={{color:'var(--color-primary)'}}/>
+          <h2 className="font-semibold" style={{color:'var(--text-primary)'}}>Top Comptes · Health Score</h2>
+        </div>
+        <Link href="/accounts" className="text-sm flex items-center gap-1" style={{color:'var(--color-primary)',textDecoration:'none'}}>
+          Tous<ChevronRight className="w-4 h-4"/>
+        </Link>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10}}>
+        {top.map((acc:any) => {
+          const s = acc.score ?? 0;
+          const c = getColor(s); const bg = getBg(s);
+          return (
+            <Link key={acc.id} href={`/accounts/${encodeURIComponent(acc.name)}`} style={{textDecoration:'none'}}>
+              <div style={{padding:'12px 14px',borderRadius:12,border:`1px solid ${c}33`,background:bg,cursor:'pointer',transition:'all 0.15s'}}
+                onMouseEnter={e=>(e.currentTarget as HTMLElement).style.boxShadow=`0 4px 12px ${c}22`}
+                onMouseLeave={e=>(e.currentTarget as HTMLElement).style.boxShadow='none'}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                  <div style={{width:28,height:28,borderRadius:8,background:'linear-gradient(135deg,#0F172A,#1E3A5F)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <span style={{fontSize:11,fontWeight:800,color:'#fff'}}>{(acc.name||'?')[0].toUpperCase()}</span>
+                  </div>
+                  <span style={{fontSize:18,fontWeight:900,color:c}}>{s}</span>
+                </div>
+                <div style={{fontSize:12,fontWeight:700,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{acc.name}</div>
+                <div style={{display:'flex',alignItems:'center',gap:4,marginTop:6}}>
+                  <div style={{flex:1,height:4,borderRadius:9999,background:'rgba(0,0,0,0.08)'}}>
+                    <div style={{height:'100%',width:`${s}%`,borderRadius:9999,background:c,transition:'width 0.6s ease'}}/>
+                  </div>
+                  <TrendingUp size={10} color={c}/>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -247,6 +306,9 @@ export default function DashboardPage() {
         </div>
 
       </div>
+
+      {/* Account Health widget */}
+      <AccountHealthWidget />
 
       {/* Activity feed row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

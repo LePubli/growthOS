@@ -46,6 +46,7 @@ import PluginDetailPage from '@/pages/PluginDetailPage';
 import AccountsPage from '@/pages/AccountsPage';
 import MemoryPage from '@/pages/MemoryPage';
 import MeetingListPage from '@/pages/MeetingListPage';
+import SignalFeedPage from '@/pages/SignalFeedPage';
 import MeetingDetailPage from '@/pages/MeetingDetailPage';
 import Account360Page from '@/pages/Account360Page';
 import TeamMetricsPage from '@/pages/TeamMetricsPage';
@@ -107,7 +108,7 @@ function AppRoutes() {
       </Route>
 
       <Route path="/signals">
-        {() => <DashboardLayout><SignalsPage /></DashboardLayout>}
+        {() => <DashboardLayout><SignalFeedPage /></DashboardLayout>}
       </Route>
       <Route path="/signals/:id">
         {() => <DashboardLayout><SignalDetailPage /></DashboardLayout>}

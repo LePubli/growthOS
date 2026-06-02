@@ -254,6 +254,16 @@ export async function runAccountIntelligenceMigration(): Promise<void> {
   await pool.query(SQL_ACCOUNT_INTELLIGENCE);
 }
 
+const SQL_SIGNAL_INTELLIGENCE = `
+ALTER TABLE signals ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new'
+  CHECK (status IN ('new', 'read', 'actioned'));
+ALTER TABLE signals ADD COLUMN IF NOT EXISTS detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+`;
+
+export async function runSignalIntelligenceMigration(): Promise<void> {
+  await pool.query(SQL_SIGNAL_INTELLIGENCE);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

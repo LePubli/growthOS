@@ -1,7 +1,7 @@
 import { pluginManager } from "./plugin-manager";
 import { logger } from "../logger";
 import { loadDisabledPluginIds } from "./persistence";
-import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration, runAccountIntelligenceMigration } from "@workspace/db";
+import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration, runAccountIntelligenceMigration, runSignalIntelligenceMigration } from "@workspace/db";
 
 /**
  * Built-in demo plugins that ship with GrowthOS.
@@ -76,6 +76,17 @@ const BUILT_IN_PLUGINS = [
     routes: [{ path: "/meetings", label: "Réunions", icon: "Video" }],
   },
   {
+    id: "signal-intelligence",
+    name: "Signal Intelligence",
+    version: "1.0.0",
+    description: "Radar de signaux business : financement, recrutement, actualités — détection automatique et alertes EventBus",
+    author: "GrowthOS",
+    dependencies: [],
+    permissions: ["signals:read", "signals:write"],
+    uiSlots: ["dashboard-widgets"],
+    routes: [{ path: "/signals", label: "Signaux", icon: "Radar" }],
+  },
+  {
     id: "account-intelligence",
     name: "Account Intelligence",
     version: "1.0.0",
@@ -111,6 +122,11 @@ export async function seedBuiltInPlugins(): Promise<void> {
     await runAccountIntelligenceMigration();
   } catch (err) {
     logger.warn({ err }, "account-intelligence migration failed — account metrics may not work");
+  }
+  try {
+    await runSignalIntelligenceMigration();
+  } catch (err) {
+    logger.warn({ err }, "signal-intelligence migration failed — signal status column may not exist");
   }
 
   for (const manifest of BUILT_IN_PLUGINS) {

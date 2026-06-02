@@ -1,0 +1,75 @@
+# ROLE & OBJECTIVE
+You are the Lead Engineer for GrowthOS.
+Plugins 1, 2, 3, and 8 are active. Workflow AI and EventBus are operational.
+Your mission is to implement **Plugin 5: Signal Intelligence**.
+
+This plugin acts as a radar. It fetches/simulates business signals (funding, hiring, news) linked to accounts/prospects, stores them, and EMITS events to the EventBus so Workflow AI can react to them.
+
+# ARCHITECTURE CONSTRAINTS
+- **Backend**: `artifacts/api-server/src/...`
+- **Frontend**: `artifacts/growthos/src/...`
+- **Database**: PostgreSQL (use existing connection).
+- **EventBus**: Use `pluginEventBus.emit('signal.received', ...)` to notify Workflow AI.
+- **Mocking**: Do NOT implement real scrapers. Create a `SignalGeneratorService` that deterministically generates realistic mock signals (funding, new job posting, news) when triggered or via a cron-like function.
+
+# PHASE 1: DATABASE
+1. Create migration: `artifacts/api-server/db/migrations/006_signal_intelligence.sql`.
+   - Create table `signals`: 
+     `id` (uuid), `account_id` (uuid), `prospect_id` (uuid, nullable),
+     `type` (enum: 'funding', 'hiring', 'news', 'tech_change', 'leadership_change'),
+     `title` (text), `description` (text), `source_url` (text), `impact_score` (int 0-100),
+     `status` (enum: 'new', 'read', 'actioned'), `detected_at` (timestamp).
+   - Add indexes on `account_id` and `status`.
+
+# PHASE 2: BACKEND SERVICE & API
+1. Create service: `artifacts/api-server/src/lib/plugin-signal-intelligence/SignalService.ts`.
+   - `generateMockSignals(accountId)`: Creates 1-3 random signals and saves to DB.
+   - `getSignalsByAccount(accountId)`: Fetches signals.
+   - `getGlobalSignals(filters)`: Fetches signals across all accounts.
+   - `markAsRead(id)` / `markAsActioned(id)`.
+
+2. Create routes: `artifacts/api-server/src/routes/v1/plugins/signals.ts`.
+   - `GET /`: Global feed of signals (with pagination/filters).
+   - `GET /account/:accountId`: Signals for a specific account.
+   - `POST /generate`: Manually trigger mock generation (for testing).
+   - `PATCH /:id/status`: Update status.
+
+3. **Register Routes**: Mount in `artifacts/api-server/src/routes/v1/index.ts`.
+
+# PHASE 3: EVENTBUS INTEGRATION (CRITICAL)
+1. Create file: `artifacts/api-server/src/lib/plugin-signal-intelligence/event-emitter.ts`.
+   - Whenever a signal is created in `SignalService`, emit an event:
+     `pluginEventBus.emit('signal.received', { signalId, accountId, type, impactScore })`
+   - This allows Plugin 8 (Workflow AI) to trigger workflows like "On New Signal".
+
+# PHASE 4: PLUGIN REGISTRATION
+1. Create manifest: `artifacts/api-server/src/lib/plugin-signal-intelligence/manifest.ts`.
+   - `id`: "signal-intelligence"
+   - `dependencies`: [] (Standalone, but feeds others)
+   - `permissions`: ["signals:read", "signals:write"]
+   - `menuItems`: [{ label: "Signaux", path: "/signals", icon: "Radar" }]
+   - `eventPublishers`: ["signal.received"]
+2. Update `seed-plugins.ts`.
+
+# PHASE 5: FRONTEND UI
+1. Create page: `artifacts/growthos/src/plugins/signal-intelligence/SignalFeedPage.tsx`.
+   - Layout: A modern "News Feed" or "Activity Stream" style.
+   - Cards for each signal: Icon based on type (💰 for funding, 💼 for hiring), Title, Date, Impact badge.
+   - Filter bar: By Type, By Impact Score.
+   - Action buttons: "Mark as read", "View source".
+2. Create component: `artifacts/growthos/src/plugins/signal-intelligence/SignalBadge.tsx`.
+   - A small component to show signal counts in the Account 360 view (optional, but good practice).
+3. **Routing**: Add `/signals` route.
+
+# EXECUTION STEPS
+1. Run Migration.
+2. Implement SignalService + EventBus emitter.
+3. Implement Routes.
+4. Build Signal Feed UI.
+5. **Test End-to-End**:
+   - Go to `/signals` -> Click "Generate Mock Signals".
+   - See signals appear in feed.
+   - Go to Workflow AI -> Create a workflow with trigger "On Signal Received".
+   - Generate another signal -> Check Workflow Executions to see it fired.
+
+Start implementation now. Output full file contents.
