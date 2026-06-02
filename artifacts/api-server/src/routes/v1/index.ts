@@ -18,6 +18,7 @@ import teamRouter from "./team";
 import apiKeysRouter from "./api-keys";
 import analyticsRouter from "./analytics";
 import pluginsRouter from "./plugins";
+import memoryRouter from "./memory";
 
 const router = Router();
 
@@ -39,5 +40,6 @@ router.use("/team", requireAuth, teamRouter);
 router.use("/api-keys", requireAuth, apiKeysRouter);
 router.use("/analytics", requireAuth, analyticsRouter);
 router.use("/plugins", pluginsRouter);
+router.use("/memory", memoryRouter);
 
 export default router;

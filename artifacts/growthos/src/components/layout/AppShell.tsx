@@ -5,7 +5,7 @@ import {
   Settings, Puzzle, Palette, Mail, Target, RefreshCw,
   Bot, User, Webhook, BarChart2, Download, Zap,
   ChevronDown, LogOut, Plus, HelpCircle,
-  Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2,
+  Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -69,6 +69,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Intelligence',
     items: [
+      { href: '/memory', label: 'Mémoire', icon: <Brain size={16} />, pluginId: 'growth-memory' },
       { href: '/ai', label: 'Agent IA', icon: <Bot size={16} /> },
       { href: '/workflows', label: 'Workflows', icon: <Globe size={16} /> },
       { href: '/calendar', label: 'Calendrier', icon: <CalIcon size={16} /> },

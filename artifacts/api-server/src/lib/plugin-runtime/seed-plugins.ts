@@ -1,7 +1,7 @@
 import { pluginManager } from "./plugin-manager";
 import { logger } from "../logger";
 import { loadDisabledPluginIds } from "./persistence";
-import { runPluginStateMigration } from "@workspace/db";
+import { runPluginStateMigration, runGrowthMemoryMigration } from "@workspace/db";
 
 /**
  * Built-in demo plugins that ship with GrowthOS.
@@ -53,16 +53,32 @@ const BUILT_IN_PLUGINS = [
     uiSlots: [],
     routes: [],
   },
-] as const;
+  {
+    id: "growth-memory",
+    name: "Growth Memory",
+    version: "1.0.0",
+    description: "Second Brain : indexation sémantique et recherche dans vos données métier",
+    author: "GrowthOS",
+    dependencies: [],
+    permissions: ["memory:read", "memory:write"],
+    uiSlots: ["dashboard-widgets"],
+    routes: [{ path: "/memory", label: "Mémoire", icon: "Brain" }],
+  },
+];
 
 export async function seedBuiltInPlugins(): Promise<void> {
   logger.info("Seeding built-in plugins...");
 
-  // Ensure plugin_states table exists before we try to read from it
+  // Ensure plugin_states and growth-memory tables exist
   try {
     await runPluginStateMigration();
   } catch (err) {
     logger.warn({ err }, "plugin_states migration failed — state persistence unavailable");
+  }
+  try {
+    await runGrowthMemoryMigration();
+  } catch (err) {
+    logger.warn({ err }, "growth-memory migration failed — memory plugin may not work");
   }
 
   for (const manifest of BUILT_IN_PLUGINS) {

@@ -1,0 +1,58 @@
+# ROLE & OBJECTIVE
+You are the Lead Engineer for GrowthOS.
+The Plugin Runtime Engine is fully operational.
+Your mission is to implement **Plugin 1: Growth Memory**.
+
+This plugin provides a "Second Brain" capability: indexing business data into a vector store for semantic search.
+
+# ARCHITECTURE CONSTRAINTS
+- **Monorepo Structure**:
+  - Backend: `artifacts/api-server/src/...`
+  - Frontend: `artifacts/growthos/src/...`
+  - Database: PostgreSQL (via existing connection).
+- **Mocking**: For now, use a **Mock Embedding Service** (return random vectors of length 1536) so we can test the logic without needing an OpenAI API key immediately.
+- **Integration**: The plugin must self-register into the `PluginRuntimeManager` via `seed-plugins.ts`.
+
+# PHASE 1: DATABASE MIGRATION (PostgreSQL + pgvector)
+1. Create migration: `artifacts/api-server/db/migrations/002_growth_memory.sql`.
+2. Enable vector extension: `CREATE EXTENSION IF NOT EXISTS vector;`
+3. Create tables:
+   - `memory_documents`: `id` (uuid), `source_type` (text), `source_id` (text), `content` (text), `tenant_id` (text), `created_at` (timestamp).
+   - `memory_embeddings`: `document_id` (uuid), `embedding` (vector(1536)).
+   - Add foreign keys and indexes (HNSW index on embedding).
+
+# PHASE 2: BACKEND SERVICE & API
+1. Create service: `artifacts/api-server/src/lib/plugin-growth-memory/MemoryService.ts`.
+   - Use existing `db` client and `logger`.
+   - Method `indexDocument(data)`: Saves to `memory_documents` and generates a mock vector for `memory_embeddings`.
+   - Method `search(query, limit)`: Performs hybrid search (Vector similarity `<->` + Keyword `ILIKE`).
+2. Create routes: `artifacts/api-server/src/routes/v1/plugins/memory.ts`.
+   - `POST /index`: Receives JSON, calls `indexDocument`.
+   - `GET /search?q=...`: Returns search results.
+3. **Register Routes**: Mount these routes in `artifacts/api-server/src/routes/v1/index.ts` under `/memory`.
+
+# PHASE 3: PLUGIN REGISTRATION (Runtime Integration)
+1. Create manifest: `artifacts/api-server/src/lib/plugin-growth-memory/manifest.ts`.
+   - `id`: "growth-memory"
+   - `name`: "Growth Memory"
+   - `version`: "1.0.0"
+   - `permissions`: ["memory:read", "memory:write"]
+   - `menuItems`: [{ label: "Memoire", path: "/memory", icon: "Brain" }]
+2. **Update Seed**: Modify `artifacts/api-server/src/lib/plugin-runtime/seed-plugins.ts` to include `growth-memory` in the initial seed list.
+
+# PHASE 4: FRONTEND UI
+1. Create page: `artifacts/growthos/src/plugins/growth-memory/MemoryPage.tsx`.
+   - Layout: Clean dashboard style with Tailwind.
+   - Component: A command-bar style search input (`Cmd+K` feel).
+   - List: Display results with Source Badge, Date, and Content Snippet.
+   - Hook: Use `useQuery` to fetch `/api/v1/memory/search`.
+2. **Routing**: Ensure this page is accessible at `/memory` (via the dynamic route injection from the Runtime).
+
+# EXECUTION STEPS
+1. Run the SQL migration.
+2. Implement Backend Service & Routes.
+3. Register Plugin in Seed.
+4. Build Frontend Page.
+5. **Verify**: Go to `/plugins` dashboard -> Ensure "Growth Memory" is listed as ACTIVE. Go to `/memory` -> Ensure search works.
+
+Start implementation now. Output full file contents for every new file.

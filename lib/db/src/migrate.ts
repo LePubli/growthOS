@@ -168,6 +168,34 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const SQL_GROWTH_MEMORY = `
+CREATE TABLE IF NOT EXISTS memory_documents (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_type TEXT        NOT NULL,
+  source_id   TEXT        NOT NULL,
+  content     TEXT        NOT NULL,
+  tenant_id   TEXT        NOT NULL,
+  metadata    JSONB       NOT NULL DEFAULT '{}',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (source_type, source_id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS memory_documents_tenant_idx ON memory_documents(tenant_id);
+CREATE INDEX IF NOT EXISTS memory_documents_source_idx ON memory_documents(source_type, source_id);
+CREATE INDEX IF NOT EXISTS memory_documents_updated_idx ON memory_documents(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS memory_embeddings (
+  document_id UUID  PRIMARY KEY REFERENCES memory_documents(id) ON DELETE CASCADE,
+  embedding   JSONB NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+`;
+
+export async function runGrowthMemoryMigration(): Promise<void> {
+  await pool.query(SQL_GROWTH_MEMORY);
+}
+
 const SQL_PLUGIN_STATES = `
 CREATE TABLE IF NOT EXISTS plugin_states (
   plugin_id TEXT PRIMARY KEY,

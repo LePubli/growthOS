@@ -44,6 +44,7 @@ import CRMSyncPage from '@/pages/CRMSyncPage';
 import SourcingJobPage from '@/pages/SourcingJobPage';
 import PluginDetailPage from '@/pages/PluginDetailPage';
 import AccountsPage from '@/pages/AccountsPage';
+import MemoryPage from '@/pages/MemoryPage';
 import TeamMetricsPage from '@/pages/TeamMetricsPage';
 import CalendarPage from '@/pages/CalendarPage';
 import ProposalsPage from '@/pages/ProposalsPage';
@@ -189,6 +190,10 @@ function AppRoutes() {
       </Route>
       <Route path="/import">
         {() => <DashboardLayout><ImportPage /></DashboardLayout>}
+      </Route>
+
+      <Route path="/memory">
+        {() => <DashboardLayout><MemoryPage /></DashboardLayout>}
       </Route>
 
       <Route path="/accounts">
