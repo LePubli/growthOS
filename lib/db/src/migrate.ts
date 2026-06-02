@@ -192,6 +192,29 @@ CREATE TABLE IF NOT EXISTS memory_embeddings (
 );
 `;
 
+const SQL_MEETING_INTELLIGENCE = `
+CREATE TABLE IF NOT EXISTS meetings (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  title        TEXT        NOT NULL,
+  status       TEXT        NOT NULL DEFAULT 'pending'
+                           CHECK (status IN ('pending', 'processing', 'completed', 'error')),
+  transcript   TEXT,
+  summary      TEXT,
+  action_items JSONB       NOT NULL DEFAULT '[]',
+  tenant_id    TEXT        NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS meetings_tenant_idx  ON meetings(tenant_id);
+CREATE INDEX IF NOT EXISTS meetings_status_idx  ON meetings(status);
+CREATE INDEX IF NOT EXISTS meetings_created_idx ON meetings(created_at DESC);
+`;
+
+export async function runMeetingIntelligenceMigration(): Promise<void> {
+  await pool.query(SQL_MEETING_INTELLIGENCE);
+}
+
 export async function runGrowthMemoryMigration(): Promise<void> {
   await pool.query(SQL_GROWTH_MEMORY);
 }

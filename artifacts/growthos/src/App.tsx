@@ -45,6 +45,8 @@ import SourcingJobPage from '@/pages/SourcingJobPage';
 import PluginDetailPage from '@/pages/PluginDetailPage';
 import AccountsPage from '@/pages/AccountsPage';
 import MemoryPage from '@/pages/MemoryPage';
+import MeetingListPage from '@/pages/MeetingListPage';
+import MeetingDetailPage from '@/pages/MeetingDetailPage';
 import TeamMetricsPage from '@/pages/TeamMetricsPage';
 import CalendarPage from '@/pages/CalendarPage';
 import ProposalsPage from '@/pages/ProposalsPage';
@@ -194,6 +196,13 @@ function AppRoutes() {
 
       <Route path="/memory">
         {() => <DashboardLayout><MemoryPage /></DashboardLayout>}
+      </Route>
+
+      <Route path="/meetings/:id">
+        {(params) => <DashboardLayout><MeetingDetailPage /></DashboardLayout>}
+      </Route>
+      <Route path="/meetings">
+        {() => <DashboardLayout><MeetingListPage /></DashboardLayout>}
       </Route>
 
       <Route path="/accounts">

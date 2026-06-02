@@ -19,6 +19,7 @@ import apiKeysRouter from "./api-keys";
 import analyticsRouter from "./analytics";
 import pluginsRouter from "./plugins";
 import memoryRouter from "./memory";
+import meetingsRouter from "./meetings";
 
 const router = Router();
 
@@ -41,5 +42,6 @@ router.use("/api-keys", requireAuth, apiKeysRouter);
 router.use("/analytics", requireAuth, analyticsRouter);
 router.use("/plugins", pluginsRouter);
 router.use("/memory", memoryRouter);
+router.use("/meetings", meetingsRouter);
 
 export default router;

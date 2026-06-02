@@ -1,7 +1,7 @@
 import { pluginManager } from "./plugin-manager";
 import { logger } from "../logger";
 import { loadDisabledPluginIds } from "./persistence";
-import { runPluginStateMigration, runGrowthMemoryMigration } from "@workspace/db";
+import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration } from "@workspace/db";
 
 /**
  * Built-in demo plugins that ship with GrowthOS.
@@ -64,6 +64,17 @@ const BUILT_IN_PLUGINS = [
     uiSlots: ["dashboard-widgets"],
     routes: [{ path: "/memory", label: "Mémoire", icon: "Brain" }],
   },
+  {
+    id: "meeting-intelligence",
+    name: "Meeting Intelligence",
+    version: "1.0.0",
+    description: "Transcription IA et extraction d'insights depuis vos enregistrements de réunions",
+    author: "GrowthOS",
+    dependencies: ["growth-memory"],
+    permissions: ["meetings:read", "meetings:write", "memory:write"],
+    uiSlots: ["dashboard-widgets"],
+    routes: [{ path: "/meetings", label: "Réunions", icon: "Video" }],
+  },
 ];
 
 export async function seedBuiltInPlugins(): Promise<void> {
@@ -79,6 +90,11 @@ export async function seedBuiltInPlugins(): Promise<void> {
     await runGrowthMemoryMigration();
   } catch (err) {
     logger.warn({ err }, "growth-memory migration failed — memory plugin may not work");
+  }
+  try {
+    await runMeetingIntelligenceMigration();
+  } catch (err) {
+    logger.warn({ err }, "meeting-intelligence migration failed — meetings plugin may not work");
   }
 
   for (const manifest of BUILT_IN_PLUGINS) {

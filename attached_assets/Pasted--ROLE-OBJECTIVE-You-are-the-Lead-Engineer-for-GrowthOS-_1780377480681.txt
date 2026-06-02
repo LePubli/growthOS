@@ -1,0 +1,57 @@
+# ROLE & OBJECTIVE
+You are the Lead Engineer for GrowthOS.
+Growth Memory (Plugin 1) is active and functional.
+Your mission is to implement **Plugin 2: Meeting Intelligence**.
+
+This plugin allows users to upload meeting recordings, generates transcripts (mocked), extracts key insights, and AUTOMATICALLY indexes the transcript into Growth Memory.
+
+# ARCHITECTURE CONSTRAINTS
+- **Backend**: `artifacts/api-server/src/...`
+- **Frontend**: `artifacts/growthos/src/...`
+- **Database**: PostgreSQL (use existing connection).
+- **Storage**: For now, use local disk storage or simple DB text storage for "files" (avoid complex S3 setup for now).
+- **AI Mock**: Simulate the transcription process (return structured JSON: summary, action items, objections) after a short delay.
+
+# PHASE 1: DATABASE (PostgreSQL)
+1. Create migration: `artifacts/api-server/db/migrations/003_meeting_intelligence.sql`.
+2. Create table `meetings`:
+   - `id` (uuid), `title` (text), `status` (enum: 'pending', 'processing', 'completed', 'error'),
+   - `transcript` (text), `summary` (text), `action_items` (jsonb),
+   - `created_at`, `updated_at`.
+
+# PHASE 2: BACKEND SERVICE & API
+1. Create service: `artifacts/api-server/src/lib/plugin-meeting-intelligence/MeetingService.ts`.
+   - `createMeeting(data)`: Creates entry with status 'pending'.
+   - `processMeeting(id)`: Mocks the AI pipeline. Updates status to 'completed' and generates mock text/JSON.
+   - **CRITICAL**: Upon completion, call the `MemoryService.indexDocument()` from Plugin 1 to index the transcript. (Import MemoryService carefully).
+2. Create routes: `artifacts/api-server/src/routes/v1/plugins/meetings.ts`.
+   - `POST /`: Upload/Create meeting.
+   - `GET /`: List meetings.
+   - `GET /:id`: Get meeting details.
+   - `POST /:id/process`: Trigger processing (for manual trigger, or auto-trigger on creation).
+3. **Register Routes**: Mount in `artifacts/api-server/src/routes/v1/index.ts`.
+
+# PHASE 3: PLUGIN REGISTRATION
+1. Create manifest: `artifacts/api-server/src/lib/plugin-meeting-intelligence/manifest.ts`.
+   - `id`: "meeting-intelligence"
+   - `dependencies`: ["growth-memory"] (It needs Memory to be active).
+   - `menuItems`: [{ label: "Réunions", path: "/meetings", icon: "Video" }]
+2. Update `seed-plugins.ts`.
+
+# PHASE 4: FRONTEND UI
+1. Create page: `artifacts/growthos/src/plugins/meeting-intelligence/MeetingListPage.tsx`.
+   - Table/List of meetings with Status badges (Processing -> Completed).
+   - "New Meeting" button (simple form: Title + "Simulated Audio File").
+2. Create page: `artifacts/growthos/src/plugins/meeting-intelligence/MeetingDetailPage.tsx`.
+   - Shows Transcript, Summary, and Action Items once completed.
+   - A button "Add to Memory" (or auto-indicate that it was added).
+3. **Routing**: Add these pages to the dynamic router.
+
+# EXECUTION STEPS
+1. Run Migration.
+2. Implement Service (include the link to MemoryService).
+3. Implement Routes.
+4. Build UI Pages.
+5. Verify: Create a meeting -> See status change -> Check Growth Memory to see if the transcript was indexed.
+
+Start implementation now.

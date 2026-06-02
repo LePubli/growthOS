@@ -18,6 +18,8 @@ export const PluginPermission = z.enum([
   "contacts:write",
   "memory:read",
   "memory:write",
+  "meetings:read",
+  "meetings:write",
 ]);
 export type PluginPermission = z.infer<typeof PluginPermission>;
 
