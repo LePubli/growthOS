@@ -231,6 +231,29 @@ export async function runPluginStateMigration(): Promise<void> {
   await pool.query(SQL_PLUGIN_STATES);
 }
 
+const SQL_ACCOUNT_INTELLIGENCE = `
+CREATE TABLE IF NOT EXISTS account_metrics (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id       TEXT        NOT NULL,
+  tenant_id        TEXT        NOT NULL,
+  health_score     INTEGER     NOT NULL DEFAULT 0,
+  engagement_level TEXT        NOT NULL DEFAULT 'low'
+                               CHECK (engagement_level IN ('low', 'medium', 'high', 'very_high')),
+  last_activity_at TIMESTAMPTZ,
+  score_breakdown  JSONB       NOT NULL DEFAULT '{}',
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (account_id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS account_metrics_tenant_idx  ON account_metrics(tenant_id);
+CREATE INDEX IF NOT EXISTS account_metrics_score_idx   ON account_metrics(health_score DESC);
+CREATE INDEX IF NOT EXISTS account_metrics_activity_idx ON account_metrics(last_activity_at DESC);
+`;
+
+export async function runAccountIntelligenceMigration(): Promise<void> {
+  await pool.query(SQL_ACCOUNT_INTELLIGENCE);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

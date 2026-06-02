@@ -47,6 +47,7 @@ import AccountsPage from '@/pages/AccountsPage';
 import MemoryPage from '@/pages/MemoryPage';
 import MeetingListPage from '@/pages/MeetingListPage';
 import MeetingDetailPage from '@/pages/MeetingDetailPage';
+import Account360Page from '@/pages/Account360Page';
 import TeamMetricsPage from '@/pages/TeamMetricsPage';
 import CalendarPage from '@/pages/CalendarPage';
 import ProposalsPage from '@/pages/ProposalsPage';
@@ -205,6 +206,9 @@ function AppRoutes() {
         {() => <DashboardLayout><MeetingListPage /></DashboardLayout>}
       </Route>
 
+      <Route path="/accounts/:accountId">
+        {() => <DashboardLayout><Account360Page /></DashboardLayout>}
+      </Route>
       <Route path="/accounts">
         {() => <DashboardLayout><AccountsPage /></DashboardLayout>}
       </Route>

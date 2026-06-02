@@ -1,7 +1,7 @@
 import { pluginManager } from "./plugin-manager";
 import { logger } from "../logger";
 import { loadDisabledPluginIds } from "./persistence";
-import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration } from "@workspace/db";
+import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration, runAccountIntelligenceMigration } from "@workspace/db";
 
 /**
  * Built-in demo plugins that ship with GrowthOS.
@@ -75,6 +75,17 @@ const BUILT_IN_PLUGINS = [
     uiSlots: ["dashboard-widgets"],
     routes: [{ path: "/meetings", label: "Réunions", icon: "Video" }],
   },
+  {
+    id: "account-intelligence",
+    name: "Account Intelligence",
+    version: "1.0.0",
+    description: "Vue 360° des comptes avec Health Score dynamique basé sur l'activité, l'engagement et les signaux mémoire",
+    author: "GrowthOS",
+    dependencies: ["growth-memory", "meeting-intelligence"],
+    permissions: ["accounts:read", "accounts:write", "memory:read", "meetings:read"],
+    uiSlots: ["dashboard-widgets"],
+    routes: [{ path: "/accounts", label: "Comptes", icon: "Building" }],
+  },
 ];
 
 export async function seedBuiltInPlugins(): Promise<void> {
@@ -95,6 +106,11 @@ export async function seedBuiltInPlugins(): Promise<void> {
     await runMeetingIntelligenceMigration();
   } catch (err) {
     logger.warn({ err }, "meeting-intelligence migration failed — meetings plugin may not work");
+  }
+  try {
+    await runAccountIntelligenceMigration();
+  } catch (err) {
+    logger.warn({ err }, "account-intelligence migration failed — account metrics may not work");
   }
 
   for (const manifest of BUILT_IN_PLUGINS) {

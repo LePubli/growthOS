@@ -1,0 +1,49 @@
+# ROLE & OBJECTIVE
+You are the Lead Engineer for GrowthOS.
+Plugin 1 (Growth Memory) and Plugin 2 (Meeting Intelligence) are active.
+Your mission is to implement **Plugin 3: Account Intelligence**.
+
+This plugin creates a 360° view of accounts and calculates a dynamic Health Score based on activity, engagement, and memory signals.
+
+# ARCHITECTURE CONSTRAINTS
+- **Backend**: `artifacts/api-server/src/...`
+- **Frontend**: `artifacts/growthos/src/...`
+- **Data Sources**: Reuse existing tables: `meetings`, `memory_documents`, plus standard `accounts`/`prospects` tables if they exist.
+- **Mocking**: Use deterministic mock logic for scoring if real AI isn't available yet.
+
+# PHASE 1: DATABASE & SCORING ENGINE
+1. Create migration: `artifacts/api-server/db/migrations/004_account_intelligence.sql`.
+   - Add `health_score` (int), `last_activity_at` (timestamp), `engagement_level` (enum) to `accounts` table (or create `account_metrics` if accounts table is managed elsewhere).
+2. Create service: `artifacts/api-server/src/lib/plugin-account-intelligence/AccountService.ts`.
+   - `calculateHealthScore(accountId)`: Queries meetings count, memory signals, last activity. Returns score 0-100.
+   - `getAccount360(accountId)`: Aggregates timeline, meetings, memory snippets, and score.
+
+# PHASE 2: BACKEND API
+1. Create routes: `artifacts/api-server/src/routes/v1/plugins/accounts.ts`.
+   - `GET /:id/360`: Returns full account view.
+   - `GET /:id/score`: Returns health score + breakdown.
+   - `POST /:id/refresh`: Triggers score recalculation.
+2. **Register Routes**: Mount in `artifacts/api-server/src/routes/v1/index.ts`.
+
+# PHASE 3: PLUGIN REGISTRATION
+1. Create manifest: `artifacts/api-server/src/lib/plugin-account-intelligence/manifest.ts`.
+   - `id`: "account-intelligence"
+   - `dependencies`: ["growth-memory", "meeting-intelligence"]
+   - `menuItems`: [{ label: "Comptes", path: "/accounts/:id", icon: "Building" }]
+2. Update `seed-plugins.ts`.
+
+# PHASE 4: FRONTEND UI
+1. Create page: `artifacts/growthos/src/plugins/account-intelligence/Account360Page.tsx`.
+   - Layout: Header with Health Score gauge (0-100), color-coded.
+   - Sections: Timeline (meetings + memory signals), Recent Activity, Engagement Metrics.
+   - Use `useQuery` to fetch `/api/v1/accounts/:id/360`.
+2. **Routing**: Dynamic route `/accounts/:accountId` injected via Runtime.
+
+# EXECUTION STEPS
+1. Run Migration (add score fields).
+2. Implement AccountService (scoring logic).
+3. Implement Routes.
+4. Build 360° UI Page.
+5. Verify: Visit an account → See score → Click "Refresh" → Score updates → Timeline shows meetings/memory signals.
+
+Start implementation now. Output full file contents.

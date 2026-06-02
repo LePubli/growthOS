@@ -224,15 +224,21 @@ function AccountPanel({ account, onClose }: { account:Account; onClose:()=>void 
         </div>
 
         {/* Actions */}
-        <div style={{ display:'flex', gap:8 }}>
-          <button onClick={()=>{ navigate(`/prospects?company=${encodeURIComponent(account.name)}`); onClose(); }}
-            style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:10, borderRadius:12, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-            <Users size={13}/>Voir prospects
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          <button onClick={()=>{ navigate(`/accounts/${encodeURIComponent(account.name)}`); onClose(); }}
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:11, borderRadius:12, border:'none', background:'linear-gradient(135deg,#0F172A,#1E3A5F)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+            <Activity size={13}/>Vue 360° & Health Score
           </button>
-          <button onClick={()=>toast.success(`Séquence lancée pour ${account.name}`)}
-            style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:10, borderRadius:12, border:'1px solid var(--card-border)', background:'var(--body-bg)', color:'var(--text-secondary)', fontSize:13, fontWeight:600, cursor:'pointer' }}>
-            <Mail size={13}/>Séquence
-          </button>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={()=>{ navigate(`/prospects?company=${encodeURIComponent(account.name)}`); onClose(); }}
+              style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:10, borderRadius:12, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+              <Users size={13}/>Prospects
+            </button>
+            <button onClick={()=>toast.success(`Séquence lancée pour ${account.name}`)}
+              style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:10, borderRadius:12, border:'1px solid var(--card-border)', background:'var(--body-bg)', color:'var(--text-secondary)', fontSize:13, fontWeight:600, cursor:'pointer' }}>
+              <Mail size={13}/>Séquence
+            </button>
+          </div>
         </div>
       </div>
     </div>

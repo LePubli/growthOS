@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { prospectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { accountService } from "../../lib/plugin-account-intelligence/AccountService";
 
 const router = Router();
 
@@ -59,6 +60,50 @@ router.get("/", async (req, res) => {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });
     return;
+  }
+});
+
+
+// GET /accounts/:id/360 — full 360° view of an account
+router.get("/:id/360", async (req, res) => {
+  try {
+    const tenantId = (req as any).auth?.tenantId;
+    if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const accountId = decodeURIComponent(req.params.id);
+    const data = await accountService.getAccount360(accountId, tenantId);
+    if (!data) { res.status(404).json({ error: "Account not found" }); return; }
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /accounts/:id/score — health score + breakdown
+router.get("/:id/score", async (req, res) => {
+  try {
+    const tenantId = (req as any).auth?.tenantId;
+    if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const accountId = decodeURIComponent(req.params.id);
+    const breakdown = await accountService.calculateHealthScore(accountId, tenantId);
+    res.json({ accountId, healthScore: breakdown.total, breakdown });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /accounts/:id/refresh — trigger score recalculation
+router.post("/:id/refresh", async (req, res) => {
+  try {
+    const tenantId = (req as any).auth?.tenantId;
+    if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const accountId = decodeURIComponent(req.params.id);
+    const metrics = await accountService.upsertMetrics(accountId, tenantId);
+    res.json({ success: true, metrics });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
