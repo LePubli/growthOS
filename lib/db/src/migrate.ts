@@ -264,6 +264,17 @@ export async function runSignalIntelligenceMigration(): Promise<void> {
   await pool.query(SQL_SIGNAL_INTELLIGENCE);
 }
 
+const SQL_DEAL_COACH = `
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS health_score INTEGER NOT NULL DEFAULT 50 CHECK (health_score >= 0 AND health_score <= 100);
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS risk_factors JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS ai_recommendations TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS last_coached_at TIMESTAMPTZ;
+`;
+
+export async function runDealCoachMigration(): Promise<void> {
+  await pool.query(SQL_DEAL_COACH);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

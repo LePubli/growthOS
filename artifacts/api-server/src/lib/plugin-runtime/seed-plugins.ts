@@ -1,7 +1,7 @@
 import { pluginManager } from "./plugin-manager";
 import { logger } from "../logger";
 import { loadDisabledPluginIds } from "./persistence";
-import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration, runAccountIntelligenceMigration, runSignalIntelligenceMigration } from "@workspace/db";
+import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration, runAccountIntelligenceMigration, runSignalIntelligenceMigration, runDealCoachMigration } from "@workspace/db";
 
 /**
  * Built-in demo plugins that ship with GrowthOS.
@@ -76,6 +76,17 @@ const BUILT_IN_PLUGINS = [
     routes: [{ path: "/meetings", label: "Réunions", icon: "Video" }],
   },
   {
+    id: "ai-deal-coach",
+    name: "AI Deal Coach",
+    version: "1.0.0",
+    description: "Coach IA pour le pipeline — Health Score, détection de risques et recommandations contextuelles basées sur Meetings, Memory et Signals",
+    author: "GrowthOS",
+    dependencies: ["growth-memory", "meeting-intelligence", "signal-intelligence"],
+    permissions: ["deals:read", "ai:analyze", "memory:read", "meetings:read", "signals:read"],
+    uiSlots: ["dashboard-widgets"],
+    routes: [{ path: "/deal-coach", label: "Deal Coach", icon: "Target" }],
+  },
+  {
     id: "ai-sdr",
     name: "AI SDR",
     version: "1.0.0",
@@ -138,6 +149,11 @@ export async function seedBuiltInPlugins(): Promise<void> {
     await runSignalIntelligenceMigration();
   } catch (err) {
     logger.warn({ err }, "signal-intelligence migration failed — signal status column may not exist");
+  }
+  try {
+    await runDealCoachMigration();
+  } catch (err) {
+    logger.warn({ err }, "deal-coach migration failed — health_score fields may not exist on deals");
   }
 
   for (const manifest of BUILT_IN_PLUGINS) {

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building, ChevronLeft, Loader2, AlertCircle, Video,
   Brain, User, RefreshCw, Activity, TrendingUp, Users,
-  Calendar, Zap, Star, Clock,
+  Calendar, Zap, Star, Clock, Bot, BookOpen, Sparkles, X, CheckCircle,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 
@@ -180,12 +180,130 @@ function EngagementBadge({ level }: { level: string }) {
   );
 }
 
+/* ─── Playbook Modal ─────────────────────────────────────── */
+interface PlaybookDraft {
+  accountName: string;
+  talkingPoints: string[];
+  objections: { objection: string; response: string }[];
+  competitorNotes: string;
+  nextSteps: string[];
+  generatedBy: string;
+  model?: string;
+  contextUsed: { signals: number; memories: number; account: string };
+}
+
+function PlaybookModal({ playbook, onClose }: { playbook: PlaybookDraft; onClose: () => void }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const copyText = (text: string, key: string) => {
+    navigator.clipboard.writeText(text).then(() => { setCopied(key); setTimeout(() => setCopied(null), 1800); });
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 680, background: 'var(--card-bg)', borderRadius: 20, boxShadow: '0 24px 80px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--card-border)', display: 'flex', alignItems: 'center', gap: 12, background: 'linear-gradient(135deg,#1E1B4B,#4C1D95)' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 11, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <BookOpen size={20} color="#fff" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 800, color: '#fff', margin: '0 0 2px' }}>Sales Playbook — {playbook.accountName}</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 9999, background: playbook.generatedBy === 'ollama' ? '#ECFDF5' : '#F5F3FF', color: playbook.generatedBy === 'ollama' ? '#059669' : '#7C3AED' }}>
+                {playbook.generatedBy === 'ollama' ? `⚡ Ollama · ${playbook.model}` : '✨ Mock LLM'}
+              </span>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>{playbook.contextUsed.signals} signaux · {playbook.contextUsed.memories} mémoires</span>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', color: '#fff', display: 'flex' }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Talking Points */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Sparkles size={11} />Points clés à aborder
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {playbook.talkingPoints.map((pt, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 10, background: '#F5F3FF', border: '1px solid #7C3AED22' }}>
+                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#7C3AED', color: '#fff', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
+                  <span style={{ fontSize: 13, color: '#4C1D95', lineHeight: 1.5 }}>{pt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Objections */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Objections &amp; réponses</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {playbook.objections.map((obj, i) => (
+                <div key={i} style={{ borderRadius: 10, border: '1px solid var(--card-border)', overflow: 'hidden' }}>
+                  <div style={{ padding: '8px 12px', background: '#FEF2F2', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '2px 7px', borderRadius: 4 }}>Objection</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#991B1B' }}>{obj.objection}</span>
+                  </div>
+                  <div style={{ padding: '8px 12px', background: '#ECFDF5' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#059669', marginRight: 8 }}>✅ Réponse</span>
+                    <span style={{ fontSize: 12, color: '#065F46' }}>{obj.response}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Competitor Notes */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Intel concurrentielle</div>
+            <div style={{ padding: '12px 14px', borderRadius: 10, background: '#FFFBEB', border: '1px solid #D9770633', fontSize: 12, color: '#92400E', lineHeight: 1.6 }}>
+              {playbook.competitorNotes}
+            </div>
+          </div>
+
+          {/* Next Steps */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Prochaines actions</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {playbook.nextSteps.map((step, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <CheckCircle size={14} color="#059669" style={{ flexShrink: 0, marginTop: 2 }} />
+                  <span style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5 }}>{step}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid var(--card-border)', display: 'flex', gap: 10 }}>
+          <button
+            onClick={() => copyText(
+              `SALES PLAYBOOK — ${playbook.accountName}\n\nPOINTS CLÉS:\n${playbook.talkingPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nOBJECTIONS:\n${playbook.objections.map(o => `Q: ${o.objection}\nR: ${o.response}`).join('\n\n')}\n\nCONCURRENCE:\n${playbook.competitorNotes}\n\nACTIONS:\n${playbook.nextSteps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
+              'all'
+            )}
+            style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid var(--card-border)', background: 'var(--body-bg)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+          >
+            {copied === 'all' ? <><CheckCircle size={13} color="#059669" />Copié !</> : <><BookOpen size={13} />Copier le playbook</>}
+          </button>
+          <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#4C1D95', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main page ──────────────────────────────────────────── */
 export default function Account360Page() {
   const params = useParams<{ accountId: string }>();
   const accountId = decodeURIComponent(params.accountId ?? '');
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const [showPlaybook, setShowPlaybook] = useState(false);
+  const [playbookData, setPlaybookData] = useState<PlaybookDraft | null>(null);
+  const [generatingPlaybook, setGeneratingPlaybook] = useState(false);
 
   const { data, isLoading, isError } = useQuery<Account360>({
     queryKey: ['account360', accountId],
@@ -202,15 +320,31 @@ export default function Account360Page() {
     },
   });
 
+  const handleGeneratePlaybook = async () => {
+    setGeneratingPlaybook(true);
+    try {
+      const result = await apiClient.post('/ai-sdr/playbook', { accountId, goal: 'generate sales playbook' }) as PlaybookDraft;
+      setPlaybookData(result);
+      setShowPlaybook(true);
+    } catch {
+      /* toast would need import from sonner — silently fail */
+    } finally {
+      setGeneratingPlaybook(false);
+    }
+  };
+
   const fmt = (iso: string | null) =>
     iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : '—';
 
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-muted)' }}>
-        <Loader2 size={22} className="animate-spin" />
-        <span style={{ fontSize: 15 }}>Chargement du compte…</span>
-      </div>
+      <>
+        {showPlaybook && playbookData && <PlaybookModal playbook={playbookData} onClose={() => setShowPlaybook(false)} />}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, color: 'var(--text-muted)' }}>
+          <Loader2 size={22} className="animate-spin" />
+          <span style={{ fontSize: 15 }}>Chargement du compte…</span>
+        </div>
+      </>
     );
   }
 
@@ -227,6 +361,8 @@ export default function Account360Page() {
   const bd = data.metrics.scoreBreakdown;
 
   return (
+    <>
+    {showPlaybook && playbookData && <PlaybookModal playbook={playbookData} onClose={() => setShowPlaybook(false)} />}
     <div style={{ padding: '24px 28px', maxWidth: 1000, margin: '0 auto' }}>
       {/* Back */}
       <Link href="/accounts">
@@ -261,6 +397,14 @@ export default function Account360Page() {
         >
           <RefreshCw size={14} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
           {refreshing ? 'Calcul…' : 'Recalculer'}
+        </button>
+        <button
+          onClick={handleGeneratePlaybook}
+          disabled={generatingPlaybook}
+          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#4C1D95,#7C3AED)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: generatingPlaybook ? 'not-allowed' : 'pointer', opacity: generatingPlaybook ? 0.7 : 1, fontFamily: 'inherit' }}
+        >
+          {generatingPlaybook ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <BookOpen size={14} />}
+          {generatingPlaybook ? 'Génération…' : 'Playbook IA'}
         </button>
       </div>
 
@@ -388,5 +532,6 @@ export default function Account360Page() {
         </div>
       </div>
     </div>
+    </>
   );
 }

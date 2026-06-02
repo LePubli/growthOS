@@ -379,4 +379,126 @@ Return ONLY valid JSON.`;
   }
 }
 
+
+export interface PlaybookDraft {
+  accountName: string;
+  talkingPoints: string[];
+  objections: { objection: string; response: string }[];
+  competitorNotes: string;
+  nextSteps: string[];
+  generatedBy: "ollama" | "mock";
+  model?: string;
+  contextUsed: { signals: number; memories: number; account: string };
+}
+
+const PLAYBOOK_TALKING_POINTS: Record<string, string[]> = {
+  funding: [
+    "Félicitez pour le financement et montrez que vous suivez leur actualité",
+    "Questionnez sur les objectifs de croissance post-levée (recrutement, nouveaux marchés)",
+    "Montrez comment GrowthOS accélère le time-to-revenue pour les équipes en expansion",
+  ],
+  hiring: [
+    "Reliez le recrutement commercial à leur besoin d'outillage SDR",
+    "Parlez de l'onboarding accéléré grâce à l'IA (réduction du ramp time de 40%)",
+    "Proposez un POC avant la prise de poste des nouvelles recrues",
+  ],
+  tech_change: [
+    "Profitez du changement de stack pour positionner GrowthOS comme complément naturel",
+    "Évoquez l'intégration native avec leur nouveau CRM",
+    "Proposez une démo personnalisée avec leur stack actuelle",
+  ],
+  news: [
+    "Commencez par féliciter/mentionner l'actualité récente pour créer un lien personnel",
+    "Reliez leur croissance à un besoin de structuration commerciale",
+    "Parlez de clients similaires (profil, stade) qui ont accéléré avec GrowthOS",
+  ],
+  leadership_change: [
+    "Adressez-vous au nouveau décideur directement — fenêtre d'opportunité courte",
+    "Proposez un audit gratuit de la stack commerciale actuelle",
+    "Parlez de ROI et de quick wins dans les 90 premiers jours",
+  ],
+};
+
+const COMMON_OBJECTIONS = [
+  {
+    objection: "On est déjà équipés avec un CRM",
+    response: "GrowthOS ne remplace pas votre CRM — il se connecte dessus et ajoute la couche d'intelligence IA qui transforme les données en actions. L'intégration prend moins de 2h.",
+  },
+  {
+    objection: "Ce n'est pas le bon moment, on est en pleine réorganisation",
+    response: "C'est précisément le meilleur moment — les réorganisations créent une fenêtre pour adopter de nouveaux outils sans résistance au changement. On peut démarrer sur un scope réduit.",
+  },
+  {
+    objection: "Votre solution est trop chère",
+    response: "Nos clients récupèrent en moyenne 4h de travail SDR par semaine et augmentent le taux de réponse de 35%. Sur 5 commerciaux, le ROI est positif dès le 2ème mois.",
+  },
+  {
+    objection: "On manque de temps pour mettre ça en place",
+    response: "L'onboarding se fait en 1 session de 45 min. Après ça, l'IA travaille en arrière-plan — aucune saisie supplémentaire n'est requise de votre équipe.",
+  },
+];
+
+function mockPlaybook(
+  account: string,
+  signals: { type: string; title: string }[],
+  memories: { content: string }[],
+): PlaybookDraft {
+  const topSignalType = (signals[0]?.type ?? "news") as keyof typeof PLAYBOOK_TALKING_POINTS;
+  const talkingPoints = PLAYBOOK_TALKING_POINTS[topSignalType] ?? PLAYBOOK_TALKING_POINTS.news;
+
+  const nextSteps = [
+    `Envoyer un premier email de prise de contact personnalisé via AI SDR → mentionner "${signals[0]?.title?.slice(0, 40) ?? "leur actualité récente"}"`,
+    `Planifier un appel de découverte de 20 min cette semaine — utiliser Calendar pour proposer un slot`,
+    `Préparer une démonstration personnalisée avec les cas clients similaires à ${account}`,
+    memories[0] ? `S'appuyer sur le contexte mémoire : "${memories[0].content.slice(0, 60)}…"` : `Enrichir le compte dans Growth Memory avant le prochain contact`,
+  ];
+
+  return {
+    accountName: account,
+    talkingPoints,
+    objections: COMMON_OBJECTIONS,
+    competitorNotes: `Pour ${account}, les alternatives probables sont HubSpot Sales Hub, Salesforce Sales Cloud, ou Pipedrive. Différenciateur clé de GrowthOS : Signal Intelligence temps réel + AI SDR natif + plugin runtime extensible — vs. intégrations tierces coûteuses chez les concurrents.`,
+    nextSteps,
+    generatedBy: "mock",
+    contextUsed: { signals: signals.length, memories: memories.length, account },
+  };
+}
+
 export const aiSDRService = new AISDRService();
+
+// Standalone export for playbook (kept outside class for tree-shaking)
+export async function generatePlaybook(ctx: DraftContext): Promise<PlaybookDraft> {
+  const { accountName, signals, memories } = await buildContext(ctx);
+
+  const promptCtx = buildPromptContext(ctx, accountName, signals, memories);
+  const prompt = `${promptCtx}
+
+Generate a Sales Playbook in French for account "${accountName}".
+Return a JSON object with:
+- talkingPoints: string[] (4 points)
+- objections: array of {objection: string, response: string} (3 objections)
+- competitorNotes: string (competitive intel paragraph)
+- nextSteps: string[] (4 action items)
+Return ONLY valid JSON, no markdown.`;
+
+  const raw = await ollamaGenerate(prompt);
+  if (raw) {
+    try {
+      const p = JSON.parse(raw) as Partial<PlaybookDraft>;
+      if (p.talkingPoints && p.objections && p.nextSteps) {
+        return {
+          accountName,
+          talkingPoints: p.talkingPoints,
+          objections: p.objections,
+          competitorNotes: p.competitorNotes ?? "",
+          nextSteps: p.nextSteps,
+          generatedBy: "ollama",
+          model: OLLAMA_MODEL,
+          contextUsed: { signals: signals.length, memories: memories.length, account: accountName },
+        };
+      }
+    } catch { /* fall through */ }
+  }
+
+  return mockPlaybook(accountName, signals, memories);
+}

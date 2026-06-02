@@ -1,0 +1,63 @@
+# ROLE & OBJECTIVE
+You are the Lead Engineer for GrowthOS.
+Plugins 1, 2, 3, 4, 5, and 8 are active. We have Memory, Meetings, Accounts, AI SDR, Signals, and Workflows.
+Your mission is to implement **Plugin 6: AI Deal Coach**.
+
+This plugin analyzes active deals in the pipeline. It synthesizes data from Meetings, Memory, and Signals to calculate a "Deal Health Score", identify risks, and recommend next steps. It acts as an automated sales manager.
+
+# ARCHITECTURE CONSTRAINTS
+- **Backend**: `artifacts/api-server/src/...`
+- **Frontend**: `artifacts/growthos/src/...`
+- **Database**: PostgreSQL. Reuse existing `deals` or `opportunities` table (add score/risk fields).
+- **AI Mock**: Use a `MockLLMService` to generate risk analysis and recommendations based on context.
+- **EventBus**: Emit `deal.at_risk` or `deal.updated` events so Workflow AI can react.
+
+# PHASE 1: DATABASE & SCORING ENGINE
+1. Create migration: `artifacts/api-server/db/migrations/007_deal_coach.sql`.
+   - Add to `deals` (or `opportunities`) table: 
+     `health_score` (int 0-100), `risk_factors` (jsonb array), `ai_recommendations` (text), `last_coached_at` (timestamp).
+2. Create service: `artifacts/api-server/src/lib/plugin-ai-deal-coach/DealCoachService.ts`.
+   - `analyzeDeal(dealId)`: 
+     1. Fetch deal details.
+     2. Fetch related meetings (transcripts), memory snippets, and recent signals.
+     3. Calculate a mock health score based on activity frequency and sentiment.
+     4. Generate mock risk factors (e.g., "No meeting in 14 days", "Champion left the company").
+     5. Save results to DB and emit `deal.coached` event.
+   - `getAtRiskDeals()`: Returns deals with score < 40.
+
+# PHASE 2: BACKEND API
+1. Create routes: `artifacts/api-server/src/routes/v1/plugins/deal-coach.ts`.
+   - `GET /pipeline/health`: Overview of pipeline health.
+   - `POST /deals/:id/analyze`: Manually trigger analysis for a deal.
+   - `GET /deals/:id/coach`: Returns risk factors and recommendations.
+   - `GET /risks`: List of all at-risk deals.
+2. **Register Routes**: Mount in `artifacts/api-server/src/routes/v1/index.ts`.
+
+# PHASE 3: PLUGIN REGISTRATION
+1. Create manifest: `artifacts/api-server/src/lib/plugin-ai-deal-coach/manifest.ts`.
+   - `id`: "ai-deal-coach"
+   - `dependencies`: ["growth-memory", "meeting-intelligence", "signal-intelligence"]
+   - `permissions`: ["deals:read", "ai:analyze"]
+   - `menuItems`: [{ label: "Deal Coach", path: "/deal-coach", icon: "Target" }]
+2. Update `seed-plugins.ts`.
+
+# PHASE 4: FRONTEND UI
+1. Create page: `artifacts/growthos/src/plugins/ai-deal-coach/DealCoachDashboard.tsx`.
+   - Layout: Pipeline view grouped by stage, but each deal card shows a colored Health Score badge (Green/Yellow/Red).
+   - "At Risk" section at the top highlighting critical deals.
+2. Create component: `artifacts/growthos/src/plugins/ai-deal-coach/DealInsightsPanel.tsx`.
+   - Side panel or modal when clicking a deal.
+   - Shows: "Why is this deal stalling?", "Recommended Next Actions", "Recent Sentiment from Meetings".
+3. **Routing**: Add `/deal-coach` route.
+
+# EXECUTION STEPS
+1. Run Migration (add health_score fields).
+2. Implement DealCoachService (analysis logic + EventBus emit).
+3. Implement Routes.
+4. Build Deal Coach Dashboard & Insights Panel.
+5. **Test End-to-End**:
+   - Go to Deal Coach -> Click "Analyze" on a deal.
+   - See Health Score update and Risk Factors appear.
+   - Go to Workflow AI -> Check if `deal.at_risk` event was logged.
+
+Start implementation now. Output full file contents for every new file.

@@ -1,8 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../../middlewares/auth";
-import { aiSDRService } from "../../../lib/plugin-ai-sdr/AISDRService";
-import { PROMPT_TEMPLATES } from "../../../lib/plugin-ai-sdr/AISDRService";
+import { aiSDRService, generatePlaybook, PROMPT_TEMPLATES } from "../../../lib/plugin-ai-sdr/AISDRService";
 
 const router = Router();
 
@@ -72,6 +71,19 @@ router.post("/sequence", requireAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sequence generation failed" });
+  }
+});
+
+// POST /ai-sdr/playbook — generate sales playbook for an account
+router.post("/playbook", requireAuth, async (req, res) => {
+  const parse = DraftSchema.safeParse({ ...req.body, goal: req.body.goal ?? "generate sales playbook" });
+  if (!parse.success) { res.status(400).json({ error: parse.error.flatten() }); return; }
+  try {
+    const playbook = await generatePlaybook({ ...parse.data, tenantId: req.auth!.tenantId });
+    res.json(playbook);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Playbook generation failed" });
   }
 });
 

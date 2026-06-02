@@ -48,6 +48,7 @@ import MemoryPage from '@/pages/MemoryPage';
 import MeetingListPage from '@/pages/MeetingListPage';
 import SignalFeedPage from '@/pages/SignalFeedPage';
 import AISDRPage from '@/pages/AISDRPage';
+import DealCoachPage from '@/pages/DealCoachPage';
 import MeetingDetailPage from '@/pages/MeetingDetailPage';
 import Account360Page from '@/pages/Account360Page';
 import TeamMetricsPage from '@/pages/TeamMetricsPage';
@@ -113,6 +114,9 @@ function AppRoutes() {
       </Route>
       <Route path="/ai-sdr">
         {() => <DashboardLayout><AISDRPage /></DashboardLayout>}
+      </Route>
+      <Route path="/deal-coach">
+        {() => <DashboardLayout><DealCoachPage /></DashboardLayout>}
       </Route>
       <Route path="/signals/:id">
         {() => <DashboardLayout><SignalDetailPage /></DashboardLayout>}
