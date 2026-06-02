@@ -76,6 +76,17 @@ const BUILT_IN_PLUGINS = [
     routes: [{ path: "/meetings", label: "Réunions", icon: "Video" }],
   },
   {
+    id: "ai-sdr",
+    name: "AI SDR",
+    version: "1.0.0",
+    description: "SDR semi-autonome propulsé par IA — rédige emails hyper-personnalisés et séquences multi-touch en synthétisant Memory, Account Intelligence et Signals",
+    author: "GrowthOS",
+    dependencies: ["growth-memory", "account-intelligence", "signal-intelligence"],
+    permissions: ["ai:generate", "emails:write", "signals:read", "memory:read", "accounts:read"],
+    uiSlots: ["dashboard-widgets"],
+    routes: [{ path: "/ai-sdr", label: "AI Assistant", icon: "Bot" }],
+  },
+  {
     id: "signal-intelligence",
     name: "Signal Intelligence",
     version: "1.0.0",

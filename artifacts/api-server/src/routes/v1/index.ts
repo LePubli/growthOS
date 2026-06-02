@@ -20,6 +20,7 @@ import analyticsRouter from "./analytics";
 import pluginsRouter from "./plugins";
 import memoryRouter from "./memory";
 import meetingsRouter from "./meetings";
+import aiSdrRouter from "./plugins/ai-sdr";
 
 const router = Router();
 
@@ -43,5 +44,6 @@ router.use("/analytics", requireAuth, analyticsRouter);
 router.use("/plugins", pluginsRouter);
 router.use("/memory", memoryRouter);
 router.use("/meetings", meetingsRouter);
+router.use("/ai-sdr", aiSdrRouter);
 
 export default router;

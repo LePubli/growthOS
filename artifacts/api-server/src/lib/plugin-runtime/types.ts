@@ -22,6 +22,8 @@ export const PluginPermission = z.enum([
   "meetings:write",
   "accounts:read",
   "accounts:write",
+  "ai:generate",
+  "emails:write",
 ]);
 export type PluginPermission = z.infer<typeof PluginPermission>;
 

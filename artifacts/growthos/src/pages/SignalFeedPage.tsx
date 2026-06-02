@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Radar, DollarSign, Users, Newspaper, Cpu, UserCheck,
   Loader2, RefreshCw, Filter, CheckCircle, Eye, Zap,
-  Flame, Thermometer, Wind, Building, ChevronRight, X,
+  Flame, Thermometer, Wind, Building, ChevronRight, X, Bot,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -147,6 +147,11 @@ function SignalCard({ signal, onStatusChange }: { signal: Signal; onStatusChange
           <Link href={`/accounts/${encodeURIComponent(signal.company)}`}>
             <button style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 8, border: '1px solid #2563EB44', background: '#EFF6FF', color: '#2563EB', cursor: 'pointer' }}>
               <ChevronRight size={11} />Vue 360°
+            </button>
+          </Link>
+          <Link href={`/ai-sdr?account=${encodeURIComponent(signal.company)}&goal=${encodeURIComponent('book a demo meeting')}`}>
+            <button style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 8, border: '1px solid #7C3AED44', background: '#F5F3FF', color: '#7C3AED', cursor: 'pointer' }}>
+              <Bot size={11} />Rédiger draft
             </button>
           </Link>
           {signal.status === 'actioned' && (

@@ -1,0 +1,52 @@
+# ROLE & OBJECTIVE
+You are the Lead Engineer for GrowthOS.
+Plugins 1, 2, 3, 5, and 8 are active. We have Memory, Meetings, Accounts, Signals, and Workflows.
+Your mission is to implement **Plugin 4: AI SDR**.
+
+This plugin acts as a semi-autonomous Sales Development Representative. It drafts hyper-personalized emails and messages by synthesizing context from Growth Memory, Account Intelligence, and Signals.
+
+# ARCHITECTURE CONSTRAINTS
+- **Backend**: `artifacts/api-server/src/...`
+- **Frontend**: `artifacts/growthos/src/...`
+- **AI Mock**: Create a `MockLLMService` that generates realistic, context-aware text (do not use real OpenAI/Claude APIs yet, just return structured templates based on the inputs).
+- **Integration**: It MUST read from `MemoryService` and `SignalService` to build its context window.
+
+# PHASE 1: AI DRAFTING SERVICE (Backend)
+1. Create service: `artifacts/api-server/src/lib/plugin-ai-sdr/AISDRService.ts`.
+   - `draftEmail(context)`: Takes account data, recent signals, and memory snippets. Returns a JSON object: `{ subject, body, tone }`.
+   - `draftLinkedInMessage(context)`: Returns a shorter, conversational message.
+   - `generateSequence(context)`: Returns a mock 3-step email sequence.
+
+2. Create routes: `artifacts/api-server/src/routes/v1/plugins/ai-sdr.ts`.
+   - `POST /draft/email`: Payload `{ accountId, goal }`.
+   - `POST /draft/linkedin`: Payload `{ accountId, goal }`.
+   - `GET /templates`: Returns saved prompt templates.
+
+3. **Register Routes**: Mount in `artifacts/api-server/src/routes/v1/index.ts`.
+
+# PHASE 2: PLUGIN REGISTRATION
+1. Create manifest: `artifacts/api-server/src/lib/plugin-ai-sdr/manifest.ts`.
+   - `id`: "ai-sdr"
+   - `dependencies`: ["growth-memory", "account-intelligence", "signal-intelligence"]
+   - `permissions`: ["ai:generate", "emails:write"]
+   - `menuItems`: [{ label: "AI Assistant", path: "/ai-sdr", icon: "Bot" }]
+2. Update `seed-plugins.ts`.
+
+# PHASE 3: FRONTEND UI
+1. Create page: `artifacts/growthos/src/plugins/ai-sdr/AISDRPage.tsx`.
+   - Layout: A "Copilot" style interface.
+   - Input: "Who are we targeting and what is the goal?" (e.g., "Target Acme Corp, goal: book a meeting").
+   - Output: Tabs showing "Draft Email", "Draft LinkedIn", "Sequence".
+   - Action: "Copy to Clipboard" and "Send to Workflow" (sends the draft to the Workflow queue).
+2. **Routing**: Add `/ai-sdr` route.
+
+# EXECUTION STEPS
+1. Implement AISDRService (Mock LLM logic).
+2. Implement Routes.
+3. Build Copilot UI.
+4. **Test End-to-End**: 
+   - Go to `/ai-sdr`.
+   - Enter a target account and goal.
+   - See the AI generate a highly relevant draft using mock data from Memory/Signals.
+
+Start implementation now. Output full file contents.
