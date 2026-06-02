@@ -168,6 +168,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const SQL_PLUGIN_STATES = `
+CREATE TABLE IF NOT EXISTS plugin_states (
+  plugin_id TEXT PRIMARY KEY,
+  state     TEXT NOT NULL DEFAULT 'ACTIVE',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+`;
+
+export async function runPluginStateMigration(): Promise<void> {
+  await pool.query(SQL_PLUGIN_STATES);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

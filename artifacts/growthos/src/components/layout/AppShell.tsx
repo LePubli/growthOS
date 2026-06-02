@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
 import { CommandPalette } from '@/components/command/CommandPalette';
 import { NotificationsDrawer } from '@/components/common/NotificationsDrawer';
+import { useRuntimePlugins } from '@/hooks/use-plugins';
 
 interface NavItem {
   href: string;
@@ -18,6 +19,8 @@ interface NavItem {
   icon: React.ReactNode;
   badge?: number;
   exact?: boolean;
+  /** If set, this item is only shown when the given plugin is ACTIVE */
+  pluginId?: string;
 }
 
 interface NavSection {
@@ -46,7 +49,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Sourcing',
     items: [
       { href: '/sourcing', label: 'Scraping', icon: <Search size={16} /> },
-      { href: '/signals', label: 'Signaux', icon: <Zap size={16} /> },
+      { href: '/signals', label: 'Signaux', icon: <Zap size={16} />, pluginId: 'ai-signals' },
       { href: '/contacts', label: 'Contact Intel', icon: <User size={16} /> },
       { href: '/map', label: 'Carte & Tournée', icon: <Map size={16} /> },
       { href: '/import', label: 'Import CSV', icon: <Upload size={16} /> },
@@ -60,7 +63,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/inbound', label: 'Inbound', icon: <Download size={16} /> },
       { href: '/abm', label: 'ABM / TAM', icon: <Target size={16} /> },
       { href: '/templates', label: 'Templates Email', icon: <FileText size={16} /> },
-      { href: '/crm-sync', label: 'CRM Sync', icon: <RefreshCw size={16} /> },
+      { href: '/crm-sync', label: 'CRM Sync', icon: <RefreshCw size={16} />, pluginId: 'crm-sync' },
     ],
   },
   {
@@ -109,6 +112,7 @@ function SidebarContent({
   tenant,
   userInitials,
   onUserMenu,
+  activePluginIds,
 }: {
   collapsed: boolean;
   onNavClick?: () => void;
@@ -118,6 +122,8 @@ function SidebarContent({
   tenant: any;
   userInitials: string;
   onUserMenu: () => void;
+  /** null = still loading (show everything); Set = filter by plugin state */
+  activePluginIds: Set<string> | null;
 }) {
   return (
     <>
@@ -136,47 +142,56 @@ function SidebarContent({
       </div>
 
       <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
-        {NAV_SECTIONS.map(section => (
-          <div key={section.label}>
-            {!collapsed && (
-              <div style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
-                {section.label}
-              </div>
-            )}
-            {section.items.map(item => {
-              const active = isActive(item);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={collapsed ? item.label : undefined}
-                  onClick={onNavClick}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: collapsed ? '8px 0' : '7px 12px',
-                    margin: '1px 6px', borderRadius: 8, textDecoration: 'none',
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    transition: 'background 0.15s',
-                    background: active ? 'var(--color-primary)' : 'transparent',
-                    color: active ? '#fff' : 'var(--sidebar-text)',
-                  }}
-                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--sidebar-hover)'; }}
-                  onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                >
-                  <span style={{ flexShrink: 0, opacity: active ? 1 : 0.8 }}>{item.icon}</span>
-                  {!collapsed && (
-                    <>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: active ? 600 : 400 }}>{item.label}</span>
-                      {item.badge !== undefined && item.badge > 0 && (
-                        <span style={{ background: '#DC3545', color: '#fff', borderRadius: 9999, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{item.badge}</span>
-                      )}
-                    </>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+        {NAV_SECTIONS.map(section => {
+          // Filter out items whose controlling plugin is not active
+          const visibleItems = section.items.filter(item =>
+            !item.pluginId ||
+            !activePluginIds ||
+            activePluginIds.has(item.pluginId)
+          );
+          if (visibleItems.length === 0) return null;
+          return (
+            <div key={section.label}>
+              {!collapsed && (
+                <div style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
+                  {section.label}
+                </div>
+              )}
+              {visibleItems.map(item => {
+                const active = isActive(item);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    title={collapsed ? item.label : undefined}
+                    onClick={onNavClick}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: collapsed ? '8px 0' : '7px 12px',
+                      margin: '1px 6px', borderRadius: 8, textDecoration: 'none',
+                      justifyContent: collapsed ? 'center' : 'flex-start',
+                      transition: 'background 0.15s',
+                      background: active ? 'var(--color-primary)' : 'transparent',
+                      color: active ? '#fff' : 'var(--sidebar-text)',
+                    }}
+                    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--sidebar-hover)'; }}
+                    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  >
+                    <span style={{ flexShrink: 0, opacity: active ? 1 : 0.8 }}>{item.icon}</span>
+                    {!collapsed && (
+                      <>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: active ? 600 : 400 }}>{item.label}</span>
+                        {item.badge !== undefined && item.badge > 0 && (
+                          <span style={{ background: '#DC3545', color: '#fff', borderRadius: 9999, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{item.badge}</span>
+                        )}
+                      </>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          );
+        })}
       </nav>
 
       {!collapsed && (
@@ -209,6 +224,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Live plugin state — sidebar items with a pluginId are hidden when that plugin is DISABLED
+  const { data: pluginsData } = useRuntimePlugins();
+  const activePluginIds: Set<string> | null = pluginsData
+    ? new Set((pluginsData.plugins ?? []).filter(p => p.state === 'ACTIVE').map(p => p.id))
+    : null; // null while loading → show all items (no flash)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -290,6 +311,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           tenant={tenant}
           userInitials={userInitials}
           onUserMenu={() => setUserMenuOpen(o => !o)}
+          activePluginIds={activePluginIds}
         />
       </aside>
 

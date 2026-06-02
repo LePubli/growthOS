@@ -1,5 +1,7 @@
 import { pluginManager } from "./plugin-manager";
 import { logger } from "../logger";
+import { loadDisabledPluginIds } from "./persistence";
+import { runPluginStateMigration } from "@workspace/db";
 
 /**
  * Built-in demo plugins that ship with GrowthOS.
@@ -56,6 +58,13 @@ const BUILT_IN_PLUGINS = [
 export async function seedBuiltInPlugins(): Promise<void> {
   logger.info("Seeding built-in plugins...");
 
+  // Ensure plugin_states table exists before we try to read from it
+  try {
+    await runPluginStateMigration();
+  } catch (err) {
+    logger.warn({ err }, "plugin_states migration failed — state persistence unavailable");
+  }
+
   for (const manifest of BUILT_IN_PLUGINS) {
     try {
       pluginManager.register(manifest);
@@ -64,7 +73,19 @@ export async function seedBuiltInPlugins(): Promise<void> {
     }
   }
 
+  // Activate all plugins following DAG order
   await pluginManager.activateAll();
+
+  // Restore previously-disabled states from DB
+  const disabledIds = await loadDisabledPluginIds();
+  for (const id of disabledIds) {
+    try {
+      await pluginManager.disable(id);
+      logger.info({ pluginId: id }, "Plugin disabled state restored from DB");
+    } catch (err) {
+      logger.warn({ pluginId: id, err }, "Could not restore disabled state for plugin");
+    }
+  }
 
   const active = pluginManager.active();
   logger.info(

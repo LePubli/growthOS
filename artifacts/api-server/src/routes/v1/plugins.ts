@@ -3,6 +3,7 @@ import { requireAuth } from "../../middlewares/auth";
 import { pluginManager } from "../../lib/plugin-runtime";
 import { logger } from "../../lib/logger";
 import { writeAuditLog, fetchAuditLogs } from "../../lib/plugin-runtime/audit";
+import { savePluginState } from "../../lib/plugin-runtime/persistence";
 
 const router = Router();
 
@@ -101,6 +102,7 @@ router.post("/:id/disable", requireAuth, async (req, res) => {
 
   try {
     await pluginManager.disable(pluginId);
+    await savePluginState(pluginId, "DISABLED");
 
     await writeAuditLog({
       pluginId,
@@ -139,6 +141,7 @@ router.post("/:id/enable", requireAuth, async (req, res) => {
 
     const after = pluginManager.all().find((r) => r.manifest.id === pluginId);
     const succeeded = after?.state === "ACTIVE";
+    await savePluginState(pluginId, succeeded ? "ACTIVE" : "DISABLED");
 
     await writeAuditLog({
       pluginId,
