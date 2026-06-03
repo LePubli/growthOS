@@ -1,0 +1,57 @@
+# ROLE & OBJECTIVE
+You are the Lead Principal Engineer and QA Director for GrowthOS.
+The application has 10 plugins implemented but suffers from:
+- Broken route audit tool at `/route-audit`
+- UI bugs (CRM map not displaying, blank pages, non-functional buttons)
+- Unknown 500 errors in production
+- No plugin marketplace or pack system
+- Unclear if the core is 100% stable
+
+Your mission is to perform a **COMPLETE SYSTEM AUDIT**, fix all critical issues, and implement a **Plugin Marketplace & Pack System** so the platform is ready for commercial deployment.
+
+# PHASE 1: BACKEND COMPREHENSIVE AUDIT
+
+## 1.1 Fix Route Audit Endpoint
+Create or fix: `artifacts/api-server/src/routes/v1/audit.ts`
+
+Implement a robust audit endpoint that:
+- Lists ALL registered plugins with their lifecycle state
+- For each plugin, lists ALL declared API routes
+- Tests each route by making internal HTTP calls (use supertest or axios)
+- Captures real HTTP status codes (200, 404, 500, 401)
+- Detects missing dependencies between plugins
+- Checks EventBus subscribers are properly registered
+- Returns structured JSON with issues flagged
+
+```typescript
+// Example response structure
+{
+  "timestamp": "2026-06-01T12:00:00Z",
+  "summary": {
+    "totalPlugins": 13,
+    "activePlugins": 12,
+    "disabledPlugins": 1,
+    "errorPlugins": 0,
+    "totalRoutes": 47,
+    "workingRoutes": 45,
+    "brokenRoutes": 2
+  },
+  "plugins": [
+    {
+      "id": "crm-sync",
+      "state": "ACTIVE",
+      "version": "1.0.0",
+      "dependencies": [],
+      "routes": [
+        { "method": "GET", "path": "/api/v1/prospects", "status": 200, "responseTime": 12 },
+        { "method": "POST", "path": "/api/v1/prospects", "status": 201, "responseTime": 45 }
+      ],
+      "eventSubscribers": ["prospect.created", "prospect.updated"],
+      "issues": []
+    }
+  ],
+  "criticalIssues": [
+    "Plugin 'revenue-intelligence' route /forecast returns 500",
+    "Plugin 'meeting-intelligence' missing component for route /meetings/:id"
+  ]
+}

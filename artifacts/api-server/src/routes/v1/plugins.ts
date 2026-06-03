@@ -4,6 +4,7 @@ import { pluginManager } from "../../lib/plugin-runtime";
 import { logger } from "../../lib/logger";
 import { writeAuditLog, fetchAuditLogs } from "../../lib/plugin-runtime/audit";
 import { savePluginState } from "../../lib/plugin-runtime/persistence";
+import { packManager } from "../../lib/plugin-packs/PackManager";
 
 const router = Router();
 
@@ -162,6 +163,60 @@ router.post("/:id/enable", requireAuth, async (req, res) => {
     // 🔍 LOG EXPLICITE POUR DEBUGUER LE 400
     logger.error({ err, pluginId, userId }, "Failed to enable plugin");
     const message = err instanceof Error ? err.message : "Dependency or configuration error";
+    res.status(400).json({ error: message });
+  }
+});
+
+/**
+ * GET /api/v1/plugins/marketplace
+ * Returns available packs and individual plugins with their live status.
+ */
+router.get("/marketplace", requireAuth, (_req, res) => {
+  const packs = packManager.getPacksWithStatus();
+  const plugins = pluginManager.all().map((r) => pluginManager.toStatusResponse(r));
+  res.json({ packs, plugins, generatedAt: new Date().toISOString() });
+});
+
+/**
+ * POST /api/v1/plugins/packs/install
+ * Install all plugins in a given pack by enabling any that are disabled.
+ * Body: { packId: string }
+ */
+router.post("/packs/install", requireAuth, async (req, res) => {
+  const { packId } = req.body as { packId?: string };
+  const { userId, email } = getUserInfo(req);
+
+  if (!packId || typeof packId !== "string") {
+    return res.status(400).json({ error: "packId is required" });
+  }
+
+  const pack = packManager.getPack(packId);
+  if (!pack) {
+    return res.status(404).json({ error: `Pack "${packId}" not found` });
+  }
+
+  try {
+    const result = await packManager.installPack(packId);
+
+    await writeAuditLog({
+      pluginId: `pack:${packId}`,
+      pluginName: pack.name,
+      action: "REGISTERED",
+      actorUserId: userId,
+      actorEmail: email,
+      metadata: {
+        packId,
+        installedCount: result.installedCount,
+        failedCount: result.failedCount,
+        alreadyActiveCount: result.alreadyActiveCount,
+      },
+    });
+
+    logger.info({ packId, userId, result }, "Pack installed via API");
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    logger.error({ err, packId, userId }, "Pack installation failed");
     res.status(400).json({ error: message });
   }
 });
