@@ -25,6 +25,7 @@ import dealCoachRouter from "./plugins/deal-coach";
 import revenueRouter from "./plugins/revenue";
 import knowledgeRouter from "./plugins/knowledge";
 import executiveRouter from "./plugins/executive";
+import sourcingRouter from "./sourcing";
 
 const router = Router();
 
@@ -53,5 +54,6 @@ router.use("/deal-coach", dealCoachRouter);
 router.use("/revenue", revenueRouter);
 router.use("/knowledge", knowledgeRouter);
 router.use("/executive", executiveRouter);
+router.use("/sourcing", sourcingRouter);
 
 export default router;

@@ -6,6 +6,7 @@ import {
   Bot, User, Webhook, BarChart2, Download, Zap,
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
+  Sparkles, TrendingUp, LineChart, BookOpen, Crown,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -64,6 +65,16 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/abm', label: 'ABM / TAM', icon: <Target size={16} /> },
       { href: '/templates', label: 'Templates Email', icon: <FileText size={16} /> },
       { href: '/crm-sync', label: 'CRM Sync', icon: <RefreshCw size={16} />, pluginId: 'crm-sync' },
+    ],
+  },
+  {
+    label: 'IA & Revenue',
+    items: [
+      { href: '/ai-sdr', label: 'AI SDR', icon: <Sparkles size={16} />, pluginId: 'ai-sdr' },
+      { href: '/deal-coach', label: 'Deal Coach', icon: <TrendingUp size={16} />, pluginId: 'ai-deal-coach' },
+      { href: '/revenue', label: 'Revenue Intel.', icon: <LineChart size={16} />, pluginId: 'revenue-intelligence' },
+      { href: '/knowledge', label: 'Base de Connais.', icon: <BookOpen size={16} />, pluginId: 'knowledge-base' },
+      { href: '/executive', label: 'Command Center', icon: <Crown size={16} />, pluginId: 'executive-command' },
     ],
   },
   {
