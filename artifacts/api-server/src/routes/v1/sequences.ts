@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@workspace/db";
 import { sequencesTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
+import { createNotification } from "../../services/notification.service";
 
 const router = Router();
 
@@ -86,6 +87,55 @@ router.delete("/:id", async (req, res) => {
     and(eq(sequencesTable.id, req.params.id), eq(sequencesTable.tenantId, req.auth!.tenantId))
   );
   res.json({ ok: true });
+});
+
+/**
+ * POST /sequences/:id/events — simulate inbound email events
+ * Body: { type: "reply" | "open", contact?: string, subject?: string, openCount?: number }
+ * Triggers a push notification when:
+ *   - type === "reply"  (always)
+ *   - type === "open"   and openCount >= 3
+ */
+router.post("/:id/events", async (req, res) => {
+  const [seq] = await db.select().from(sequencesTable)
+    .where(and(eq(sequencesTable.id, req.params.id), eq(sequencesTable.tenantId, req.auth!.tenantId)))
+    .limit(1);
+  if (!seq) { res.status(404).json({ error: "Séquence introuvable" }); return; }
+
+  const eventSchema = z.object({
+    type: z.enum(["reply", "open"]),
+    contact: z.string().optional(),
+    subject: z.string().optional(),
+    openCount: z.number().int().optional(),
+  });
+  const parse = eventSchema.safeParse(req.body);
+  if (!parse.success) { res.status(400).json({ error: "Données invalides" }); return; }
+
+  const { type, contact, subject, openCount = 1 } = parse.data;
+
+  if (type === "reply") {
+    createNotification({
+      type: "email",
+      title: "Réponse reçue ✉️",
+      body: `${contact ?? "Un contact"} a répondu à "${subject ?? seq.name}".`,
+      href: `/sequences/${seq.id}`,
+      tenantId: req.auth!.tenantId,
+      userId: req.auth!.userId,
+    }).catch(() => {});
+  }
+
+  if (type === "open" && openCount >= 3) {
+    createNotification({
+      type: "email",
+      title: "Email très consulté 👀",
+      body: `${contact ?? "Un contact"} a ouvert "${subject ?? seq.name}" ${openCount}× — signe d'intérêt fort.`,
+      href: `/sequences/${seq.id}`,
+      tenantId: req.auth!.tenantId,
+      userId: req.auth!.userId,
+    }).catch(() => {});
+  }
+
+  res.json({ ok: true, type, triggered: type === "reply" || (type === "open" && openCount >= 3) });
 });
 
 export default router;

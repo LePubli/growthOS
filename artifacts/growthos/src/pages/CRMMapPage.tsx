@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
-import { MapPin, Navigation, Route, Search, Phone, Mail, X, RotateCcw, List } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MapPin, Navigation, Route, Search, Phone, Mail, X, RotateCcw, List, Map as MapIcon } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import apiClient from '@/lib/api-client';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Fix Leaflet default icon paths broken by Vite bundling
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -231,7 +232,7 @@ export default function CRMMapPage() {
       </div>
 
       {/* ── MAP ──────────────────────────────────────── */}
-      <div style={{ flex: 1, position: 'relative' }}>
+      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
         {/* Toggle sidebar button */}
         <button onClick={() => setSidebarOpen(o => !o)}
           style={{ position: 'absolute', top: 12, left: 12, zIndex: 1000, width: 34, height: 34, borderRadius: 8, border: 'none', background: 'var(--card-bg)', boxShadow: '0 2px 8px rgba(0,0,0,.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
@@ -249,11 +250,19 @@ export default function CRMMapPage() {
           ))}
         </div>
 
-        {/* Leaflet map */}
+        {/* Leaflet map — wrapped in ErrorBoundary so a Leaflet crash doesn't blank the page */}
+        <ErrorBoundary
+          label="Carte indisponible pour ce compte"
+          fallback={
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, color: 'var(--text-muted)' }}>
+              <MapIcon size={36} style={{ opacity: 0.3 }} />
+              <span style={{ fontSize: 13 }}>Carte indisponible — rechargez la page</span>
+            </div>
+          }>
         <MapContainer
           center={center}
           zoom={13}
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', minHeight: 400 }}
           zoomControl={false}
         >
           {/* OpenStreetMap tiles — 100% open source, no API key needed */}
@@ -317,6 +326,7 @@ export default function CRMMapPage() {
             );
           })}
         </MapContainer>
+        </ErrorBoundary>
 
         {/* Selected prospect card (bottom center) */}
         {selected && (

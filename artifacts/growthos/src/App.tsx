@@ -58,6 +58,7 @@ import TeamMetricsPage from '@/pages/TeamMetricsPage';
 import CalendarPage from '@/pages/CalendarPage';
 import ProposalsPage from '@/pages/ProposalsPage';
 import SharedDashboardsPage from '@/pages/SharedDashboardsPage';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -265,9 +266,11 @@ export default function App() {
   return (
     <ThemeProvider>
       <QueryProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <AppRoutes />
-        </WouterRouter>
+        <ErrorBoundary label="L'application a rencontré une erreur critique">
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <AppRoutes />
+          </WouterRouter>
+        </ErrorBoundary>
         <Toaster richColors position="top-right" />
       </QueryProvider>
     </ThemeProvider>

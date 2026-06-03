@@ -1,0 +1,40 @@
+# ROLE & OBJECTIVE
+You are the Senior QA and DevOps Engineer for GrowthOS.
+The application is functional but suffers from silent failures (500/405 errors in logs, unresponsive buttons, missing pages, no user feedback).
+
+Your mission is to implement a **Comprehensive Error Tracking and Observability Layer** across the entire stack. We need to clearly identify, log, and display every bug.
+
+# PHASE 1: BACKEND GLOBAL ERROR HANDLING (Node/Express)
+1. **Global Error Middleware**: Create `artifacts/api-server/src/middlewares/errorHandler.ts`.
+   - Catch all unhandled exceptions and async errors.
+   - Format errors into a standard JSON structure: `{ statusCode, message, path, timestamp, traceId }`.
+   - Log full stack traces using the existing `logger` (level: error).
+2. **Request Tracing**: Create `artifacts/api-server/src/middlewares/requestLogger.ts`.
+   - Generate a unique `traceId` for every request.
+   - Log the start and end of every request, including the time taken.
+   - If a request fails (4xx or 5xx), log the exact payload/body that caused the crash.
+3. **Wiring**: Ensure these middlewares are at the very end of the Express app stack (after routes).
+4. **405 & 404 Catch-all**: Add a final catch-all route that returns a clear JSON error for undefined routes/methods.
+
+# PHASE 2: FRONTEND ERROR BOUNDARIES & FEEDBACK (React)
+1. **Toast Notification System**: Install a lightweight toast library (e.g., `sonner` or `react-hot-toast`) if not present.
+2. **Global React Query Error Handler**:
+   - Create a hook or utility `artifacts/growthos/src/lib/query-errors.ts`.
+   - Configure TanStack Query `onError` globally: Any failed API call (non-2xx) must trigger a Toast notification showing the error message from the backend.
+3. **React Error Boundary**:
+   - Create `artifacts/growthos/src/components/ErrorBoundary.tsx`.
+   - Wrap the main App or layout with it. If a plugin UI crashes, it shows a "Component crashed" fallback instead of a blank screen.
+4. **Loading States**: Ensure all buttons that trigger API calls (e.g., "Disable Plugin", "Generate Email") show a loading spinner and are disabled while `isPending` is true.
+
+# PHASE 3: ROUTE & PLUGIN AUDIT SCRIPT (Backend)
+1. Create a script: `artifacts/api-server/src/scripts/audit-routes.ts`.
+2. This script must start the Express app in a test mode, list all registered routes (method + path), and verify they return 200/201/304 or proper auth errors (401).
+3. It should explicitly flag any route that returns 500 or 405.
+4. Output the report to the console.
+
+# EXECUTION RULES
+- Do not change the business logic of the plugins. Focus ONLY on error handling, logging, and UI feedback.
+- Ensure the frontend Toast system intercepts Axios/Fetch errors globally.
+- Output full file contents for all new files.
+
+Start with Phase 1 (Backend Global Error Handling) and Phase 2 (Frontend Feedback).

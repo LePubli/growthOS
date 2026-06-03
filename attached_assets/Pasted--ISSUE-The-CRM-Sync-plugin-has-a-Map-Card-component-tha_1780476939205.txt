@@ -1,0 +1,32 @@
+# ISSUE
+The "CRM Sync" plugin has a Map Card component that is bugged (not displaying, showing a blank screen, or throwing an error). 
+
+# OBJECTIVE
+Diagnose and fix the Map component in the CRM Sync plugin to make it display correctly, using a free and reliable provider (OpenStreetMap via React-Leaflet) so we don't need Google Maps API keys.
+
+# DIAGNOSTIC & FIX STEPS
+
+## 1. Locate and Analyze
+- Find the Map Card component inside the CRM Sync plugin frontend code (likely in `artifacts/growthos/src/plugins/crm-sync/...` or `artifacts/growthos/src/components/...`).
+- Identify why it's currently failing (Missing CSS height? Missing API key? Invalid coordinates?).
+
+## 2. Install Dependencies (if needed)
+- Ensure `leaflet` and `react-leaflet` are installed in the frontend package. If not, run: `pnpm add leaflet react-leaflet` and `pnpm add -D @types/leaflet`.
+
+## 3. Refactor the Map Component
+- Rewrite the map component using `react-leaflet`.
+- **CRITICAL CSS FIX**: Ensure the map container has a strict CSS height (e.g., `h-64` or `h-80` in Tailwind, or `height: 300px;`). Without this, Leaflet will not render.
+- Import Leaflet's default CSS: `import 'leaflet/dist/leaflet.css';` at the top of the file.
+- **Data Safety**: If the account/prospect data does not contain valid `latitude` and `longitude`, default to a fallback location (e.g., Paris: `[48.8566, 2.3522]`) so the component never crashes.
+- Add a simple, styled marker on the map.
+
+## 4. Frontend Error Boundary Check
+- Ensure this Map component is wrapped in a safe `div` with a loading state. If the map library fails to load, it should show a graceful fallback UI (e.g., "Carte indisponible pour ce compte") instead of crashing the whole CRM page.
+
+# EXECUTION RULES
+- Do not break the rest of the CRM Sync UI.
+- Use OpenStreetMap tiles: `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`.
+- Output the full corrected code for the Map component.
+- Verify it compiles without errors.
+
+Start implementation now.
