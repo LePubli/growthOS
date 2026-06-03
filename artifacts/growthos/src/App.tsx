@@ -50,6 +50,8 @@ import SignalFeedPage from '@/pages/SignalFeedPage';
 import AISDRPage from '@/pages/AISDRPage';
 import DealCoachPage from '@/pages/DealCoachPage';
 import RevenueDashboard from '@/plugins/revenue-intelligence/RevenueDashboard';
+import KnowledgeBasePage from '@/plugins/knowledge-base/KnowledgeBasePage';
+import CommandCenterPage from '@/plugins/executive-command/CommandCenterPage';
 import MeetingDetailPage from '@/pages/MeetingDetailPage';
 import Account360Page from '@/pages/Account360Page';
 import TeamMetricsPage from '@/pages/TeamMetricsPage';
@@ -121,6 +123,12 @@ function AppRoutes() {
       </Route>
       <Route path="/revenue">
         {() => <DashboardLayout><RevenueDashboard /></DashboardLayout>}
+      </Route>
+      <Route path="/knowledge">
+        {() => <DashboardLayout><KnowledgeBasePage /></DashboardLayout>}
+      </Route>
+      <Route path="/executive">
+        {() => <DashboardLayout><CommandCenterPage /></DashboardLayout>}
       </Route>
       <Route path="/signals/:id">
         {() => <DashboardLayout><SignalDetailPage /></DashboardLayout>}

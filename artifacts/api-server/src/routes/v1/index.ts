@@ -23,6 +23,8 @@ import meetingsRouter from "./meetings";
 import aiSdrRouter from "./plugins/ai-sdr";
 import dealCoachRouter from "./plugins/deal-coach";
 import revenueRouter from "./plugins/revenue";
+import knowledgeRouter from "./plugins/knowledge";
+import executiveRouter from "./plugins/executive";
 
 const router = Router();
 
@@ -49,5 +51,7 @@ router.use("/meetings", meetingsRouter);
 router.use("/ai-sdr", aiSdrRouter);
 router.use("/deal-coach", dealCoachRouter);
 router.use("/revenue", revenueRouter);
+router.use("/knowledge", knowledgeRouter);
+router.use("/executive", executiveRouter);
 
 export default router;

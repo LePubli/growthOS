@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
-import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity, Building, TrendingUp } from 'lucide-react';
+import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity, Building, TrendingUp, Crown, Target, ShieldAlert } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/lib/api-client';
 import { OnboardingWizard } from '@/components/common/OnboardingWizard';
@@ -50,6 +50,62 @@ function DashboardWidget({ wid, value, onRemove }: {wid:string;value:string;onRe
         <div style={{fontSize:14,color:'var(--text-muted)'}}>{w.label}</div>
       </div>
     </Link>
+  );
+}
+
+function RevenueIntelWidget() {
+  const { data: kpis } = useQuery<any>({
+    queryKey: ['dashboard-revenue-kpis'],
+    queryFn: () => apiClient.get('/revenue/kpis'),
+    staleTime: 120000,
+  });
+  const { data: forecast = [] } = useQuery<any[]>({
+    queryKey: ['dashboard-revenue-forecast'],
+    queryFn: () => apiClient.get('/revenue/forecast'),
+    staleTime: 120000,
+  });
+
+  if (!kpis) return null;
+
+  const f90 = forecast.find((f: any) => f.period === '90d');
+  const fmt = (v: number) => v >= 1000000
+    ? `${(v / 1000000).toFixed(1)}M€`
+    : v >= 1000 ? `${(v / 1000).toFixed(0)}k€` : `${v}€`;
+
+  const items = [
+    { icon: <TrendingUp size={14} color="#fff" />, bg: 'linear-gradient(135deg,#059669,#10B981)', label: 'Forecast 90j', value: fmt(f90?.weightedValue ?? 0), href: '/revenue' },
+    { icon: <Crown size={14} color="#fff" />, bg: 'linear-gradient(135deg,#1E1B4B,#4F46E5)', label: 'Win Rate', value: `${(kpis.winRate ?? 0).toFixed(1)}%`, href: '/revenue' },
+    { icon: <Target size={14} color="#fff" />, bg: 'linear-gradient(135deg,#2563EB,#3B82F6)', label: 'Pipeline', value: fmt(kpis.totalPipelineValue ?? 0), href: '/pipeline' },
+    { icon: <ShieldAlert size={14} color="#fff" />, bg: 'linear-gradient(135deg,#DC2626,#EF4444)', label: 'À risque', value: String(kpis.atRiskCount ?? 0), href: '/deal-coach', alert: (kpis.atRiskCount ?? 0) > 0 },
+  ];
+
+  return (
+    <div className="rounded-2xl p-4 mb-5" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Crown size={15} style={{color:'var(--color-primary)'}}/>
+          <h2 className="font-semibold text-sm" style={{color:'var(--text-primary)'}}>Revenue Intelligence</h2>
+        </div>
+        <Link href="/executive" className="text-xs flex items-center gap-1" style={{color:'var(--color-primary)',textDecoration:'none',fontWeight:600}}>
+          Command Center →
+        </Link>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
+        {items.map((item, i) => (
+          <Link key={i} href={item.href} style={{textDecoration:'none'}}>
+            <div style={{padding:'12px 14px',borderRadius:12,background:item.alert ? '#FEF2F2' : 'var(--body-bg)',border:`1px solid ${item.alert ? '#FECACA' : 'var(--card-border)'}`,cursor:'pointer',transition:'all 0.15s'}}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.transform='translateY(-1px)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.transform='none'}>
+              <div style={{width:28,height:28,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',background:item.bg,marginBottom:8}}>
+                {item.icon}
+              </div>
+              <div style={{fontSize:16,fontWeight:900,color:item.alert ? '#DC2626' : 'var(--text-primary)'}}>{item.value}</div>
+              <div style={{fontSize:10,color:'var(--text-muted)',marginTop:2,fontWeight:600}}>{item.label}</div>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -306,6 +362,9 @@ export default function DashboardPage() {
         </div>
 
       </div>
+
+      {/* Revenue Intelligence widget */}
+      <RevenueIntelWidget />
 
       {/* Account Health widget */}
       <AccountHealthWidget />

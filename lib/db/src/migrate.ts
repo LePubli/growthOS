@@ -275,6 +275,29 @@ export async function runDealCoachMigration(): Promise<void> {
   await pool.query(SQL_DEAL_COACH);
 }
 
+const SQL_KNOWLEDGE_BASE = `
+CREATE TABLE IF NOT EXISTS knowledge_articles (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  title       TEXT        NOT NULL,
+  content     TEXT        NOT NULL,
+  category    TEXT        NOT NULL DEFAULT 'faq'
+              CHECK (category IN ('playbook','objection','script','procedure','faq')),
+  tags        TEXT[]      NOT NULL DEFAULT '{}',
+  created_by  UUID        REFERENCES users(id) ON DELETE SET NULL,
+  tenant_id   TEXT        NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS knowledge_articles_tenant_idx    ON knowledge_articles(tenant_id);
+CREATE INDEX IF NOT EXISTS knowledge_articles_category_idx  ON knowledge_articles(category);
+CREATE INDEX IF NOT EXISTS knowledge_articles_created_idx   ON knowledge_articles(created_at DESC);
+`;
+
+export async function runKnowledgeBaseMigration(): Promise<void> {
+  await pool.query(SQL_KNOWLEDGE_BASE);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

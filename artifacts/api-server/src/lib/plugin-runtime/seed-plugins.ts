@@ -1,7 +1,7 @@
 import { pluginManager } from "./plugin-manager";
 import { logger } from "../logger";
 import { loadDisabledPluginIds } from "./persistence";
-import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration, runAccountIntelligenceMigration, runSignalIntelligenceMigration, runDealCoachMigration } from "@workspace/db";
+import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration, runAccountIntelligenceMigration, runSignalIntelligenceMigration, runDealCoachMigration, runKnowledgeBaseMigration } from "@workspace/db";
 
 /**
  * Built-in demo plugins that ship with GrowthOS.
@@ -130,6 +130,28 @@ const BUILT_IN_PLUGINS = [
     uiSlots: ["dashboard-widgets"],
     routes: [{ path: "/accounts", label: "Comptes", icon: "Building" }],
   },
+  {
+    id: "knowledge-base",
+    name: "Base de Connaissances",
+    version: "1.0.0",
+    description: "Centralise Playbooks, Scripts, Objections, Procédures — indexés automatiquement dans Growth Memory pour l'AI SDR et le Deal Coach",
+    author: "GrowthOS",
+    dependencies: ["growth-memory"],
+    permissions: ["memory:read", "memory:write"],
+    uiSlots: ["dashboard-widgets"],
+    routes: [{ path: "/knowledge", label: "Base de Connaissances", icon: "BookOpen" }],
+  },
+  {
+    id: "executive-command",
+    name: "Command Center",
+    version: "1.0.0",
+    description: "Cockpit exécutif — agrège tous les plugins en un seul tableau de bord stratégique avec un Assistant IA conversationnel",
+    author: "GrowthOS",
+    dependencies: ["revenue-intelligence", "ai-deal-coach", "signal-intelligence"],
+    permissions: ["analytics:read", "deals:read", "signals:read"],
+    uiSlots: ["dashboard-widgets"],
+    routes: [{ path: "/executive", label: "Command Center", icon: "Crown" }],
+  },
 ];
 
 export async function seedBuiltInPlugins(): Promise<void> {
@@ -165,6 +187,11 @@ export async function seedBuiltInPlugins(): Promise<void> {
     await runDealCoachMigration();
   } catch (err) {
     logger.warn({ err }, "deal-coach migration failed — health_score fields may not exist on deals");
+  }
+  try {
+    await runKnowledgeBaseMigration();
+  } catch (err) {
+    logger.warn({ err }, "knowledge-base migration failed — knowledge_articles table may not exist");
   }
 
   for (const manifest of BUILT_IN_PLUGINS) {

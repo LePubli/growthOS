@@ -1,0 +1,45 @@
+# ROLE & OBJECTIVE
+You are the Lead Principal Engineer and QA Lead for GrowthOS.
+We have successfully built all 10 plugins. However, the application currently relies on "dummy mocks" (Lorem ipsum, random vectors, empty JSON). 
+
+Your mission is to transition the application to a **Production-Ready State for Demos**.
+We will replace dummy mocks with **Rich, Realistic Test Data** and perform a complete **End-to-End Integration Verification**.
+
+# PHASE 1: THE "REAL DATA" SEEDER (CRITICAL)
+1. Create a comprehensive seed script: `artifacts/api-server/src/db/seed-realistic-data.ts`.
+2. This script must populate the database with a realistic B2B scenario. Do NOT use "Test 1", "Lorem Ipsum".
+   - **Accounts**: Seed 5 realistic French B2B companies (e.g., "TechCorp", "AgriSolutions") with real-looking domains, industries, and revenue.
+   - **Contacts**: Seed realistic decision-makers (e.g., "Jean Dupont, VP Sales").
+   - **Memory (Plugin 1)**: Seed 20 realistic documents (emails, call notes) related to these accounts. 
+   - **Meetings (Plugin 2)**: Seed 3 completed meetings. CRITICAL: The `transcript` and `summary` fields MUST contain highly realistic, structured sales conversation text (objections, next steps, budget discussions) so the AI SDR and Deal Coach have real context to work with.
+   - **Signals (Plugin 5)**: Seed 5 realistic signals (e.g., "TechCorp a levé 5M€ en Série A", "Nouveau VP Marketing chez AgriSolutions").
+   - **Deals (Plugin 6)**: Seed 4 deals in different pipeline stages with realistic health scores.
+
+3. Wire this script to run automatically after `pnpm db:migrate` or via a specific command `pnpm seed:realistic`.
+
+# PHASE 2: REPLACING "DUMMY" MOCKS WITH REALISTIC LOGIC
+1. **Vector Search (Plugin 1)**: Instead of random vectors, ensure the `MemoryService` uses a deterministic hashing or basic text-processing function so that searching for "budget" actually returns the documents containing the word "budget" from our seed data.
+2. **AI SDR & Deal Coach (Plugins 4 & 6)**: Replace the "MockLLMService" that returns generic text. Create a `TemplateService` that uses real sales frameworks (e.g., AIDA, SPIN) and pulls actual context from the seeded meetings/signals to generate highly convincing drafts.
+3. **Forecasting (Plugin 7)**: Replace random forecast numbers with a calculation based on the actual seeded deals (e.g., `Sum(deal.value * stage_probability)`).
+
+# PHASE 3: END-TO-END INTEGRATION VERIFICATION
+1. Create a verification script: `artifacts/api-server/src/scripts/verify-e2e.ts`.
+2. This script should simulate a user flow:
+   - Fetch active plugins.
+   - Create a new meeting -> Trigger processing -> Verify it was indexed in Memory.
+   - Fetch Deal Health -> Verify it reads from Meeting transcripts.
+   - Check EventBus logs to ensure `meeting.completed` triggered `workflow-ai`.
+3. Run this script and output the results to the console. Fix any broken integrations immediately.
+
+# PHASE 4: FRONTEND SANITY CHECK
+1. Review the 10 plugin frontend pages.
+2. Ensure no UI displays "Mock Data", "Lorem Ipsum", or "Placeholder". 
+3. Ensure loading states (skeletons/spinners) exist for all TanStack Query `isLoading` states so the UI doesn't crash or look broken while fetching the new heavy seed data.
+
+# EXECUTION RULES
+- Do not invent new features. Focus ONLY on data quality, integration, and stability.
+- Use realistic French business terminology and contexts.
+- Ensure all TypeScript types are strictly respected.
+- Output the full code for the `seed-realistic-data.ts` and `TemplateService.ts` as they are the core of this update.
+
+Start with Phase 1 and 2 (The Realistic Seeder and Logic Replacement).
