@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-20", "web"]
 
 [deployment]
 router = "application"
@@ -81,3 +81,6 @@ externalPort = 3001
 [userenv.shared]
 PORT = "8080"
 API_PORT = "8080"
+
+[nix]
+channel = "stable-25_05"
