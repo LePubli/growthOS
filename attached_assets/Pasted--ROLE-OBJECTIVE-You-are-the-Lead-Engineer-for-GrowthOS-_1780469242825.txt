@@ -1,0 +1,51 @@
+# ROLE & OBJECTIVE
+You are the Lead Engineer for GrowthOS.
+Plugins 1, 2, 3, 4, 5, 6, and 8 are active. We have a full Sales Intelligence stack.
+Your mission is to implement **Plugin 7: Revenue Intelligence**.
+
+This plugin provides high-level analytical dashboards. It calculates KPIs (Win Rate, Conversion, Velocity, ARR/MRR) and uses mock AI to generate revenue forecasts based on pipeline health.
+
+# ARCHITECTURE CONSTRAINTS
+- **Backend**: `artifacts/api-server/src/...`
+- **Frontend**: `artifacts/growthos/src/...`
+- **Data Sources**: Aggregates data from `deals` (or `opportunities`), `accounts`, and `activities` tables.
+- **Charting**: Use `recharts` (ensure it's installed or ask to install it) for frontend charts.
+- **AI Mock**: Simulate forecasting logic (e.g., "Predicted Q3 Revenue based on weighted pipeline").
+
+# PHASE 1: BACKEND ANALYTICS SERVICE
+1. Create service: `artifacts/api-server/src/lib/plugin-revenue-intelligence/RevenueService.ts`.
+   - `getCoreKPIs()`: Returns Win Rate, Avg Deal Size, Sales Cycle Length, Total Pipeline Value.
+   - `getConversionFunnel()`: Returns counts per pipeline stage for funnel chart.
+   - `getForecast()`: Mock AI logic. Returns projected revenue for next 30/60/90 days.
+
+2. Create routes: `artifacts/api-server/src/routes/v1/plugins/revenue.ts`.
+   - `GET /kpis`: Core metrics.
+   - `GET /funnel`: Funnel data.
+   - `GET /forecast`: AI prediction data.
+   - `GET /trends`: Historical revenue trend (mocked).
+
+3. **Register Routes**: Mount in `artifacts/api-server/src/routes/v1/index.ts`.
+
+# PHASE 2: PLUGIN REGISTRATION
+1. Create manifest: `artifacts/api-server/src/lib/plugin-revenue-intelligence/manifest.ts`.
+   - `id`: "revenue-intelligence"
+   - `dependencies`: ["ai-deal-coach", "account-intelligence"]
+   - `permissions`: ["analytics:read"]
+   - `menuItems`: [{ label: "Revenus & KPIs", path: "/revenue", icon: "TrendingUp" }]
+2. Update `seed-plugins.ts`.
+
+# PHASE 3: FRONTEND DASHBOARD UI
+1. Create page: `artifacts/growthos/src/plugins/revenue-intelligence/RevenueDashboard.tsx`.
+   - Layout: Grid of 4 KPI Cards at the top (Total Pipeline, Win Rate, Avg Velocity, Forecast).
+   - Middle section: 2 columns. Left: Funnel Chart (using `recharts` BarChart). Right: Trend Chart (LineChart).
+   - Bottom section: AI Forecast summary text ("AI predicts 85% chance to hit Q3 target...").
+2. Create component: `artifacts/growthos/src/plugins/revenue-intelligence/KPICard.tsx`.
+   - Reusable card showing metric name, value, and % change vs previous period.
+
+# EXECUTION STEPS
+1. Implement RevenueService (aggregation logic).
+2. Implement Routes.
+3. Build Revenue Dashboard UI with `recharts`.
+4. **Test**: Go to `/revenue` -> See KPIs, charts, and mock forecast.
+
+Start implementation now. Output full file contents for every new file.

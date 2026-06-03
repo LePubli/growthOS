@@ -22,6 +22,7 @@ import memoryRouter from "./memory";
 import meetingsRouter from "./meetings";
 import aiSdrRouter from "./plugins/ai-sdr";
 import dealCoachRouter from "./plugins/deal-coach";
+import revenueRouter from "./plugins/revenue";
 
 const router = Router();
 
@@ -47,5 +48,6 @@ router.use("/memory", memoryRouter);
 router.use("/meetings", meetingsRouter);
 router.use("/ai-sdr", aiSdrRouter);
 router.use("/deal-coach", dealCoachRouter);
+router.use("/revenue", revenueRouter);
 
 export default router;

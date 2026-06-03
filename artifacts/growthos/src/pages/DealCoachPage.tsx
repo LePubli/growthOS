@@ -4,8 +4,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Target, Flame, ShieldAlert, CheckCircle, Loader2, Zap,
   AlertTriangle, TrendingUp, ChevronRight, X, Bot, RefreshCw,
-  Building, DollarSign, Calendar, Sparkles,
+  Building, DollarSign, Calendar, Sparkles, BarChart2,
 } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
+} from 'recharts';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
 
@@ -39,6 +42,15 @@ interface PipelineHealth {
   byStage: { stage: string; count: number; avgScore: number }[];
   totalValue: number;
   atRiskValue: number;
+}
+
+interface ForecastPoint {
+  period: string;
+  label: string;
+  weightedValue: number;
+  bestCase: number;
+  worstCase: number;
+  dealCount: number;
 }
 
 /* ─── Config ─────────────────────────────────────────────── */
@@ -341,6 +353,12 @@ export default function DealCoachPage() {
     refetchInterval: 30000,
   });
 
+  const { data: forecast = [] } = useQuery<ForecastPoint[]>({
+    queryKey: ['revenue-forecast'],
+    queryFn: () => apiClient.get('/revenue/forecast'),
+    refetchInterval: 60000,
+  });
+
   const analyzeMutation = useMutation({
     mutationFn: (id: string) => apiClient.post(`/deal-coach/deals/${id}/analyze`, {}),
     onMutate: (id) => setAnalyzingId(id),
@@ -482,6 +500,61 @@ export default function DealCoachPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Pipeline Forecast */}
+      {forecast.length > 0 && (
+        <div style={{ marginTop: 28, background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 16, padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg,#064E3B,#059669)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <BarChart2 size={14} color="#fff" />
+              </div>
+              <div>
+                <h2 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Forecast Pipeline</h2>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>Revenus pondérés par Health Score × Probabilité · 30/60/90 jours</p>
+              </div>
+            </div>
+            <Link href="/revenue">
+              <button style={{ fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 9999, border: '1.5px solid #05996933', background: '#ECFDF5', color: '#059669', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <TrendingUp size={11} />Revenue Intelligence →
+              </button>
+            </Link>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, alignItems: 'start' }}>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={forecast} margin={{ left: 0, right: 10, top: 5, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--card-border)" vertical={false} />
+                <XAxis dataKey="period" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip
+                  content={({ active, payload, label }: any) => active && payload?.length ? (
+                    <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 10, padding: '10px 14px', fontSize: 12 }}>
+                      <p style={{ fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 6px' }}>{label}</p>
+                      {payload.map((p: any) => <p key={p.dataKey} style={{ margin: '2px 0', color: p.color }}>{p.name}: <strong>{(p.value as number).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0 })}</strong></p>)}
+                    </div>
+                  ) : null}
+                  cursor={{ fill: 'var(--card-border)' }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11, color: 'var(--text-muted)' }} />
+                <Bar dataKey="bestCase" name="Meilleur cas" fill="#059669" opacity={0.35} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="weightedValue" name="Forecast pondéré" fill="#2563EB" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="worstCase" name="Pire cas" fill="#DC2626" opacity={0.45} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {forecast.map((f, i) => (
+                <div key={i} style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--body-bg)', border: '1px solid var(--card-border)' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4 }}>{f.period}</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#2563EB' }}>
+                    {f.weightedValue.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0 })}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{f.dealCount} deal{f.dealCount !== 1 ? 's' : ''} avec close date</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

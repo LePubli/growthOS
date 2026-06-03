@@ -76,6 +76,17 @@ const BUILT_IN_PLUGINS = [
     routes: [{ path: "/meetings", label: "Réunions", icon: "Video" }],
   },
   {
+    id: "revenue-intelligence",
+    name: "Revenue Intelligence",
+    version: "1.0.0",
+    description: "Dashboards analytiques haute-fréquence — KPIs Win Rate, Conversion, Velocity, ARR/MRR, Forecast IA basé sur le pipeline pondéré",
+    author: "GrowthOS",
+    dependencies: ["ai-deal-coach", "account-intelligence"],
+    permissions: ["analytics:read", "deals:read"],
+    uiSlots: ["dashboard-widgets"],
+    routes: [{ path: "/revenue", label: "Revenus & KPIs", icon: "TrendingUp" }],
+  },
+  {
     id: "ai-deal-coach",
     name: "AI Deal Coach",
     version: "1.0.0",

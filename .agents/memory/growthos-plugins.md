@@ -1,10 +1,10 @@
 ---
 name: GrowthOS Plugin Inventory
-description: 10 plugins actifs dans le runtime, leurs routes, services et conventions d'intégration
+description: 11 plugins actifs dans le runtime, leurs routes, services et conventions d'intégration
 ---
 
-## 10 plugins actifs (seed-plugins.ts)
-crm-sync, email-outreach, ai-signals, webhooks-relay, growth-memory, meeting-intelligence, ai-deal-coach, ai-sdr, signal-intelligence, account-intelligence
+## 11 plugins actifs (seed-plugins.ts)
+crm-sync, email-outreach, ai-signals, webhooks-relay, growth-memory, meeting-intelligence, revenue-intelligence, ai-deal-coach, ai-sdr, signal-intelligence, account-intelligence
 
 ## Conventions
 
@@ -17,19 +17,26 @@ crm-sync, email-outreach, ai-signals, webhooks-relay, growth-memory, meeting-int
 - Classe + instance singleton exportée (`export const xService = new XService()`)
 - Standalone exports pour fonctions hors-classe (ex: `generatePlaybook`)
 - Ollama: `OLLAMA_BASE_URL`/`OLLAMA_MODEL` env vars, fallback mock sur timeout/erreur
+- Revenue Intelligence n'utilise PAS Ollama — calculs SQL purs + mock narrative
 
 ### Route pattern
 - Router dans `artifacts/api-server/src/routes/v1/plugins/<name>.ts`
 - Monté dans `artifacts/api-server/src/routes/v1/index.ts` via `router.use("/<name>", router)`
 - Toujours `requireAuth` middleware
 
-### Permissions déclarées dans types.ts PluginPermission enum
-Actuellement: prospects:read/write, pipeline:read/write, signals:read/write, analytics:read, sequences:read/write, email:send, memory:read/write, meetings:read/write, accounts:read/write, ai:generate, emails:write, deals:read, ai:analyze, webhooks:send
-
 ### Frontend routing
-- Page dans `artifacts/growthos/src/pages/<Name>Page.tsx`
+- Pages plugin dans `artifacts/growthos/src/plugins/<plugin-name>/` (ex: revenue-intelligence)
+- Pages standard dans `artifacts/growthos/src/pages/<Name>Page.tsx`
 - Import + Route dans `App.tsx`
-- apiClient dans `@/lib/api-client` — tous les appels via ce client
+- apiClient dans `@/lib/api-client`
+
+### Permissions enum (types.ts)
+prospects:read/write, pipeline:read/write, signals:read/write, analytics:read, sequences:read/write, email:send, memory:read/write, meetings:read/write, accounts:read/write, ai:generate, emails:write, deals:read, ai:analyze, webhooks:send, workflows:read/write, contacts:read/write
+
+## Workflow conflict note
+L'artifact system crée ses propres workflows (`artifacts/api-server: API Server`, `artifacts/growthos: web`).
+Les anciens workflows `.replit` (`GrowthOS API Server`, `GrowthOS Frontend`) entrent en conflit (même port) — l'artifact workflow démarre en premier et gagne.
+Le workflow `.replit` échoue avec EADDRINUSE mais l'API tourne via l'artifact workflow. Ne pas essayer d'éditer `.replit` directement.
 
 ## AI Deal Coach (Plugin 6)
 - DB: `health_score INT DEFAULT 50`, `risk_factors JSONB DEFAULT '[]'`, `ai_recommendations TEXT`, `last_coached_at TIMESTAMPTZ` sur table `deals`
@@ -37,10 +44,19 @@ Actuellement: prospects:read/write, pipeline:read/write, signals:read/write, ana
 - EventBus: émet `deal.at_risk` (score<40) ou `deal.coached`
 - Routes: GET /deal-coach/pipeline/health, GET /deal-coach/risks, GET /deal-coach/deals, POST /deal-coach/deals/:id/analyze, GET /deal-coach/deals/:id/coach
 
+## Revenue Intelligence (Plugin 7)
+- Pas de migration DB — agrège les données existantes (deals, accounts)
+- Service: getCoreKPIs, getConversionFunnel, getForecast (30/60/90j pondéré), getTrends (6 mois), getAIForecastSummary
+- Forecast = value × probability × (health_score/100)
+- Routes: GET /revenue/kpis|funnel|forecast|trends|ai-summary
+- Frontend: `artifacts/growthos/src/plugins/revenue-intelligence/` — RevenueDashboard.tsx + KPICard.tsx
+- recharts déjà installé dans growthos
+- Deal Coach page intègre un widget Forecast Pipeline via /revenue/forecast
+
 ## AI SDR Playbook (feature Account360)
 - `generatePlaybook()` standalone export dans AISDRService.ts (hors classe)
 - Réutilise buildContext/buildPromptContext/ollamaGenerate internes
 - Route: POST /ai-sdr/playbook
-- UI: bouton "Playbook IA" (violet) dans Account360Page header, PlaybookModal avec talking points/objections/competitor notes/next steps + copier
+- UI: bouton "Playbook IA" (violet) dans Account360Page header, PlaybookModal
 
-**Why:** pattern standalone export (hors classe) nécessaire car le service est instancié en singleton — les fonctions utilitaires internes ne sont pas exportables via l'instance sans les ajouter à la classe.
+**Why standalone export:** pattern standalone export (hors classe) nécessaire car le service est instancié en singleton — les fonctions utilitaires internes ne sont pas exportables via l'instance sans les ajouter à la classe.

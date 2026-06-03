@@ -1,0 +1,58 @@
+# ROLE & OBJECTIVE
+You are the Lead Engineer for GrowthOS.
+Plugins 1 through 8 are active. We have a complete Sales Intelligence and Automation stack.
+Your mission is to implement **Plugin 9: AI Knowledge Base**.
+
+This plugin stores and organizes company knowledge (Playbooks, Objection Handling, Sales Scripts, Procedures). It automatically indexes this content into Growth Memory (Plugin 1) so it can be retrieved by the AI SDR and Deal Coach.
+
+# ARCHITECTURE CONSTRAINTS
+- **Backend**: `artifacts/api-server/src/...`
+- **Frontend**: `artifacts/growthos/src/...`
+- **Integration**: It MUST reuse `MemoryService` from Plugin 1 to index documents upon creation/update.
+- **Database**: PostgreSQL (use existing connection).
+
+# PHASE 1: DATABASE & BACKEND SERVICE
+1. Create migration: `artifacts/api-server/db/migrations/008_knowledge_base.sql`.
+   - Create table `knowledge_articles`: 
+     `id` (uuid), `title` (text), `content` (text), `category` (enum: 'playbook', 'objection', 'script', 'procedure', 'faq'), 
+     `tags` (text[]), `created_by` (uuid), `created_at`, `updated_at`.
+2. Create service: `artifacts/api-server/src/lib/plugin-knowledge-base/KnowledgeService.ts`.
+   - `createArticle(data)`: Saves to DB AND calls `MemoryService.indexDocument({ sourceType: 'knowledge_base', content: data.content, ... })`.
+   - `searchArticles(query)`: Uses `MemoryService.search(query)` to find relevant articles via vector search.
+   - `getByCategory(category)`: Standard list view.
+
+# PHASE 2: BACKEND API
+1. Create routes: `artifacts/api-server/src/routes/v1/plugins/knowledge.ts`.
+   - `GET /`: List articles (with filters for category/tags).
+   - `POST /`: Create new article (triggers auto-indexing).
+   - `GET /search?q=...`: Semantic search endpoint.
+   - `GET /:id`: Get full article details.
+2. **Register Routes**: Mount in `artifacts/api-server/src/routes/v1/index.ts`.
+
+# PHASE 3: PLUGIN REGISTRATION
+1. Create manifest: `artifacts/api-server/src/lib/plugin-knowledge-base/manifest.ts`.
+   - `id`: "knowledge-base"
+   - `dependencies`: ["growth-memory"]
+   - `permissions`: ["kb:read", "kb:write"]
+   - `menuItems`: [{ label: "Base de Connaissances", path: "/knowledge", icon: "BookOpen" }]
+2. Update `seed-plugins.ts`.
+
+# PHASE 4: FRONTEND UI
+1. Create page: `artifacts/growthos/src/plugins/knowledge-base/KnowledgeBasePage.tsx`.
+   - Layout: Two columns. Left: Sidebar with Categories (Playbooks, Objections, etc.). Right: List of articles.
+   - Top bar: Large Semantic Search input ("Ask a question to find the right script...").
+   - "New Article" button opening a clean modal/form.
+2. Create component: `artifacts/growthos/src/plugins/knowledge-base/ArticleCard.tsx`.
+   - Displays title, category badge, tags, and a snippet of content.
+3. **Routing**: Add `/knowledge` route.
+
+# EXECUTION STEPS
+1. Run Migration.
+2. Implement KnowledgeService (with MemoryService integration).
+3. Implement Routes.
+4. Build Knowledge Base UI.
+5. **Test End-to-End**:
+   - Go to `/knowledge` -> Create an article about "Handling Price Objections".
+   - Go to `/memory` -> Search "price objection" -> Verify the article appears in the semantic search results.
+
+Start implementation now. Output full file contents for every new file.
