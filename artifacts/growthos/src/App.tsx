@@ -58,6 +58,7 @@ import TeamMetricsPage from '@/pages/TeamMetricsPage';
 import CalendarPage from '@/pages/CalendarPage';
 import ProposalsPage from '@/pages/ProposalsPage';
 import SharedDashboardsPage from '@/pages/SharedDashboardsPage';
+import RouteAuditPage from '@/pages/RouteAuditPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -245,6 +246,9 @@ function AppRoutes() {
       </Route>
       <Route path="/shared-dashboards">
         {() => <DashboardLayout><SharedDashboardsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/route-audit">
+        {() => <DashboardLayout><RouteAuditPage /></DashboardLayout>}
       </Route>
 
       <Route>

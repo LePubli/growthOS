@@ -6,7 +6,7 @@ import {
   Bot, User, Webhook, BarChart2, Download, Zap,
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
-  Sparkles, TrendingUp, LineChart, BookOpen, Crown,
+  Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -101,6 +101,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/plugins', label: 'Plugins', icon: <Puzzle size={16} /> },
       { href: '/themes', label: 'Thèmes', icon: <Palette size={16} /> },
       { href: '/webhooks', label: 'Webhooks', icon: <Webhook size={16} /> },
+      { href: '/route-audit', label: 'Audit Routes', icon: <Route size={16} /> },
       { href: '/settings', label: 'Paramètres', icon: <Settings size={16} /> },
     ],
   },
