@@ -49,7 +49,7 @@ args = "PORT=8081 pnpm --filter @workspace/growthos run dev"
 waitForPort = 8081
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]
@@ -75,3 +75,9 @@ externalPort = 80
 [[ports]]
 localPort = 22560
 externalPort = 3001
+
+[userenv]
+
+[userenv.shared]
+PORT = "8080"
+API_PORT = "8080"
