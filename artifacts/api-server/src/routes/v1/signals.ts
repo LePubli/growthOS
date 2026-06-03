@@ -4,6 +4,7 @@ import { db } from "@workspace/db";
 import { signalsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { signalService } from "../../lib/plugin-signal-intelligence/SignalService";
+import { createNotification } from "../../services/notification.service";
 
 const router = Router();
 
@@ -34,6 +35,17 @@ router.post("/", async (req, res) => {
     ...parse.data,
     tenantId: req.auth!.tenantId,
   }).returning();
+
+  if ((signal.score ?? 0) >= 75) {
+    createNotification({
+      type: "signal",
+      title: "Signal chaud détecté ⚡",
+      body: `${signal.company} — ${signal.title}`,
+      href: `/signals`,
+      tenantId: req.auth!.tenantId,
+    }).catch(() => {/* fire and forget */});
+  }
+
   res.status(201).json(signal);
 });
 

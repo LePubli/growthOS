@@ -298,6 +298,54 @@ export async function runKnowledgeBaseMigration(): Promise<void> {
   await pool.query(SQL_KNOWLEDGE_BASE);
 }
 
+const SQL_SOURCING = `
+CREATE TABLE IF NOT EXISTS sourcing_jobs (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  type        TEXT        NOT NULL,
+  name        TEXT        NOT NULL,
+  status      TEXT        NOT NULL DEFAULT 'queued',
+  count       INTEGER     NOT NULL DEFAULT 0,
+  duration    TEXT        NOT NULL DEFAULT '—',
+  params      JSONB       NOT NULL DEFAULT '{}',
+  progress    INTEGER     NOT NULL DEFAULT 0,
+  error       TEXT,
+  tenant_id   UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by  UUID        REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS sourcing_jobs_tenant_idx  ON sourcing_jobs(tenant_id);
+CREATE INDEX IF NOT EXISTS sourcing_jobs_status_idx  ON sourcing_jobs(status);
+CREATE INDEX IF NOT EXISTS sourcing_jobs_created_idx ON sourcing_jobs(created_at DESC);
+`;
+
+const SQL_NOTIFICATIONS = `
+CREATE TABLE IF NOT EXISTS notifications (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  type        TEXT        NOT NULL DEFAULT 'system',
+  title       TEXT        NOT NULL,
+  body        TEXT        NOT NULL,
+  href        TEXT,
+  read        BOOLEAN     NOT NULL DEFAULT false,
+  payload     JSONB       NOT NULL DEFAULT '{}',
+  tenant_id   UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id     UUID        REFERENCES users(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS notifications_tenant_idx  ON notifications(tenant_id);
+CREATE INDEX IF NOT EXISTS notifications_user_idx    ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS notifications_read_idx    ON notifications(read);
+CREATE INDEX IF NOT EXISTS notifications_created_idx ON notifications(created_at DESC);
+`;
+
+export async function runSourcingMigration(): Promise<void> {
+  await pool.query(SQL_SOURCING);
+}
+
+export async function runNotificationsMigration(): Promise<void> {
+  await pool.query(SQL_NOTIFICATIONS);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

@@ -28,13 +28,17 @@ export function signRefreshToken(payload: AuthPayload): string {
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
+  // Support Bearer header (standard) or ?token= query param (SSE / EventSource)
+  const raw = header?.startsWith("Bearer ")
+    ? header.slice(7)
+    : typeof req.query.token === "string" ? req.query.token : null;
+
+  if (!raw) {
     res.status(401).json({ error: "Token manquant" });
     return;
   }
-  const token = header.slice(7);
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const payload = jwt.verify(raw, JWT_SECRET) as AuthPayload;
     req.auth = payload;
     next();
   } catch {

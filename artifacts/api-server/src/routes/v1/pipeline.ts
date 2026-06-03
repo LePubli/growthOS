@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@workspace/db";
 import { dealsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
+import { createNotification } from "../../services/notification.service";
 
 const router = Router();
 
@@ -64,12 +65,28 @@ router.patch("/:id", async (req, res) => {
   const updateData: any = { ...rest, updatedAt: new Date() };
   if (value !== undefined) updateData.value = String(value);
 
+  const [prev] = await db.select().from(dealsTable)
+    .where(and(eq(dealsTable.id, id), eq(dealsTable.tenantId, req.auth!.tenantId)))
+    .limit(1);
+
   const [updated] = await db.update(dealsTable)
     .set(updateData)
     .where(and(eq(dealsTable.id, id), eq(dealsTable.tenantId, req.auth!.tenantId)))
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Deal introuvable" }); return; }
+
+  if (prev && prev.stage !== "won" && updated.stage === "won") {
+    createNotification({
+      type: "deal",
+      title: "Deal gagné 🎉",
+      body: `${updated.title}${updated.company ? ` — ${updated.company}` : ""}${updated.value ? ` — ${Number(updated.value).toLocaleString("fr-FR")}€` : ""} marqué comme Gagné.`,
+      href: `/pipeline/${updated.id}`,
+      tenantId: req.auth!.tenantId,
+      userId: req.auth!.userId,
+    }).catch(() => {/* fire and forget */});
+  }
+
   res.json({ ...updated, value: Number(updated.value) });
 });
 

@@ -1,16 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { Bell, X, CheckCheck, Zap, DollarSign, Mail, Users, AlertCircle, TrendingUp, ChevronRight } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
+import { Bell, X, CheckCheck, Zap, DollarSign, Mail, Users, AlertCircle } from 'lucide-react';
 import { useLocation } from 'wouter';
-
-export interface Notification {
-  id: string;
-  type: 'signal' | 'deal' | 'email' | 'team' | 'system';
-  title: string;
-  body: string;
-  href?: string;
-  read: boolean;
-  at: string;
-}
+import { useNotifications } from '@/hooks/use-notifications';
 
 const TYPE_META = {
   signal: { icon: <Zap size={14} />,        color: '#F59E0B', bg: '#FEF3C7' },
@@ -20,18 +11,6 @@ const TYPE_META = {
   system: { icon: <AlertCircle size={14} />, color: '#6B7280', bg: '#F3F4F6' },
 };
 
-const MOCK_NOTIFS: Notification[] = [
-  { id: '1', type: 'signal', title: 'Signal chaud détecté', body: 'TechCorp vient de lever des fonds — moment idéal pour contacter Sophie Martin.', href: '/signals', read: false, at: 'il y a 5 min' },
-  { id: '2', type: 'deal', title: 'Deal gagné 🎉', body: 'GrowthCo — Luc Moreau — 9 600€ marqué comme Gagné.', href: '/pipeline', read: false, at: 'il y a 30 min' },
-  { id: '3', type: 'email', title: 'Email ouvert ×3', body: 'Emma Leroy (StartupX) a ouvert votre email 3 fois en 1h. Appelez maintenant.', href: '/sequences', read: false, at: 'il y a 1h' },
-  { id: '4', type: 'team', title: 'Alice a commenté un deal', body: 'AlphaTech — "Budget validé, relancer Marie Dubois cette semaine".', href: '/pipeline/6', read: true, at: 'il y a 2h' },
-  { id: '5', type: 'signal', title: 'Nouveau recrutement détecté', body: 'BigSales SAS recherche un VP Sales — signal d\'expansion budget.', href: '/signals', read: true, at: 'il y a 3h' },
-  { id: '6', type: 'email', title: 'Réponse reçue', body: 'Paul Dupont (BigSales) a répondu à votre séquence "Follow-up J+5".', href: '/sequences', read: true, at: 'il y a 5h' },
-  { id: '7', type: 'system', title: 'Import CSV terminé', body: '127 prospects importés avec succès depuis LinkedIn Sales Navigator.', href: '/prospects', read: true, at: 'hier' },
-];
-
-const STORAGE_KEY = 'growthos_notifications';
-
 interface Props {
   trigger: React.ReactNode;
 }
@@ -39,18 +18,11 @@ interface Props {
 export function NotificationsDrawer({ trigger }: Props) {
   const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
-  const [notifs, setNotifs] = useState<Notification[]>(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || MOCK_NOTIFS; }
-    catch { return MOCK_NOTIFS; }
-  });
   const ref = useRef<HTMLDivElement>(null);
+
+  const { notifs, markRead, markAllRead, dismiss } = useNotifications();
   const unread = notifs.filter(n => !n.read).length;
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(notifs));
-  }, [notifs]);
-
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -59,14 +31,7 @@ export function NotificationsDrawer({ trigger }: Props) {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const markAllRead = () => setNotifs(ns => ns.map(n => ({ ...n, read: true })));
-  const markRead = (id: string) => setNotifs(ns => ns.map(n => n.id === id ? { ...n, read: true } : n));
-  const dismiss = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setNotifs(ns => ns.filter(n => n.id !== id));
-  };
-
-  const go = (notif: Notification) => {
+  const go = (notif: { id: string; read: boolean; href?: string | null }) => {
     markRead(notif.id);
     setOpen(false);
     if (notif.href) navigate(notif.href);
@@ -74,7 +39,6 @@ export function NotificationsDrawer({ trigger }: Props) {
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      {/* Trigger with badge */}
       <div onClick={() => setOpen(o => !o)} style={{ position: 'relative', cursor: 'pointer' }}>
         {trigger}
         {unread > 0 && (
@@ -84,10 +48,8 @@ export function NotificationsDrawer({ trigger }: Props) {
         )}
       </div>
 
-      {/* Dropdown panel */}
       {open && (
         <div style={{ position: 'absolute', top: 'calc(100% + 10px)', right: 0, width: 360, background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--card-border)', boxShadow: '0 12px 40px rgba(0,0,0,.15)', zIndex: 700, overflow: 'hidden' }}>
-          {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--card-border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Bell size={15} style={{ color: 'var(--color-primary)' }} />
@@ -101,7 +63,6 @@ export function NotificationsDrawer({ trigger }: Props) {
             )}
           </div>
 
-          {/* List */}
           <div style={{ maxHeight: 400, overflowY: 'auto' }}>
             {notifs.length === 0 ? (
               <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -110,7 +71,8 @@ export function NotificationsDrawer({ trigger }: Props) {
               </div>
             ) : (
               notifs.map(notif => {
-                const meta = TYPE_META[notif.type];
+                const type = (notif.type ?? 'system') as keyof typeof TYPE_META;
+                const meta = TYPE_META[type] ?? TYPE_META.system;
                 return (
                   <div key={notif.id} onClick={() => go(notif)}
                     style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 16px', borderBottom: '1px solid var(--card-border)', cursor: 'pointer', background: notif.read ? 'transparent' : `color-mix(in srgb, var(--color-primary) 4%, transparent)`, transition: 'background 0.1s' }}
@@ -127,7 +89,9 @@ export function NotificationsDrawer({ trigger }: Props) {
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4, marginBottom: 3 }}>{notif.body}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{notif.at}</div>
                     </div>
-                    <button onClick={e => dismiss(notif.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px', opacity: 0, flexShrink: 0 }}
+                    <button
+                      onClick={e => { e.stopPropagation(); dismiss(notif.id); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px', opacity: 0, flexShrink: 0 }}
                       onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '0'}>
                       <X size={13} />
@@ -138,7 +102,6 @@ export function NotificationsDrawer({ trigger }: Props) {
             )}
           </div>
 
-          {/* Footer */}
           <div style={{ padding: '10px 16px', borderTop: '1px solid var(--card-border)', textAlign: 'center' }}>
             <button onClick={() => { setOpen(false); navigate('/activities'); }} style={{ fontSize: 12, color: 'var(--color-primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
               Voir toutes les activités →

@@ -8,3 +8,5 @@ export * from "./activities";
 export * from "./workflows";
 export * from "./templates";
 export * from "./webhooks";
+export * from "./sourcing";
+export * from "./notifications";

@@ -26,6 +26,7 @@ import revenueRouter from "./plugins/revenue";
 import knowledgeRouter from "./plugins/knowledge";
 import executiveRouter from "./plugins/executive";
 import sourcingRouter from "./sourcing";
+import notificationsRouter from "./notifications";
 
 const router = Router();
 
@@ -55,5 +56,6 @@ router.use("/revenue", revenueRouter);
 router.use("/knowledge", knowledgeRouter);
 router.use("/executive", executiveRouter);
 router.use("/sourcing", sourcingRouter);
+router.use("/notifications", notificationsRouter);
 
 export default router;

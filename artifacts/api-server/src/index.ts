@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations } from "@workspace/db";
+import { runMigrations, runSourcingMigration, runNotificationsMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 
 const rawPort = process.env["PORT"];
@@ -20,6 +20,9 @@ if (Number.isNaN(port) || port <= 0) {
 runMigrations()
   .then(async () => {
     logger.info("Database migrations applied");
+
+    await Promise.all([runSourcingMigration(), runNotificationsMigration()]);
+    logger.info("Sourcing and notifications tables ready");
 
     await seedBuiltInPlugins();
 
