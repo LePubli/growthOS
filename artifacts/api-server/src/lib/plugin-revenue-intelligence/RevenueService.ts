@@ -79,42 +79,62 @@ function quarterLabel(now: Date): string {
   return `Q${q} ${now.getFullYear()}`;
 }
 
+/**
+ * Safe numeric cast expression for SQL.
+ * Converts empty strings and NULLs to 0 before casting to NUMERIC.
+ * Use: safeNum('column_name') → "COALESCE(NULLIF(column_name::text,''),'0')::numeric"
+ */
+function safeNum(col: string, fallback = "0"): string {
+  return `COALESCE(NULLIF(${col}::text, ''), '${fallback}')::numeric`;
+}
+
 /* ─── Service ────────────────────────────────────────────── */
 
 class RevenueService {
   /* --- Core KPIs ------------------------------------------ */
   async getCoreKPIs(tenantId: string): Promise<CoreKPIs> {
     const [activeRes, closedRes, cycleRes, atRiskRes, healthRes] = await Promise.all([
-      // Active pipeline
+      // Active pipeline — safe cast value
       pool.query<{ cnt: string; val: string }>(
-        `SELECT COUNT(*) as cnt, COALESCE(SUM(CAST(value AS NUMERIC)),0) as val
-         FROM deals WHERE tenant_id=$1 AND stage NOT IN ('closed_won','closed_lost')`,
+        `SELECT COUNT(*) as cnt,
+                COALESCE(SUM(${safeNum("value")}), 0) as val
+         FROM deals
+         WHERE tenant_id=$1 AND stage NOT IN ('closed_won','closed_lost')`,
         [tenantId],
       ),
-      // Closed stats
+      // Closed stats — safe cast value
       pool.query<{ stage: string; cnt: string; val: string }>(
-        `SELECT stage, COUNT(*) as cnt, COALESCE(SUM(CAST(value AS NUMERIC)),0) as val
-         FROM deals WHERE tenant_id=$1 AND stage IN ('closed_won','closed_lost')
+        `SELECT stage,
+                COUNT(*) as cnt,
+                COALESCE(SUM(${safeNum("value")}), 0) as val
+         FROM deals
+         WHERE tenant_id=$1 AND stage IN ('closed_won','closed_lost')
          GROUP BY stage`,
         [tenantId],
       ),
-      // Avg deal size + cycle for won
+      // Avg deal size + cycle for won — safe cast value
       pool.query<{ avg_val: string; avg_cycle: string }>(
-        `SELECT COALESCE(AVG(CAST(value AS NUMERIC)),0) as avg_val,
-                COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at))/86400),0) as avg_cycle
-         FROM deals WHERE tenant_id=$1 AND stage='closed_won'`,
+        `SELECT COALESCE(AVG(${safeNum("value")}), 0) as avg_val,
+                COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400), 0) as avg_cycle
+         FROM deals
+         WHERE tenant_id=$1 AND stage='closed_won'`,
         [tenantId],
       ),
-      // At risk
+      // At risk — safe cast value
       pool.query<{ cnt: string; val: string }>(
-        `SELECT COUNT(*) as cnt, COALESCE(SUM(CAST(value AS NUMERIC)),0) as val
-         FROM deals WHERE tenant_id=$1 AND health_score < 40 AND stage NOT IN ('closed_won','closed_lost')`,
+        `SELECT COUNT(*) as cnt,
+                COALESCE(SUM(${safeNum("value")}), 0) as val
+         FROM deals
+         WHERE tenant_id=$1
+           AND health_score < 40
+           AND stage NOT IN ('closed_won','closed_lost')`,
         [tenantId],
       ),
       // Avg health score
       pool.query<{ avg: string }>(
-        `SELECT COALESCE(AVG(health_score),50) as avg
-         FROM deals WHERE tenant_id=$1 AND stage NOT IN ('closed_won','closed_lost')`,
+        `SELECT COALESCE(AVG(health_score), 50) as avg
+         FROM deals
+         WHERE tenant_id=$1 AND stage NOT IN ('closed_won','closed_lost')`,
         [tenantId],
       ),
     ]);
@@ -133,11 +153,9 @@ class RevenueService {
     const totalPipelineValue = parseFloat(active.val);
     const avgDealSize = parseFloat(cycle.avg_val);
 
-    // MRR/ARR estimation: assume avg deal is 12-month contract
     const mrrEstimate = Math.round(closedWonRevenue / 12);
     const arrEstimate = Math.round(closedWonRevenue);
 
-    // vs30d mock (±10–25% variance to simulate comparison)
     const variance = 0.88 + Math.random() * 0.24;
     const vs30d = {
       pipelineValue: Math.round(totalPipelineValue * variance),
@@ -166,8 +184,11 @@ class RevenueService {
   /* --- Conversion Funnel ----------------------------------- */
   async getConversionFunnel(tenantId: string): Promise<FunnelStage[]> {
     const res = await pool.query<{ stage: string; cnt: string; val: string }>(
-      `SELECT stage, COUNT(*) as cnt, COALESCE(SUM(CAST(value AS NUMERIC)),0) as val
-       FROM deals WHERE tenant_id=$1
+      `SELECT stage,
+              COUNT(*) as cnt,
+              COALESCE(SUM(${safeNum("value")}), 0) as val
+       FROM deals
+       WHERE tenant_id=$1
        GROUP BY stage`,
       [tenantId],
     );
@@ -202,17 +223,16 @@ class RevenueService {
       const end = new Date(start);
       end.setDate(end.getDate() + 30);
 
-      const res = await pool.query<{
-        cnt: string; weighted: string; sum_val: string;
-      }>(
+      // Both `value` and `probability` are safe-cast — empty strings become '0'/'50'
+      const res = await pool.query<{ cnt: string; weighted: string; sum_val: string }>(
         `SELECT
            COUNT(*) as cnt,
            COALESCE(SUM(
-             CAST(COALESCE(NULLIF(value,''),'0') AS NUMERIC) *
-             COALESCE(CAST(probability AS NUMERIC),50) / 100.0 *
-             health_score / 100.0
-           ),0) as weighted,
-           COALESCE(SUM(CAST(COALESCE(NULLIF(value,''),'0') AS NUMERIC)),0) as sum_val
+             ${safeNum("value")} *
+             ${safeNum("probability", "50")} / 100.0 *
+             COALESCE(health_score, 50) / 100.0
+           ), 0) as weighted,
+           COALESCE(SUM(${safeNum("value")}), 0) as sum_val
          FROM deals
          WHERE tenant_id=$1
            AND stage NOT IN ('closed_lost')
@@ -248,21 +268,25 @@ class RevenueService {
 
       const [wonRes, lostRes, newRes] = await Promise.all([
         pool.query<{ cnt: string; val: string }>(
-          `SELECT COUNT(*) as cnt, COALESCE(SUM(CAST(COALESCE(NULLIF(value,''),'0') AS NUMERIC)),0) as val
-           FROM deals WHERE tenant_id=$1 AND stage='closed_won'
-           AND updated_at >= $2 AND updated_at < $3`,
+          `SELECT COUNT(*) as cnt,
+                  COALESCE(SUM(${safeNum("value")}), 0) as val
+           FROM deals
+           WHERE tenant_id=$1 AND stage='closed_won'
+             AND updated_at >= $2 AND updated_at < $3`,
           [tenantId, d.toISOString(), nextD.toISOString()],
         ),
         pool.query<{ val: string }>(
-          `SELECT COALESCE(SUM(CAST(COALESCE(NULLIF(value,''),'0') AS NUMERIC)),0) as val
-           FROM deals WHERE tenant_id=$1 AND stage='closed_lost'
-           AND updated_at >= $2 AND updated_at < $3`,
+          `SELECT COALESCE(SUM(${safeNum("value")}), 0) as val
+           FROM deals
+           WHERE tenant_id=$1 AND stage='closed_lost'
+             AND updated_at >= $2 AND updated_at < $3`,
           [tenantId, d.toISOString(), nextD.toISOString()],
         ),
         pool.query<{ val: string }>(
-          `SELECT COALESCE(SUM(CAST(COALESCE(NULLIF(value,''),'0') AS NUMERIC)),0) as val
-           FROM deals WHERE tenant_id=$1
-           AND created_at >= $2 AND created_at < $3`,
+          `SELECT COALESCE(SUM(${safeNum("value")}), 0) as val
+           FROM deals
+           WHERE tenant_id=$1
+             AND created_at >= $2 AND created_at < $3`,
           [tenantId, d.toISOString(), nextD.toISOString()],
         ),
       ]);
@@ -315,7 +339,8 @@ class RevenueService {
     }
 
     const tone = confidencePercent >= 70 ? "forte" : confidencePercent >= 50 ? "modérée" : "prudente";
-    const narrative = `L'IA prédit avec une confiance ${tone} (${confidencePercent}%) un revenu pondéré de ${totalProjected.toLocaleString("fr-FR")}€ sur les 90 prochains jours pour ${quarterTarget}. ` +
+    const narrative =
+      `L'IA prédit avec une confiance ${tone} (${confidencePercent}%) un revenu pondéré de ${totalProjected.toLocaleString("fr-FR")}€ sur les 90 prochains jours pour ${quarterTarget}. ` +
       (atRiskPercent > 25
         ? `Attention : ${atRiskPercent}% du pipeline présente des signaux d'alerte — activation du AI Deal Coach recommandée pour les deals critiques.`
         : `Le pipeline est globalement sain. Maintenir le rythme de meetings et de suivi pour atteindre l'objectif trimestriel.`);
