@@ -224,9 +224,10 @@ export default function ProspectDetailPage() {
       { label: 'Email renseigné', weight: 20, met: !!p.email },
       { label: 'Téléphone renseigné', weight: 15, met: !!p.phone },
       { label: 'Entreprise identifiée', weight: 15, met: !!p.company },
-      { label: 'Poste / rôle décisionnel', weight: 20, met: !!p.jobTitle },
+      { label: 'Poste / rôle décisionnel', weight: 15, met: !!p.jobTitle },
       { label: 'En cours de négociation', weight: 20, met: ['negotiation', 'qualified'].includes(p.status) },
-      { label: 'Mis en favori', weight: 10, met: !!p.isStarred },
+      { label: 'Adresse géolocalisée', weight: 10, met: !!p.address && !!p.lat },
+      { label: 'Mis en favori', weight: 5, met: !!p.isStarred },
     ];
     const computedScore = criteria.reduce((s, c) => s + (c.met ? c.weight : 0), 0);
     return { criteria, computedScore };
