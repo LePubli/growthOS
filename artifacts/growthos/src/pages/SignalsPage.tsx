@@ -69,8 +69,16 @@ export default function SignalsPage() {
     return true;
   });
 
-  const markRead = (id: string) => setSignals(ss => ss.map(s => s.id === id ? { ...s, isRead: true } : s));
-  const markAllRead = () => { setSignals(ss => ss.map(s => ({ ...s, isRead: true }))); toast.success('Tous les signaux marqués comme lus'); };
+  const markRead = (id: string) => {
+    setSignals(ss => ss.map(s => s.id === id ? { ...s, isRead: true } : s));
+    apiClient.post(`/signals/${id}/read`).catch(() => {});
+  };
+  const markAllRead = () => {
+    const unread = signals.filter(s => !s.isRead);
+    setSignals(ss => ss.map(s => ({ ...s, isRead: true })));
+    toast.success('Tous les signaux marqués comme lus');
+    unread.forEach(s => apiClient.post(`/signals/${s.id}/read`).catch(() => {}));
+  };
   const toggleStar = (id: string, e: React.MouseEvent) => { e.stopPropagation(); setSignals(ss => ss.map(s => s.id === id ? { ...s, isStarred: !s.isStarred } : s)); };
   const dismiss = (id: string, e: React.MouseEvent) => { e.stopPropagation(); setSignals(ss => ss.map(s => s.id === id ? { ...s, isDismissed: true } : s)); toast.success('Signal ignoré'); };
   const addToProspects = (s: typeof MOCK_SIGNALS[0], e: React.MouseEvent) => { e.stopPropagation(); toast.success(`${s.company} ajouté aux prospects`); };

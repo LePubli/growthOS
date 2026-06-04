@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
-import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity, Building, TrendingUp, Crown, Target, ShieldAlert } from 'lucide-react';
+import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity, Building, TrendingUp, Crown, Target, ShieldAlert, Star, TrendingDown, Minus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/lib/api-client';
 import { OnboardingWizard } from '@/components/common/OnboardingWizard';
@@ -104,6 +104,80 @@ function RevenueIntelWidget() {
             </div>
           </Link>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ReputationScoreWidget() {
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ['erep-score-global'],
+    queryFn:  () => apiClient.get('/ereputation/score-global'),
+    staleTime: 300000,
+    retry: false,
+  });
+
+  if (isLoading) return null;
+  if (!data?.score) return null;
+
+  const { score, grade, label, trend, breakdown } = data;
+  const gradeColor  = grade === 'A' ? '#059669' : grade === 'B' ? '#2563EB' : grade === 'C' ? '#D97706' : '#DC2626';
+  const gradeBg     = grade === 'A' ? '#ECFDF5' : grade === 'B' ? '#EFF6FF' : grade === 'C' ? '#FFFBEB' : '#FEF2F2';
+  const TrendIcon   = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
+  const trendColor  = trend === 'up' ? '#059669' : trend === 'down' ? '#DC2626' : '#6B7280';
+
+  const arc = (pct: number) => {
+    const r = 30; const circ = 2 * Math.PI * r;
+    return `${(pct / 100) * circ} ${circ}`;
+  };
+
+  return (
+    <div className="rounded-2xl p-4 mb-5" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Star size={15} style={{ color: gradeColor }} />
+          <h2 className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Score E-Réputation Global</h2>
+        </div>
+        <Link href="/ereputation" className="text-xs flex items-center gap-1"
+          style={{ color: 'var(--color-primary)', textDecoration: 'none', fontWeight: 600 }}>
+          Gérer →
+        </Link>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 20, alignItems: 'center' }}>
+        <div style={{ position: 'relative', width: 80, height: 80 }}>
+          <svg width={80} height={80} viewBox="0 0 80 80" style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx={40} cy={40} r={30} fill="none" stroke="var(--card-border)" strokeWidth={8} />
+            <circle cx={40} cy={40} r={30} fill="none" stroke={gradeColor} strokeWidth={8}
+              strokeDasharray={arc(score)} strokeLinecap="round" style={{ transition: 'stroke-dasharray 0.8s ease' }} />
+          </svg>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 20, fontWeight: 900, color: gradeColor, lineHeight: 1 }}>{score}</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginTop: 1 }}>/100</span>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>{label}</span>
+            <span style={{ padding: '1px 8px', borderRadius: 9999, fontSize: 11, fontWeight: 700, background: gradeBg, color: gradeColor }}>
+              Grade {grade}
+            </span>
+            <TrendIcon size={13} color={trendColor} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 8 }}>
+            {[
+              { l: 'Signaux positifs', v: breakdown?.positiveSignals ?? 0, c: '#059669', bg: '#ECFDF5' },
+              { l: 'Total signaux',    v: breakdown?.totalSignals ?? 0,    c: '#2563EB', bg: '#EFF6FF' },
+              { l: 'Campagnes',        v: breakdown?.campaigns ?? 0,       c: '#7C3AED', bg: '#F5F3FF' },
+            ].map((item, i) => (
+              <div key={i} style={{ padding: '6px 8px', borderRadius: 8, background: item.bg, textAlign: 'center' }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: item.c }}>{item.v}</div>
+                <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>{item.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -261,6 +335,8 @@ export default function DashboardPage() {
           <DashboardWidget key={wid} wid={wid} value={widgetValues[wid]||'—'} onRemove={(id:string)=>setActiveWidgets(a=>a.filter(x=>x!==id))}/>
         ))}
       </div>
+
+      <ReputationScoreWidget />
 
       {/* Bottom grid: Pipeline | Prospects récents | Actions rapides | Activité */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">

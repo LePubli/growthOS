@@ -4,8 +4,10 @@ import { db } from "@workspace/db";
 import { dealsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { createNotification } from "../../services/notification.service";
+import { actionLogger } from "../../lib/ActionLogger";
 
 const router = Router();
+router.use(actionLogger);
 
 const dealSchema = z.object({
   title: z.string().min(1),

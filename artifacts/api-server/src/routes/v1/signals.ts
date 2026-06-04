@@ -5,8 +5,10 @@ import { signalsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { signalService } from "../../lib/plugin-signal-intelligence/SignalService";
 import { createNotification } from "../../services/notification.service";
+import { actionLogger } from "../../lib/ActionLogger";
 
 const router = Router();
+router.use(actionLogger);
 
 const signalSchema = z.object({
   type: z.enum(["funding", "hiring", "news", "technology", "intent"]),

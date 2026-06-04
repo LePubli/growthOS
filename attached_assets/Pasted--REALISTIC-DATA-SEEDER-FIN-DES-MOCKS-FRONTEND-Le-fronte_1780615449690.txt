@@ -1,0 +1,69 @@
+ REALISTIC DATA SEEDER (FIN DES MOCKS FRONTEND)
+Le frontend affiche actuellement des données "en dur" (mocks). Pour tester les vraies fonctionnalités, nous avons besoin de données réalistes en base de données.
+
+1. Crée un script de seed robuste : `artifacts/api-server/src/db/seed-realistic.ts`.
+2. Ce script doit insérer dans PostgreSQL (via Drizzle ou le client DB existant) :
+   - 10 Comptes (Accounts) réalistes (ex: "TechCorp Paris", "Agence Epok Lyon") avec des secteurs, tailles et CA réels.
+   - 30 Prospects répartis sur ces comptes, avec des emails valides, des téléphones, et des scores de propensité variés.
+   - 15 Deals dans le pipeline à différentes étapes (Lead, Qualifié, Négociation, Gagné) avec des montants réels (ex: 15000€, 45000€).
+   - 20 Signaux d'intention variés (Financement, Recrutement) liés aux comptes.
+   - 5 Réunions (Meetings) avec des transcriptions et résumés IA réalistes (pas de Lorem Ipsum, mais de vrais textes de vente).
+   - 10 Documents dans la Growth Memory.
+3. Assure-toi que les relations (clés étrangères) sont respectées.
+4. Ajoute une commande dans le `package.json` : `"seed:realistic": "tsx src/db/seed-realistic.ts"`.
+5. Exécute le script et confirme que la DB est remplie. Puis # OBJECTIF : MOCK ERADICATION & ACTION LOGGER (VÉRIFICATION FONCTIONNELLE)
+Nous devons remplacer les mocks par de vraies requêtes DB et prouver que chaque bouton fonctionne.
+
+## PARTIE A : Le "Action Logger" (Backend)
+Crée un middleware/service `artifacts/api-server/src/lib/ActionLogger.ts`.
+À chaque requête POST/PUT/PATCH/DELETE réussie (200/201), ce logger doit écrire dans la console un format très clair :
+`[ACTION SUCCESS] Route: /api/v1/deals/:id | Action: UPDATE_STAGE | User: admin@epok.fr | DB Impact: 1 row updated | Payload: { stage: 'Negotiation' }`
+
+Intègre ce logger dans toutes les routes de modification (deals, prospects, signals, sequences, etc.).
+
+## PARTIE B : Chasse aux Mocks (Frontend & Backend)
+Fais une recherche globale dans le code pour identifier et remplacer les mocks :
+1. **Frontend** : Cherche les fichiers contenant `mockData`, `dummyData`, `fakeProspects`, `staticDeals`. Remplace les appels à ces variables par des appels TanStack Query (`useQuery`) vers les vraies routes API (`/api/v1/prospects`, `/api/v1/deals`, etc.).
+2. **Backend** : Cherche les fichiers nommés `MockLLMService`, `MockEnrichmentService`, ou des routes qui retournent des tableaux JSON en dur. Remplace-les par de vraies requêtes SQL vers PostgreSQL.
+3. **Exception** : Garde les mocks uniquement pour les appels IA externes (OpenAI/Ollama) s'ils ne sont pas configurés, mais assure-toi que le reste du flux (sauvegarde en DB) est réel.
+
+## PARTIE C : Vérification des Boutons "Critiques"
+Pour les boutons suivants, assure-toi qu'ils déclenchent bien une mutation API et que le cache TanStack Query est invalidé (`queryClient.invalidateQueries`) après succès pour rafraîchir l'UI :
+- Bouton "Changer l'étape d'un Deal" (Drag & Drop ou Select).
+- Bouton "Marquer un Signal comme lu".
+- Bouton "Lancer une séquence Email".
+- Bouton "Ajouter une note à un Prospect".
+
+Livre les fichiers modifiés. Puis # OBJECTIF : E2E VERIFICATION SCRIPT (TEST AUTOMATIQUE)
+Crée un script de test backend : `artifacts/api-server/src/scripts/verify-e2e.ts`.
+Ce script va simuler les actions critiques d'un utilisateur et vérifier que la DB a bien été modifiée.
+
+Le script doit exécuter ces scénarios et afficher un rapport vert/rouge dans la console :
+
+1. **Scénario Prospect** :
+   - Créer un prospect via API (POST /prospects).
+   - Vérifier en DB qu'il existe bien.
+   - Modifier son score. Vérifier en DB que le score a changé.
+   - Supprimer le prospect. Vérifier qu'il n'est plus en DB.
+   - [✅ PASS] ou [❌ FAIL]
+
+2. **Scénario Deal/Pipeline** :
+   - Créer un deal.
+   - Changer son étape de 'Lead' à 'Qualifié'.
+   - Vérifier en DB que l'étape et la date de modification ont été mises à jour.
+   - [✅ PASS] ou [❌ FAIL]
+
+3. **Scénario Signal** :
+   - Créer un signal.
+   - Le marquer comme 'lu'.
+   - Vérifier en DB que le champ `is_read` est passé à true.
+   - [✅ PASS] ou [❌ FAIL]
+
+4. **Scénario Séquence Email** :
+   - Créer une séquence.
+   - L'activer (toggle).
+   - Vérifier en DB que le statut est 'active'.
+   - [✅ PASS] ou [❌ FAIL]
+
+Le script doit utiliser l'URL de l'API locale (http://localhost:3001) et un token JWT admin valide (généré dynamiquement ou en variable d'env).
+Ajoute la commande `"test:e2e": "tsx src/scripts/verify-e2e.ts"` dans le package.json.

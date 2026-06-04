@@ -4,8 +4,10 @@ import { db } from "@workspace/db";
 import { sequencesTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { createNotification } from "../../services/notification.service";
+import { actionLogger } from "../../lib/ActionLogger";
 
 const router = Router();
+router.use(actionLogger);
 
 const sequenceSchema = z.object({
   name: z.string().min(1),

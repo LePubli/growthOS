@@ -4,7 +4,10 @@ import { db } from "@workspace/db";
 import { prospectsTable } from "@workspace/db";
 import { eq, and, or, ilike, desc, count, isNull, isNotNull } from "drizzle-orm";
 
+import { actionLogger } from "../../lib/ActionLogger";
+
 const router = Router();
+router.use(actionLogger);
 
 /* ─── Geocoding via Nominatim (OpenStreetMap — free, no key) ─── */
 
