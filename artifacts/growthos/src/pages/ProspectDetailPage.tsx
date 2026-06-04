@@ -161,6 +161,7 @@ export default function ProspectDetailPage() {
   const [form, setForm] = useState<any>({});
   const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
   const [showAddActivity, setShowAddActivity] = useState(false);
 
   const fetchProspect = async () => {
@@ -207,6 +208,38 @@ export default function ProspectDetailPage() {
   };
 
   const sf = (k: string, v: string) => setForm((f: any) => ({ ...f, [k]: v }));
+
+  const geocodeNow = async () => {
+    if (!prospect.address || geocoding) return;
+    setGeocoding(true);
+    try {
+      // PATCH with the same address → triggers background geocoding on server
+      await apiClient.patch(`/prospects/${id}`, { address: prospect.address });
+      toast.success('Géocodage lancé — la carte apparaîtra dans quelques secondes');
+      // Poll for coordinates up to 8s
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const data = await apiClient.get(`/prospects/${id}`) as any;
+          if (data.lat) {
+            setProspect(data);
+            setForm(data);
+            clearInterval(poll);
+            setGeocoding(false);
+            toast.success('Prospect géolocalisé ✓');
+          } else if (attempts >= 8) {
+            clearInterval(poll);
+            setGeocoding(false);
+            toast.error('Adresse introuvable sur la carte');
+          }
+        } catch { clearInterval(poll); setGeocoding(false); }
+      }, 1000);
+    } catch {
+      toast.error('Erreur lors du géocodage');
+      setGeocoding(false);
+    }
+  };
 
   const archiveProspect = async () => {
     const isArchived = prospect.status === 'archived';
@@ -387,18 +420,33 @@ export default function ProspectDetailPage() {
                       )}
                     </div>
                     {prospect.address ? (
-                      <div className="flex items-start gap-2">
-                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{prospect.address}</span>
-                        {prospect.lat && (
-                          <a
-                            href={`https://www.google.com/maps?q=${prospect.lat},${prospect.lng}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs flex-shrink-0 mt-0.5"
-                            style={{ color: 'var(--color-primary)' }}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-start gap-2">
+                          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{prospect.address}</span>
+                          {prospect.lat && (
+                            <a
+                              href={`https://www.google.com/maps?q=${prospect.lat},${prospect.lng}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs flex-shrink-0 mt-0.5"
+                              style={{ color: 'var(--color-primary)' }}
+                            >
+                              Voir sur Maps ↗
+                            </a>
+                          )}
+                        </div>
+                        {/* Geocode button — only when address exists but no coordinates yet */}
+                        {!prospect.lat && (
+                          <button
+                            onClick={geocodeNow}
+                            disabled={geocoding}
+                            className="flex items-center gap-1.5 self-start mt-0.5 px-2.5 py-1 rounded-lg text-xs font-medium disabled:opacity-60 transition-all"
+                            style={{ background: geocoding ? '#F3F4F6' : '#F0FDF4', color: geocoding ? '#9CA3AF' : '#059669', border: '1px solid', borderColor: geocoding ? '#E5E7EB' : '#86EFAC' }}
                           >
-                            Voir sur Maps ↗
-                          </a>
+                            {geocoding
+                              ? <><Loader2 size={11} className="animate-spin" />Géocodage en cours…</>
+                              : <><MapPin size={11} />Géocoder maintenant</>}
+                          </button>
                         )}
                       </div>
                     ) : (
