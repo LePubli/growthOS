@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "fVBxDQFbVABy45pU5dOvc"
+uri = "file://GrowthOS_Documentation.md"
+type = "text"
+title = "Documentation GrowthOS — Toutes les fonctionnalités"
