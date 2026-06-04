@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, timestamp, integer, boolean, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -16,6 +16,9 @@ export const prospectsTable = pgTable("prospects", {
   status: text("status").notNull().default("new"),
   score: integer("score").default(0),
   isStarred: boolean("is_starred").default(false),
+  address: text("address"),
+  lat: doublePrecision("lat"),
+  lng: doublePrecision("lng"),
   tenantId: uuid("tenant_id").references(() => tenantsTable.id, { onDelete: "cascade" }).notNull(),
   createdBy: uuid("created_by").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),

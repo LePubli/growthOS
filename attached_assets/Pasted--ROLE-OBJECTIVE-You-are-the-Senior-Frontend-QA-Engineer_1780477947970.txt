@@ -1,0 +1,54 @@
+# ROLE & OBJECTIVE
+You are the Senior Frontend QA Engineer for GrowthOS.
+The backend is now stable with proper error logging. However, the frontend has multiple UX issues:
+- Buttons that do nothing when clicked
+- Missing or incomplete sub-pages
+- Loading states absent (UI freezes during API calls)
+- Error states not displayed to the user
+- Some routes return blank screens or 404
+
+Your mission is to perform a **systematic UI audit and stabilization pass** across all 10 plugins.
+
+# PHASE 1: COMPREHENSIVE ROUTE AUDIT
+1. Create a script: `artifacts/growthos/src/scripts/audit-routes.ts`.
+2. This script must:
+   - Scan all plugin manifests registered in the system
+   - Check that each declared route (`/memory`, `/meetings`, `/signals`, etc.) has a corresponding component file
+   - Verify the main router (`App.tsx` or `router.tsx`) imports these components
+   - Output a report: ✅ Route OK / ❌ Missing Component / ⚠️ Component exists but not imported
+
+3. Fix any missing routes immediately by creating stub components or importing existing ones.
+
+# PHASE 2: BUTTON & FORM STABILIZATION
+For every interactive element (buttons, forms, toggles) across all plugins:
+
+1. **Loading States**: Every button that triggers an API call must:
+   - Show a spinner or "Chargement..." text while `isPending` or `isLoading` is true
+   - Be disabled during the request to prevent double-clicks
+   - Re-enable when done
+
+2. **Error Feedback**: If the API call fails:
+   - Show a toast notification with the error message from backend
+   - Log the error to console for debugging
+   - Do NOT silently fail
+
+3. **Success Feedback**: If the API call succeeds:
+   - Show a success toast ("Réunion créée", "Plugin désactivé", etc.)
+   - Invalidate relevant React Query cache to refresh data
+
+**Audit these specific areas** (known problem zones):
+- Plugin buttons: Enable/Disable in `/plugins` dashboard
+- "Generate Email" button in AI SDR
+- "Create Meeting" button in Meeting Intelligence
+- "Add to Memory" buttons
+- Form submissions (login, register, new article, new workflow)
+
+# PHASE 3: ERROR BOUNDARY & LOADING SKELETONS
+1. Create `artifacts/growthos/src/components/ui/LoadingSkeleton.tsx`:
+   - A generic skeleton loader for cards, tables, and text blocks
+   - Use Tailwind animate-pulse
+
+2. Wrap every plugin page with:
+   ```tsx
+   if (isLoading) return <LoadingSkeleton />;
+   if (isError) return <ErrorState message={error.message} onRetry={refetch} />;

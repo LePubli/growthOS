@@ -364,6 +364,17 @@ export async function runNotificationsMigration(): Promise<void> {
   await pool.query(SQL_NOTIFICATIONS);
 }
 
+const SQL_PROSPECT_GEO = `
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION;
+CREATE INDEX IF NOT EXISTS prospects_geo_idx ON prospects(lat, lng) WHERE lat IS NOT NULL AND lng IS NOT NULL;
+`;
+
+export async function runProspectGeoMigration(): Promise<void> {
+  await pool.query(SQL_PROSPECT_GEO);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

@@ -1,0 +1,31 @@
+La compilation s'est bien passée — Vite a détecté et optimisé react-leaflet + leaflet pour la nouvelle page. Voici un récapitulatif complet de ce qui a été livré :
+
+✅ Carte & Tournée GPS — refonte complète
+🗺️ Carte interactive (Leaflet + OpenStreetMap)
+Vraie carte géographique avec tuiles OpenStreetMap (remplace le SVG statique)
+Zoom in/out natif avec molette et boutons Leaflet
+Bouton 🇫🇷 pour revenir à la vue France entière
+Marqueurs colorés par statut (Qualifié, Proposition, Négociation, etc.) avec avatars initiaux
+Clic sur un marqueur → popup avec nom, adresse, pipeline, téléphone, email, bouton d'ajout à la tournée + bouton navigation directe
+🔍 Recherche d'adresse
+Barre de recherche filtre les prospects en temps réel ET géocode les adresses via Nominatim / OpenStreetMap (gratuit, sans clé API)
+Résultats de géocodage en dropdown — clic sur un résultat centre la carte sur cette adresse
+📍 Adresse personnalisée dans la tournée
+Bouton "Adresse perso" ouvre un panneau — tape une adresse, un nom et une note optionnelle
+Autocomplete en temps réel (Nominatim, France + pays limitrophes)
+L'arrêt est ajouté à la tournée avec une épingle distinctive (tiretée/verte)
+📡 GPS intégré
+Bouton "Ma position" (LocateFixed) → navigator.geolocation → point bleu sur la carte
+Le tracé de tournée part de ta position GPS si disponible
+L'optimisation du trajet tient compte de ta position de départ (algorithme du plus proche voisin)
+🗂️ Gestion de la tournée
+Panneau latéral droit avec compteurs : étapes / distance km / temps estimé (~40 km/h) / pipeline total
+Réordonner les étapes (↑/↓) manuellement
+Supprimer une étape individuellement
+Optimiser automatiquement par proximité
+Tracé pointillé vert sur la carte (activable/désactivable)
+🚗 Navigation vers apps GPS
+Google Maps → ouvre avec toutes les étapes comme waypoints
+Waze → ouvre sur la destination finale
+Apple Maps → lien natif iOS
+Next, I can connecter la carte aux vrais prospects de la base de données (en ajoutant des coordonnées GPS lors de l'import CSV ou via geocodage automatique à la création du prospect). Would you like me to do that?
