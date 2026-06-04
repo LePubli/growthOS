@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration } from "@workspace/db";
+import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 
 const rawPort = process.env["PORT"];
@@ -21,8 +21,8 @@ runMigrations()
   .then(async () => {
     logger.info("Database migrations applied");
 
-    await Promise.all([runSourcingMigration(), runNotificationsMigration(), runProspectGeoMigration()]);
-    logger.info("Sourcing, notifications and prospect geo tables ready");
+    await Promise.all([runSourcingMigration(), runNotificationsMigration(), runProspectGeoMigration(), runEnrichmentMigration()]);
+    logger.info("Sourcing, notifications, prospect geo and enrichment tables ready");
 
     await seedBuiltInPlugins();
 

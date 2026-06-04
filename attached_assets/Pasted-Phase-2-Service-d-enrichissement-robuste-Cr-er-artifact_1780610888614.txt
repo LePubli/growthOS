@@ -1,0 +1,123 @@
+Phase 2 : Service d'enrichissement robuste
+Créer artifacts/api-server/src/lib/plugin-enrichment/EnrichmentEngine.ts :
+Les 23 sources à intégrer :
+Sources gratuites (Open Data) :
+Pappers API (données légales françaises) - https://api.pappers.fr/v1/
+INSEE Sirene (données officielles) - https://api.insee.fr/api-sirene/3.8
+Societe.info (scraping)
+PagesJaunes (annuaire)
+Google Maps (déjà existant)
+Google Search
+Sources payantes (APIs configurables) :
+7. LinkedIn API
+8. Dropcontact (enrichissement email)
+9. Societeinfo API
+10. Infogreffe (actes officiels)
+11. Crunchbase (levées de fonds)
+12. Dealroom (startups)
+13. Wappalyzer (stack technique)
+14. BuiltWith (technologies)
+15. Hunter.io (emails)
+16. Apollo.io (contacts)
+17. ZoomInfo (données B2B)
+Sources scraping (gratuites avec rate limiting) :
+18. LinkedIn Scraping
+19. Twitter/X
+20. Facebook
+21. Instagram
+22. Welcome to the Jungle (offres d'emploi)
+23. Indeed (offres d'emploi)
+24. APEC (cadres)
+25. Google News RSS (actualités)
+26. BODACC (avis officiels)
+27. Site web entreprise (scraping)
+Méthodes du service :
+enrichProspect(prospectId) : enrichissement complet avec toutes les sources actives
+callAPI(sourceId, prospect, config) : appel API avec retry (3 tentatives) et timeout (10s)
+scrapeSource(sourceId, prospect) : scraping avec rate limiting (1 req/seconde)
+detectSignals(sourceId, data) : détection de signaux (recrutement, levée de fonds, etc.)
+calculateLeadScore(results) : calcul du score 0-100
+getFromCache(key) / saveToCache(key, data, ttl) : système de cache
+interconnectWithPlugins(prospectId, results, signals) : injection dans Memory, Signals, Accounts
+Règles critiques :
+Try/catch sur CHAQUE appel de source (si une source échoue, les autres continuent)
+Rate limiting strict : jamais plus de 1 req/seconde par source
+Timeout : 10 secondes max par appel API
+Retry : 3 tentatives avec exponential backoff (2s, 4s, 8s)
+Cache : 1 heure pour éviter les doublons
+Logs structurés pour chaque action
+Toutes les données doivent avoir un champ source et fetchedAt
+Phase 3 : Interconnexion avec les plugins existants
+Dans la méthode interconnectWithPlugins, après collecte des données :
+Growth Memory : indexer toutes les données collectées
+typescript
+123456789
+Signal Intelligence : créer les signaux détectés
+typescript
+123456
+Account Intelligence : mettre à jour le score du compte
+typescript
+12345
+AI Deal Coach : si le prospect est lié à un deal, mettre à jour
+typescript
+1234
+Workflow AI : émettre un événement pour les workflows
+typescript
+1234
+Phase 4 : Routes API
+Créer artifacts/api-server/src/routes/v1/plugins/enrichment.ts :
+POST /enrich/:prospectId : enrichir un prospect
+POST /enrich-batch : enrichissement en batch (plusieurs prospects)
+PUT /api-config/:sourceId : configurer une API payante (clé, secret, endpoint)
+GET /api-configs : lister toutes les configurations d'APIs
+GET /data/:prospectId : récupérer les données enrichies
+GET /history/:prospectId : historique des enrichissements
+Monter dans artifacts/api-server/src/routes/v1/index.ts :
+typescript
+12
+Phase 5 : UI - Page d'enrichissement
+Créer artifacts/growthos/src/pages/EnrichmentPage.tsx :
+Section 1 : Configuration des APIs
+Liste des 23 sources avec leur statut (actif/inactif)
+Pour chaque source payante : champs API Key, API Secret, Endpoint URL
+Toggle pour activer/désactiver chaque source
+Bouton "Tester la connexion" pour chaque API
+Indicateur de rate limit et quota restant
+Section 2 : Enrichissement
+Bouton "Enrichir" sur chaque prospect
+Affichage des données collectées par source (onglets : Légal, Digital, Social, Signaux)
+Score de lead avec détail du calcul
+Historique des enrichissements
+Bouton "Importer dans CRM" pour créer un Account officiel
+Section 3 : Interconnexion
+Afficher les données injectées dans Memory
+Afficher les signaux créés
+Afficher le score Account mis à jour
+Phase 6 : Détection de signaux faibles
+Implémenter la détection automatique de ces signaux :
+Recrutement : si > 3 offres d'emploi détectées → signal "Forte croissance"
+Levée de fonds : si Crunchbase/Dealroom retourne une levée → signal "Levée de fonds"
+Changement dirigeant : si Pappers détecte un nouveau dirigeant → signal "Nouveau dirigeant"
+Actualité positive : si Google News retourne des articles positifs → signal "Média positif"
+Stack technique : si Wappalyzer détecte des technologies premium → signal "Investissement tech"
+Expansion : si nouvelles filiales détectées → signal "Expansion géographique"
+RÈGLES STRICTES D'EXÉCUTION
+Ne PAS casser le scraping existant : le plugin de scraping actuel (Google Maps, LinkedIn, etc.) doit continuer à fonctionner
+Zéro crash en production : tous les appels API doivent avoir try/catch + timeout + retry
+Rate limiting strict : jamais plus de 1 req/seconde par source
+Toutes les données doivent avoir un champ source pour la traçabilité
+Mock les réponses API pour le développement : structure réelle mais données fictives si pas de clé API
+Interconnexion stricte avec tous les plugins via pluginManager
+Logs structurés pour chaque action (utiliser le logger existant)
+Cache obligatoire : 1 heure pour éviter les doublons
+Historique complet : chaque enrichissement doit être logué avec statut, durée, erreurs
+LIVRABLES ATTENDUS
+Migration DB 011_enrichment.sql
+Service EnrichmentEngine.ts complet avec les 23 sources
+Routes API /enrichment/*
+Page UI EnrichmentPage.tsx avec configuration, enrichissement, et interconnexion
+Détection de signaux faibles (6 types minimum)
+Interconnexion avec Memory, Signals, Accounts, Deal Coach, Workflow AI
+Système de cache et rate limiting
+Historique complet des enrichissements
+Commence par la Phase 1 (DB) et Phase 2 (Service avec les 23 sources). Assure-toi que le code est 100% production-ready avec gestion d'erreurs complète.

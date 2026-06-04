@@ -239,6 +239,8 @@ export default function ProspectsPage() {
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkStatus, setShowBulkStatus] = useState(false);
+  const [geocodingAll, setGeocodingAll] = useState(false);
+  const [geocodeProgress, setGeocodeProgress] = useState({ done: 0, total: 0 });
 
   const fetchProspects = async () => {
     setLoading(true);
@@ -256,6 +258,26 @@ export default function ProspectsPage() {
 
   useEffect(()=>{ fetchProspects(); },[status, page, noGeo]);
   useEffect(()=>{ const t=setTimeout(fetchProspects,400); return()=>clearTimeout(t); },[search]);
+
+  const geocodeAll = async () => {
+    const targets = prospects.filter(p => p.address && !p.lat);
+    if (!targets.length) { toast('Aucun prospect à géocoder'); return; }
+    setGeocodingAll(true);
+    setGeocodeProgress({ done: 0, total: targets.length });
+    let done = 0;
+    for (const p of targets) {
+      try {
+        await apiClient.patch(`/prospects/${p.id}`, { address: p.address });
+        done++;
+        setGeocodeProgress({ done, total: targets.length });
+      } catch {}
+      // 1.3s between requests (Nominatim ToS)
+      if (done < targets.length) await new Promise(r => setTimeout(r, 1300));
+    }
+    setGeocodingAll(false);
+    toast.success(`${done}/${targets.length} prospects géocodés`);
+    fetchProspects();
+  };
 
   const toggleStar = async (id:string) => {
     setProspects(ps=>ps.map(p=>p.id===id?{...p,isStarred:!p.isStarred}:p));
@@ -378,6 +400,32 @@ export default function ProspectsPage() {
           {noGeo && prospects.length > 0 && <span className="ml-0.5 opacity-80">({prospects.length})</span>}
         </button>
       </div>
+
+      {/* Geocode-all action strip */}
+      {noGeo && prospects.length > 0 && (
+        <div className="flex items-center gap-3 mb-4 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+          <MapPinOff className="w-4 h-4 text-amber-500 flex-shrink-0"/>
+          <span className="text-sm text-amber-700 flex-1">
+            {geocodingAll
+              ? `Géocodage en cours… ${geocodeProgress.done}/${geocodeProgress.total}`
+              : `${prospects.length} prospect${prospects.length>1?'s':''} avec adresse mais sans coordonnées`}
+          </span>
+          {geocodingAll && (
+            <div className="w-32 bg-amber-200 rounded-full h-1.5">
+              <div className="bg-amber-500 h-1.5 rounded-full transition-all"
+                style={{ width: `${geocodeProgress.total ? (geocodeProgress.done/geocodeProgress.total)*100 : 0}%` }}/>
+            </div>
+          )}
+          <button
+            onClick={geocodeAll}
+            disabled={geocodingAll}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-medium disabled:opacity-50 transition-colors flex-shrink-0"
+          >
+            {geocodingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <MapPin className="w-3.5 h-3.5"/>}
+            {geocodingAll ? 'En cours…' : 'Géocoder tous'}
+          </button>
+        </div>
+      )}
 
       {/* Recherche */}
       <div className="relative mb-4 max-w-sm">

@@ -1,0 +1,93 @@
+# OBJECTIF : PLUGIN 11 - DATA ENRICHMENT ENGINE MULTI-SOURCES PRODUCTION-READY
+
+Tu vas créer un moteur d'enrichissement de données B2B qui s'intègre à l'écosystème GrowthOS existant.
+
+## CONTEXTE IMPORTANT
+- Un plugin de scraping existe déjà (Google Maps, LinkedIn, Societe.info, Twitter, Custom)
+- Ce plugin gère déjà la collecte de base (nom, adresse, téléphone, site web, avis)
+- Tu ne dois PAS casser ce qui existe
+- Tu dois COMPLÉTER avec des données légales, financières, et signaux faibles
+- Toutes les données doivent être interconnectées avec les autres plugins
+
+## ARCHITECTURE REQUISE
+
+### Phase 1 : Base de données
+Créer `artifacts/api-server/db/migrations/011_enrichment_engine.sql` :
+
+```sql
+-- Configuration des APIs (payantes et gratuites)
+CREATE TABLE IF NOT EXISTS enrichment_api_configs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_id TEXT UNIQUE NOT NULL,
+  source_name TEXT NOT NULL,
+  source_type TEXT NOT NULL, -- 'api', 'scrape', 'rss'
+  api_key TEXT,
+  api_secret TEXT,
+  endpoint_url TEXT,
+  rate_limit_per_minute INTEGER DEFAULT 60,
+  is_active BOOLEAN DEFAULT TRUE,
+  last_tested_at TIMESTAMP,
+  test_status TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Données enrichies par prospect
+CREATE TABLE IF NOT EXISTS enrichment_data (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_id UUID NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  source_id TEXT NOT NULL,
+  data_type TEXT NOT NULL, -- 'legal', 'financial', 'digital', 'social', 'news', 'jobs', 'org_chart'
+  raw_data JSONB NOT NULL,
+  processed_data JSONB,
+  confidence_score FLOAT DEFAULT 0.0,
+  fetched_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP,
+  UNIQUE(prospect_id, source_id, data_type)
+);
+
+-- Signaux détectés
+CREATE TABLE IF NOT EXISTS enrichment_signals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,
+  signal_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  source TEXT NOT NULL,
+  source_url TEXT,
+  impact_score INTEGER DEFAULT 50,
+  detected_at TIMESTAMP DEFAULT NOW(),
+  processed BOOLEAN DEFAULT FALSE,
+  processed_at TIMESTAMP
+);
+
+-- Cache pour éviter les requêtes en double
+CREATE TABLE IF NOT EXISTS enrichment_cache (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cache_key TEXT UNIQUE NOT NULL,
+  cache_value JSONB NOT NULL,
+  source_id TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL
+);
+
+-- Historique des enrichissements
+CREATE TABLE IF NOT EXISTS enrichment_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,
+  started_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP,
+  status TEXT NOT NULL, -- 'pending', 'running', 'completed', 'failed', 'partial'
+  sources_attempted INTEGER DEFAULT 0,
+  sources_succeeded INTEGER DEFAULT 0,
+  sources_failed INTEGER DEFAULT 0,
+  error_log JSONB,
+  triggered_by TEXT DEFAULT 'manual'
+);
+
+-- Index pour performance
+CREATE INDEX idx_enrichment_data_prospect ON enrichment_data(prospect_id);
+CREATE INDEX idx_enrichment_data_source ON enrichment_data(source_id);
+CREATE INDEX idx_enrichment_signals_prospect ON enrichment_signals(prospect_id);
+CREATE INDEX idx_enrichment_cache_key ON enrichment_cache(cache_key);
+CREATE INDEX idx_enrichment_history_prospect ON enrichment_history(prospect_id);

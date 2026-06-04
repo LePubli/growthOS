@@ -30,6 +30,7 @@ import notificationsRouter from "./notifications";
 import adminRouter from "./admin";
 import pluginMarketplaceRouter from "./plugin-marketplace";
 import auditRouter from "./audit";
+import enrichmentRouter from "./plugins/enrichment";
 
 const router = Router();
 
@@ -63,5 +64,6 @@ router.use("/notifications", notificationsRouter);
 router.use("/admin", adminRouter);
 router.use("/plugin-marketplace", pluginMarketplaceRouter);
 router.use("/audit", auditRouter);
+router.use("/enrich", enrichmentRouter);
 
 export default router;

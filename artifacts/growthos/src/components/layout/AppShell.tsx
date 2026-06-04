@@ -6,7 +6,7 @@ import {
   Bot, User, Webhook, BarChart2, Download, Zap,
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
-  Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route, ShieldCheck, Package,
+  Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route, ShieldCheck, Package, Database,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -52,6 +52,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Sourcing',
     items: [
       { href: '/sourcing', label: 'Scraping', icon: <Search size={16} /> },
+      { href: '/enrichment', label: 'Data Enrichment', icon: <Database size={16} /> },
       { href: '/signals', label: 'Signaux', icon: <Zap size={16} />, pluginId: 'ai-signals' },
       { href: '/contacts', label: 'Contact Intel', icon: <User size={16} /> },
       { href: '/map', label: 'Carte & Tournée', icon: <Map size={16} /> },

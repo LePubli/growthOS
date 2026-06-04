@@ -1,0 +1,219 @@
+import { db } from '../../lib/db';
+import { logger } from '../../lib/logger';
+import { pluginManager } from '../plugin-runtime';
+
+// Liste des 23 sources
+export const ENRICHMENT_SOURCES = [
+  // APIs Open Data (gratuites)
+  { id: 'pappers', name: 'Pappers API', type: 'api', cost: 'free', category: 'legal' },
+  { id: 'insee', name: 'INSEE Sirene', type: 'api', cost: 'free', category: 'legal' },
+  { id: 'societe_info', name: 'Societe.info', type: 'scrape', cost: 'free', category: 'legal' },
+  { id: 'pagesjaunes', name: 'PagesJaunes', type: 'scrape', cost: 'free', category: 'contact' },
+  { id: 'google_maps', name: 'Google Maps', type: 'scrape', cost: 'free', category: 'contact' },
+  { id: 'google_search', name: 'Google Search', type: 'scrape', cost: 'free', category: 'digital' },
+  
+  // APIs Freemium/Payantes
+  { id: 'linkedin_api', name: 'LinkedIn API', type: 'api', cost: 'paid', category: 'social' },
+  { id: 'dropcontact', name: 'Dropcontact', type: 'api', cost: 'paid', category: 'contact' },
+  { id: 'societeinfo_api', name: 'Societeinfo API', type: 'api', cost: 'paid', category: 'financial' },
+  { id: 'infogreffe', name: 'Infogreffe', type: 'api', cost: 'paid', category: 'legal' },
+  { id: 'crunchbase', name: 'Crunchbase', type: 'api', cost: 'paid', category: 'funding' },
+  { id: 'dealroom', name: 'Dealroom', type: 'api', cost: 'paid', category: 'funding' },
+  { id: 'wappalyzer', name: 'Wappalyzer', type: 'api', cost: 'paid', category: 'tech' },
+  { id: 'builtwith', name: 'BuiltWith', type: 'api', cost: 'paid', category: 'tech' },
+  { id: 'hunter_io', name: 'Hunter.io', type: 'api', cost: 'paid', category: 'contact' },
+  { id: 'apollo_io', name: 'Apollo.io', type: 'api', cost: 'paid', category: 'contact' },
+  { id: 'zoominfo', name: 'ZoomInfo', type: 'api', cost: 'paid', category: 'contact' },
+  
+  // Scraping (gratuit avec rate limiting)
+  { id: 'linkedin_scrape', name: 'LinkedIn Scraping', type: 'scrape', cost: 'free', category: 'social' },
+  { id: 'twitter_x', name: 'Twitter/X', type: 'scrape', cost: 'free', category: 'social' },
+  { id: 'facebook', name: 'Facebook', type: 'scrape', cost: 'free', category: 'social' },
+  { id: 'instagram', name: 'Instagram', type: 'scrape', cost: 'free', category: 'social' },
+  { id: 'welcome_to_jungle', name: 'Welcome to the Jungle', type: 'scrape', cost: 'free', category: 'jobs' },
+  { id: 'indeed', name: 'Indeed', type: 'scrape', cost: 'free', category: 'jobs' },
+  { id: 'apec', name: 'APEC', type: 'scrape', cost: 'free', category: 'jobs' },
+  { id: 'google_news', name: 'Google News RSS', type: 'scrape', cost: 'free', category: 'news' },
+  { id: 'bodacc', name: 'BODACC', type: 'scrape', cost: 'free', category: 'legal' },
+  { id: 'company_website', name: 'Site Web Entreprise', type: 'scrape', cost: 'free', category: 'digital' },
+];
+
+export class EnrichmentEngine {
+  // Enrichissement complet d'un prospect avec toutes les sources actives
+  async enrichProspect(prospectId: string): Promise<EnrichmentResult> {
+    const prospect = await this.getProspect(prospectId);
+    if (!prospect) throw new Error('Prospect not found');
+
+    const results: EnrichmentSourceResult[] = [];
+    const signals: Signal[] = [];
+
+    // Pour chaque source active
+    for (const source of ENRICHMENT_SOURCES) {
+      const config = await this.getAPIConfig(source.id);
+      if (!config.is_active) continue;
+
+      try {
+        let data: any = null;
+        
+        // Router vers le bon handler selon le type
+        if (source.type === 'api' && config.api_key) {
+          data = await this.callAPI(source.id, prospect, config);
+        } else if (source.type === 'scrape') {
+          data = await this.scrapeSource(source.id, prospect);
+        }
+
+        if (data) {
+          // Sauvegarder en DB
+          await this.saveEnrichmentData(prospectId, source.id, data);
+          results.push({ sourceId: source.id, data, success: true });
+
+          // Détecter les signaux
+          const detectedSignals = this.detectSignals(source.id, data);
+          signals.push(...detectedSignals);
+        }
+      } catch (err) {
+        logger.error({ err, source: source.id }, `Enrichment failed for ${source.id}`);
+        results.push({ sourceId: source.id, error: err.message, success: false });
+      }
+
+      // Rate limiting
+      await this.delay(1000);
+    }
+
+    // Sauvegarder les signaux
+    for (const signal of signals) {
+      await this.saveSignal(prospectId, signal);
+    }
+
+    // Interconnexion avec les autres plugins
+    await this.interconnectWithPlugins(prospectId, results, signals);
+
+    return { prospectId, results, signals };
+  }
+
+  // Appel API (pour les sources payantes)
+  private async callAPI(sourceId: string, prospect: any, config: any): Promise<any> {
+    const handlers = {
+      pappers: () => this.callPappersAPI(prospect, config),
+      insee: () => this.callINSEEAPI(prospect, config),
+      dropcontact: () => this.callDropcontactAPI(prospect, config),
+      hunter_io: () => this.callHunterIOAPI(prospect, config),
+      apollo_io: () => this.callApolloIOAPI(prospect, config),
+      wappalyzer: () => this.callWappalyzerAPI(prospect, config),
+      crunchbase: () => this.callCrunchbaseAPI(prospect, config),
+      // ... autres handlers
+    };
+
+    const handler = handlers[sourceId];
+    if (!handler) throw new Error(`No handler for ${sourceId}`);
+    return await handler();
+  }
+
+  // Scraping (pour les sources gratuites)
+  private async scrapeSource(sourceId: string, prospect: any): Promise<any> {
+    const handlers = {
+      google_maps: () => this.scrapeGoogleMaps(prospect),
+      pagesjaunes: () => this.scrapePagesJaunes(prospect),
+      linkedin_scrape: () => this.scrapeLinkedIn(prospect),
+      twitter_x: () => this.scrapeTwitter(prospect),
+      welcome_to_jungle: () => this.scrapeWelcomeToJungle(prospect),
+      indeed: () => this.scrapeIndeed(prospect),
+      google_news: () => this.scrapeGoogleNews(prospect),
+      company_website: () => this.scrapeCompanyWebsite(prospect),
+      // ... autres handlers
+    };
+
+    const handler = handlers[sourceId];
+    if (!handler) throw new Error(`No scraper for ${sourceId}`);
+    return await handler();
+  }
+
+  // Détection de signaux
+  private detectSignals(sourceId: string, data: any): Signal[] {
+    const signals: Signal[] = [];
+
+    // Exemples de détection
+    if (sourceId === 'welcome_to_jungle' && data.jobs?.length > 3) {
+      signals.push({
+        type: 'hiring',
+        title: `${data.jobs.length} offres d'emploi détectées`,
+        description: 'Forte croissance détectée',
+        impactScore: 80
+      });
+    }
+
+    if (sourceId === 'crunchbase' && data.funding) {
+      signals.push({
+        type: 'funding',
+        title: `Levée de fonds: ${data.funding.amount}€`,
+        description: `Série ${data.funding.series}`,
+        impactScore: 90
+      });
+    }
+
+    return signals;
+  }
+
+  // INTERCONNEXION AVEC TOUS LES PLUGINS
+  private async interconnectWithPlugins(prospectId: string, results: any[], signals: any[]) {
+    // 1. Growth Memory : indexer toutes les données collectées
+    const memoryContent = results
+      .filter(r => r.success)
+      .map(r => `${r.sourceId}: ${JSON.stringify(r.data)}`)
+      .join('\n');
+    
+    await this.injectIntoMemory(prospectId, memoryContent);
+
+    // 2. Signal Intelligence : créer les signaux détectés
+    for (const signal of signals) {
+      await this.createSignal(signal);
+    }
+
+    // 3. Account Intelligence : mettre à jour le score du compte
+    await this.updateAccountScore(prospectId, results);
+
+    // 4. AI Deal Coach : si le prospect est lié à un deal, mettre à jour
+    await this.updateDealCoach(prospectId, results);
+
+    // 5. Workflow AI : émettre un événement pour les workflows
+    await this.emitWorkflowEvent('prospect.enriched', { prospectId, results, signals });
+  }
+
+  // Injection dans Growth Memory
+  private async injectIntoMemory(prospectId: string, content: string) {
+    const memoryService = pluginManager.getService('growth-memory');
+    if (memoryService) {
+      await memoryService.indexDocument({
+        sourceType: 'enrichment',
+        sourceId: prospectId,
+        content,
+        metadata: { prospectId }
+      });
+    }
+  }
+
+  // Création de signal
+  private async createSignal(signal: Signal) {
+    const signalService = pluginManager.getService('signal-intelligence');
+    if (signalService) {
+      await signalService.createSignal(signal);
+    }
+  }
+
+  // Mise à jour du score Account
+  private async updateAccountScore(prospectId: string, results: any[]) {
+    const accountService = pluginManager.getService('account-intelligence');
+    if (accountService) {
+      const score = this.calculateEnrichmentScore(results);
+      await accountService.updateAccountScore(prospectId, score);
+    }
+  }
+
+  // Émission d'événement Workflow
+  private async emitWorkflowEvent(eventType: string, data: any) {
+    const eventBus = pluginManager.getEventBus();
+    if (eventBus) {
+      eventBus.emit(eventType, data);
+    }
+  }
+}

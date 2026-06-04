@@ -375,6 +375,83 @@ export async function runProspectGeoMigration(): Promise<void> {
   await pool.query(SQL_PROSPECT_GEO);
 }
 
+const SQL_ENRICHMENT = `
+CREATE TABLE IF NOT EXISTS enrichment_api_configs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_id TEXT UNIQUE NOT NULL,
+  source_name TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  api_key TEXT,
+  api_secret TEXT,
+  endpoint_url TEXT,
+  rate_limit_per_minute INTEGER DEFAULT 60,
+  is_active BOOLEAN DEFAULT TRUE,
+  last_tested_at TIMESTAMP,
+  test_status TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS enrichment_data (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_id UUID NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  source_id TEXT NOT NULL,
+  data_type TEXT NOT NULL,
+  raw_data JSONB NOT NULL,
+  processed_data JSONB,
+  confidence_score FLOAT DEFAULT 0.0,
+  fetched_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP,
+  UNIQUE(prospect_id, source_id, data_type)
+);
+
+CREATE TABLE IF NOT EXISTS enrichment_signals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,
+  signal_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  source TEXT NOT NULL,
+  source_url TEXT,
+  impact_score INTEGER DEFAULT 50,
+  detected_at TIMESTAMP DEFAULT NOW(),
+  processed BOOLEAN DEFAULT FALSE,
+  processed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS enrichment_cache (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cache_key TEXT UNIQUE NOT NULL,
+  cache_value JSONB NOT NULL,
+  source_id TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS enrichment_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,
+  started_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP,
+  status TEXT NOT NULL DEFAULT 'pending',
+  sources_attempted INTEGER DEFAULT 0,
+  sources_succeeded INTEGER DEFAULT 0,
+  sources_failed INTEGER DEFAULT 0,
+  error_log JSONB,
+  triggered_by TEXT DEFAULT 'manual'
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrichment_data_prospect ON enrichment_data(prospect_id);
+CREATE INDEX IF NOT EXISTS idx_enrichment_data_source ON enrichment_data(source_id);
+CREATE INDEX IF NOT EXISTS idx_enrichment_signals_prospect ON enrichment_signals(prospect_id);
+CREATE INDEX IF NOT EXISTS idx_enrichment_cache_key ON enrichment_cache(cache_key);
+CREATE INDEX IF NOT EXISTS idx_enrichment_history_prospect ON enrichment_history(prospect_id);
+`;
+
+export async function runEnrichmentMigration(): Promise<void> {
+  await pool.query(SQL_ENRICHMENT);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

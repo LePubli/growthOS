@@ -1,3 +1,4 @@
 - [Plugin Runtime Engine](plugin-runtime.md) — Phase 1-3 complet; audit log persisté en DB, UI timeline dans onglet Runtime
 - [Coolify deployment](coolify-deploy.md) — labels Traefik obligatoires dans docker-compose.yml; pnpm via npm install (pas corepack); VITE_API_URL comme env var runtime pour contourner proxy nginx
 - [GrowthOS Plugin Inventory](growthos-plugins.md) — 10 plugins actifs; pattern migration, seeding, route-mounting et conventions de service
+- [Data Enrichment Engine](enrichment-engine.md) — Plugin 11 complet; 23 sources, 5 tables DB, routes /enrich/*, EnrichmentPage; "Géocoder tous" sur noGeo filter

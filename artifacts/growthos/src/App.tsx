@@ -61,6 +61,7 @@ import SharedDashboardsPage from '@/pages/SharedDashboardsPage';
 import RouteAuditPage from '@/pages/RouteAuditPage';
 import PluginUploadPage from '@/pages/PluginUploadPage';
 import DeepAuditPage from '@/pages/DeepAuditPage';
+import EnrichmentPage from '@/pages/EnrichmentPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -218,6 +219,10 @@ function AppRoutes() {
       </Route>
       <Route path="/import">
         {() => <DashboardLayout><ImportPage /></DashboardLayout>}
+      </Route>
+
+      <Route path="/enrichment">
+        {() => <DashboardLayout><EnrichmentPage /></DashboardLayout>}
       </Route>
 
       <Route path="/memory">
