@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { prospectsTable } from "@workspace/db";
-import { eq, and, or, ilike, desc, count } from "drizzle-orm";
+import { eq, and, or, ilike, desc, count, isNull, isNotNull } from "drizzle-orm";
 
 const router = Router();
 
@@ -57,7 +57,7 @@ const prospectSchema = z.object({
 /* ─── Routes ─── */
 
 router.get("/", async (req, res) => {
-  const { search, status, page = "1", limit = "50", geo } = req.query as Record<string, string>;
+  const { search, status, page = "1", limit = "50", geo, noGeo } = req.query as Record<string, string>;
   const tenantId = req.auth!.tenantId;
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -72,6 +72,11 @@ router.get("/", async (req, res) => {
       ilike(prospectsTable.email, `%${search}%`),
       ilike(prospectsTable.company, `%${search}%`),
     )!);
+  }
+  // ?noGeo=true → only prospects with an address but no coordinates yet
+  if (noGeo === "true") {
+    conditions.push(isNotNull(prospectsTable.address));
+    conditions.push(isNull(prospectsTable.lat));
   }
 
   const where = and(...conditions);

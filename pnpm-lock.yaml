@@ -169,9 +169,6 @@ importers:
       '@types/adm-zip':
         specifier: ^0.5.8
         version: 0.5.8
-      '@types/multer':
-        specifier: ^2.1.0
-        version: 2.1.0
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -227,6 +224,9 @@ importers:
       '@types/jsonwebtoken':
         specifier: ^9.0.10
         version: 9.0.10
+      '@types/multer':
+        specifier: ^2.1.0
+        version: 2.1.0
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.2

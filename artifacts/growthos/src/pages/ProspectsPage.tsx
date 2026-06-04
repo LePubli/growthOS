@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import {
   Search, Plus, Star, Mail, Phone, Upload, FileText,
   Download, RefreshCw, ChevronRight, Building2, Loader2,
-  CheckCircle, AlertCircle, X, Trash2, Tag, ArchiveX, CheckSquare, Square, MapPin,
+  CheckCircle, AlertCircle, X, Trash2, Tag, ArchiveX, CheckSquare, Square, MapPin, MapPinOff,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -231,6 +231,7 @@ export default function ProspectsPage() {
   const [prospects, setProspects] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('all');
+  const [noGeo, setNoGeo] = useState(false);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -245,6 +246,7 @@ export default function ProspectsPage() {
       const params: Record<string,string> = { page: String(page), limit: '50' };
       if (status !== 'all') params.status = status;
       if (search) params.search = search;
+      if (noGeo) params.noGeo = 'true';
       const result = await apiClient.get('/prospects', { params });
       const data = Array.isArray(result) ? result : (result as any).data || [];
       setProspects(data);
@@ -252,7 +254,7 @@ export default function ProspectsPage() {
     } catch { setProspects([]); } finally { setLoading(false); }
   };
 
-  useEffect(()=>{ fetchProspects(); },[status, page]);
+  useEffect(()=>{ fetchProspects(); },[status, page, noGeo]);
   useEffect(()=>{ const t=setTimeout(fetchProspects,400); return()=>clearTimeout(t); },[search]);
 
   const toggleStar = async (id:string) => {
@@ -353,14 +355,28 @@ export default function ProspectsPage() {
         </div>
       </div>
 
-      {/* Filtres par statut */}
-      <div className="flex gap-2 mb-5 flex-wrap">
+      {/* Filtres par statut + filtre géo */}
+      <div className="flex gap-2 mb-5 flex-wrap items-center">
         {STATUS_OPTIONS.map(s=>(
-          <button key={s.value} onClick={()=>{setStatus(s.value);setPage(1);}}
-            className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${status===s.value?'bg-teal-600 text-white':'bg-white border border-gray-200 text-gray-500 hover:border-teal-300'}`}>
+          <button key={s.value}
+            onClick={()=>{ setStatus(s.value); setNoGeo(false); setPage(1); }}
+            className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${status===s.value && !noGeo ?'bg-teal-600 text-white':'bg-white border border-gray-200 text-gray-500 hover:border-teal-300'}`}>
             {s.label}{s.value!=='all'&&byStatus[s.value]>0?` (${byStatus[s.value]})`:s.value==='all'?` (${prospects.length})`:''}
           </button>
         ))}
+
+        {/* Separator */}
+        <div className="w-px h-5 bg-gray-200 mx-1"/>
+
+        {/* Non-geocoded filter */}
+        <button
+          onClick={()=>{ setNoGeo(v=>!v); setStatus('all'); setPage(1); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${noGeo ? 'bg-amber-500 text-white border-amber-500' : 'bg-white border border-gray-200 text-gray-500 hover:border-amber-400 hover:text-amber-600'}`}
+        >
+          <MapPinOff className="w-3.5 h-3.5"/>
+          Sans coordonnées
+          {noGeo && prospects.length > 0 && <span className="ml-0.5 opacity-80">({prospects.length})</span>}
+        </button>
       </div>
 
       {/* Recherche */}
