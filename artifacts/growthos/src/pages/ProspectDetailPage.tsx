@@ -5,7 +5,7 @@ import {
   Briefcase, Loader2, Plus, Trash2, CheckCircle, AlertCircle,
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
   Archive, RotateCcw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
-  ExternalLink, Navigation,
+  ExternalLink, Navigation, Zap, BadgeCheck,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -163,6 +163,8 @@ export default function ProspectDetailPage() {
   const [saving, setSaving] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [showAddActivity, setShowAddActivity] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [lastEnrichedAt, setLastEnrichedAt] = useState<Date | null>(null);
 
   const fetchProspect = async () => {
     try {
@@ -180,7 +182,35 @@ export default function ProspectDetailPage() {
     } catch { setActivities([]); }
   };
 
-  useEffect(() => { fetchProspect(); fetchActivities(); }, [id]);
+  const fetchEnrichmentHistory = async () => {
+    try {
+      const history = await apiClient.get(`/plugins/enrichment/history/${id}`) as any[];
+      if (Array.isArray(history) && history.length > 0) {
+        setLastEnrichedAt(new Date(history[0].createdAt));
+      }
+    } catch { /* plugin may not be active */ }
+  };
+
+  const handleEnrich = async () => {
+    setEnriching(true);
+    try {
+      const result = await apiClient.post(`/plugins/enrichment/${id}`, {}) as any;
+      const count = result.sourcesSucceeded ?? result.sourcesAttempted ?? 0;
+      setLastEnrichedAt(new Date());
+      await fetchProspect();
+      toast.success(`Enrichissement terminé — ${count} source${count > 1 ? 's' : ''} mise${count > 1 ? 's' : ''} à jour`);
+    } catch {
+      toast.error("Erreur lors de l'enrichissement");
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  const isRecentlyEnriched = lastEnrichedAt
+    ? (Date.now() - lastEnrichedAt.getTime()) < 7 * 24 * 60 * 60 * 1000
+    : false;
+
+  useEffect(() => { fetchProspect(); fetchActivities(); fetchEnrichmentHistory(); }, [id]);
 
   const save = async () => {
     setSaving(true);
@@ -665,6 +695,32 @@ export default function ProspectDetailPage() {
                 style={{ background: 'var(--body-bg)', borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}>
                 <MessageSquare size={14} style={{ color: '#D97706' }} />Créer un deal
               </button>
+
+              {isRecentlyEnriched ? (
+                <div className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm border"
+                  style={{ background: '#F0FDF4', borderColor: '#86EFAC', color: '#059669' }}>
+                  <BadgeCheck size={14} />
+                  <span className="flex-1 font-medium">Données récentes</span>
+                  <span style={{ fontSize: 11, color: '#059669', opacity: 0.7 }}>
+                    {lastEnrichedAt ? `il y a ${Math.floor((Date.now() - lastEnrichedAt.getTime()) / 86400000)}j` : ''}
+                  </span>
+                </div>
+              ) : (
+                <button
+                  onClick={handleEnrich}
+                  disabled={enriching}
+                  className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm font-medium border transition-all disabled:opacity-60"
+                  style={{
+                    background: enriching ? 'var(--body-bg)' : 'linear-gradient(135deg,#4C1D95,#7C3AED)',
+                    borderColor: enriching ? 'var(--card-border)' : 'transparent',
+                    color: enriching ? 'var(--text-muted)' : '#fff',
+                  }}
+                >
+                  {enriching
+                    ? <><Loader2 size={14} className="animate-spin" />Enrichissement…</>
+                    : <><Zap size={14} />Enrichir</>}
+                </button>
+              )}
             </div>
           </div>
         </div>
