@@ -3,10 +3,11 @@ import { useLocation } from 'wouter';
 import {
   Search, Plus, Star, Mail, Phone, Upload, FileText,
   Download, RefreshCw, ChevronRight, Building2, Loader2,
-  CheckCircle, AlertCircle, X, Trash2, Tag, ArchiveX, CheckSquare, Square,
+  CheckCircle, AlertCircle, X, Trash2, Tag, ArchiveX, CheckSquare, Square, MapPin,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
+import { AddressAutocomplete } from '@/components/common/AddressAutocomplete';
 
 const STATUS_OPTIONS = [
   {value:'all',label:'Tous'},{value:'new',label:'Nouveau'},{value:'contacted',label:'Contacté'},
@@ -21,7 +22,8 @@ const STATUS_COLORS: Record<string,string> = {
 };
 
 function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void }) {
-  const [form, setForm] = useState({ firstName:'', lastName:'', email:'', phone:'', company:'', jobTitle:'', website:'', status:'new' });
+  const [form, setForm] = useState({ firstName:'', lastName:'', email:'', phone:'', company:'', jobTitle:'', website:'', address:'', status:'new' });
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string|null>(null);
   const set = (k:string,v:string) => setForm(f=>({...f,[k]:v}));
@@ -30,7 +32,7 @@ function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void })
     if (!form.firstName && !form.email && !form.company) { setError('Remplissez au moins un champ'); return; }
     setLoading(true); setError(null);
     try {
-      await apiClient.post('/prospects', form);
+      await apiClient.post('/prospects', { ...form, ...(coords ?? {}) });
       onSave(); onClose();
     } catch(e:any) { setError(e.message || 'Erreur lors de la création'); }
     finally { setLoading(false); }
@@ -38,7 +40,7 @@ function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void })
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-gray-900">Nouveau prospect</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-gray-400"/></button>
@@ -50,6 +52,26 @@ function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void })
               <input value={(form as any)[f.k]} onChange={e=>set(f.k,e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
             </div>
           ))}
+
+          {/* Address with autocomplete — full width */}
+          <div className="col-span-2">
+            <AddressAutocomplete
+              value={form.address}
+              label="Adresse (pour la carte CRM)"
+              placeholder="Ex: 12 Rue de la Paix, Paris…"
+              onChange={(address, c) => {
+                set('address', address);
+                setCoords(c ?? null);
+              }}
+            />
+            {coords && (
+              <div className="flex items-center gap-1.5 mt-1 text-xs text-green-600">
+                <MapPin className="w-3 h-3" />
+                Géolocalisé · {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Statut</label>
             <select value={form.status} onChange={e=>set('status',e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
@@ -78,9 +100,9 @@ function ImportCSVModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void
   const [error, setError] = useState<string|null>(null);
   const ref = useRef<HTMLInputElement>(null);
 
-  const CSV_TEMPLATE = `firstName,lastName,email,phone,company,jobTitle,website,status
-Marie,Dupont,m.dupont@acme.fr,+33612345678,Acme Corp,Directrice Marketing,https://acme.fr,new
-Thomas,Martin,t.martin@techvision.io,,TechVision,CTO,https://techvision.io,new`;
+  const CSV_TEMPLATE = `firstName,lastName,email,phone,company,jobTitle,website,address,status
+Marie,Dupont,m.dupont@acme.fr,+33612345678,Acme Corp,Directrice Marketing,https://acme.fr,"12 Rue de la Paix, Paris",new
+Thomas,Martin,t.martin@techvision.io,,TechVision,CTO,https://techvision.io,"5 Place de la République, Lyon",new`;
 
   const downloadTemplate = () => {
     const blob = new Blob([CSV_TEMPLATE],{type:'text/csv'});

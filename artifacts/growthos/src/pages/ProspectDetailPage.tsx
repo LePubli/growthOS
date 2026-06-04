@@ -4,11 +4,12 @@ import {
   ArrowLeft, Edit2, Save, X, Star, Mail, Phone, Globe, Building2,
   Briefcase, Loader2, Plus, Trash2, CheckCircle, AlertCircle,
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
-  Archive, RotateCcw, Brain, TrendingUp, TrendingDown, Minus,
+  Archive, RotateCcw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
 import { CommentsPanel } from '@/components/common/CommentsPanel';
+import { AddressAutocomplete } from '@/components/common/AddressAutocomplete';
 
 const STATUS_OPTIONS = [
   { value: 'new', label: 'Nouveau' }, { value: 'contacted', label: 'Contacté' },
@@ -112,6 +113,7 @@ export default function ProspectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
+  const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [showAddActivity, setShowAddActivity] = useState(false);
 
@@ -136,8 +138,10 @@ export default function ProspectDetailPage() {
   const save = async () => {
     setSaving(true);
     try {
-      const updated = await apiClient.patch(`/prospects/${id}`, form);
+      const payload = { ...form, ...(geoCoords ?? {}) };
+      const updated = await apiClient.patch(`/prospects/${id}`, payload);
       setProspect(updated);
+      setGeoCoords(null);
       setEditing(false);
       toast.success('Prospect mis à jour');
     } catch { toast.error('Erreur lors de la mise à jour'); }
@@ -263,6 +267,34 @@ export default function ProspectDetailPage() {
                         className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                     </div>
                   ))}
+
+                  {/* Address with Nominatim autocomplete — full width */}
+                  <div className="col-span-2">
+                    <AddressAutocomplete
+                      value={form.address || ''}
+                      label="Adresse"
+                      placeholder="Ex: 12 Rue de la Paix, Paris…"
+                      onChange={(address, c) => {
+                        sf('address', address);
+                        setGeoCoords(c ?? null);
+                      }}
+                    />
+                    {/* Geo status */}
+                    <div className="flex items-center gap-3 mt-1.5" style={{ fontSize: 11 }}>
+                      {geoCoords ? (
+                        <span className="flex items-center gap-1 text-green-600">
+                          <MapPin size={11} />Géolocalisé · {geoCoords.lat.toFixed(4)}, {geoCoords.lng.toFixed(4)}
+                        </span>
+                      ) : prospect.lat ? (
+                        <span className="flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                          <MapPin size={11} />Déjà géolocalisé ({(prospect.lat as number).toFixed(4)}, {(prospect.lng as number).toFixed(4)})
+                        </span>
+                      ) : form.address ? (
+                        <span style={{ color: '#D97706' }}>Géocodage en arrière-plan après sauvegarde…</span>
+                      ) : null}
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Statut</label>
                     <select value={form.status || 'new'} onChange={e => sf('status', e.target.value)}
@@ -296,6 +328,37 @@ export default function ProspectDetailPage() {
                       ) : <span className="text-sm" style={{ color: 'var(--text-muted)' }}>—</span>}
                     </div>
                   ))}
+
+                  {/* Address + geo badge — spans full width */}
+                  <div className="col-span-2">
+                    <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                      <MapPin size={14} />Adresse
+                      {prospect.lat && (
+                        <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold" style={{ background: '#ECFDF5', color: '#059669' }}>
+                          🗺 Géolocalisé
+                        </span>
+                      )}
+                    </div>
+                    {prospect.address ? (
+                      <div className="flex items-start gap-2">
+                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{prospect.address}</span>
+                        {prospect.lat && (
+                          <a
+                            href={`https://www.google.com/maps?q=${prospect.lat},${prospect.lng}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs flex-shrink-0 mt-0.5"
+                            style={{ color: 'var(--color-primary)' }}
+                          >
+                            Voir sur Maps ↗
+                          </a>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-sm" style={{ color: 'var(--text-muted)' }}>— (cliquez Modifier pour ajouter)</span>
+                    )}
+                  </div>
+
                   <div>
                     <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Score</div>
                     <div className="flex items-center gap-2">
