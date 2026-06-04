@@ -5,7 +5,8 @@ import {
   Briefcase, Loader2, Plus, Trash2, CheckCircle, AlertCircle,
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
   Archive, RotateCcw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
-  ExternalLink, Navigation, Zap, BadgeCheck,
+  ExternalLink, Navigation, Zap, BadgeCheck, ChevronDown, ChevronUp,
+  Building, Database, BarChart2, Users, Newspaper,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -146,6 +147,144 @@ function AddActivityModal({ prospectId, onClose, onSaved }: { prospectId: string
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ─── Panneau Données Enrichies ──────────────────────────── */
+function EnrichedDataPanel({ prospectId }: { prospectId: string }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    if (data) { setOpen(o => !o); return; }
+    setLoading(true);
+    setOpen(true);
+    try {
+      const res = await apiClient.get(`/enrich/data/${prospectId}`) as any;
+      setData(res);
+    } catch { setData({}); }
+    finally { setLoading(false); }
+  };
+
+  const Row = ({ label, value }: { label: string; value?: string | number | null }) =>
+    value ? (
+      <div className="flex items-start gap-2 py-1.5" style={{ borderBottom: '1px solid var(--card-border)' }}>
+        <span className="text-xs w-32 flex-shrink-0" style={{ color: 'var(--text-muted)' }}>{label}</span>
+        <span className="text-xs font-medium flex-1" style={{ color: 'var(--text-primary)' }}>{value}</span>
+      </div>
+    ) : null;
+
+  const legal = data?.legal;
+  const financial = data?.financial;
+  const digital = data?.digital;
+  const social = data?.social;
+  const news = data?.news;
+
+  const hasData = !!(legal || financial || digital || social || news);
+
+  return (
+    <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+      <button onClick={load} className="flex items-center justify-between w-full px-5 py-4 text-left hover:opacity-80 transition-opacity">
+        <h2 className="font-semibold text-sm flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+          <Database size={13} />DONNÉES ENRICHIES
+          {hasData && <span className="text-xs px-2 py-0.5 rounded-full font-normal" style={{ background: '#EFF6FF', color: '#2563EB' }}>Disponibles</span>}
+        </h2>
+        {loading ? <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+          : open ? <ChevronUp size={14} style={{ color: 'var(--text-muted)' }} />
+          : <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />}
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 space-y-4">
+          {loading && (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 size={20} className="animate-spin mr-2" style={{ color: 'var(--color-primary)' }} />
+              <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Chargement des données…</span>
+            </div>
+          )}
+
+          {!loading && !hasData && (
+            <p className="text-sm text-center py-4" style={{ color: 'var(--text-muted)' }}>
+              Aucune donnée enrichie — cliquez sur "Enrichir" dans les actions rapides.
+            </p>
+          )}
+
+          {!loading && legal && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Building size={12} style={{ color: '#2563EB' }} />
+                <span className="text-xs font-semibold" style={{ color: '#2563EB' }}>DONNÉES LÉGALES</span>
+              </div>
+              <Row label="SIREN/SIRET" value={legal.siren ?? legal.siret} />
+              <Row label="Forme juridique" value={legal.formeJuridique ?? legal.legalForm} />
+              <Row label="Date création" value={legal.dateCreation ?? legal.creationDate} />
+              <Row label="Effectif" value={legal.effectif ?? legal.headcount} />
+              <Row label="Tranche effectif" value={legal.trancheEffectifEtab} />
+              <Row label="Code NAF" value={legal.codeNaf ?? legal.nafCode} />
+              <Row label="Adresse siège" value={legal.adresse ?? legal.address} />
+            </div>
+          )}
+
+          {!loading && financial && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <BarChart2 size={12} style={{ color: '#059669' }} />
+                <span className="text-xs font-semibold" style={{ color: '#059669' }}>DONNÉES FINANCIÈRES</span>
+              </div>
+              <Row label="Chiffre d'affaires" value={financial.revenue ? `${(financial.revenue / 1000000).toFixed(1)} M€` : null} />
+              <Row label="Résultat net" value={financial.netIncome ? `${(financial.netIncome / 1000).toFixed(0)} k€` : null} />
+              <Row label="Effectif" value={financial.employees} />
+              <Row label="Cotation" value={financial.rating} />
+              <Row label="Notation ESG" value={financial.esgScore ? `${financial.esgScore}/100` : null} />
+            </div>
+          )}
+
+          {!loading && digital && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Globe size={12} style={{ color: '#7C3AED' }} />
+                <span className="text-xs font-semibold" style={{ color: '#7C3AED' }}>PRÉSENCE DIGITALE</span>
+              </div>
+              <Row label="DA (Autorité)" value={digital.domainAuthority ? `${digital.domainAuthority}/100` : null} />
+              <Row label="Trafic mensuel" value={digital.monthlyVisits ? `${(digital.monthlyVisits / 1000).toFixed(0)}k visites` : null} />
+              <Row label="Technologies" value={Array.isArray(digital.technologies) ? digital.technologies.slice(0, 4).join(', ') : null} />
+              <Row label="SSL" value={digital.hasSSL === true ? '✅ Actif' : digital.hasSSL === false ? '❌ Absent' : null} />
+              <Row label="Score perf." value={digital.performanceScore ? `${digital.performanceScore}/100` : null} />
+            </div>
+          )}
+
+          {!loading && social && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Users size={12} style={{ color: '#D97706' }} />
+                <span className="text-xs font-semibold" style={{ color: '#D97706' }}>RÉSEAUX SOCIAUX</span>
+              </div>
+              <Row label="LinkedIn" value={social.linkedinFollowers ? `${social.linkedinFollowers.toLocaleString('fr-FR')} abonnés` : null} />
+              <Row label="Twitter/X" value={social.twitterFollowers ? `${social.twitterFollowers.toLocaleString('fr-FR')} abonnés` : null} />
+              <Row label="Engagement" value={social.engagementRate ? `${social.engagementRate}%` : null} />
+            </div>
+          )}
+
+          {!loading && news?.articles?.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Newspaper size={12} style={{ color: '#DC2626' }} />
+                <span className="text-xs font-semibold" style={{ color: '#DC2626' }}>ACTUALITÉS RÉCENTES</span>
+              </div>
+              {news.articles.slice(0, 3).map((article: any, i: number) => (
+                <div key={i} className="py-1.5 border-b last:border-0" style={{ borderColor: 'var(--card-border)' }}>
+                  <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{article.title}</div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {article.source} · {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString('fr-FR') : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -535,6 +674,9 @@ export default function ProspectDetailPage() {
               </div>
             </div>
           )}
+
+          {/* Données enrichies */}
+          <EnrichedDataPanel prospectId={prospect.id} />
 
           {/* Notes */}
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>

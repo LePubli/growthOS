@@ -31,6 +31,7 @@ import adminRouter from "./admin";
 import pluginMarketplaceRouter from "./plugin-marketplace";
 import auditRouter from "./audit";
 import enrichmentRouter from "./plugins/enrichment";
+import ereputationRouter from "./plugins/ereputation";
 
 const router = Router();
 
@@ -65,5 +66,6 @@ router.use("/admin", adminRouter);
 router.use("/plugin-marketplace", pluginMarketplaceRouter);
 router.use("/audit", auditRouter);
 router.use("/enrich", enrichmentRouter);
+router.use("/ereputation", requireAuth, ereputationRouter);
 
 export default router;

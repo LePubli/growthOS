@@ -1,0 +1,72 @@
+# OBJECTIF : PLUGIN E-RÉPUTATION (PHASE 2 - FRONTEND UI & INTÉGRATION GROWTHOS)
+
+Le backend et la DB sont en place. Tu vas maintenant construire l'interface utilisateur (Frontend) et connecter ce plugin au reste de l'écosystème GrowthOS.
+
+# CONTEXTE TECHNIQUE FRONTEND
+- Stack : React 18, Vite, TypeScript, Tailwind CSS, Radix UI, Recharts (pour les graphiques).
+- State Management : TanStack Query (React Query).
+- Routing : Wouter.
+- Design : Utilise les composants UI existants dans `artifacts/growthos/src/components/ui/` (Card, Button, Input, Badge, etc.) pour garder la cohérence visuelle.
+
+# PHASE 2.1 : STRUCTURE FRONTEND & DASHBOARD
+1. Crée le dossier `artifacts/growthos/src/plugins/ereputation/`.
+2. Crée la page principale `artifacts/growthos/src/plugins/ereputation/ERepDashboardPage.tsx`.
+   - **KPIs en haut** : Score de Réputation Global (jauge 0-100), Nombre de campagnes actives, Mentions négatives (24h), Backlinks actifs.
+   - **Graphiques (Recharts)** : 
+     - Évolution du score de réputation dans le temps (LineChart).
+     - Répartition du sentiment (Positif/Négatif/Neutre) (PieChart).
+   - **Liste des campagnes récentes** avec statut et score.
+
+# PHASE 2.2 : GESTION DES CAMPAGNES & SUIVI SERP
+1. Crée `artifacts/growthos/src/plugins/ereputation/CampaignsPage.tsx`.
+   - Tableau listant les campagnes (Cible, Mots-clés, Statut, Score).
+   - Bouton "Nouvelle Campagne" ouvrant un Modal/Drawer avec formulaire (Nom, Cible (B2B/B2C), Mots-clés, Plateformes cibles).
+2. Crée `artifacts/growthos/src/plugins/ereputation/SERPTrackingPage.tsx`.
+   - Tableau des positions SERP par mot-clé (Position actuelle, Variation, URL, Volume).
+   - Graphique d'historique des positions par mot-clé.
+   - Indicateurs visuels (flèche verte/rouge) pour les variations.
+
+# PHASE 2.3 : SENTIMENT, SOCIAL & PBN
+1. Crée `artifacts/growthos/src/plugins/ereputation/SentimentFeedPage.tsx`.
+   - Fil d'actualité des mentions (comme un feed Twitter).
+   - Badge de couleur selon le sentiment (Vert=Pos, Rouge=Neg, Gris=Neu).
+   - Bouton "Générer réponse IA" sur les mentions négatives.
+2. Crée `artifacts/growthos/src/plugins/ereputation/SocialCalendarPage.tsx`.
+   - Vue calendrier (mois/semaine) pour la planification des posts.
+   - Formulaire de création de post (Plateforme, Contenu, Date/Heure, Média).
+3. Crée `artifacts/growthos/src/plugins/ereputation/PBNManagerPage.tsx`.
+   - Tableau de gestion du réseau de blogs (URL, DA, PA, Statut, Dernières publications).
+   - Formulaire d'ajout de site PBN.
+
+# PHASE 2.4 : INTÉGRATION CRUCIALE AVEC GROWTHOS (LE "CÂBLAGE")
+C'est la partie la plus importante. Le plugin ne doit pas être isolé.
+
+1. **Interconnexion avec Signal Intelligence (Plugin 8)** :
+   - Dans le backend, quand `SentimentAnalyzer` détecte une mention très négative (score < 30), il doit émettre un événement via l'EventBus :
+     `pluginEventBus.emit('signal.received', { type: 'reputation_crisis', accountId: campaign.targetId, title: 'Crise réputationnelle détectée', impactScore: 90 })`.
+   - Cela fera apparaître l'alerte directement dans le radar commercial de GrowthOS.
+
+2. **Interconnexion avec Growth Memory (Plugin 1)** :
+   - Quand un audit SEO/GEO est terminé, le backend doit indexer un résumé dans la Memory :
+     `memoryService.indexDocument({ sourceType: 'ereputation_audit', content: `Audit SEO pour ${target}: Score ${score}. Points forts: ${strengths}. Points faibles: ${weaknesses}.`, metadata: { targetId, score } })`.
+
+3. **Interconnexion avec AI SDR (Plugin 4)** :
+   - Si un compte a un score de réputation > 85, l'AI SDR doit pouvoir utiliser cette info pour personnaliser ses emails (ex: "Félicitations pour votre excellente image de marque..."). Assure-toi que le champ `reputation_score` est accessible dans le contexte de l'Account.
+
+# PHASE 2.5 : ROUTING & MENU
+1. Ajoute les routes dans le routeur principal (`artifacts/growthos/src/App.tsx` ou `router.tsx`) :
+   - `/ereputation` (Dashboard)
+   - `/ereputation/campaigns`
+   - `/ereputation/serp`
+   - `/ereputation/sentiment`
+   - `/ereputation/social`
+   - `/ereputation/pbn`
+2. Assure-toi que le manifest du plugin (`manifest.ts`) injecte bien ces liens dans la sidebar de GrowthOS sous un groupe "Marketing & Réputation".
+
+# RÈGLES STRICTES
+- N'utilise PAS de bibliothèques de graphiques autres que `recharts` (déjà installé).
+- Gère les états de chargement (`isLoading`) et d'erreur (`isError`) avec les composants Skeleton et ErrorState existants.
+- Tout le code doit être en TypeScript strict.
+- Pour les appels API externes (SerpAPI, APIs Sociales), garde le système de Mock du backend mais assure-toi que le frontend attend bien les bonnes structures JSON.
+
+Commence par la Phase 2.1 (Dashboard) et la Phase 2.4 (Intégration EventBus/Memory).

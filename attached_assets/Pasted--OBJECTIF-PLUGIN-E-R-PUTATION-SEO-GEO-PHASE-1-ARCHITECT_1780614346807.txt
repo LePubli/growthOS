@@ -1,0 +1,63 @@
+# OBJECTIF : PLUGIN E-RÉPUTATION & SEO/GEO (PHASE 1 - ARCHITECTURE & CORE)
+
+Tu vas créer le Plugin "E-Reputation & SEO/GEO" pour GrowthOS. Ce plugin est un module complet de gestion de réputation et de visibilité, utilisable en B2B (Entreprises) et B2C (Personal Branding/Dirigeants).
+
+# CONTRAINTES ARCHITECTURALES
+- Utilise le système de plugins existant (`pluginManager`, `EventBus`).
+- Base de données : PostgreSQL (via Drizzle ORM ou le client DB existant).
+- IA : Utilise le `MockLLMService` ou `Ollama` existant pour la génération de stratégie et de contenu.
+- APIs Externes : Crée des interfaces (Interfaces TypeScript) pour SerpAPI, OpenAI, et les APIs Sociales, mais **mocke les appels** pour l'instant afin de ne pas bloquer le développement.
+
+# PHASE 1 : BASE DE DONNÉES (Migration)
+Crée le fichier `artifacts/api-server/db/migrations/012_ereputation.sql` avec les tables suivantes :
+
+1. `erep_campaigns` : id, name, target_type (B2B/B2C), target_name, target_url, keywords (JSONB), status, reputation_score (0-100), created_at.
+2. `erep_audits` : id, campaign_id, score, technical_details (JSONB), ai_strategy (TEXT), created_at.
+3. `erep_serp_tracking` : id, campaign_id, keyword, position, url, volume, date.
+4. `erep_content_posts` : id, campaign_id, platform (LinkedIn, X, Blog, etc.), content_text, status (draft/published/failed), scheduled_at, published_at.
+5. `erep_sentiment_logs` : id, campaign_id, source_url, text, sentiment (pos/neg/neu), score, detected_at.
+6. `erep_pbn_sites` : id, url, da_score, pa_score, status, last_checked_at.
+
+# PHASE 2 : SERVICES CORE (Backend)
+Crée le dossier `artifacts/api-server/src/lib/plugin-ereputation/` avec les fichiers suivants :
+
+### 1. `CampaignService.ts`
+- `createCampaign(data)` : Crée une campagne B2B ou B2C.
+- `getDashboard(campaignId)` : Retourne le score de réputation, l'évolution SERP, et les tâches IA.
+- `calculateReputationScore(campaignId)` : Algorithme pondéré (40% SERP, 30% Sentiment, 20% Backlinks, 10% Social).
+
+### 2. `StrategyEngine.ts` (Le cerveau IA)
+- `generateAutomatedStrategy(campaignId)` : Analyse les audits et le sentiment pour générer un plan d'action (ex: "Chute de position sur le mot-clé X -> Générer 3 articles de blog et 5 posts LinkedIn").
+- `generateContent(campaignId, platform, tone)` : Génère du contenu optimisé SEO/GEO en se basant sur la stratégie.
+
+### 3. `SentimentAnalyzer.ts`
+- `analyzeText(text)` : Retourne le score de sentiment (Positif/Négatif/Neutre) et le ton.
+
+# PHASE 3 : ROUTES API
+Crée `artifacts/api-server/src/routes/v1/plugins/ereputation.ts` :
+- `POST /campaigns` (Créer campagne)
+- `GET /campaigns/:id/dashboard` (Dashboard complet)
+- `POST /campaigns/:id/audit` (Lancer un audit)
+- `POST /campaigns/:id/generate-strategy` (Générer la stratégie IA)
+- `POST /campaigns/:id/generate-content` (Générer du contenu)
+- `GET /campaigns/:id/serp` (Suivi SERP)
+
+Montre ces routes dans `artifacts/api-server/src/routes/v1/index.ts`.
+
+# PHASE 4 : MANIFEST & ENREGISTREMENT
+Crée `artifacts/api-server/src/lib/plugin-ereputation/manifest.ts` :
+- id: "ereputation-seo"
+- name: "E-Réputation & SEO/GEO"
+- dependencies: ["growth-memory", "ai-sdr"]
+- permissions: ["ereputation:read", "ereputation:write", "content:generate"]
+- menuItems: [{ label: "E-Réputation", path: "/ereputation", icon: "Shield" }]
+
+Enregistre ce manifest dans le seed des plugins.
+
+# RÈGLES STRICTES
+1. Ne casse AUCUNE fonctionnalité existante de GrowthOS.
+2. Le code doit être 100% TypeScript, typé strictement.
+3. Pour l'instant, les appels externes (SerpAPI, Social APIs) doivent être mockés mais la structure doit être prête pour la production.
+4. Assure-toi que le calcul du "Score de Réputation" est dynamique et robuste.
+
+Commence par la Phase 1 (DB) et Phase 2 (Services Core).

@@ -62,6 +62,12 @@ import RouteAuditPage from '@/pages/RouteAuditPage';
 import PluginUploadPage from '@/pages/PluginUploadPage';
 import DeepAuditPage from '@/pages/DeepAuditPage';
 import EnrichmentPage from '@/pages/EnrichmentPage';
+import ERepDashboardPage from '@/plugins/ereputation/ERepDashboardPage';
+import ERepCampaignsPage from '@/plugins/ereputation/CampaignsPage';
+import ERepSERPPage from '@/plugins/ereputation/SERPTrackingPage';
+import ERepSentimentPage from '@/plugins/ereputation/SentimentFeedPage';
+import ERepSocialPage from '@/plugins/ereputation/SocialCalendarPage';
+import ERepPBNPage from '@/plugins/ereputation/PBNManagerPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -223,6 +229,25 @@ function AppRoutes() {
 
       <Route path="/enrichment">
         {() => <DashboardLayout><EnrichmentPage /></DashboardLayout>}
+      </Route>
+
+      <Route path="/ereputation/campaigns">
+        {() => <DashboardLayout><ERepCampaignsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/ereputation/serp">
+        {() => <DashboardLayout><ERepSERPPage /></DashboardLayout>}
+      </Route>
+      <Route path="/ereputation/sentiment">
+        {() => <DashboardLayout><ERepSentimentPage /></DashboardLayout>}
+      </Route>
+      <Route path="/ereputation/social">
+        {() => <DashboardLayout><ERepSocialPage /></DashboardLayout>}
+      </Route>
+      <Route path="/ereputation/pbn">
+        {() => <DashboardLayout><ERepPBNPage /></DashboardLayout>}
+      </Route>
+      <Route path="/ereputation">
+        {() => <DashboardLayout><ERepDashboardPage /></DashboardLayout>}
       </Route>
 
       <Route path="/memory">

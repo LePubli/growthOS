@@ -1,7 +1,7 @@
 import { pluginManager } from "./plugin-manager";
 import { logger } from "../logger";
 import { loadDisabledPluginIds } from "./persistence";
-import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration, runAccountIntelligenceMigration, runSignalIntelligenceMigration, runDealCoachMigration, runKnowledgeBaseMigration } from "@workspace/db";
+import { runPluginStateMigration, runGrowthMemoryMigration, runMeetingIntelligenceMigration, runAccountIntelligenceMigration, runSignalIntelligenceMigration, runDealCoachMigration, runKnowledgeBaseMigration, runEreputationMigration } from "@workspace/db";
 
 /**
  * Built-in demo plugins that ship with GrowthOS.
@@ -152,6 +152,17 @@ const BUILT_IN_PLUGINS = [
     uiSlots: ["dashboard-widgets"],
     routes: [{ path: "/executive", label: "Command Center", icon: "Crown" }],
   },
+  {
+    id: "ereputation-seo",
+    name: "E-Réputation & SEO/GEO",
+    version: "1.0.0",
+    description: "Gestion complète de la réputation digitale et de la visibilité SEO/GEO — Campagnes B2B/B2C, suivi SERP, analyse de sentiment, calendrier social et gestion PBN",
+    author: "GrowthOS",
+    dependencies: ["growth-memory", "ai-sdr"],
+    permissions: ["ereputation:read", "ereputation:write", "content:generate"],
+    uiSlots: ["dashboard-widgets"],
+    routes: [{ path: "/ereputation", label: "E-Réputation", icon: "Shield" }],
+  },
 ];
 
 export async function seedBuiltInPlugins(): Promise<void> {
@@ -192,6 +203,11 @@ export async function seedBuiltInPlugins(): Promise<void> {
     await runKnowledgeBaseMigration();
   } catch (err) {
     logger.warn({ err }, "knowledge-base migration failed — knowledge_articles table may not exist");
+  }
+  try {
+    await runEreputationMigration();
+  } catch (err) {
+    logger.warn({ err }, "ereputation migration failed — erep_* tables may not exist");
   }
 
   for (const manifest of BUILT_IN_PLUGINS) {

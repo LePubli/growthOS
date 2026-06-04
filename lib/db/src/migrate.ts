@@ -452,6 +452,86 @@ export async function runEnrichmentMigration(): Promise<void> {
   await pool.query(SQL_ENRICHMENT);
 }
 
+const SQL_EREPUTATION = `
+CREATE TABLE IF NOT EXISTS erep_campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  target_type TEXT NOT NULL DEFAULT 'B2B',
+  target_name TEXT NOT NULL,
+  target_url TEXT,
+  keywords JSONB NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'active',
+  reputation_score INTEGER DEFAULT 50,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS erep_audits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES erep_campaigns(id) ON DELETE CASCADE,
+  score INTEGER NOT NULL DEFAULT 50,
+  technical_details JSONB,
+  ai_strategy TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS erep_serp_tracking (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES erep_campaigns(id) ON DELETE CASCADE,
+  keyword TEXT NOT NULL,
+  position INTEGER,
+  url TEXT,
+  volume INTEGER DEFAULT 0,
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS erep_content_posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES erep_campaigns(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL,
+  content_text TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  scheduled_at TIMESTAMP,
+  published_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS erep_sentiment_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES erep_campaigns(id) ON DELETE CASCADE,
+  source_url TEXT,
+  text TEXT NOT NULL,
+  sentiment TEXT NOT NULL DEFAULT 'neu',
+  score NUMERIC(4,2) DEFAULT 0,
+  detected_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS erep_pbn_sites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID REFERENCES erep_campaigns(id) ON DELETE SET NULL,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  da_score INTEGER DEFAULT 0,
+  pa_score INTEGER DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  last_checked_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_erep_campaigns_tenant ON erep_campaigns(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_erep_audits_campaign ON erep_audits(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_erep_serp_campaign ON erep_serp_tracking(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_erep_posts_campaign ON erep_content_posts(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_erep_sentiment_campaign ON erep_sentiment_logs(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_erep_pbn_tenant ON erep_pbn_sites(tenant_id);
+`;
+
+export async function runEreputationMigration(): Promise<void> {
+  await pool.query(SQL_EREPUTATION);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

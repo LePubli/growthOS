@@ -7,6 +7,7 @@ import {
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
   Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route, ShieldCheck, Package, Database,
+  Shield, BarChart, MessageCircle, CalendarDays, Link2,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -68,6 +69,17 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/abm', label: 'ABM / TAM', icon: <Target size={16} /> },
       { href: '/templates', label: 'Templates Email', icon: <FileText size={16} /> },
       { href: '/crm-sync', label: 'CRM Sync', icon: <RefreshCw size={16} />, pluginId: 'crm-sync' },
+    ],
+  },
+  {
+    label: 'Marketing & Réputation',
+    items: [
+      { href: '/ereputation', label: 'E-Réputation', icon: <Shield size={16} />, pluginId: 'ereputation-seo' },
+      { href: '/ereputation/campaigns', label: '↳ Campagnes', icon: <Target size={16} />, pluginId: 'ereputation-seo' },
+      { href: '/ereputation/serp', label: '↳ Suivi SERP', icon: <BarChart size={16} />, pluginId: 'ereputation-seo' },
+      { href: '/ereputation/sentiment', label: '↳ Sentiment', icon: <MessageCircle size={16} />, pluginId: 'ereputation-seo' },
+      { href: '/ereputation/social', label: '↳ Calendrier Social', icon: <CalendarDays size={16} />, pluginId: 'ereputation-seo' },
+      { href: '/ereputation/pbn', label: '↳ Réseau PBN', icon: <Link2 size={16} />, pluginId: 'ereputation-seo' },
     ],
   },
   {
