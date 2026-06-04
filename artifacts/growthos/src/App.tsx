@@ -59,6 +59,8 @@ import CalendarPage from '@/pages/CalendarPage';
 import ProposalsPage from '@/pages/ProposalsPage';
 import SharedDashboardsPage from '@/pages/SharedDashboardsPage';
 import RouteAuditPage from '@/pages/RouteAuditPage';
+import PluginUploadPage from '@/pages/PluginUploadPage';
+import DeepAuditPage from '@/pages/DeepAuditPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -249,6 +251,12 @@ function AppRoutes() {
       </Route>
       <Route path="/route-audit">
         {() => <DashboardLayout><RouteAuditPage /></DashboardLayout>}
+      </Route>
+      <Route path="/admin/plugins-upload">
+        {() => <DashboardLayout><PluginUploadPage /></DashboardLayout>}
+      </Route>
+      <Route path="/admin/deep-audit">
+        {() => <DashboardLayout><DeepAuditPage /></DashboardLayout>}
       </Route>
 
       <Route>

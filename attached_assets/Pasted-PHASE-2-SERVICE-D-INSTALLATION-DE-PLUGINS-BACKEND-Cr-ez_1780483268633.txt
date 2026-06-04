@@ -1,0 +1,59 @@
+PHASE 2 : SERVICE D'INSTALLATION DE PLUGINS (BACKEND)
+Créez le fichier : artifacts/api-server/src/lib/plugin-uploader/PluginUploaderService.ts
+Ce service doit contenir les méthodes suivantes (utilisez fs, path, et adm-zip ou extract-zip pour gérer les fichiers) :
+async uploadPlugin(zipBuffer: Buffer, slug: string):
+Extrait le ZIP dans uploads/plugins/{slug}/.
+Lit et valide le manifest.json à la racine du ZIP avec Zod.
+Retourne le chemin et le manifest.
+async installPlugin(slug: string):
+Copie les fichiers de uploads/plugins/{slug}/ vers src/plugins/installed/{slug}/.
+Enregistre dans la DB uploaded_plugins avec state='installed'.
+async activatePlugin(slug: string):
+Récupère le manifest de la DB.
+Appelle le pluginManager.register(manifest) et pluginManager.enable(slug) du core.
+Monte dynamiquement les apiRoutes dans le routeur Express principal (utilisez un pattern de routeur dynamique ou chargez le module).
+Met à jour la DB : state='active', activated_at=NOW().
+async deactivatePlugin(slug: string):
+Appelle pluginManager.disablePlugin(slug).
+Démonte les routes si possible, ou les ignore via un middleware de vérification d'état.
+Met à jour la DB : state='installed'.
+async deletePlugin(slug: string): Supprime les fichiers et l'entrée DB.
+async listPlugins(): Retourne tous les plugins de la table uploaded_plugins.
+PHASE 3 : API ROUTES D'UPLOAD (MARKETPLACE)
+Créez le fichier : artifacts/api-server/src/routes/v1/plugin-marketplace.ts
+Implémentez les routes suivantes (utilisez multer pour l'upload de fichiers) :
+POST /upload : Reçoit le fichier ZIP (multipart/form-data) et le slug. Appelle uploadPlugin.
+POST /install/:slug : Appelle installPlugin.
+POST /activate/:slug : Appelle activatePlugin.
+POST /deactivate/:slug : Appelle deactivatePlugin.
+DELETE /:slug : Appelle deletePlugin.
+GET / : Liste tous les plugins uploadés via listPlugins().
+CRITIQUE : Montez ce routeur dans artifacts/api-server/src/routes/v1/index.ts :
+typescript
+12
+(Assurez-vous que multer est installé : pnpm add multer @types/multer)
+PHASE 4 : FORMAT STANDARD D'UN PLUGIN UPLOADABLE (DOCUMENTATION)
+Implémentez une route GET /plugin-marketplace/format-doc qui retourne la documentation JSON de comment créer un plugin :
+Le ZIP doit avoir cette structure :
+text
+123456
+Le manifest.json doit respecter ce schéma Zod strict :
+json
+123456789
+PHASE 5 : UI D'UPLOAD DANS LE FRONTEND
+Créez le fichier : artifacts/growthos/src/pages/PluginUploadPage.tsx
+Interface utilisateur moderne (Tailwind CSS) avec :
+Zone Drag & Drop : Pour uploader le fichier ZIP. Affiche une barre de progression.
+Tableau des plugins : Liste les plugins avec colonnes : Nom, Version, Auteur, État (Badge coloré : gris=uploaded, bleu=installed, vert=active, rouge=error).
+Actions : Boutons "Installer", "Activer", "Désactiver", "Supprimer" pour chaque ligne. Les boutons doivent être désactivés si l'état ne le permet pas (ex: on ne peut pas activer un plugin non installé).
+Gestion des extensions : Si le plugin a un champ extends, afficher "Étend : [Nom du plugin parent]".
+CRITIQUE FRONTEND :
+Ajoutez cette page au routeur principal (App.tsx ou router.tsx) à la route /admin/plugins-upload.
+Ajoutez un lien dans le menu latéral de l'admin (ex: sous la section "Système" -> "Marketplace & Upload").
+Gérez les états de chargement (isLoading) et les erreurs (Toasts) pour chaque action.
+RÈGLES STRICTES D'EXÉCUTION
+Zéro Pseudo-code : Écrivez l'implémentation complète de PluginUploaderService.ts et des routes multer.
+Sécurité : Validez strictement le manifest.json avec Zod avant d'accepter l'upload pour éviter les injections de code malveillant.
+Gestion d'erreurs : Si l'activation échoue (ex: dépendance manquante), le plugin doit passer en état error et ne pas crasher le serveur.
+Fichiers : Créez également un petit plugin de test "Hello World" en mémoire (un objet JSON) que je pourrai utiliser pour tester l'API manuellement si besoin.
+Commencez par la migration DB et le Service Backend (Phases 1 et 2).

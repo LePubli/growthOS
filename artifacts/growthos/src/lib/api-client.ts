@@ -99,6 +99,12 @@ class ApiClient {
     }) as unknown as T;
   }
 
+  async postForm<T = any>(url: string, formData: FormData): Promise<T> {
+    return this.axios.post(url, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }) as unknown as T;
+  }
+
   async login(email: string, password: string, tenantSlug?: string) {
     const result = await this.post<any>('/auth/login', { email, password, tenantSlug });
     if (result.tenant?.id) {

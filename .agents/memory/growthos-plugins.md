@@ -3,8 +3,8 @@ name: GrowthOS Plugin Inventory
 description: 11 plugins actifs dans le runtime, leurs routes, services et conventions d'intégration
 ---
 
-## 11 plugins actifs (seed-plugins.ts)
-crm-sync, email-outreach, ai-signals, webhooks-relay, growth-memory, meeting-intelligence, revenue-intelligence, ai-deal-coach, ai-sdr, signal-intelligence, account-intelligence
+## 13 plugins actifs (seed-plugins.ts)
+crm-sync, email-outreach, ai-signals, webhooks-relay, growth-memory, meeting-intelligence, revenue-intelligence, ai-deal-coach, ai-sdr, signal-intelligence, account-intelligence, knowledge-base, executive-command
 
 ## Conventions
 
@@ -52,6 +52,33 @@ Le workflow `.replit` échoue avec EADDRINUSE mais l'API tourne via l'artifact w
 - Frontend: `artifacts/growthos/src/plugins/revenue-intelligence/` — RevenueDashboard.tsx + KPICard.tsx
 - recharts déjà installé dans growthos
 - Deal Coach page intègre un widget Forecast Pipeline via /revenue/forecast
+
+## Plugin Upload System (WordPress-style ZIP upload)
+- `PluginUploaderService.ts` → `artifacts/api-server/src/lib/plugin-uploader/`
+- DB: `uploaded_plugins` (slug UNIQUE, manifest JSONB, state CHECK 'uploaded|installed|active|error')
+- States: uploaded → installed → active | error
+- Routes at `/api/v1/plugin-marketplace`: GET /, GET /format-doc, POST /upload (multer memoryStorage 50MB), POST /install/:slug, POST /activate/:slug, POST /deactivate/:slug, DELETE /:slug
+- Activation: `pluginManager.register(safeManifest)` + `pluginManager.enable(slug)` with permissions whitelist
+- manifest.json at ZIP root, id must match slug, version = semver
+- Frontend: `PluginUploadPage.tsx` → route `/admin/plugins-upload`
+- `apiClient.postForm()` added to api-client for multipart uploads
+
+## Deep Audit Tool
+- `deep-audit.ts` → `artifacts/api-server/src/lib/audit/`
+- `runDeepAudit(app, port)`: real HTTP GET calls (AbortSignal.timeout 5s), DB scan 19 tables, plugin state, healthScore = route(40%) + db(30%) + plugin(30%)
+- `runAutoFix()`: re-runs all migrations, re-enables ERROR plugins, cleans orphaned audit logs
+- Routes at `/api/v1/audit`: GET /deep (60s cache, ?force=true bypass), POST /auto-fix
+- Uses `listRoutes(app)` from `lib/list-routes.ts`
+- Test JWT generated with JWT_SECRET (5min expiry, role=admin)
+- Frontend: `DeepAuditPage.tsx` → route `/admin/deep-audit`
+
+## Sidebar Extensions (dynamic plugin injection)
+- AppShell polls `/plugin-marketplace` every 30s
+- Active uploaded plugins' routes injected as "Extensions" section with Package icon
+- "Upload Plugins" + "Audit Système" added to Système section (ShieldCheck icon)
+
+## Port conflict note
+Restart only `artifacts/api-server: API Server` (not `GrowthOS API Server`) — artifact workflow wins port 8080.
 
 ## AI SDR Playbook (feature Account360)
 - `generatePlaybook()` standalone export dans AISDRService.ts (hors classe)

@@ -162,6 +162,24 @@ CREATE TABLE IF NOT EXISTS plugin_audit_logs (
 
 CREATE INDEX IF NOT EXISTS plugin_audit_logs_plugin_id_idx ON plugin_audit_logs(plugin_id);
 CREATE INDEX IF NOT EXISTS plugin_audit_logs_created_at_idx ON plugin_audit_logs(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS uploaded_plugins (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug         TEXT        UNIQUE NOT NULL,
+  name         TEXT        NOT NULL,
+  version      TEXT        NOT NULL,
+  description  TEXT,
+  author       TEXT        NOT NULL DEFAULT 'Unknown',
+  manifest     JSONB       NOT NULL DEFAULT '{}',
+  files_path   TEXT        NOT NULL,
+  state        TEXT        NOT NULL DEFAULT 'uploaded'
+               CHECK (state IN ('uploaded', 'installed', 'active', 'error')),
+  extends      TEXT,
+  error_msg    TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  activated_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS uploaded_plugins_state_idx ON uploaded_plugins(state);
 `;
 
 function sleep(ms: number): Promise<void> {

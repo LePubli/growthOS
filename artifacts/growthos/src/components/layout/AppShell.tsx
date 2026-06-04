@@ -6,13 +6,15 @@ import {
   Bot, User, Webhook, BarChart2, Download, Zap,
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
-  Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route,
+  Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route, ShieldCheck, Package,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
 import { CommandPalette } from '@/components/command/CommandPalette';
 import { NotificationsDrawer } from '@/components/common/NotificationsDrawer';
 import { useRuntimePlugins } from '@/hooks/use-plugins';
+import { useQuery } from '@tanstack/react-query';
+import apiClient from '@/lib/api-client';
 
 interface NavItem {
   href: string;
@@ -99,6 +101,8 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/marketplace', label: 'Marketplace', icon: <Store size={16} />, badge: 1 },
       { href: '/plugins', label: 'Plugins', icon: <Puzzle size={16} /> },
+      { href: '/admin/plugins-upload', label: 'Upload Plugins', icon: <Upload size={16} /> },
+      { href: '/admin/deep-audit', label: 'Audit Système', icon: <ShieldCheck size={16} /> },
       { href: '/themes', label: 'Thèmes', icon: <Palette size={16} /> },
       { href: '/webhooks', label: 'Webhooks', icon: <Webhook size={16} /> },
       { href: '/route-audit', label: 'Audit Routes', icon: <Route size={16} /> },
@@ -127,6 +131,7 @@ function SidebarContent({
   userInitials,
   onUserMenu,
   activePluginIds,
+  uploadedExtensions,
 }: {
   collapsed: boolean;
   onNavClick?: () => void;
@@ -138,6 +143,7 @@ function SidebarContent({
   onUserMenu: () => void;
   /** null = still loading (show everything); Set = filter by plugin state */
   activePluginIds: Set<string> | null;
+  uploadedExtensions?: NavItem[];
 }) {
   return (
     <>
@@ -206,6 +212,42 @@ function SidebarContent({
             </div>
           );
         })}
+
+        {/* Dynamic Extensions section — uploaded & active plugins */}
+        {uploadedExtensions && uploadedExtensions.length > 0 && (
+          <div>
+            {!collapsed && (
+              <div style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
+                Extensions
+              </div>
+            )}
+            {uploadedExtensions.map(item => {
+              const active = isActive(item);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={collapsed ? item.label : undefined}
+                  onClick={onNavClick}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: collapsed ? '8px 0' : '7px 12px',
+                    margin: '1px 6px', borderRadius: 8, textDecoration: 'none',
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    transition: 'background 0.15s',
+                    background: active ? 'var(--color-primary)' : 'transparent',
+                    color: active ? '#fff' : 'var(--sidebar-text)',
+                  }}
+                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--sidebar-hover)'; }}
+                  onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                >
+                  <span style={{ flexShrink: 0, opacity: active ? 1 : 0.8 }}>{item.icon}</span>
+                  {!collapsed && <span style={{ flex: 1, fontSize: 13, fontWeight: active ? 600 : 400 }}>{item.label}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </nav>
 
       {!collapsed && (
@@ -244,6 +286,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const activePluginIds: Set<string> | null = pluginsData
     ? new Set((pluginsData.plugins ?? []).filter(p => p.state === 'ACTIVE').map(p => p.id))
     : null; // null while loading → show all items (no flash)
+
+  // Uploaded plugins — dynamically inject active plugin routes into "Extensions" sidebar section
+  const { data: uploadedPluginsData } = useQuery({
+    queryKey: ['uploaded-plugins-sidebar'],
+    queryFn: () => apiClient.get('/plugin-marketplace') as Promise<{ plugins: Array<{ slug: string; name: string; state: string; manifest: { routes?: { path: string; label: string }[] } }> }>,
+    refetchInterval: 30_000,
+    staleTime: 20_000,
+  });
+  const uploadedExtensions: NavItem[] = (uploadedPluginsData?.plugins ?? [])
+    .filter(p => p.state === 'active')
+    .flatMap(p => (p.manifest.routes ?? []).map(r => ({
+      href: r.path.startsWith('/') ? r.path : `/${r.path}`,
+      label: r.label,
+      icon: <Package size={16} />,
+    })));
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -326,6 +383,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           userInitials={userInitials}
           onUserMenu={() => setUserMenuOpen(o => !o)}
           activePluginIds={activePluginIds}
+          uploadedExtensions={uploadedExtensions}
         />
       </aside>
 

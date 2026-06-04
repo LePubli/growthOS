@@ -28,6 +28,8 @@ import executiveRouter from "./plugins/executive";
 import sourcingRouter from "./sourcing";
 import notificationsRouter from "./notifications";
 import adminRouter from "./admin";
+import pluginMarketplaceRouter from "./plugin-marketplace";
+import auditRouter from "./audit";
 
 const router = Router();
 
@@ -59,5 +61,7 @@ router.use("/executive", executiveRouter);
 router.use("/sourcing", sourcingRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/admin", adminRouter);
+router.use("/plugin-marketplace", pluginMarketplaceRouter);
+router.use("/audit", auditRouter);
 
 export default router;

@@ -1,0 +1,110 @@
+
+---
+
+## 🔍 PARTIE 2 : VRAI OUTIL D'AUTOMATIQUE (après la Partie 1)
+
+Une fois que Replit a fini la Partie 1, envoie ce second prompt :
+
+```markdown
+# OBJECTIF : VRAI OUTIL D'AUDIT AUTOMATIQUE
+Le système actuel ne fait rien. Je veux un outil qui SCANNE RÉELLEMENT l'app et me liste TOUS les bugs.
+
+# PHASE 1 : AUDIT BACKEND RÉEL
+
+Créer : `artifacts/api-server/src/scripts/deep-audit.ts`
+
+Ce script doit :
+1. Démarrer le serveur Express en mode test
+2. Pour CHAQUE plugin actif dans pluginManager :
+   - Lire ses apiRoutes déclarées
+   - Faire un VRAI appel HTTP GET sur chaque route (avec un token admin de test)
+   - Enregistrer le vrai status code (200, 404, 500, 401)
+   - Mesurer le temps de réponse
+3. Pour CHAQUE plugin :
+   - Vérifier que son EventBus subscriber est bien enregistré
+   - Vérifier que ses dépendances sont actives
+4. Scanner la DB :
+   - Compter les enregistrements par table
+   - Détecter les tables manquantes
+5. Output un JSON structuré :
+
+{
+  "timestamp": "...",
+  "backend": {
+    "routes_tested": 47,
+    "routes_ok": 45,
+    "routes_500": 2,
+    "broken_routes": [
+      {"plugin": "revenue-intelligence", "route": "GET /api/v1/revenue/forecast", "status": 500, "error": "invalid input syntax for type numeric"}
+    ]
+  },
+  "database": {
+    "tables_ok": 15,
+    "tables_missing": ["workflow_executions"],
+    "records_count": {"prospects": 120, "meetings": 45}
+  },
+  "plugins": {
+    "active": 12,
+    "disabled": 1,
+    "errors": 0
+  }
+}
+
+# PHASE 2 : AUDIT FRONTEND RÉEL
+
+Créer : `artifacts/growthos/src/scripts/frontend-audit.ts`
+
+Ce script doit :
+1. Lire TOUS les manifests de plugins (seed + uploaded)
+2. Pour chaque menuItems[i].path :
+   - Vérifier que le fichier composant existe dans src/plugins/
+   - Vérifier qu'il est importé dans App.tsx/router.tsx
+3. Pour chaque plugin avec des "slots" ou "widgets" :
+   - Vérifier que les composants Slot existent
+4. Output :
+
+{
+  "routes_declared": 18,
+  "routes_with_component": 16,
+  "ghost_routes": [
+    {"plugin": "meeting-intelligence", "path": "/meetings/:id", "reason": "Component file missing"}
+  ],
+  "missing_imports": [
+    {"plugin": "knowledge-base", "component": "KnowledgeBasePage.tsx", "status": "exists but not imported in router"}
+  ]
+}
+
+# PHASE 3 : DASHBOARD D'AUDIT UI
+
+Créer : `artifacts/growthos/src/pages/DeepAuditPage.tsx`
+
+Page qui :
+1. Appelle GET /api/v1/audit/deep (nouvelle route backend qui lance les scripts ci-dessus)
+2. Affiche :
+   - Score global de santé (0-100)
+   - Liste des routes 500 avec stack trace complète
+   - Liste des routes fantômes (frontend)
+   - Liste des tables DB manquantes
+   - Bouton "Regénérer l'audit"
+3. Design clean avec code couleur (vert/orange/rouge)
+
+# PHASE 4 : AUTO-FIX DES PROBLÈMES COURANTS
+
+Créer : `artifacts/api-server/src/scripts/auto-fix.ts`
+
+Script qui peut :
+1. Recréer les tables DB manquantes (à partir des migrations)
+2. Ré-enregistrer les plugins en erreur
+3. Nettoyer les données orphelines
+
+Route API : `POST /api/v1/audit/auto-fix`
+
+# LIVRABLES
+1. Script deep-audit.ts fonctionnel
+2. Script frontend-audit.ts fonctionnel
+3. Route API GET /api/v1/audit/deep
+4. Route API POST /api/v1/audit/auto-fix
+5. Page UI DeepAuditPage.tsx
+6. Ajouter cette page au menu admin
+
+Commence par le deep-audit backend. Je veux voir les VRAIES erreurs 500 avec leur stack trace complète.
