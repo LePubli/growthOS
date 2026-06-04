@@ -1,15 +1,61 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation } from 'wouter';
 import {
   ArrowLeft, Edit2, Save, X, Star, Mail, Phone, Globe, Building2,
   Briefcase, Loader2, Plus, Trash2, CheckCircle, AlertCircle,
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
   Archive, RotateCcw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
+  ExternalLink, Navigation,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
 import { CommentsPanel } from '@/components/common/CommentsPanel';
 import { AddressAutocomplete } from '@/components/common/AddressAutocomplete';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Teal custom marker (no image needed)
+const tealIcon = L.divIcon({
+  className: '',
+  html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#0d9488;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);transform:rotate(-45deg)"></div>`,
+  iconSize: [22, 22],
+  iconAnchor: [11, 22],
+  popupAnchor: [0, -24],
+});
+
+function FlyTo({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+  const prev = useRef<string>('');
+  useEffect(() => {
+    const key = `${lat},${lng}`;
+    if (key !== prev.current) { map.setView([lat, lng], 14); prev.current = key; }
+  }, [lat, lng, map]);
+  return null;
+}
+
+function ProspectMiniMap({ lat, lng, label, address }: { lat: number; lng: number; label: string; address?: string }) {
+  return (
+    <div style={{ borderRadius: 16, overflow: 'hidden', height: 200, position: 'relative', border: '1px solid var(--card-border)' }}>
+      <MapContainer center={[lat, lng]} zoom={14} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <FlyTo lat={lat} lng={lng} />
+        <Marker position={[lat, lng]} icon={tealIcon}>
+          <Popup>
+            <strong style={{ fontSize: 13 }}>{label}</strong>
+            {address && <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{address}</div>}
+          </Popup>
+        </Marker>
+      </MapContainer>
+      {/* overlay gradient bottom */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 36, background: 'linear-gradient(transparent, rgba(0,0,0,.08))', pointerEvents: 'none' }} />
+      {/* coords badge */}
+      <div style={{ position: 'absolute', bottom: 8, left: 10, fontSize: 10, color: '#fff', background: 'rgba(0,0,0,.45)', borderRadius: 6, padding: '2px 7px', pointerEvents: 'none' }}>
+        {lat.toFixed(4)}, {lng.toFixed(4)}
+      </div>
+    </div>
+  );
+}
 
 const STATUS_OPTIONS = [
   { value: 'new', label: 'Nouveau' }, { value: 'contacted', label: 'Contacté' },
@@ -372,6 +418,44 @@ export default function ProspectDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Mini-map — only when geocoded and not editing */}
+          {!editing && prospect.lat && prospect.lng && (
+            <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+              <div className="flex items-center justify-between px-5 pt-4 pb-2">
+                <h2 className="font-semibold text-sm flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                  <MapPin size={13} />LOCALISATION
+                </h2>
+                <div className="flex items-center gap-3">
+                  <a
+                    href={`/crm-map`}
+                    className="flex items-center gap-1 text-xs font-medium"
+                    style={{ color: 'var(--color-primary)' }}
+                    onClick={e => { e.preventDefault(); navigate('/crm-map'); }}
+                  >
+                    <Navigation size={11} />Voir sur la carte CRM
+                  </a>
+                  <a
+                    href={`https://www.google.com/maps?q=${prospect.lat},${prospect.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-xs"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <ExternalLink size={11} />Google Maps
+                  </a>
+                </div>
+              </div>
+              <div className="px-5 pb-5">
+                <ProspectMiniMap
+                  lat={prospect.lat}
+                  lng={prospect.lng}
+                  label={[prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || prospect.company || 'Prospect'}
+                  address={prospect.address}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
