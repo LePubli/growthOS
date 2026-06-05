@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { prospectsTable, dealsTable, activitiesTable } from "@workspace/db";
+import { requireAuth } from "../../middlewares/auth";
 import { eq, and, ne, count, sum, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 
@@ -125,6 +126,35 @@ router.get("/stats", async (req, res) => {
     pipeline_funnel: pipelineFunnel,
     activity_breakdown: activityBreakdown,
   });
+});
+
+/* ── Product Analytics : track frontend event ── */
+router.post("/track", requireAuth, async (req, res) => {
+  const { event, properties } = req.body as { event?: string; properties?: Record<string, unknown> };
+  if (!event) { res.status(400).json({ error: "event requis" }); return; }
+  const tenantId = req.auth!.tenantId;
+  const userId = req.auth!.userId;
+  try {
+    await pool.query(
+      `INSERT INTO analytics_events (tenant_id, user_id, event_name, properties)
+       VALUES ($1, $2, $3, $4::jsonb)`,
+      [tenantId, userId, event, JSON.stringify(properties ?? {})],
+    );
+  } catch {
+    // table might not exist yet — ignore
+  }
+  res.json({ ok: true });
+});
+
+/* ── Product Analytics : dashboard ── */
+router.get("/product-dashboard", requireAuth, async (req, res) => {
+  const { ProductAnalytics } = await import("../../lib/analytics/ProductAnalytics");
+  const days = Number(req.query.days ?? 30);
+  const [dashboard, funnel] = await Promise.all([
+    ProductAnalytics.getDashboard(req.auth!.tenantId, days),
+    ProductAnalytics.getFunnelData(req.auth!.tenantId),
+  ]);
+  res.json({ ...dashboard, ...funnel });
 });
 
 export default router;

@@ -611,6 +611,96 @@ export async function runEnterpriseMigration(): Promise<void> {
   await pool.query(SQL_ENTERPRISE);
 }
 
+const SQL_SAAS = `
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS domain TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'starter';
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id               UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  stripe_customer_id      TEXT,
+  stripe_subscription_id  TEXT,
+  plan                    TEXT        NOT NULL DEFAULT 'starter',
+  status                  TEXT        NOT NULL DEFAULT 'trialing',
+  current_period_end      TIMESTAMP,
+  created_at              TIMESTAMP   NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_tenant_idx ON subscriptions(tenant_id);
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id         UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  stripe_invoice_id TEXT,
+  amount            INTEGER     NOT NULL DEFAULT 0,
+  currency          TEXT        NOT NULL DEFAULT 'eur',
+  status            TEXT        NOT NULL DEFAULT 'draft',
+  invoice_url       TEXT,
+  created_at        TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS invoices_tenant_idx   ON invoices(tenant_id);
+CREATE INDEX IF NOT EXISTS invoices_created_idx  ON invoices(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS usage_limits (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  resource        TEXT        NOT NULL,
+  limit_value     INTEGER     NOT NULL DEFAULT 1000,
+  current_usage   INTEGER     NOT NULL DEFAULT 0,
+  period_start    TIMESTAMP   NOT NULL DEFAULT date_trunc('month', NOW()),
+  updated_at      TIMESTAMP   NOT NULL DEFAULT NOW(),
+  UNIQUE(tenant_id, resource)
+);
+CREATE INDEX IF NOT EXISTS usage_limits_tenant_idx ON usage_limits(tenant_id);
+
+CREATE TABLE IF NOT EXISTS mentions (
+  id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  author_id           UUID        REFERENCES users(id) ON DELETE SET NULL,
+  mentioned_user_id   UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  entity_type         TEXT        NOT NULL,
+  entity_id           UUID,
+  content             TEXT        NOT NULL,
+  is_read             BOOLEAN     NOT NULL DEFAULT false,
+  created_at          TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS mentions_tenant_idx        ON mentions(tenant_id);
+CREATE INDEX IF NOT EXISTS mentions_mentioned_user_idx ON mentions(mentioned_user_id);
+CREATE INDEX IF NOT EXISTS mentions_entity_idx        ON mentions(entity_type, entity_id);
+
+CREATE TABLE IF NOT EXISTS webhook_logs (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  webhook_id      UUID        NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+  event_type      TEXT        NOT NULL,
+  status          TEXT        NOT NULL DEFAULT 'pending',
+  response_code   INTEGER,
+  payload         JSONB,
+  response_body   TEXT,
+  error_message   TEXT,
+  created_at      TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS webhook_logs_webhook_idx ON webhook_logs(webhook_id);
+CREATE INDEX IF NOT EXISTS webhook_logs_status_idx  ON webhook_logs(status);
+CREATE INDEX IF NOT EXISTS webhook_logs_created_idx ON webhook_logs(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id     UUID        REFERENCES users(id) ON DELETE SET NULL,
+  event_name  TEXT        NOT NULL,
+  properties  JSONB       NOT NULL DEFAULT '{}',
+  created_at  TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS analytics_events_tenant_idx  ON analytics_events(tenant_id);
+CREATE INDEX IF NOT EXISTS analytics_events_event_idx   ON analytics_events(event_name);
+CREATE INDEX IF NOT EXISTS analytics_events_created_idx ON analytics_events(created_at DESC);
+`;
+
+export async function runSaaSMigration(): Promise<void> {
+  await pool.query(SQL_SAAS);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

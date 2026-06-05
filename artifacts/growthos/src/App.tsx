@@ -27,6 +27,7 @@ import TeamPage from '@/pages/settings/TeamPage';
 import ApiPage from '@/pages/settings/ApiPage';
 import BillingPage from '@/pages/settings/BillingPage';
 import IntegrationsPage from '@/pages/settings/IntegrationsPage';
+import IntegrationsHubPage from '@/pages/IntegrationsPage';
 import ActivitiesPage from '@/pages/ActivitiesPage';
 import TemplatesPage from '@/pages/TemplatesPage';
 import WebhooksPage from '@/pages/WebhooksPage';
@@ -206,6 +207,9 @@ function AppRoutes() {
       </Route>
       <Route path="/webhooks">
         {() => <DashboardLayout><WebhooksPage /></DashboardLayout>}
+      </Route>
+      <Route path="/integrations">
+        {() => <DashboardLayout><IntegrationsHubPage /></DashboardLayout>}
       </Route>
       <Route path="/inbound">
         {() => <DashboardLayout><InboundPage /></DashboardLayout>}

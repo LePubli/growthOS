@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration } from "@workspace/db";
+import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 
 const rawPort = process.env["PORT"];
@@ -23,6 +23,9 @@ runMigrations()
 
     await Promise.all([runSourcingMigration(), runNotificationsMigration(), runProspectGeoMigration(), runEnrichmentMigration(), runEreputationMigration(), runTasksMigration(), runEnterpriseMigration()]);
     logger.info("All tables ready (sourcing, notifications, geo, enrichment, ereputation, tasks, enterprise)");
+
+    await runSaaSMigration();
+    logger.info("SaaS tables ready (billing, mentions, webhook_logs, analytics_events)");
 
     await seedBuiltInPlugins();
 

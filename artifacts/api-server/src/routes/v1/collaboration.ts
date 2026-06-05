@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { requireAuth } from "../../middlewares/auth";
+import { CollaborationService } from "../../lib/collaboration/CollaborationService";
 
 const router = Router();
 
@@ -69,6 +70,38 @@ router.delete("/audit-logs", requireAuth, async (req, res) => {
     [tenantId]
   );
   res.json({ deleted: result.rowCount });
+});
+
+/* ── Mentions ── */
+
+router.get("/mentions", requireAuth, async (req, res) => {
+  const tenantId = req.auth!.tenantId;
+  const userId = req.auth!.userId;
+  const onlyUnread = req.query.unread === "true";
+  const mentions = await CollaborationService.getMentions(tenantId, userId, onlyUnread);
+  res.json(mentions);
+});
+
+router.post("/mention", requireAuth, async (req, res) => {
+  const { mentionedUserId, entityType, entityId, content } = req.body;
+  if (!mentionedUserId || !entityType || !content) {
+    res.status(400).json({ error: "mentionedUserId, entityType et content requis" });
+    return;
+  }
+  const mention = await CollaborationService.addMention({
+    tenantId: req.auth!.tenantId,
+    authorId: req.auth!.userId,
+    mentionedUserId,
+    entityType,
+    entityId,
+    content,
+  });
+  res.status(201).json(mention);
+});
+
+router.patch("/mentions/:id/read", requireAuth, async (req, res) => {
+  await CollaborationService.markMentionRead(req.params.id, req.auth!.userId);
+  res.json({ ok: true });
 });
 
 export default router;

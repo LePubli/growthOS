@@ -38,6 +38,9 @@ import collaborationRouter from "./collaboration";
 import complianceRouter from "./compliance";
 import ssoRouter from "./sso";
 import apiDocsRouter from "./api-docs";
+import billingRouter from "./billing";
+import integrationsRouter from "./integrations";
+import publicApiRouter from "./public-api";
 
 const router = Router();
 
@@ -79,5 +82,8 @@ router.use("/collaboration", requireAuth, collaborationRouter);
 router.use("/compliance", requireAuth, complianceRouter);
 router.use("/sso", requireAuth, ssoRouter);
 router.use("/api-docs", apiDocsRouter);
+router.use("/billing", billingRouter);
+router.use("/integrations", integrationsRouter);
+router.use("/public", publicApiRouter);
 
 export default router;

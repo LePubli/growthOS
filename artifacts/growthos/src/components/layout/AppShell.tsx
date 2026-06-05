@@ -7,7 +7,7 @@ import {
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
   Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route, ShieldCheck, Package, Database,
-  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift, ClipboardList, Lock, Code2, FlaskConical,
+  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift, ClipboardList, Lock, Code2, FlaskConical, CreditCard,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -116,7 +116,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/api-docs', label: 'API Docs', icon: <Code2 size={16} /> },
       { href: '/settings/api', label: 'Clés API', icon: <Lock size={16} /> },
-      { href: '/webhooks', label: 'Webhooks', icon: <Webhook size={16} /> },
+      { href: '/integrations', label: 'Intégrations', icon: <Webhook size={16} /> },
     ],
   },
   {
@@ -130,6 +130,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Système',
     items: [
+      { href: '/settings/billing', label: 'Facturation', icon: <CreditCard size={16} /> },
       { href: '/help', label: 'Centre d\'aide', icon: <HelpCircle size={16} /> },
       { href: '/referral', label: 'Parrainage', icon: <Gift size={16} /> },
       { href: '/marketplace', label: 'Marketplace', icon: <Store size={16} />, badge: 1 },

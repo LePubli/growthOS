@@ -3,3 +3,4 @@
 - [GrowthOS Plugin Inventory](growthos-plugins.md) — 10 plugins actifs; pattern migration, seeding, route-mounting et conventions de service
 - [Data Enrichment Engine](enrichment-engine.md) — Plugin 11 complet; 23 sources, 5 tables DB, routes /enrich/*, EnrichmentPage; "Géocoder tous" sur noGeo filter
 - [GrowthOS Session Features](growthos-session-features.md) — Tasks/Onboarding/Help/Referral/CSV-export implémentés; Deal Health Score frontend-only; migration pattern: runXxxMigration() dans migrate.ts → export index.ts → appel startup index.ts
+- [GrowthOS SaaS Enterprise Phases](growthos-saas-phases.md) — Phases 1-4 : Billing+Stripe sans SDK, mentions, WebhookService HMAC, ApiKeyService rate-limit, ProductAnalytics, IntegrationsPage
