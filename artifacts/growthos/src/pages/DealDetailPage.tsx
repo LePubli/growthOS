@@ -30,32 +30,21 @@ const ACTIVITY_CONFIG: Record<string,{icon:React.ReactNode;c:string;bg:string;la
   task:    { icon:<CheckCircle size={12}/>, c:'#D97706', bg:'#FFFBEB', label:'Tâche' },
 };
 
-const MOCK_ACTIVITIES: Activity[] = [
-  { id:'1', type:'meeting',  description:'Demo produit — présentation à 3 décideurs, retours très positifs', user:'Alice Martin', date:'2026-05-30T14:00:00', done:true },
-  { id:'2', type:'email',    description:'Envoi de la proposition commerciale v2 — 22 000€/an', user:'Alice Martin', date:'2026-05-28T09:15:00', done:true },
-  { id:'3', type:'call',     description:'Appel 30 min avec DSI — validation technique OK', user:'Benoît Girard', date:'2026-05-26T11:00:00', done:true },
-  { id:'4', type:'email',    description:'Email de suivi post-démo — questions sur l\'intégration', user:'Alice Martin', date:'2026-05-22T10:30:00', done:true },
-  { id:'5', type:'task',     description:'Préparer démo personnalisée pour DSI', user:'Alice Martin', date:'2026-05-21T09:00:00', done:true },
-  { id:'6', type:'task',     description:'Envoyer proposition finale actualisée', user:'Alice Martin', date:'2026-06-02T09:00:00', done:false },
-];
-
-const MOCK_DEAL = {
-  id:'6', title:'Licence Enterprise — AlphaTech', company:'AlphaTech', value:'22000',
-  stage:'proposal', probability:55, closeDate:'2026-07-01', prospect:'Marie Dubois',
-  notes:'Compte stratégique. Marie Dubois est la décideuse principale — DSI très favorable. Blocage potentiel sur le budget Q2 (deal report possible sur Q3).\n\nPoints clés :\n• Ils utilisent actuellement un concurrent (Pipedrive)\n• Besoin de migration des données\n• Veulent une démo en production avant signature',
-  createdAt:'2026-05-15T10:00:00', updatedAt:'2026-05-28T09:15:00',
-  tags:['enterprise','saas','migration'],
-};
 
 /* ─────────────── add activity modal ─────────────── */
-function AddActivityModal({ onClose, onAdd }: { onClose:()=>void; onAdd:(a:Activity)=>void }) {
+function AddActivityModal({ onClose, dealId, onSaved }: { onClose:()=>void; dealId:string; onSaved:()=>void }) {
   const [type, setType] = useState<Activity['type']>('email');
   const [desc, setDesc] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0,16));
-  const add = () => {
+  const [saving, setSaving] = useState(false);
+  const add = async () => {
     if (!desc.trim()) { toast.error('Description requise'); return; }
-    onAdd({ id:crypto.randomUUID(), type, description:desc, user:'Moi', date:new Date(date).toISOString(), done:true });
-    onClose(); toast.success('Activité ajoutée');
+    setSaving(true);
+    try {
+      await apiClient.post('/activities', { type, title: desc, dealId, scheduledAt: date, status:'done' });
+      onSaved(); onClose(); toast.success('Activité ajoutée');
+    } catch { toast.error('Erreur lors de la création'); }
+    finally { setSaving(false); }
   };
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:50, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
@@ -84,7 +73,9 @@ function AddActivityModal({ onClose, onAdd }: { onClose:()=>void; onAdd:(a:Activ
         </div>
         <div style={{ display:'flex', gap:10 }}>
           <button onClick={onClose} style={{ flex:1, padding:10, borderRadius:11, border:'1px solid var(--card-border)', background:'transparent', color:'var(--text-secondary)', fontSize:13, cursor:'pointer' }}>Annuler</button>
-          <button onClick={add} style={{ flex:2, padding:10, borderRadius:11, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>Ajouter</button>
+          <button onClick={add} disabled={saving} style={{ flex:2, padding:10, borderRadius:11, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', opacity:saving?0.7:1 }}>
+            {saving ? '…' : 'Ajouter'}
+          </button>
         </div>
       </div>
     </div>
@@ -100,15 +91,26 @@ export default function DealDetailPage() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
-  const [activities, setActivities] = useState<Activity[]>(MOCK_ACTIVITIES);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [activeTab, setActiveTab] = useState<'details'|'activities'|'comments'>('activities');
+
+  const fetchActivities = async () => {
+    try {
+      const data = await apiClient.get('/activities', { params: { dealId: params.id } }) as any[];
+      setActivities(Array.isArray(data) ? data.map(a => ({
+        id: a.id, type: a.type, description: a.title || a.description || '',
+        user: a.createdBy || '—', date: a.createdAt, done: a.status === 'done',
+      })) : []);
+    } catch {}
+  };
 
   useEffect(()=>{
     apiClient.get(`/pipeline/${params.id}`)
       .then(d=>{ setDeal(d); setForm(d); })
-      .catch(()=>{ setDeal(MOCK_DEAL); setForm(MOCK_DEAL); })
+      .catch(()=>{ toast.error('Deal introuvable'); navigate('/pipeline'); })
       .finally(()=>setLoading(false));
+    fetchActivities();
   },[params.id]);
 
   const save = async () => {
@@ -149,7 +151,7 @@ export default function DealDetailPage() {
 
   return (
     <div style={{ minHeight:'100vh', padding:'20px 24px', background:'var(--body-bg)' }}>
-      {showAddActivity && <AddActivityModal onClose={()=>setShowAddActivity(false)} onAdd={a=>setActivities(prev=>[a,...prev])}/>}
+      {showAddActivity && <AddActivityModal onClose={()=>setShowAddActivity(false)} dealId={params.id} onSaved={fetchActivities}/>}
 
       {/* Back + header */}
       <button onClick={()=>navigate('/pipeline')} style={{ display:'flex', alignItems:'center', gap:6, background:'none', border:'none', color:'var(--text-muted)', fontSize:13, cursor:'pointer', marginBottom:16, padding:0 }}>

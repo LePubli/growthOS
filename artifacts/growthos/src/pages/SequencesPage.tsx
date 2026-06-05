@@ -74,20 +74,6 @@ const TEMPLATES = [
   { id:'blank', name:'Séquence vide', icon:'✏️', description:'Partez de zéro', steps:[] },
 ];
 
-const MOCK: any[] = [
-  { id:'1', name:'Onboarding SaaS', description:'Séquence de bienvenue clients', status:'active',
-    steps:[{type:'email'},{type:'delay'},{type:'email'},{type:'delay'},{type:'email'}],
-    enrolled:47, completed:12, openRate:48.2, replyRate:8.4, createdAt:'2026-04-12' },
-  { id:'2', name:'Relance Cold B2B', description:'Prospection froide PME', status:'paused',
-    steps:[{type:'email'},{type:'delay'},{type:'linkedin'},{type:'delay'},{type:'email'},{type:'delay'},{type:'email'}],
-    enrolled:23, completed:5, openRate:32.1, replyRate:4.2, createdAt:'2026-03-28' },
-  { id:'3', name:'Nurturing Qualifiés', description:'Suivi prospects 30j', status:'draft',
-    steps:[{type:'email'},{type:'delay'},{type:'email'},{type:'delay'},{type:'call'},{type:'delay'},{type:'email'},{type:'delay'},{type:'email'}],
-    enrolled:0, completed:0, openRate:0, replyRate:0, createdAt:'2026-05-01' },
-  { id:'4', name:'Réactivation Froids', description:'Relance prospects > 60j sans réponse', status:'active',
-    steps:[{type:'email'},{type:'delay'},{type:'email'}],
-    enrolled:89, completed:31, openRate:21.5, replyRate:2.1, createdAt:'2026-02-15' },
-];
 
 function NewSequenceModal({ onClose, onCreate }: { onClose:()=>void; onCreate:(s:any)=>void }) {
   const [step, setStep] = useState<1|2>(1);
@@ -211,7 +197,7 @@ function NewSequenceModal({ onClose, onCreate }: { onClose:()=>void; onCreate:(s
 
 export default function SequencesPage() {
   const [, navigate] = useLocation();
-  const [sequences, setSequences] = useState(MOCK);
+  const [sequences, setSequences] = useState<any[]>([]);
   const [toggling, setToggling] = useState<string|null>(null);
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState('');
@@ -222,7 +208,7 @@ export default function SequencesPage() {
     setLoading(true);
     apiClient.get('/sequences').then((d: any) => {
       const l = Array.isArray(d) ? d : d.data || [];
-      if (l.length > 0) setSequences(l);
+      setSequences(l);
     }).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
 

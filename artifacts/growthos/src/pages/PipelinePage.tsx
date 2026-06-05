@@ -25,17 +25,6 @@ interface Deal {
   notes?: string; priority?: 'high' | 'medium' | 'low';
 }
 
-const MOCK_DEALS: Deal[] = [
-  { id:'1', title:'Contrat SaaS — TechCorp',        company:'TechCorp',      value:12500, stage:'qualified',   probability:60,  closeDate:'2026-06-15', prospect:'Sophie Martin',   priority:'high' },
-  { id:'2', title:'Abonnement Pro — StartupX',      company:'StartupX',      value:4800,  stage:'proposal',    probability:40,  closeDate:'2026-06-30', prospect:'Emma Leroy',      priority:'medium' },
-  { id:'3', title:'Formation équipe — BigSales',    company:'BigSales SAS',  value:8200,  stage:'negotiation', probability:75,  closeDate:'2026-06-20', prospect:'Paul Dupont',     priority:'high' },
-  { id:'4', title:'Intégration CRM — DataInc',      company:'DataInc',       value:3600,  stage:'lead',        probability:20,  closeDate:'2026-07-15', prospect:'Camille Bernard', priority:'low' },
-  { id:'5', title:'Renouvellement — GrowthCo',      company:'GrowthCo',      value:9600,  stage:'won',         probability:100, closeDate:'2026-05-30', prospect:'Luc Moreau',      priority:'medium' },
-  { id:'6', title:'Licence Enterprise — AlphaTech', company:'AlphaTech',     value:22000, stage:'proposal',    probability:55,  closeDate:'2026-07-01', prospect:'Marie Dubois',    priority:'high' },
-  { id:'7', title:'Audit SEO — WebAgency',          company:'WebAgency',     value:5500,  stage:'lead',        probability:30,  closeDate:'2026-07-20', prospect:'Thomas Leclerc', priority:'low' },
-  { id:'8', title:'Audit Sécurité — CyberPro',      company:'CyberPro',      value:18000, stage:'negotiation', probability:80,  closeDate:'2026-06-10', prospect:'Alice Renard',    priority:'high' },
-  { id:'9', title:'Module BI — DataViz SAS',        company:'DataViz SAS',   value:6200,  stage:'qualified',   probability:45,  closeDate:'2026-07-05', prospect:'Marc Lefort',     priority:'medium' },
-];
 
 const PRIORITY_CONFIG = {
   high:   { l:'Haute',  c:'#DC2626', bg:'#FEF2F2' },
@@ -164,7 +153,7 @@ function KanbanCard({ deal, stage, onDragStart, onClick, onQuickAction }: {
 
 export default function PipelinePage() {
   const [, navigate] = useLocation();
-  const [deals, setDeals] = useState<Deal[]>(MOCK_DEALS);
+  const [deals, setDeals] = useState<Deal[]>([]);
   const [view, setView] = useState<'kanban'|'list'|'forecast'>('kanban');
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
@@ -176,7 +165,7 @@ export default function PipelinePage() {
   const draggingId = useRef<string|null>(null);
 
   useEffect(() => {
-    apiClient.get('/pipeline').then((d:any)=>{ const l=Array.isArray(d)?d:d?.data||[]; if(l.length>0)setDeals(l); }).catch(()=>{});
+    apiClient.get('/pipeline').then((d:any)=>{ const l=Array.isArray(d)?d:d?.data||[]; setDeals(l); }).catch(()=>{});
   }, []);
 
   const onDragStart = (e:React.DragEvent, id:string) => { draggingId.current=id; e.dataTransfer.effectAllowed='move'; };

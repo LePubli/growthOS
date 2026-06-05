@@ -1,0 +1,55 @@
+# URGENT : CORRIGER LE DEEP AUDIT - IL NE TESTE PAS LES ROUTES
+
+Le Deep Audit affiche "100/100 Excellent" mais "Routes testées: 0". Il ne teste pas les endpoints API.
+
+## Problème identifié
+Le script d'audit (`artifacts/api-server/src/lib/audit/DeepAuditService.ts` ou similaire) ne fait pas d'appels HTTP réels vers les routes. Il doit tester CHAQUE route déclarée dans les manifests des plugins.
+
+## Fix requis
+
+### 1. Modifier le service DeepAudit
+Ouvre le fichier du service d'audit et ajoute une méthode `testAllRoutes()` qui :
+- Récupère tous les plugins actifs via `pluginManager.all()`
+- Pour chaque plugin, lit ses `apiRoutes` déclarées dans le manifest
+- Fait un VRAI appel HTTP GET (ou POST pour les routes de création) vers chaque route
+- Utilise un token JWT admin valide (généré dynamiquement ou depuis une variable d'env `ADMIN_JWT`)
+- Capture le status code (200, 201, 304, 401, 404, 500)
+- Mesure le temps de réponse
+- Log les erreurs 500 avec stack trace complète
+
+### 2. Exemple de code à implémenter
+```typescript
+async testAllRoutes(): Promise<RouteTestResult[]> {
+  const results = [];
+  const plugins = pluginManager.all().filter(p => p.state === 'ACTIVE');
+  const adminToken = process.env.ADMIN_JWT || await this.generateAdminToken();
+  
+  for (const plugin of plugins) {
+    for (const route of plugin.manifest.apiRoutes || []) {
+      try {
+        const start = Date.now();
+        const response = await axios.get(`http://localhost:3001${route.path}`, {
+          headers: { Authorization: `Bearer ${adminToken}` },
+          timeout: 5000
+        });
+        const duration = Date.now() - start;
+        results.push({
+          plugin: plugin.manifest.id,
+          route: `${route.method} ${route.path}`,
+          status: response.status,
+          duration,
+          ok: true
+        });
+      } catch (err) {
+        results.push({
+          plugin: plugin.manifest.id,
+          route: `${route.method} ${route.path}`,
+          status: err.response?.status || 500,
+          error: err.message,
+          ok: false
+        });
+      }
+    }
+  }
+  return results;
+}

@@ -75,11 +75,15 @@ function HealthGauge({ score }: { score: number }) {
 }
 
 function StatusBadge({ status }: { status: number }) {
-  const color = status === 0 ? '#6B7280' : status < 400 ? '#059669' : status < 500 ? '#D97706' : '#DC2626';
-  const bg = status === 0 ? '#F9FAFB' : status < 400 ? '#ECFDF5' : status < 500 ? '#FEF3C7' : '#FEF2F2';
+  const isOk    = status >= 200 && status < 400;
+  const isAuth  = status === 401 || status === 403;
+  const isErr   = status === 0 || status >= 404;
+  const color   = isOk ? '#059669' : isAuth ? '#D97706' : '#DC2626';
+  const bg      = isOk ? '#ECFDF5' : isAuth ? '#FEF3C7' : '#FEF2F2';
+  const icon    = isOk ? '✅' : isAuth ? '⚠️' : '❌';
   return (
-    <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, color, background: bg, fontFamily: 'monospace' }}>
-      {status === 0 ? 'ERR' : status}
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, color, background: bg, fontFamily: 'monospace' }}>
+      <span style={{ fontSize: 9 }}>{icon}</span>{status === 0 ? 'ERR' : status}
     </span>
   );
 }

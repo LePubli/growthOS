@@ -27,6 +27,13 @@ router.get("/", async (req, res) => {
   res.json(rows);
 });
 
+router.get("/:id", async (req, res) => {
+  const [row] = await db.select().from(signalsTable)
+    .where(and(eq(signalsTable.id, req.params.id), eq(signalsTable.tenantId, req.auth!.tenantId)));
+  if (!row) { res.status(404).json({ error: "Signal introuvable" }); return; }
+  res.json(row);
+});
+
 router.post("/", async (req, res) => {
   const parse = signalSchema.safeParse(req.body);
   if (!parse.success) {

@@ -67,22 +67,77 @@ function makeTestToken(): string {
   );
 }
 
+async function fetchSampleIds(): Promise<Record<string, string>> {
+  const mapping: Array<[string, string]> = [
+    ["prospects",         "prospectId"],
+    ["deals",             "dealId"],
+    ["signals",           "signalId"],
+    ["sequences",         "sequenceId"],
+    ["activities",        "activityId"],
+    ["knowledge_articles","articleId"],
+    ["meetings",          "meetingId"],
+    ["workflows",         "workflowId"],
+    ["templates",         "templateId"],
+    ["memory_documents",  "docId"],
+    ["webhooks",          "webhookId"],
+  ];
+  const result: Record<string, string> = {};
+  await Promise.all(mapping.map(async ([table, key]) => {
+    try {
+      const r = await pool.query(`SELECT id FROM ${table} LIMIT 1`);
+      if (r.rows[0]?.id) result[key] = r.rows[0].id as string;
+    } catch {}
+  }));
+  return result;
+}
+
+function resolveParamPath(path: string, ids: Record<string, string>): string {
+  const genericId = ids.prospectId ?? ids.dealId ?? ids.signalId ?? "00000000-0000-0000-0000-000000000001";
+  const paramMap: Record<string, string | undefined> = {
+    ":prospectId": ids.prospectId,
+    ":dealId":     ids.dealId,
+    ":signalId":   ids.signalId,
+    ":sequenceId": ids.sequenceId,
+    ":activityId": ids.activityId,
+    ":articleId":  ids.articleId,
+    ":meetingId":  ids.meetingId,
+    ":workflowId": ids.workflowId,
+    ":templateId": ids.templateId,
+    ":docId":      ids.docId,
+    ":webhookId":  ids.webhookId,
+    ":id":         genericId,
+    ":pluginId":   "crm-sync",
+    ":jobId":      "test-job-id",
+    ":slug":       "growthos-demo",
+  };
+  let resolved = path;
+  for (const [param, val] of Object.entries(paramMap)) {
+    if (val) resolved = resolved.replace(param, val);
+  }
+  // Any remaining :param → use generic ID
+  resolved = resolved.replace(/:[\w]+/g, genericId);
+  return resolved;
+}
+
 async function auditRoutes(app: Express, baseUrl: string, token: string): Promise<RouteAuditResult[]> {
-  const SKIP_METHODS = ["POST","PUT","PATCH","DELETE"];
-  const SKIP_PREFIXES = ["/api/v1/auth"];
-  const routes = listRoutes(app).filter(
+  const SKIP_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+  const SKIP_PREFIXES = ["/api/v1/auth", "/api/v1/audit"];
+
+  const allRoutes = listRoutes(app).filter(
     r => !SKIP_METHODS.includes(r.method)
       && !SKIP_PREFIXES.some(p => r.path.startsWith(p))
-      && !r.path.includes(":")
   );
 
+  const ids = await fetchSampleIds();
+
   const results: RouteAuditResult[] = [];
-  for (const route of routes.slice(0, 60)) {
+  for (const route of allRoutes.slice(0, 100)) {
+    const resolvedPath = resolveParamPath(route.path, ids);
     const start = Date.now();
     let status = 0;
     let error: string | undefined;
     try {
-      const res = await fetch(`${baseUrl}${route.path}`, {
+      const res = await fetch(`${baseUrl}${resolvedPath}`, {
         method: route.method,
         headers: route.auth
           ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }

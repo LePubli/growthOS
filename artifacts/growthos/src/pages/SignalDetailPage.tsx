@@ -12,35 +12,6 @@ const TYPE_CONFIG: Record<string, { icon: string; color: string; bg: string; lab
   expansion:  { icon:'🌍', color:'#0891B2', bg:'#ECFEFF', label:'Expansion' },
 };
 
-const MOCK_SIGNAL = {
-  id:'s1', title:'Levée de fonds Série B — 12M€', company:'TechVision SAS', type:'funding',
-  score:87, isRead:true, isStarred:false,
-  createdAt: new Date(Date.now()-86400*2*1000).toISOString(),
-  description:'TechVision SAS vient d\'annoncer une levée de fonds de 12 millions d\'euros en Série B. Ce financement sera utilisé pour accélérer leur expansion en Europe et renforcer leur équipe commerciale. Signal de fort potentiel pour une approche proactive.',
-  source:'LinkedIn / Crunchbase',
-  sector:'SaaS B2B', employees:'45-80', revenue:'2-5M€',
-  contacts:[
-    { name:'Julien Marchand', title:'CEO & Cofondateur', email:'j.marchand@techvision.fr', phone:'+33 6 12 34 56 78', linkedIn:'linkedin.com/in/jmarchand', score:92 },
-    { name:'Sarah Petit',     title:'Head of Sales',    email:'s.petit@techvision.fr',    phone:'+33 6 98 76 54 32', linkedIn:'linkedin.com/in/spetit',    score:78 },
-    { name:'Marc Leroy',      title:'CTO',              email:'m.leroy@techvision.fr',    phone:'+33 6 55 44 33 22', linkedIn:'linkedin.com/in/mleroy',    score:61 },
-  ],
-  relatedSignals:[
-    { id:'s2', title:'Recrutement 12 postes commerciaux', type:'hiring',  date:'Il y a 1 semaine', score:74 },
-    { id:'s3', title:'Expansion marché UK annoncée',      type:'expansion', date:'Il y a 3 jours',  score:68 },
-  ],
-  scoreBreakdown:[
-    { label:'Montant levée',     value:35, max:40, desc:'Série B > 10M€ — signal très fort' },
-    { label:'Timing (récent)',   value:24, max:30, desc:'Signal détecté il y a 48h' },
-    { label:'Taille entreprise', value:16, max:20, desc:'45-80 employés — cœur de cible' },
-    { label:'Secteur',           value:12, max:10, desc:'SaaS B2B — aligné avec votre ICP' },
-  ],
-};
-
-const MOCK_ACTIONS = [
-  { id:'1', type:'email',   label:'Email de prospection envoyé', user:'Vous', date:'Hier à 14:32', status:'sent',   note:'Objet : TechVision × GrowthOS — opportunité Série B' },
-  { id:'2', type:'view',    label:'Signal consulté',             user:'Vous', date:'Hier à 14:28', status:'done',   note:'' },
-  { id:'3', type:'star',    label:'Signal mis en favori',        user:'Vous', date:'Il y a 2j',    status:'done',   note:'' },
-];
 
 const ACTION_COLORS: Record<string, string> = { email:'#7C3AED', call:'#059669', deal:'#2563EB', sequence:'#D97706', view:'#6B7280', star:'#F59E0B', ignore:'#EF4444' };
 const ACTION_ICONS: Record<string, any> = { email:<Mail size={12}/>, call:<Phone size={12}/>, deal:<TrendingUp size={12}/>, sequence:<Zap size={12}/>, view:<CheckCircle size={12}/>, star:<Star size={12}/>, ignore:<XCircle size={12}/> };
@@ -51,21 +22,30 @@ export default function SignalDetailPage() {
   const [, navigate] = useLocation();
   const [signal, setSignal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [actions, setActions] = useState(MOCK_ACTIONS);
+  const [actions, setActions] = useState<any[]>([]);
   const [note, setNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
   const [snoozed, setSnoozed] = useState(false);
   const [tab, setTab] = useState<'overview'|'contacts'|'history'>('overview');
 
   useEffect(()=>{
-    apiClient.get('/signals')
+    apiClient.get(`/signals/${id}`)
       .then((data: any)=>{
-        const list = Array.isArray(data)?data:data.data||[];
-        const found = list.find((s:any)=>s.id===id);
-        setSignal(found || { ...MOCK_SIGNAL, id });
-        if (found && !found.isRead) apiClient.post(`/signals/${id}/read`,{}).catch(()=>{});
+        setSignal(data);
+        if (!data.isRead) apiClient.post(`/signals/${id}/read`,{}).catch(()=>{});
       })
-      .catch(()=>{ setSignal({ ...MOCK_SIGNAL, id }); })
+      .catch(()=>{
+        apiClient.get('/signals')
+          .then((all: any)=>{
+            const list = Array.isArray(all)?all:all.data||[];
+            const found = list.find((s:any)=>s.id===id) ?? null;
+            setSignal(found);
+            if (found && !found.isRead) apiClient.post(`/signals/${id}/read`,{}).catch(()=>{});
+          })
+          .catch(()=>setSignal(null))
+          .finally(()=>setLoading(false));
+        return;
+      })
       .finally(()=>setLoading(false));
   },[id]);
 
@@ -93,9 +73,9 @@ export default function SignalDetailPage() {
   if (!signal) return null;
 
   const typeInfo = TYPE_CONFIG[signal.type]||{ icon:'⚡', color:'#6B7280', bg:'#F3F4F6', label:signal.type };
-  const scoreData = signal.scoreBreakdown || MOCK_SIGNAL.scoreBreakdown;
-  const contacts  = signal.contacts       || MOCK_SIGNAL.contacts;
-  const related   = signal.relatedSignals || MOCK_SIGNAL.relatedSignals;
+  const scoreData = signal.scoreBreakdown || [];
+  const contacts  = signal.contacts       || [];
+  const related   = signal.relatedSignals || [];
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--body-bg)' }}>

@@ -1,18 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
-import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity, Building, TrendingUp, Crown, Target, ShieldAlert, Star, TrendingDown, Minus } from 'lucide-react';
+import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity, Building, TrendingUp, Crown, Target, ShieldAlert, Star, TrendingDown, Minus, Calendar, CheckCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/lib/api-client';
 import { OnboardingWizard } from '@/components/common/OnboardingWizard';
 
-const MOCK_FEED = [
-  { id:'f1', type:'deal',    icon:<Trophy size={12}/>,   color:'#10B981', bg:'#ECFDF5', text:'GrowthCo · Deal gagné 🎉 9 600€', time:'il y a 5 min' },
-  { id:'f2', type:'email',   icon:<Mail size={12}/>,     color:'#7C3AED', bg:'#EDE9FE', text:'Emma Leroy a ouvert votre email ×3', time:'il y a 18 min' },
-  { id:'f3', type:'signal',  icon:<Zap size={12}/>,      color:'#F59E0B', bg:'#FEF3C7', text:'TechCorp vient de lever des fonds', time:'il y a 32 min' },
-  { id:'f4', type:'call',    icon:<Phone size={12}/>,    color:'#2563EB', bg:'#EFF6FF', text:'Appel terminé · Paul Dupont · BigSales', time:'il y a 1h' },
-  { id:'f5', type:'note',    icon:<FileText size={12}/>, color:'#6B7280', bg:'#F3F4F6', text:'Alice a ajouté une note sur AlphaTech', time:'il y a 2h' },
-  { id:'f6', type:'signal',  icon:<Zap size={12}/>,      color:'#F59E0B', bg:'#FEF3C7', text:'BigSales SAS recrute un VP Sales', time:'il y a 3h' },
-];
+const ACTIVITY_FEED_CONFIG: Record<string,{icon:React.ReactElement;color:string;bg:string}> = {
+  note:    { icon:<FileText size={12}/>,    color:'#6B7280', bg:'#F3F4F6' },
+  call:    { icon:<Phone size={12}/>,       color:'#2563EB', bg:'#EFF6FF' },
+  email:   { icon:<Mail size={12}/>,        color:'#7C3AED', bg:'#EDE9FE' },
+  meeting: { icon:<Calendar size={12}/>,   color:'#059669', bg:'#ECFDF5' },
+  task:    { icon:<CheckCircle size={12}/>, color:'#D97706', bg:'#FEF3C7' },
+};
 
 const ALL_WIDGETS = [
   { id:'prospects',  label:'Total Prospects',     icon:'👥', color:'blue',   href:'/prospects' },
@@ -280,6 +279,20 @@ export default function DashboardPage() {
     openrate:  `${o.open_rate||0}%`,
   };
 
+  const { data: feedActivities } = useQuery<any[]>({
+    queryKey: ['dashboard-feed'],
+    queryFn: () => apiClient.get('/activities') as Promise<any[]>,
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const feed = (feedActivities ?? []).slice(0, 6).map((act: any) => {
+    const cfg = ACTIVITY_FEED_CONFIG[act.type as string] ?? ACTIVITY_FEED_CONFIG.note;
+    const ago = Math.round((Date.now() - new Date(act.createdAt).getTime()) / 60000);
+    const time = ago < 1 ? 'À l\'instant' : ago < 60 ? `il y a ${ago} min` : ago < 1440 ? `il y a ${Math.round(ago/60)}h` : `il y a ${Math.round(ago/1440)}j`;
+    return { id: act.id, icon: cfg.icon, color: cfg.color, bg: cfg.bg, text: act.title, time };
+  });
+
   const availableToAdd = ALL_WIDGETS.filter(w=>!activeWidgets.includes(w.id));
 
   return (
@@ -462,7 +475,10 @@ export default function DashboardPage() {
           <div className="relative">
             <div className="absolute left-3.5 top-0 bottom-0 w-px" style={{background:'var(--card-border)'}}/>
             <div className="space-y-0">
-              {MOCK_FEED.map((item,i)=>(
+              {feed.length === 0 && (
+                <div style={{textAlign:'center', padding:'20px 0', color:'var(--text-muted)', fontSize:13}}>Aucune activité récente</div>
+              )}
+              {feed.map((item,i)=>(
                 <div key={item.id} className="relative flex items-start gap-3 pb-4 last:pb-0 pl-8">
                   <div className="absolute left-0 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                     style={{background:item.bg,color:item.color,border:`2px solid var(--card-bg)`}}>

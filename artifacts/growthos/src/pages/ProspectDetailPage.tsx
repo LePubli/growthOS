@@ -151,6 +151,90 @@ function AddActivityModal({ prospectId, onClose, onSaved }: { prospectId: string
   );
 }
 
+/* ─── Panneau Notes ──────────────────────────────────────── */
+function NotesPanel({ prospectId }: { prospectId: string }) {
+  const [notes, setNotes] = useState<any[]>([]);
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    try {
+      const data = await apiClient.get('/activities', { params: { prospectId, type: 'note' } }) as any[];
+      setNotes(Array.isArray(data) ? data : []);
+    } catch {}
+  };
+
+  useEffect(() => { load(); }, [prospectId]);
+
+  const addNote = async () => {
+    if (!text.trim()) return;
+    setSaving(true);
+    try {
+      await apiClient.post('/activities', { type: 'note', title: text.trim(), prospectId, status: 'done' });
+      setText('');
+      await load();
+      toast.success('Note ajoutée');
+    } catch { toast.error('Erreur'); }
+    finally { setSaving(false); }
+  };
+
+  const deleteNote = async (id: string) => {
+    await apiClient.delete(`/activities/${id}`).catch(() => {});
+    setNotes(n => n.filter(x => x.id !== id));
+  };
+
+  return (
+    <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+      <h2 className="font-semibold mb-3 text-sm flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+        <FileText size={12} />NOTES ({notes.length})
+      </h2>
+
+      {/* Quick add */}
+      <div className="flex gap-2 mb-4">
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) addNote(); }}
+          rows={2}
+          placeholder="Ajouter une note… (Ctrl+Entrée pour valider)"
+          className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+        />
+        <button
+          onClick={addNote}
+          disabled={!text.trim() || saving}
+          className="flex-shrink-0 px-4 py-2 rounded-xl text-white text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
+          style={{ background: 'var(--color-primary)' }}
+        >
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+          Ajouter
+        </button>
+      </div>
+
+      {/* Notes list */}
+      {notes.length === 0 ? (
+        <p className="text-sm text-center py-3" style={{ color: 'var(--text-muted)' }}>Aucune note. Ajoutez la première ci-dessus.</p>
+      ) : (
+        <div className="space-y-2">
+          {notes.map(note => (
+            <div key={note.id} className="flex gap-3 p-3 rounded-xl group" style={{ background: 'var(--body-bg)' }}>
+              <FileText size={13} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{note.title}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  {new Date(note.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+              <button onClick={() => deleteNote(note.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600 flex-shrink-0">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Panneau Données Enrichies ──────────────────────────── */
 function EnrichedDataPanel({ prospectId }: { prospectId: string }) {
   const [open, setOpen] = useState(false);
@@ -678,19 +762,8 @@ export default function ProspectDetailPage() {
           {/* Données enrichies */}
           <EnrichedDataPanel prospectId={prospect.id} />
 
-          {/* Notes */}
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <h2 className="font-semibold mb-3 text-sm" style={{ color: 'var(--text-muted)' }}>NOTES</h2>
-            {editing ? (
-              <textarea value={form.notes || ''} onChange={e => sf('notes', e.target.value)} rows={4}
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
-                placeholder="Notes internes sur ce prospect..." />
-            ) : (
-              <p className="text-sm" style={{ color: prospect.notes ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                {prospect.notes || 'Aucune note. Cliquez sur Modifier pour en ajouter.'}
-              </p>
-            )}
-          </div>
+          {/* Notes panel — quick notes via activities API */}
+          <NotesPanel prospectId={prospect.id} />
 
           {/* Activités */}
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
