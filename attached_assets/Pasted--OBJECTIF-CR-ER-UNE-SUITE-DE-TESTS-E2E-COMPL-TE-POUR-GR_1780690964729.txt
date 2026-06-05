@@ -1,0 +1,258 @@
+# OBJECTIF : CRÉER UNE SUITE DE TESTS E2E COMPLÈTE POUR GROWTHOS
+
+GrowthOS a beaucoup de fonctionnalités implémentées mais peu de tests automatisés. Il faut créer une suite de tests E2E robuste qui valide le bon fonctionnement de toutes les fonctionnalités critiques, de bout en bout.
+
+# PHASE 1 : INFRASTRUCTURE DE TEST
+
+## 1.1 Configuration
+Crée `artifacts/api-server/src/tests/setup.ts` :
+- Configuration de la base de données de test (schema séparé ou rollback après chaque test)
+- Génération de JWT tokens de test (admin, commercial, client)
+- Helpers pour créer des entités de test (prospect, account, deal, etc.)
+- Cleanup automatique après chaque test suite
+
+## 1.2 Client HTTP de test
+Crée `artifacts/api-server/src/tests/test-client.ts` :
+- Wrapper autour de axios/supertest
+- Injection automatique du token JWT
+- Gestion des erreurs et assertions
+- Logs détaillés des requêtes/réponses
+
+# PHASE 2 : TESTS DES FONCTIONNALITÉS CRITIQUES
+
+## 2.1 Tests Authentification
+Fichier : `artifacts/api-server/src/tests/auth.test.ts`
+
+Scénarios :
+- ✅ Login avec credentials valides → retourne JWT
+- ✅ Login avec mauvais password → retourne 401
+- ✅ Refresh token valide → nouveau token
+- ✅ Refresh token expiré → retourne 401
+- ✅ Logout invalide le refresh token
+- ✅ Accès route protégée sans token → 401
+
+## 2.2 Tests Prospects (CRUD complet)
+Fichier : `artifacts/api-server/src/tests/prospects.test.ts`
+
+Scénarios :
+- ✅ Créer un prospect → retourne 201 avec ID
+- ✅ Lire la liste des prospects → retourne tableau
+- ✅ Lire un prospect par ID → retourne les détails
+- ✅ Modifier un prospect → met à jour les champs
+- ✅ Supprimer un prospect → retourne 204
+- ✅ Recherche full-text → retourne résultats pertinents
+- ✅ Filtres avancés (statut, score, tag) → résultats filtrés
+- ✅ Import CSV → crée les prospects en masse
+- ✅ Enrichissement → appelle le service d'enrichissement
+-  Créer prospect sans champ obligatoire → retourne 400
+- ❌ Lire prospect inexistant → retourne 404
+
+## 2.3 Tests Accounts (Account 360°)
+Fichier : `artifacts/api-server/src/tests/accounts.test.ts`
+
+Scénarios :
+- ✅ Créer un account
+- ✅ Health Score calculé automatiquement (0-100)
+- ✅ Contacts associés listés
+- ✅ Deals en cours liés
+- ✅ Activités récentes agrégées
+- ✅ Signaux d'intention détectés
+- ✅ Rafraîchissement manuel du score
+
+## 2.4 Tests Pipeline/Deals
+Fichier : `artifacts/api-server/src/tests/pipeline.test.ts`
+
+Scénarios :
+- ✅ Créer un deal dans une étape
+- ✅ Drag & drop (changer l'étape) → met à jour
+- ✅ Health Score du deal calculé par Deal Coach
+- ✅ Facteurs de risque détectés
+- ✅ Statistiques pipeline (valeur totale, répartition)
+- ✅ Deals à risque identifiés (score < 40)
+- ✅ Forecast revenue sur 30/60/90 jours
+
+## 2.5 Tests AI SDR
+Fichier : `artifacts/api-server/src/tests/ai-sdr.test.ts`
+
+Scénarios :
+- ✅ Génération email → retourne sujet + corps
+- ✅ Génération message LinkedIn → ≤ 300 caractères
+- ✅ Génération séquence multi-touch → étapes avec délais
+- ✅ Templates rapides pré-remplissent les champs
+- ✅ Contexte utilisé (signaux + mémoires) affiché
+- ❌ Sans compte cible → retourne 400
+
+## 2.6 Tests AI Deal Coach
+Fichier : `artifacts/api-server/src/tests/deal-coach.test.ts`
+
+Scénarios :
+- ✅ Analyse d'un deal → Health Score + facteurs de risque
+- ✅ Recommandations IA générées
+- ✅ Deals à risque critique listés (score < 40)
+- ✅ Score moyen du pipeline calculé
+- ✅ Valeur à risque calculée
+
+## 2.7 Tests Signal Intelligence
+Fichier : `artifacts/api-server/src/tests/signals.test.ts`
+
+Scénarios :
+- ✅ Liste des signaux avec filtres (type, statut, score)
+- ✅ Score d'intention calculé (Hot/Warm/Cold)
+- ✅ Marquer un signal comme lu
+- ✅ Conversion signal → prospect en 1 clic
+- ✅ Lancer séquence depuis un signal
+- ✅ Favoris (étoile)
+- ✅ Actions en masse (ignorer, marquer lus)
+
+## 2.8 Tests Growth Memory
+Fichier : `artifacts/api-server/src/tests/memory.test.ts`
+
+Scénarios :
+- ✅ Indexer un document → stocké avec métadonnées
+- ✅ Recherche sémantique → résultats pertinents
+- ✅ Mise en surbrillance du terme recherché
+- ✅ Statistiques par type de source
+- ✅ Suppression d'un document
+
+## 2.9 Tests Séquences Email
+Fichier : `artifacts/api-server/src/tests/sequences.test.ts`
+
+Scénarios :
+- ✅ Créer une séquence avec étapes
+- ✅ Activation/désactivation (toggle)
+- ✅ Variables de personnalisation ({{prenom}}, {{entreprise}})
+- ✅ Tracking événements (ouverture, clic, réponse)
+- ✅ Statistiques par séquence
+
+## 2.10 Tests Sourcing & Scraping
+Fichier : `artifacts/api-server/src/tests/sourcing.test.ts`
+
+Scénarios :
+- ✅ Créer un job de scraping avec critères
+- ✅ Statut en temps réel (en attente/en cours/terminé)
+- ✅ Progression (X/Y prospects trouvés)
+- ✅ Export CSV des résultats
+- ✅ Import direct dans la base prospects
+- ✅ Déduplication automatique
+
+## 2.11 Tests Workflows
+Fichier : `artifacts/api-server/src/tests/workflows.test.ts`
+
+Scénarios :
+- ✅ Créer un workflow avec déclencheur + actions
+- ✅ Activation/désactivation
+- ✅ Journal d'exécution (succès/échec)
+- ✅ Déclenchement manuel
+- ✅ Déclenchement automatique sur événement
+
+## 2.12 Tests Webhooks
+Fichier : `artifacts/api-server/src/tests/webhooks.test.ts`
+
+Scénarios :
+- ✅ Créer webhook sortant avec URL + événements
+- ✅ Réception webhook entrant → transforme en entité
+- ✅ Journaux d'envoi avec status HTTP
+- ✅ Liste des événements supportés
+
+## 2.13 Tests Plugin E-Réputation
+Fichier : `artifacts/api-server/src/tests/ereputation.test.ts`
+
+Scénarios :
+- ✅ Créer une campagne (CRUD complet)
+- ✅ Audit SEO/GEO → score + détails techniques
+- ✅ Suivi SERP → positions historisées
+- ✅ Score de réputation global calculé (0-100)
+- ✅ Gestion PBN (ajout sites DA/PA)
+- ✅ Analyse de sentiment (positif/négatif/neutre)
+- ✅ Notifications temps réel (SocketIO)
+- ✅ Export PDF du rapport
+- ✅ Import/Export campagne (CSV/JSON)
+
+## 2.14 Tests Multi-Tenancy
+Fichier : `artifacts/api-server/src/tests/tenant-isolation.test.ts`
+
+Scénarios :
+- ✅ Tenant A ne voit pas les données de Tenant B
+- ✅ Création auto du tenant par défaut
+- ✅ requireTenant sur toutes les routes critiques
+- ✅ Statistiques isolées par tenant
+
+## 2.15 Tests Billing & Abonnements
+Fichier : `artifacts/api-server/src/tests/billing.test.ts`
+
+Scénarios :
+- ✅ Création abonnement (mock Stripe)
+- ✅ Webhook invoice.paid → active l'abonnement
+- ✅ Webhook subscription.deleted → désactive
+- ✅ Vérification quotas (usage limits)
+- ✅ Middleware usageLimit bloque si quota dépassé
+
+## 2.16 Tests RGPD & Conformité
+Fichier : `artifacts/api-server/src/tests/compliance.test.ts`
+
+Scénarios :
+- ✅ Export données personnelles (Article 20)
+- ✅ Suppression données (droit à l'oubli)
+- ✅ Audit trail enregistre toutes les modifications
+- ✅ Gestion des consentements
+
+## 2.17 Tests API Publique
+Fichier : `artifacts/api-server/src/tests/api-public.test.ts`
+
+Scénarios :
+- ✅ Génération clé API
+- ✅ Authentification via X-API-Key header
+- ✅ Rate limiting (100 req/min)
+- ✅ Révocation clé API
+- ✅ Permissions lecture seule vs lecture-écriture
+
+# PHASE 3 : TESTS D'INTÉGRATION CROSS-PLUGINS
+
+Fichier : `artifacts/api-server/src/tests/integration.test.ts`
+
+Scénarios d'intégration :
+- ✅ Signal détecté → crée notification → AI SDR peut l'utiliser
+- ✅ Meeting transcript → indexé dans Growth Memory → Deal Coach l'utilise
+- ✅ Deal stage changé → déclenche workflow → envoie webhook
+- ✅ Prospect créé → enrichissement auto → score calculé
+- ✅ Séquence email envoyée → tracking ouverture → signal créé
+- ✅ Audit E-Réputation terminé → notification SocketIO → plan d'action généré
+
+# PHASE 4 : TESTS DE PERFORMANCE
+
+Fichier : `artifacts/api-server/src/tests/performance.test.ts`
+
+Scénarios :
+- ✅ Temps de réponse API < 500ms pour 95% des requêtes
+- ✅ Création de 1000 prospects en < 10 secondes
+- ✅ Recherche sémantique sur 10k documents < 200ms
+- ✅ Calcul Health Score sur 100 comptes < 5 secondes
+- ✅ Génération email IA < 3 secondes
+
+# PHASE 5 : RAPPORT ET COUVERTURE
+
+Crée un script `artifacts/api-server/src/scripts/test-report.ts` qui :
+1. Exécute tous les tests
+2. Génère un rapport HTML avec :
+   - Nombre de tests passés/échoués
+   - Couverture par module (prospects, deals, signals, etc.)
+   - Temps d'exécution total
+   - Graphiques de couverture
+3. Identifie les routes API non testées
+4. Recommande les tests prioritaires à ajouter
+
+# RÈGLES STRICTES
+1. Chaque test doit être indépendant (pas de dépendance entre tests)
+2. Cleanup automatique après chaque test (rollback DB ou suppression entités)
+3. Les tests ne doivent PAS modifier les données de production
+4. Utilise des données de test réalistes (noms français, emails valides, etc.)
+5. Logs détaillés pour chaque assertion échouée
+6. Timeout de 10 secondes par test maximum
+7. Les tests doivent pouvoir tourner en parallèle (isolation complète)
+
+# COMMANDE D'EXÉCUTION
+Ajoute dans `package.json` :
+```json
+"test:e2e": "tsx src/tests/run-all-tests.ts",
+"test:e2e:report": "tsx src/scripts/test-report.ts",
+"test:e2e:coverage": "tsx src/tests/run-all-tests.ts --coverage"

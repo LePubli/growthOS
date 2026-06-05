@@ -6,6 +6,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { requestLogger } from "./middlewares/requestLogger";
 import { errorHandler, notFound } from "./middlewares/errorHandler";
+import { analyticsTracker } from "./middlewares/analyticsTracker";
 
 const app: Express = express();
 
@@ -33,6 +34,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Request tracing (traceId + timing)
 app.use(requestLogger);
+
+// Product analytics auto-tracking (POST/PUT/PATCH/DELETE mutations)
+app.use(analyticsTracker);
 
 app.use("/api", router);
 

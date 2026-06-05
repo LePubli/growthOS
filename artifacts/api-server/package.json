@@ -9,7 +9,10 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed:realistic": "tsx src/db/seed-realistic-data.ts",
-    "test:e2e": "tsx src/scripts/verify-e2e.ts"
+    "test:e2e": "tsx src/tests/run-all-tests.ts",
+    "test:e2e:report": "tsx src/scripts/test-report.ts",
+    "test:e2e:coverage": "tsx src/tests/run-all-tests.ts --coverage",
+    "test:e2e:legacy": "tsx src/scripts/verify-e2e.ts"
   },
   "dependencies": {
     "@types/adm-zip": "^0.5.8",
