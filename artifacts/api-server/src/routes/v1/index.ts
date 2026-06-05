@@ -34,6 +34,10 @@ import enrichmentRouter from "./plugins/enrichment";
 import ereputationRouter from "./plugins/ereputation";
 import tasksRouter from "./tasks";
 import reportingRouter from "./reporting";
+import collaborationRouter from "./collaboration";
+import complianceRouter from "./compliance";
+import ssoRouter from "./sso";
+import apiDocsRouter from "./api-docs";
 
 const router = Router();
 
@@ -71,5 +75,9 @@ router.use("/enrich", enrichmentRouter);
 router.use("/ereputation", requireAuth, ereputationRouter);
 router.use("/tasks", requireAuth, tasksRouter);
 router.use("/reporting", requireAuth, reportingRouter);
+router.use("/collaboration", requireAuth, collaborationRouter);
+router.use("/compliance", requireAuth, complianceRouter);
+router.use("/sso", requireAuth, ssoRouter);
+router.use("/api-docs", apiDocsRouter);
 
 export default router;

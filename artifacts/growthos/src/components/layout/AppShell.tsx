@@ -7,7 +7,7 @@ import {
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
   Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route, ShieldCheck, Package, Database,
-  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift,
+  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift, ClipboardList, Lock, Code2, FlaskConical,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -38,6 +38,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} />, exact: true },
       { href: '/analytics', label: 'Analytics', icon: <BarChart2 size={16} /> },
+      { href: '/analytics/product', label: 'Product Analytics', icon: <FlaskConical size={16} /> },
     ],
   },
   {
@@ -111,6 +112,22 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    label: 'Développeurs',
+    items: [
+      { href: '/api-docs', label: 'API Docs', icon: <Code2 size={16} /> },
+      { href: '/settings/api', label: 'Clés API', icon: <Lock size={16} /> },
+      { href: '/webhooks', label: 'Webhooks', icon: <Webhook size={16} /> },
+    ],
+  },
+  {
+    label: 'Conformité',
+    items: [
+      { href: '/audit-trail', label: 'Audit Trail', icon: <ClipboardList size={16} /> },
+      { href: '/compliance', label: 'RGPD & Conformité', icon: <ShieldCheck size={16} /> },
+      { href: '/settings/sso', label: 'SSO / SAML 2.0', icon: <Lock size={16} /> },
+    ],
+  },
+  {
     label: 'Système',
     items: [
       { href: '/help', label: 'Centre d\'aide', icon: <HelpCircle size={16} /> },
@@ -120,7 +137,6 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/plugins-upload', label: 'Upload Plugins', icon: <Upload size={16} /> },
       { href: '/admin/deep-audit', label: 'Audit Système', icon: <ShieldCheck size={16} /> },
       { href: '/themes', label: 'Thèmes', icon: <Palette size={16} /> },
-      { href: '/webhooks', label: 'Webhooks', icon: <Webhook size={16} /> },
       { href: '/route-audit', label: 'Audit Routes', icon: <Route size={16} /> },
       { href: '/settings', label: 'Paramètres', icon: <Settings size={16} /> },
     ],

@@ -560,6 +560,57 @@ export async function runTasksMigration(): Promise<void> {
   await pool.query(SQL_TASKS);
 }
 
+const SQL_ENTERPRISE = `
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id      UUID        REFERENCES users(id) ON DELETE SET NULL,
+  action       TEXT        NOT NULL,
+  entity_type  TEXT        NOT NULL,
+  entity_id    UUID,
+  old_value    JSONB,
+  new_value    JSONB,
+  metadata     JSONB,
+  ip_address   TEXT,
+  created_at   TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS audit_logs_tenant_idx   ON audit_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS audit_logs_user_idx     ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS audit_logs_entity_idx   ON audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS audit_logs_created_idx  ON audit_logs(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS consent_logs (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  consent_type TEXT        NOT NULL,
+  granted      BOOLEAN     NOT NULL DEFAULT false,
+  ip_address   TEXT,
+  created_at   TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS consent_logs_tenant_idx ON consent_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS consent_logs_user_idx   ON consent_logs(user_id);
+
+CREATE TABLE IF NOT EXISTS sso_configs (
+  id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id         UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  provider          TEXT        NOT NULL CHECK (provider IN ('azure','okta','google','onelogin','saml')),
+  sso_url           TEXT        NOT NULL,
+  entity_id         TEXT,
+  certificate       TEXT,
+  is_active         BOOLEAN     NOT NULL DEFAULT false,
+  attribute_mapping JSONB,
+  updated_at        TIMESTAMP   NOT NULL DEFAULT NOW(),
+  created_at        TIMESTAMP   NOT NULL DEFAULT NOW(),
+  UNIQUE(tenant_id, provider)
+);
+CREATE INDEX IF NOT EXISTS sso_configs_tenant_idx ON sso_configs(tenant_id);
+`;
+
+export async function runEnterpriseMigration(): Promise<void> {
+  await pool.query(SQL_ENTERPRISE);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

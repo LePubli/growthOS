@@ -1,0 +1,480 @@
+# OBJECTIF : TRANSFORMER GROWTHOS EN SAAS ENTERPRISE COMPLET
+
+Tu es un Lead Fullstack Engineer expert en architectures SaaS multi-tenant. Tu vas implémenter les 13 fonctionnalités manquantes identifiées dans l'audit de GrowthOS, organisées en 4 niveaux de priorité.
+
+# ⚠️ CONTRAINTES ARCHITECTURALES CRITIQUES
+
+1. **Architecture Plugins Existante** : GrowthOS utilise un système de plugins modulaire. Chaque nouvelle fonctionnalité DOIT être un plugin indépendant avec son propre manifest.
+2. **Stack Technique** :
+   - Backend : Express + TypeScript + Drizzle ORM + PostgreSQL
+   - Frontend : React 18 + Vite + TypeScript + Tailwind CSS + Radix UI + Recharts
+   - Auth : JWT avec refresh tokens
+   - Real-time : SocketIO (déjà partiellement implémenté)
+3. **Multi-Tenancy** : Toutes les nouvelles tables DOIVENT avoir un `tenant_id` avec Row-Level Security PostgreSQL
+4. **Ne casse AUCUNE fonctionnalité existante** : Les 35 fonctionnalités actuelles doivent continuer à fonctionner
+5. **Interconnexion** : Chaque nouveau plugin doit s'intégrer avec Growth Memory, Signal Intelligence, et le EventBus
+
+# 🎯 PHASE 1 : NIVEAU 1 - CRITIQUE (Bloque la vente) - 4 semaines
+
+## 1.1 Multi-Tenancy Réel (P0 - 2 semaines)
+
+### Architecture
+- Ajouter `tenant_id UUID` sur TOUTES les tables existantes (prospects, accounts, deals, signals, meetings, sequences, etc.)
+- Créer la table `tenants` avec : id, name, domain, plan (starter/pro/enterprise), is_active, created_at
+- Implémenter Row-Level Security (RLS) PostgreSQL sur toutes les tables
+- Créer un middleware `requireTenant` qui extrait le tenant_id du JWT et le passe à toutes les requêtes
+
+### Fichiers à créer/modifier
+1. `artifacts/api-server/db/migrations/030_multi_tenant.sql` :
+   - ALTER TABLE sur toutes les tables pour ajouter tenant_id
+   - CREATE TABLE tenants
+   - ENABLE ROW LEVEL SECURITY sur toutes les tables
+   - CREATE POLICY tenant_isolation USING (tenant_id = current_setting('app.current_tenant')::uuid)
+
+2. `artifacts/api-server/src/middlewares/tenantIsolation.ts` :
+   - Middleware Express qui extrait tenant_id du JWT
+   - Set `app.current_tenant` pour RLS PostgreSQL
+   - Injection de tenant_id dans req.tenantId
+
+3. Modifier `artifacts/api-server/src/routes/v1/*.ts` (toutes les routes) :
+   - Ajouter `requireTenant` après `requireAuth`
+   - Toutes les queries doivent filtrer par tenant_id
+
+4. `artifacts/api-server/src/lib/tenant/TenantService.ts` :
+   - CRUD complet des tenants
+   - Gestion des plans et quotas
+   - Activation/désactivation de tenants
+
+### Migration des données existantes
+- Script de migration qui assigne toutes les données existantes au tenant "default"
+- Création automatique du tenant par défaut au premier démarrage
+
+## 1.2 Système de Facturation & Abonnements (P0 - 1 semaine)
+
+### Architecture
+- Intégration Stripe Billing
+- Table `subscriptions` liée à tenants
+- Table `invoices` pour l'historique
+- Table `usage_limits` pour les quotas (prospects/mois, enrichissements/jour, etc.)
+- Webhooks Stripe pour activation/désactivation automatique
+
+### Fichiers à créer
+1. `artifacts/api-server/db/migrations/031_billing.sql` :
+   - CREATE TABLE subscriptions (tenant_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_start, current_period_end)
+   - CREATE TABLE invoices (tenant_id, stripe_invoice_id, amount, currency, status, invoice_url)
+   - CREATE TABLE usage_limits (tenant_id, resource, limit_value, current_usage, period_start, period_end)
+
+2. `artifacts/api-server/src/lib/billing/StripeService.ts` :
+   - createCustomer(tenantId, email, name)
+   - createSubscription(tenantId, priceId)
+   - handleWebhook(event) - gère invoice.paid, customer.subscription.deleted, etc.
+   - checkUsageLimit(tenantId, resource) : boolean
+   - incrementUsage(tenantId, resource)
+
+3. `artifacts/api-server/src/routes/v1/billing.ts` :
+   - POST /billing/subscriptions - créer un abonnement
+   - POST /billing/webhooks/stripe - webhook Stripe
+   - GET /billing/invoices - liste des factures
+   - GET /billing/usage - usage actuel
+
+4. `artifacts/growthos/src/pages/BillingPage.tsx` :
+   - Dashboard facturation avec plan actuel
+   - Historique des factures
+   - Gestion de l'abonnement (upgrade/downgrade)
+   - Affichage des quotas utilisés vs limites
+
+5. `artifacts/api-server/src/middlewares/usageLimit.ts` :
+   - Middleware qui vérifie les quotas avant chaque action critique
+   - Retourne 402 Payment Required si quota dépassé
+
+## 1.3 Onboarding & Wizard de Démarrage (P1 - 3 jours)
+
+### Architecture
+- Wizard en 5 étapes après inscription
+- Données de démo pré-remplies (mode sandbox)
+- Checklists de progression
+- Stockage de l'état d'onboarding dans la table tenants
+
+### Fichiers à créer
+1. `artifacts/api-server/db/migrations/032_onboarding.sql` :
+   - ALTER TABLE tenants ADD COLUMN onboarding_completed BOOLEAN DEFAULT FALSE
+   - ALTER TABLE tenants ADD COLUMN onboarding_step INTEGER DEFAULT 0
+
+2. `artifacts/api-server/src/routes/v1/onboarding.ts` :
+   - POST /onboarding/step - sauvegarde l'étape actuelle
+   - POST /onboarding/complete - marque l'onboarding comme terminé
+   - POST /onboarding/demo-data - injecte les données de démo
+
+3. `artifacts/growthos/src/pages/OnboardingWizardPage.tsx` :
+   - Étape 1 : Bienvenue + configuration entreprise
+   - Étape 2 : Import de contacts (CSV ou manuel)
+   - Étape 3 : Configuration des sources d'enrichissement
+   - Étape 4 : Création de la première séquence email
+   - Étape 5 : Dashboard de bienvenue avec checklist
+
+4. `artifacts/api-server/src/lib/onboarding/DemoDataService.ts` :
+   - Injection de 10 comptes, 30 prospects, 5 deals, 10 signaux de démo
+   - Tous liés au tenant de l'utilisateur
+
+# ⚠️ PHASE 2 : NIVEAU 2 - STRATÉGIQUE (Limite la valeur perçue) - 6 semaines
+
+## 2.1 Collaboration d'Équipe Temps Réel (P2 - 2 semaines)
+
+### Architecture
+- Système de mentions @user dans les notes
+- Notifications push via SocketIO
+- Assignation de deals avec notifications
+- Audit trail "qui a fait quoi"
+
+### Fichiers à créer
+1. `artifacts/api-server/db/migrations/033_collaboration.sql` :
+   - CREATE TABLE mentions (id, user_id, entity_type, entity_id, content, created_at)
+   - CREATE TABLE deal_assignments (id, deal_id, user_id, assigned_by, assigned_at)
+   - CREATE TABLE audit_logs (id, tenant_id, user_id, action, entity_type, entity_id, old_value, new_value, created_at)
+
+2. `artifacts/api-server/src/lib/collaboration/MentionService.ts` :
+   - parseMentions(content) : extrait les @user du texte
+   - createMention(userId, entityType, entityId, content)
+   - sendNotification(mentionedUserId, mention)
+
+3. `artifacts/api-server/src/lib/collaboration/AuditService.ts` :
+   - logAction(userId, action, entityType, entityId, oldValue, newValue)
+   - getAuditTrail(entityType, entityId) : retourne l'historique complet
+
+4. `artifacts/api-server/src/routes/v1/collaboration.ts` :
+   - POST /collaboration/mentions - créer une mention
+   - GET /collaboration/audit/:entityType/:entityId - audit trail
+   - POST /deals/:id/assign - assigner un deal
+
+5. `artifacts/growthos/src/components/MentionInput.tsx` :
+   - Input avec autocomplétion @user
+   - Affichage des mentions en temps réel
+
+6. `artifacts/growthos/src/pages/AuditTrailPage.tsx` :
+   - Timeline des actions sur une entité
+   - Filtres par utilisateur, date, type d'action
+
+## 2.2 Rapports Automatisés & Export PDF (P1 - 1 semaine)
+
+### Architecture
+- Génération PDF avec Puppeteer ou PDFKit
+- Templates de rapports personnalisables
+- Envoi automatique par email (cron job)
+- Export CSV/Excel de toutes les données
+
+### Fichiers à créer
+1. `artifacts/api-server/src/lib/reporting/ReportService.ts` :
+   - generatePDFReport(tenantId, reportType, dateRange) : Buffer
+   - generateCSVExport(tenantId, entityType, filters) : Buffer
+   - scheduleReport(tenantId, reportType, frequency, email) : cron job
+
+2. `artifacts/api-server/src/routes/v1/reporting.ts` :
+   - GET /reporting/pdf/:reportType - génère un PDF
+   - GET /reporting/csv/:entityType - export CSV
+   - POST /reporting/schedule - planifie un rapport récurrent
+
+3. `artifacts/growthos/src/pages/ReportingPage.tsx` :
+   - Liste des rapports disponibles (Revenue, Pipeline, Performance équipe)
+   - Génération à la demande
+   - Configuration des rapports automatiques
+
+4. `artifacts/api-server/src/lib/reporting/templates/` :
+   - revenue-report.html - template HTML pour le rapport Revenue
+   - pipeline-report.html - template HTML pour le rapport Pipeline
+   - team-performance.html - template HTML pour la performance équipe
+
+## 2.3 Intégrations Natives (Zapier, Make, n8n) (P2 - 2 semaines)
+
+### Architecture
+- Webhooks sortants sur TOUS les événements
+- Webhooks entrants pour recevoir des données externes
+- Documentation API complète (OpenAPI/Swagger)
+- Intégration Slack (notifications dans les canaux)
+
+### Fichiers à créer
+1. `artifacts/api-server/db/migrations/034_integrations.sql` :
+   - CREATE TABLE webhooks_outgoing (id, tenant_id, url, events JSONB, is_active, created_at)
+   - CREATE TABLE webhooks_incoming (id, tenant_id, secret, mapping JSONB, created_at)
+   - CREATE TABLE webhook_logs (id, webhook_id, direction, status, payload, response, created_at)
+
+2. `artifacts/api-server/src/lib/integrations/WebhookService.ts` :
+   - sendOutgoingWebhook(eventType, payload) - envoie à tous les webhooks abonnés
+   - handleIncomingWebhook(webhookId, payload) - traite les webhooks entrants
+   - testWebhook(webhookId) - teste la connexion
+
+3. `artifacts/api-server/src/routes/v1/integrations.ts` :
+   - GET /integrations/webhooks/outgoing - liste des webhooks sortants
+   - POST /integrations/webhooks/outgoing - créer un webhook sortant
+   - GET /integrations/webhooks/incoming - liste des webhooks entrants
+   - POST /integrations/webhooks/incoming/:id/receive - endpoint public pour recevoir
+
+4. `artifacts/api-server/src/lib/integrations/SlackService.ts` :
+   - sendSlackNotification(channel, message)
+   - configureSlackIntegration(tenantId, webhookUrl)
+
+5. `artifacts/growthos/src/pages/IntegrationsPage.tsx` :
+   - Configuration des webhooks sortants (URL, événements)
+   - Gestion des webhooks entrants (URL unique, mapping)
+   - Intégration Slack (configuration du webhook)
+   - Documentation API intégrée (Swagger UI)
+
+6. `artifacts/api-server/src/docs/openapi.yaml` :
+   - Documentation OpenAPI complète de toutes les routes API
+   - Exemples de requêtes/réponses
+   - Schémas de données
+
+## 2.4 Gestion des Tâches & Suivi d'Activités (P2 - 2 semaines)
+
+### Architecture
+- Module "Tâches" avec dates d'échéance
+- Rappels automatiques (email + notification)
+- Vue "Mes tâches du jour" dans le dashboard
+- Synchronisation avec Google Calendar/Outlook (via API)
+
+### Fichiers à créer
+1. `artifacts/api-server/db/migrations/035_tasks.sql` :
+   - CREATE TABLE tasks (id, tenant_id, user_id, title, description, due_date, priority, status, entity_type, entity_id, created_at, completed_at)
+   - CREATE TABLE task_reminders (id, task_id, reminder_date, sent, created_at)
+
+2. `artifacts/api-server/src/lib/tasks/TaskService.ts` :
+   - createTask(userId, task)
+   - getTasksByUser(userId, filters)
+   - getTasksByEntity(entityType, entityId)
+   - completeTask(taskId)
+   - sendReminders() - cron job qui envoie les rappels
+
+3. `artifacts/api-server/src/routes/v1/tasks.ts` :
+   - GET /tasks - liste des tâches (filtres : user, priority, status, due_date)
+   - POST /tasks - créer une tâche
+   - PATCH /tasks/:id - modifier une tâche
+   - POST /tasks/:id/complete - marquer comme terminée
+
+4. `artifacts/growthos/src/pages/TasksPage.tsx` :
+   - Vue "Mes tâches" avec filtres
+   - Création rapide de tâches
+   - Vue calendrier des tâches
+   - Widget "Tâches du jour" dans le dashboard
+
+5. `artifacts/api-server/src/lib/integrations/CalendarSyncService.ts` :
+   - syncWithGoogleCalendar(userId) - synchronise les tâches avec Google Calendar
+   - syncWithOutlook(userId) - synchronise avec Outlook
+
+# 💎 PHASE 3 : NIVEAU 3 - ENTERPRISE (Pour vendre aux grands comptes) - 3 semaines
+
+## 3.1 SSO & SAML (Authentification Entreprise) (P3 - 1 semaine)
+
+### Architecture
+- Intégration SAML 2.0
+- Support Azure AD, Okta, Google Workspace
+- Provisioning automatique des utilisateurs (SCIM)
+
+### Fichiers à créer
+1. `artifacts/api-server/db/migrations/036_sso.sql` :
+   - CREATE TABLE sso_configs (id, tenant_id, provider (azure/okta/google), sso_url, certificate, is_active, created_at)
+
+2. `artifacts/api-server/src/lib/auth/SSOService.ts` :
+   - initiateSSOLogin(tenantId, provider) - redirige vers le provider SSO
+   - handleSSOCallback(tenantId, samlResponse) - traite la réponse SAML
+   - provisionUser(tenantId, ssoProfile) - crée/met à jour l'utilisateur
+
+3. `artifacts/api-server/src/routes/v1/sso.ts` :
+   - GET /sso/:provider - initie le login SSO
+   - POST /sso/:provider/callback - callback SSO
+   - GET /sso/config - configuration SSO du tenant
+   - POST /sso/config - configure le SSO
+
+4. `artifacts/growthos/src/pages/SSOConfigPage.tsx` :
+   - Configuration SSO (provider, URL, certificat)
+   - Test de connexion SSO
+   - Gestion des utilisateurs provisionnés
+
+## 3.2 Audit Trail & Conformité RGPD (P3 - 1 semaine)
+
+### Architecture
+- Table audit_logs qui enregistre TOUTES les modifications
+- Export des données personnelles (droit à la portabilité)
+- Suppression automatique après X mois (droit à l'oubli)
+- Gestion des consentements (opt-in/opt-out)
+
+### Fichiers à créer
+1. `artifacts/api-server/db/migrations/037_rgpd.sql` :
+   - CREATE TABLE audit_logs (déjà créé dans 2.1)
+   - CREATE TABLE consent_logs (id, tenant_id, user_id, consent_type, granted, created_at)
+   - CREATE TABLE data_exports (id, tenant_id, user_id, status, file_url, created_at, expires_at)
+
+2. `artifacts/api-server/src/lib/compliance/RGPDService.ts` :
+   - exportPersonalData(userId) - exporte toutes les données d'un utilisateur
+   - deleteUser(userId) - supprime toutes les données (droit à l'oubli)
+   - scheduleDataRetention(days) - supprime les données après X jours
+   - logConsent(userId, consentType, granted)
+
+3. `artifacts/api-server/src/routes/v1/compliance.ts` :
+   - GET /compliance/audit-logs - logs d'audit
+   - POST /compliance/export-data - demande d'export
+   - POST /compliance/delete-data - demande de suppression
+   - POST /compliance/consent - enregistre un consentement
+
+4. `artifacts/growthos/src/pages/CompliancePage.tsx` :
+   - Vue des logs d'audit
+   - Demande d'export de données
+   - Gestion des consentements
+   - Configuration de la rétention des données
+
+## 3.3 API Publique Documentée (P3 - 1 semaine)
+
+### Architecture
+- Génération automatique de la doc OpenAPI (tu as déjà api-spec/)
+- Sandbox de test avec données fictives
+- SDK officiel (Node.js, Python)
+- Rate limiting par clé API
+
+### Fichiers à créer
+1. `artifacts/api-server/src/lib/api/RateLimitService.ts` :
+   - checkRateLimit(apiKeyId, endpoint) : boolean
+   - incrementUsage(apiKeyId, endpoint)
+   - getUsageStats(apiKeyId)
+
+2. `artifacts/api-server/src/middlewares/apiKeyAuth.ts` :
+   - Middleware qui authentifie via clé API (header X-API-Key)
+   - Vérifie les permissions de la clé
+   - Applique le rate limiting
+
+3. `artifacts/api-server/src/routes/v1/api-docs.ts` :
+   - GET /api-docs - sert la documentation Swagger UI
+   - GET /api-docs/openapi.json - sert le spec OpenAPI
+
+4. `artifacts/growthos/src/pages/APIDocsPage.tsx` :
+   - Intégration Swagger UI
+   - Sandbox de test avec données fictives
+   - Génération de clés API
+   - Documentation des SDKs
+
+5. `artifacts/api-server/src/docs/sdks/` :
+   - node-sdk/ - SDK Node.js officiel
+   - python-sdk/ - SDK Python officiel
+
+# 🎯 PHASE 4 : NIVEAU 4 - GO-TO-MARKET (Pour la croissance) - 4 semaines
+
+## 4.1 Programme de Parrainage & Affiliation (4 jours)
+
+### Architecture
+- Liens de parrainage avec tracking
+- Réduction de 20% pour le parrain et le filleul
+- Dashboard "Mes parrainages" dans les paramètres
+
+### Fichiers à créer
+1. `artifacts/api-server/db/migrations/038_referral.sql` :
+   - CREATE TABLE referrals (id, referrer_tenant_id, referred_tenant_id, referral_code, status (pending/active/completed), created_at, activated_at)
+
+2. `artifacts/api-server/src/lib/growth/ReferralService.ts` :
+   - generateReferralCode(tenantId) : string
+   - trackReferral(referralCode, newTenantId)
+   - applyReferralDiscount(tenantId) - applique la réduction de 20%
+
+3. `artifacts/api-server/src/routes/v1/referral.ts` :
+   - GET /referral/code - génère un code de parrainage
+   - POST /referral/apply - applique un code de parrainage
+   - GET /referral/stats - statistiques de parrainage
+
+4. `artifacts/growthos/src/pages/ReferralPage.tsx` :
+   - Génération de lien de parrainage
+   - Statistiques (nombre de filleuls, réductions obtenues)
+   - Historique des parrainages
+
+## 4.2 Centre d'Aide & Documentation Client (1 semaine)
+
+### Architecture
+- Base de connaissances publique (intégrée dans l'app)
+- Tutoriels vidéo intégrés (Loom)
+- Chatbot support (utilise ton propre AI Agent Chat !)
+- Système de tickets (Zendesk ou Intercom)
+
+### Fichiers à créer
+1. `artifacts/api-server/db/migrations/039_support.sql` :
+   - CREATE TABLE help_articles (id, title, content, category, is_published, created_at, updated_at)
+   - CREATE TABLE support_tickets (id, tenant_id, user_id, subject, description, status (open/in_progress/resolved), priority, created_at, resolved_at)
+
+2. `artifacts/api-server/src/lib/support/SupportService.ts` :
+   - createTicket(userId, ticket)
+   - getTicketsByTenant(tenantId)
+   - resolveTicket(ticketId)
+   - getHelpArticles(category)
+
+3. `artifacts/api-server/src/routes/v1/support.ts` :
+   - GET /support/articles - liste des articles d'aide
+   - GET /support/articles/:id - article détaillé
+   - POST /support/tickets - créer un ticket
+   - GET /support/tickets - liste des tickets
+
+4. `artifacts/growthos/src/pages/HelpCenterPage.tsx` :
+   - Recherche d'articles
+   - Catégories d'aide
+   - Création de tickets
+   - Tutoriels vidéo intégrés
+
+5. `artifacts/growthos/src/components/SupportChatbot.tsx` :
+   - Widget de chat en bas à droite
+   - Utilise l'AI Agent Chat existant pour répondre aux questions
+   - Escalade vers un ticket si nécessaire
+
+## 4.3 Analytics Produit (Product Analytics) (1 semaine)
+
+### Architecture
+- Intégration PostHog ou Mixpanel
+- Tracking des événements clés (prospect créé, deal gagné, séquence lancée)
+- Funnels de conversion (inscription → activation → retention)
+- Heatmaps sur les pages critiques
+
+### Fichiers à créer
+1. `artifacts/api-server/src/lib/analytics/ProductAnalyticsService.ts` :
+   - trackEvent(userId, eventName, properties)
+   - trackPageView(userId, pageName)
+   - getFunnelData(tenantId, funnelName)
+
+2. `artifacts/api-server/src/middlewares/analytics.ts` :
+   - Middleware qui track automatiquement les appels API
+   - Envoie les événements à PostHog/Mixpanel
+
+3. `artifacts/growthos/src/lib/analytics.ts` :
+   - Client PostHog/Mixpanel côté frontend
+   - Track automatique des pages vues
+   - Track des clics sur les boutons critiques
+
+4. `artifacts/growthos/src/pages/ProductAnalyticsPage.tsx` (admin only) :
+   - Dashboard des métriques produit
+   - Funnels de conversion
+   - Rétention des utilisateurs
+   - Fonctionnalités les plus utilisées
+
+# 📋 ORDRE D'EXÉCUTION RECOMMANDÉ
+
+1. **Semaine 1-2** : Multi-Tenancy (1.1) - CRITIQUE
+2. **Semaine 3** : Facturation Stripe (1.2) - CRITIQUE
+3. **Semaine 4** : Onboarding Wizard (1.3) + Rapports PDF (2.2)
+4. **Semaine 5-6** : Collaboration temps réel (2.1) + Intégrations (2.3)
+5. **Semaine 7-8** : Gestion des tâches (2.4) + SSO (3.1) + RGPD (3.2)
+6. **Semaine 9** : API publique (3.3) + Parrainage (4.1)
+7. **Semaine 10** : Centre d'aide (4.2) + Analytics produit (4.3)
+
+#  LIVRABLES ATTENDUS
+
+Pour chaque fonctionnalité :
+1. Migration SQL avec tenant_id et RLS
+2. Service TypeScript avec logique métier
+3. Routes API avec auth + tenant isolation
+4. Page React avec UI complète
+5. Intégration avec les plugins existants (Memory, Signals, EventBus)
+6. Tests unitaires pour les services critiques
+7. Documentation dans le README
+
+# ⚠️ RÈGLES STRICTES
+
+1. **Multi-Tenancy OBLIGATOIRE** : Toutes les nouvelles tables DOIVENT avoir tenant_id
+2. **Ne casse rien** : Les 35 fonctionnalités existantes doivent continuer à fonctionner
+3. **Interconnexion** : Chaque nouveau plugin doit s'intégrer avec Growth Memory et Signal Intelligence
+4. **Sécurité** : Toutes les routes DOIVENT avoir requireAuth + requireTenant
+5. **Performance** : Index PostgreSQL sur tenant_id + colonnes fréquemment filtrées
+6. **Logs structurés** : Utilise le logger existant pour toutes les actions critiques
+7. **Tests** : Tests unitaires pour les services critiques (billing, multi-tenant, webhooks)
+
+Commence par la Phase 1 (Multi-Tenancy). C'est le fondement de tout le reste.

@@ -72,6 +72,11 @@ import TasksPage from '@/pages/TasksPage';
 import OnboardingWizardPage from '@/pages/OnboardingWizardPage';
 import HelpCenterPage from '@/pages/HelpCenterPage';
 import ReferralPage from '@/pages/ReferralPage';
+import AuditTrailPage from '@/pages/AuditTrailPage';
+import CompliancePage from '@/pages/CompliancePage';
+import SSOConfigPage from '@/pages/settings/SSOConfigPage';
+import APIDocsPage from '@/pages/APIDocsPage';
+import ProductAnalyticsPage from '@/pages/ProductAnalyticsPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -304,6 +309,22 @@ function AppRoutes() {
       </Route>
       <Route path="/referral">
         {() => <DashboardLayout><ReferralPage /></DashboardLayout>}
+      </Route>
+
+      <Route path="/audit-trail">
+        {() => <DashboardLayout><AuditTrailPage /></DashboardLayout>}
+      </Route>
+      <Route path="/compliance">
+        {() => <DashboardLayout><CompliancePage /></DashboardLayout>}
+      </Route>
+      <Route path="/settings/sso">
+        {() => <DashboardLayout><SSOConfigPage /></DashboardLayout>}
+      </Route>
+      <Route path="/api-docs">
+        {() => <DashboardLayout><APIDocsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/analytics/product">
+        {() => <DashboardLayout><ProductAnalyticsPage /></DashboardLayout>}
       </Route>
 
       <Route>
