@@ -1,0 +1,199 @@
+# OBJECTIF : COMPLÉTER GROWTHOS - SAAS ENTERPRISE (MULTI-TENANCY, BILLING, COLLABORATION, RGPD)
+
+Contexte : GrowthOS est opérationnel avec ses 35 modules core. Certaines features UI ont été ajoutées récemment (Tâches, Onboarding, Referral, Help Center, Export CSV). 
+Cependant, les fondations critiques pour vendre en SaaS (Multi-Tenancy, Facturation Stripe, Sécurité avancée, Collaboration temps réel) ne sont pas encore implémentées ou sont à l'état de "stub".
+
+Tu es un Lead Fullstack Engineer. Ta mission est d'implémenter les briques manquantes critiques listées ci-dessous.
+
+# ⚠️ RÈGLES D'OR
+1. **Multi-Tenancy OBLIGATOIRE** : Toutes les nouvelles tables DOIVENT avoir `tenant_id`. 
+2. **Sécurité** : Middleware `requireTenant` sur toutes les nouvelles routes.
+3. **Ne casse rien** : L'existant (Prospects, Deals, Signals, Tâches, Onboarding, etc.) doit continuer à fonctionner.
+4. **Interconnexion** : Utilise les services existants (`EventBus`, `NotificationService`, `AuditService`) quand c'est pertinent.
+
+---
+
+# 🚀 PHASE 1 : MULTI-TENANCY & FACTURATION (CRITIQUE P0)
+
+## 1.1 Multi-Tenancy Réel (Le Socle)
+Actuellement, les données ne sont pas isolées par client. Il faut créer l'architecture Multi-Tenant.
+
+### Backend
+1. **Migration DB** : `artifacts/api-server/db/migrations/040_tenants.sql`
+   - Créer table `tenants` (id, name, domain, plan, status, created_at).
+   - Ajouter colonne `tenant_id` (UUID, FK) sur TOUTES les tables critiques existantes : `prospects`, `accounts`, `deals`, `signals`, `tasks`, `users`, `activities`.
+   - Créer index sur `tenant_id` pour chaque table.
+   - *Note : Pour l'instant, on ne fait pas de RLS PostgreSQL complexe, on gère l'isolation via le middleware applicatif.*
+
+2. **Middleware** : `artifacts/api-server/src/middlewares/tenantIsolation.ts`
+   - Extraire `tenantId` du JWT de l'utilisateur connecté.
+   - Injecter `req.tenantId` dans la requête.
+   - Créer une fonction utilitaire `getTenantScope(req)` qui retourne `{ tenant_id: req.tenantId }` à utiliser dans les clauses `WHERE` des requêtes Drizzle.
+
+3. **Service** : `artifacts/api-server/src/lib/tenant/TenantService.ts`
+   - `createTenant(data)` : Crée un nouveau tenant.
+   - `getTenant(tenantId)` : Récupère les infos du tenant.
+
+4. **Mise à jour des Routes** :
+   - Modifier `artifacts/api-server/src/routes/v1/*.ts` (prospects, deals, signals, tasks, etc.) pour utiliser le middleware `requireTenant` et filtrer les résultats par `tenant_id`.
+   - *Exemple : `select().from(tasks).where(eq(tasks.tenant_id, req.tenantId))`.*
+
+## 1.2 Facturation Stripe & Quotas (P0)
+Implémenter le vrai système de facturation et de limites d'usage.
+
+### Backend
+1. **Migration DB** : `artifacts/api-server/db/migrations/041_billing.sql`
+   - Table `subscriptions` (tenant_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_end).
+   - Table `invoices` (tenant_id, stripe_invoice_id, amount, status, url).
+   - Table `usage_limits` (tenant_id, resource, limit_value, current_usage, period_start).
+   - Table `api_keys` (tenant_id, key_hash, permissions, expires_at).
+
+2. **Service** : `artifacts/api-server/src/lib/billing/StripeService.ts`
+   - `createSubscription(tenantId, priceId)` : Crée l'abonnement Stripe.
+   - `handleWebhook(event)` : Gère `invoice.paid`, `customer.subscription.deleted`.
+   - `checkUsage(tenantId, resource)` : Vérifie si le quota est dépassé (ex: 1000 prospects/mois).
+   - `incrementUsage(tenantId, resource)` : Incrémente le compteur.
+
+3. **Middleware** : `artifacts/api-server/src/middlewares/usageLimit.ts`
+   - À placer après `requireTenant`.
+   - Vérifie `checkUsage` avant les actions coûteuses (création prospect, envoi email, enrichissement).
+   - Retourne `402 Payment Required` si quota dépassé.
+
+4. **Routes** : `artifacts/api-server/src/routes/v1/billing.ts`
+   - `GET /billing/subscription` : Statut actuel.
+   - `POST /billing/checkout` : Crée session Stripe.
+   - `POST /billing/webhook` : Endpoint public pour Stripe.
+   - `GET /billing/usage` : Consommation actuelle.
+
+### Frontend
+1. **Page** : `artifacts/growthos/src/pages/BillingPage.tsx`
+   - Affiche le plan actuel, la date de fin de période.
+   - Graphique d'utilisation (Prospects utilisés / Limite).
+   - Bouton "Mettre à jour" ou "Annuler" (via lien Stripe Customer Portal).
+
+---
+
+# 🛡️ PHASE 2 : COLLABORATION, RGPD & SÉCURITÉ (P1/P2)
+
+## 2.1 Collaboration Temps Réel & Audit Trail
+Permettre aux équipes de travailler ensemble et tracer les actions.
+
+### Backend
+1. **Migration DB** : `artifacts/api-server/db/migrations/042_collaboration.sql`
+   - Table `mentions` (id, author_id, mentioned_user_id, entity_type, entity_id, content, created_at).
+   - Table `audit_logs` (id, tenant_id, user_id, action, entity_type, entity_id, changes_json, created_at).
+
+2. **Service** : `artifacts/api-server/src/lib/collaboration/CollaborationService.ts`
+   - `addMention(authorId, mentionedUserId, entityType, entityId, content)` : Crée la mention et envoie une notification via `NotificationService`.
+   - `logAudit(userId, action, entityType, entityId, changes)` : Enregistre l'action dans `audit_logs`.
+
+3. **Routes** : `artifacts/api-server/src/routes/v1/collaboration.ts`
+   - `GET /collaboration/audit` : Historique des actions (filtré par tenant).
+   - `POST /collaboration/mention` : Ajouter une mention.
+
+## 2.2 Conformité RGPD & Données
+Gérer les exports et suppressions de données.
+
+### Backend
+1. **Service** : `artifacts/api-server/src/lib/compliance/RGPDService.ts`
+   - `exportTenantData(tenantId)` : Génère un ZIP/JSON de toutes les données du tenant (prospects, deals, logs, etc.).
+   - `deleteTenantData(tenantId)` : Soft-delete ou anonymisation des données personnelles (conformément aux logs d'audit).
+
+2. **Routes** : `artifacts/api-server/src/routes/v1/compliance.ts`
+   - `POST /compliance/export` : Lance l'export.
+   - `POST /compliance/delete` : Lance la suppression.
+
+### Frontend
+1. **Page** : `artifacts/growthos/src/pages/CompliancePage.tsx`
+   - Section "Mes Données" : Bouton "Exporter toutes mes données".
+   - Section "Audit" : Tableau des logs d'activité (Qui a fait quoi et quand).
+
+---
+
+#  PHASE 3 : INTÉGRATIONS & API PUBLIQUE (P2/P3)
+
+## 3.1 Webhooks & Intégrations (Zapier/Make)
+Ouvrir GrowthOS vers l'extérieur.
+
+### Backend
+1. **Migration DB** : `artifacts/api-server/db/migrations/043_webhooks.sql`
+   - Table `webhooks` (id, tenant_id, url, events_json, secret, is_active).
+   - Table `webhook_logs` (id, webhook_id, status, response_code, payload, created_at).
+
+2. **Service** : `artifacts/api-server/src/lib/integrations/WebhookService.ts`
+   - `triggerEvent(eventType, payload)` : Appelé par l'`EventBus` quand un événement critique survient (ex: `deal.won`, `prospect.created`).
+   - Envoie le payload en POST à l'URL du webhook avec signature HMAC.
+
+3. **Middleware** : `artifacts/api-server/src/middlewares/webhookAuth.ts`
+   - Pour les webhooks entrants (ex: réception de leads depuis un formulaire externe).
+
+4. **Routes** : `artifacts/api-server/src/routes/v1/integrations.ts`
+   - CRUD pour gérer les webhooks sortants.
+   - Endpoint public `POST /webhooks/incoming/:id` pour recevoir des données.
+
+### Frontend
+1. **Page** : `artifacts/growthos/src/pages/IntegrationsPage.tsx`
+   - Liste des webhooks configurés.
+   - Formulaire pour ajouter une URL et sélectionner les événements (Deal Won, Prospect Created, etc.).
+   - Logs des derniers envois (succès/échec).
+
+## 3.2 API Publique & Rate Limiting
+Permettre l'accès programmatique sécurisé.
+
+### Backend
+1. **Service** : `artifacts/api-server/src/lib/api/ApiKeyService.ts`
+   - `generateApiKey(tenantId, permissions)` : Crée une clé API.
+   - `validateApiKey(key)` : Vérifie la clé et retourne le tenant associé.
+   - `checkRateLimit(apiKeyId)` : Vérifie le nombre de requêtes/minute.
+
+2. **Middleware** : `artifacts/api-server/src/middlewares/apiKeyAuth.ts`
+   - Alternative à `requireAuth` (JWT). Accepte le header `Authorization: Bearer <API_KEY>`.
+   - Applique le rate limiting.
+
+3. **Routes** : `artifacts/api-server/src/routes/v1/public-api.ts`
+   - Exposer les endpoints de lecture (GET /prospects, GET /deals) via ce middleware.
+
+### Frontend
+1. **Page** : `artifacts/growthos/src/pages/ApiKeysPage.tsx`
+   - Générer/Révoquer des clés API.
+   - Voir les statistiques d'utilisation.
+
+---
+
+# 📊 PHASE 4 : ANALYTICS PRODUIT (P3)
+
+## 4.1 Tracking & Analytics
+Comprendre comment les utilisateurs utilisent l'outil.
+
+### Backend
+1. **Service** : `artifacts/api-server/src/lib/analytics/ProductAnalytics.ts`
+   - `trackEvent(tenantId, userId, eventName, properties)` : Enregistre un événement custom en DB ou envoie à PostHog/Mixpanel (si config).
+   - `getFunnelData(tenantId)` : Retourne les données pour les entonnoirs de conversion.
+
+2. **Middleware** : `artifacts/api-server/src/middlewares/analytics.ts`
+   - Track automatiquement les appels API (ex: `api_call`, `feature_used`).
+
+### Frontend
+1. **Lib** : `artifacts/growthos/src/lib/analytics.ts`
+   - Wrapper pour tracker les actions frontend (clics, pages vues).
+
+2. **Page** : `artifacts/growthos/src/pages/ProductAnalyticsPage.tsx` (Admin Only)
+   - Dashboard des métriques d'utilisation (utilisateurs actifs, features populaires).
+
+---
+
+# 📋 ORDRE D'EXÉCUTION & LIVRABLES
+
+1. **Commence par la PHASE 1 (Multi-Tenancy & Billing)**. C'est bloquant. Sans `tenant_id` partout et middleware, le reste n'a pas de sens pour un SaaS.
+2. **Ensuite PHASE 2 (Collaboration/RGPD)**.
+3. **Ensuite PHASE 3 (Intégrations/API)**.
+4. **Enfin PHASE 4 (Analytics)**.
+
+**Livrables attendus pour chaque phase :**
+- Migrations SQL complètes.
+- Services TypeScript avec logique métier.
+- Middlewares de sécurité (Tenant, Usage, API Key).
+- Routes API protégées.
+- Pages React pour la configuration (Billing, Integrations, ApiKeys, Compliance).
+
+**IMPORTANT** : Vérifie bien que les routes existantes (`/prospects`, `/deals`, etc.) filtrent maintenant par `tenant_id`. Si une requête ne filtre pas par tenant, c'est une faille de sécurité critique.
