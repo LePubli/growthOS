@@ -532,6 +532,34 @@ export async function runEreputationMigration(): Promise<void> {
   await pool.query(SQL_EREPUTATION);
 }
 
+const SQL_TASKS = `
+CREATE TABLE IF NOT EXISTS tasks (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  title        TEXT        NOT NULL,
+  description  TEXT,
+  status       TEXT        NOT NULL DEFAULT 'todo'
+               CHECK (status IN ('todo', 'in_progress', 'done', 'cancelled')),
+  priority     TEXT        NOT NULL DEFAULT 'medium'
+               CHECK (priority IN ('high', 'medium', 'low')),
+  due_date     TIMESTAMP,
+  completed_at TIMESTAMP,
+  entity_type  TEXT,
+  entity_id    UUID,
+  tenant_id    UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by   UUID        REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMP   NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS tasks_tenant_idx   ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS tasks_status_idx   ON tasks(status);
+CREATE INDEX IF NOT EXISTS tasks_due_date_idx ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS tasks_entity_idx   ON tasks(entity_type, entity_id) WHERE entity_id IS NOT NULL;
+`;
+
+export async function runTasksMigration(): Promise<void> {
+  await pool.query(SQL_TASKS);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

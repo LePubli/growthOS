@@ -10,3 +10,4 @@ export * from "./templates";
 export * from "./webhooks";
 export * from "./sourcing";
 export * from "./notifications";
+export * from "./tasks";

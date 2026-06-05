@@ -7,7 +7,7 @@ import {
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
   Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route, ShieldCheck, Package, Database,
-  Shield, BarChart, MessageCircle, CalendarDays, Link2,
+  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -105,6 +105,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Équipe',
     items: [
+      { href: '/tasks', label: 'Mes Tâches', icon: <CheckSquare size={16} /> },
       { href: '/shared-dashboards', label: 'Dashboards Partagés', icon: <Share2 size={16} /> },
       { href: '/team', label: 'Métriques Équipe', icon: <Trophy size={16} /> },
     ],
@@ -112,6 +113,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Système',
     items: [
+      { href: '/help', label: 'Centre d\'aide', icon: <HelpCircle size={16} /> },
+      { href: '/referral', label: 'Parrainage', icon: <Gift size={16} /> },
       { href: '/marketplace', label: 'Marketplace', icon: <Store size={16} />, badge: 1 },
       { href: '/plugins', label: 'Plugins', icon: <Puzzle size={16} /> },
       { href: '/admin/plugins-upload', label: 'Upload Plugins', icon: <Upload size={16} /> },

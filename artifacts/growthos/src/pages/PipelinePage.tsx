@@ -32,6 +32,22 @@ const PRIORITY_CONFIG = {
   low:    { l:'Basse',  c:'#6B7280', bg:'#F3F4F6' },
 };
 
+function computeHealthScore(deal: Deal): { score: number; color: string; label: string } {
+  if (deal.stage === 'won')  return { score: 100, color: '#10B981', label: 'Gagné' };
+  if (deal.stage === 'lost') return { score: 0,   color: '#EF4444', label: 'Perdu' };
+  const stageScore: Record<string, number> = { lead:15, qualified:35, proposal:55, negotiation:75 };
+  const base = stageScore[deal.stage] ?? 30;
+  let closeDateScore = 50;
+  if (deal.closeDate) {
+    const d = Math.ceil((new Date(deal.closeDate).getTime() - Date.now()) / 86400000);
+    closeDateScore = d < 0 ? 10 : d < 7 ? 30 : d < 15 ? 55 : d < 30 ? 75 : 90;
+  }
+  const prioBonus = deal.priority === 'high' ? 10 : deal.priority === 'low' ? -5 : 0;
+  const raw = Math.round(base * 0.4 + closeDateScore * 0.3 + deal.probability * 0.3 + prioBonus);
+  const score = Math.max(0, Math.min(100, raw));
+  return { score, color: score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444', label: score >= 70 ? 'Bon' : score >= 40 ? 'Moyen' : 'Faible' };
+}
+
 /* ─────────────── new deal modal ─────────────── */
 
 function NewDealModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:Deal)=>void }) {
@@ -111,10 +127,18 @@ function KanbanCard({ deal, stage, onDragStart, onClick, onQuickAction }: {
       </div>
       <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:10 }}>{deal.company}</div>
 
-      {/* Value row */}
+      {/* Value row + health score */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
         <span style={{ fontWeight:800, fontSize:15, color:stage.color }}>{deal.value.toLocaleString('fr-FR')}€</span>
-        <span style={{ fontSize:11, padding:'2px 8px', borderRadius:9999, background:`${stage.color}18`, color:stage.color, fontWeight:700 }}>{deal.probability}%</span>
+        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          {(()=>{ const h=computeHealthScore(deal); return (
+            <span title={`Score santé : ${h.score}/100 — ${h.label}`}
+              style={{ fontSize:10, padding:'2px 7px', borderRadius:9999, background:`${h.color}18`, color:h.color, fontWeight:700, cursor:'help' }}>
+              ♥ {h.score}
+            </span>
+          );})()}
+          <span style={{ fontSize:11, padding:'2px 8px', borderRadius:9999, background:`${stage.color}18`, color:stage.color, fontWeight:700 }}>{deal.probability}%</span>
+        </div>
       </div>
 
       {/* Meta */}

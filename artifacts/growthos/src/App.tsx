@@ -68,6 +68,10 @@ import ERepSERPPage from '@/plugins/ereputation/SERPTrackingPage';
 import ERepSentimentPage from '@/plugins/ereputation/SentimentFeedPage';
 import ERepSocialPage from '@/plugins/ereputation/SocialCalendarPage';
 import ERepPBNPage from '@/plugins/ereputation/PBNManagerPage';
+import TasksPage from '@/pages/TasksPage';
+import OnboardingWizardPage from '@/pages/OnboardingWizardPage';
+import HelpCenterPage from '@/pages/HelpCenterPage';
+import ReferralPage from '@/pages/ReferralPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -287,6 +291,19 @@ function AppRoutes() {
       </Route>
       <Route path="/admin/deep-audit">
         {() => <DashboardLayout><DeepAuditPage /></DashboardLayout>}
+      </Route>
+
+      <Route path="/tasks">
+        {() => <DashboardLayout><TasksPage /></DashboardLayout>}
+      </Route>
+      <Route path="/onboarding">
+        {() => <OnboardingWizardPage />}
+      </Route>
+      <Route path="/help">
+        {() => <DashboardLayout><HelpCenterPage /></DashboardLayout>}
+      </Route>
+      <Route path="/referral">
+        {() => <DashboardLayout><ReferralPage /></DashboardLayout>}
       </Route>
 
       <Route>

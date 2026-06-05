@@ -32,6 +32,8 @@ import pluginMarketplaceRouter from "./plugin-marketplace";
 import auditRouter from "./audit";
 import enrichmentRouter from "./plugins/enrichment";
 import ereputationRouter from "./plugins/ereputation";
+import tasksRouter from "./tasks";
+import reportingRouter from "./reporting";
 
 const router = Router();
 
@@ -67,5 +69,7 @@ router.use("/plugin-marketplace", pluginMarketplaceRouter);
 router.use("/audit", auditRouter);
 router.use("/enrich", enrichmentRouter);
 router.use("/ereputation", requireAuth, ereputationRouter);
+router.use("/tasks", requireAuth, tasksRouter);
+router.use("/reporting", requireAuth, reportingRouter);
 
 export default router;
