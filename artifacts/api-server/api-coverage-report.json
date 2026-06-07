@@ -1,0 +1,1302 @@
+{
+  "generatedAt": "2026-06-07T21:03:57.600Z",
+  "globalCoverage": {
+    "percent": 52,
+    "tested": 103,
+    "total": 198
+  },
+  "routes": [
+    {
+      "mountPath": "/auth",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/auth/register",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/auth/refresh",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/auth/logout",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/activities",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/activities",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/activities",
+          "tested": false
+        },
+        {
+          "method": "PATCH",
+          "path": "/activities/:id",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/activities/:id",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/templates",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/templates",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/templates/:id",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/templates",
+          "tested": false
+        },
+        {
+          "method": "PATCH",
+          "path": "/templates/:id",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/templates/:id/use",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/templates/:id",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/webhooks",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/webhooks",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/webhooks/events",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/webhooks",
+          "tested": false
+        },
+        {
+          "method": "PATCH",
+          "path": "/webhooks/:id",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/webhooks/:id/toggle",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/webhooks/:id",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/email",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/email/send",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/email/sequences/:id/launch",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/search",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/search",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/users",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/users/me",
+          "tested": false
+        },
+        {
+          "method": "PATCH",
+          "path": "/users/me",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/users/me/password",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/team",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/team",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/team/invite",
+          "tested": false
+        },
+        {
+          "method": "PATCH",
+          "path": "/team/:id/role",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/team/:id",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/plugins",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/plugins/status",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/plugins/active",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/plugins/audit",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/plugins/register",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/plugins/:id/disable",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/plugins/:id/enable",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/plugins/marketplace",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/plugins/packs/install",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/meetings",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/meetings",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/meetings/:id",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/meetings",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/meetings/:id/process",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/meetings/:id",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/revenue",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/revenue/kpis",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/revenue/funnel",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/revenue/forecast",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/revenue/trends",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/revenue/ai-summary",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/knowledge",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/knowledge",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/knowledge/stats",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/knowledge/search",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/knowledge/:id",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/knowledge",
+          "tested": false
+        },
+        {
+          "method": "PATCH",
+          "path": "/knowledge/:id",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/knowledge/:id",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/executive",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/executive/overview",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/executive/assistant/ask",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/notifications",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/notifications/stream",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/notifications",
+          "tested": false
+        },
+        {
+          "method": "PATCH",
+          "path": "/notifications/:id/read",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/notifications/mark-all-read",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/notifications/:id",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/admin",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/admin/route-audit",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/plugin-marketplace",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/plugin-marketplace",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/plugin-marketplace/format-doc",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/plugin-marketplace/upload",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/plugin-marketplace/install/:slug",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/plugin-marketplace/activate/:slug",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/plugin-marketplace/deactivate/:slug",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/plugin-marketplace/:slug",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/audit",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/audit/deep",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/audit/auto-fix",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/enrich",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/enrich/:prospectId",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/enrich/batch",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/enrich/data/:prospectId",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/enrich/history/:prospectId",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/enrich/sources",
+          "tested": false
+        },
+        {
+          "method": "PUT",
+          "path": "/enrich/api-config/:sourceId",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/enrich/test-connection/:sourceId",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/tasks",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/tasks",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/tasks/:id",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/tasks",
+          "tested": false
+        },
+        {
+          "method": "PATCH",
+          "path": "/tasks/:id",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/tasks/:id/complete",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/tasks/:id",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/reporting",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/reporting/csv/:entity",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/reporting/pdf/:reportType",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/collaboration",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/collaboration/audit-logs",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/collaboration/audit-logs",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/collaboration/audit-logs/stats",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/collaboration/audit-logs",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/collaboration/mentions",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/collaboration/mention",
+          "tested": false
+        },
+        {
+          "method": "PATCH",
+          "path": "/collaboration/mentions/:id/read",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/sso",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/sso/config",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/sso/config",
+          "tested": false
+        },
+        {
+          "method": "POST",
+          "path": "/sso/config/:id/test",
+          "tested": false
+        },
+        {
+          "method": "DELETE",
+          "path": "/sso/config/:id",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/sso/providers",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/api-docs",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/api-docs/openapi.json",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/api-docs/stats",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/public",
+      "coveragePercent": 0,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/public/prospects",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/public/prospects/:id",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/public/deals",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/public/deals/:id",
+          "tested": false
+        },
+        {
+          "method": "GET",
+          "path": "/public/signals",
+          "tested": false
+        }
+      ]
+    },
+    {
+      "mountPath": "/prospects",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/prospects",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/prospects/map",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/prospects/:id",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/prospects",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/prospects/bulk",
+          "tested": true
+        },
+        {
+          "method": "PATCH",
+          "path": "/prospects/:id",
+          "tested": true
+        },
+        {
+          "method": "DELETE",
+          "path": "/prospects/:id",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/pipeline",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/pipeline",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/pipeline/:id",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/pipeline",
+          "tested": true
+        },
+        {
+          "method": "PATCH",
+          "path": "/pipeline/:id",
+          "tested": true
+        },
+        {
+          "method": "DELETE",
+          "path": "/pipeline/:id",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/sequences",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/sequences",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/sequences/:id",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/sequences",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/sequences/:id/toggle",
+          "tested": true
+        },
+        {
+          "method": "PATCH",
+          "path": "/sequences/:id",
+          "tested": true
+        },
+        {
+          "method": "DELETE",
+          "path": "/sequences/:id",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/sequences/:id/events",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/signals",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/signals",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/signals/:id",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/signals",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/signals/:id/read",
+          "tested": true
+        },
+        {
+          "method": "PATCH",
+          "path": "/signals/:id",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/signals/generate",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/signals/account/:company",
+          "tested": true
+        },
+        {
+          "method": "PATCH",
+          "path": "/signals/:id/status",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/dashboard",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/dashboard/stats",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/workflows",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/workflows",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/workflows/:id",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/workflows",
+          "tested": true
+        },
+        {
+          "method": "PATCH",
+          "path": "/workflows/:id",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/workflows/:id/toggle",
+          "tested": true
+        },
+        {
+          "method": "DELETE",
+          "path": "/workflows/:id",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/accounts",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/accounts",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/accounts/:id/360",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/accounts/:id/score",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/accounts/:id/refresh",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/api-keys",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/api-keys",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/api-keys",
+          "tested": true
+        },
+        {
+          "method": "DELETE",
+          "path": "/api-keys/:id",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/analytics",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/analytics/stats",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/analytics/track",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/analytics/product-dashboard",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/memory",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/memory/search",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/memory/recent",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/memory/stats",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/memory/index",
+          "tested": true
+        },
+        {
+          "method": "DELETE",
+          "path": "/memory/:id",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/ai-sdr",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/ai-sdr/status",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/ai-sdr/templates",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ai-sdr/draft/email",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ai-sdr/draft/linkedin",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ai-sdr/sequence",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ai-sdr/playbook",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/deal-coach",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/deal-coach/pipeline/health",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/deal-coach/risks",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/deal-coach/deals",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/deal-coach/deals/:id/analyze",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/deal-coach/deals/:id/coach",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/sourcing",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/sourcing/jobs",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/sourcing/jobs",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/sourcing/jobs/:id",
+          "tested": true
+        },
+        {
+          "method": "PATCH",
+          "path": "/sourcing/jobs/:id",
+          "tested": true
+        },
+        {
+          "method": "DELETE",
+          "path": "/sourcing/jobs/:id",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/ereputation",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/ereputation/campaigns",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ereputation/campaigns",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/ereputation/campaigns/:id/dashboard",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ereputation/campaigns/:id/audit",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ereputation/campaigns/:id/generate-strategy",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ereputation/campaigns/:id/generate-content",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/ereputation/campaigns/:id/serp",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ereputation/campaigns/:id/serp",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/ereputation/campaigns/:id/sentiment",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ereputation/campaigns/:id/sentiment",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ereputation/campaigns/:id/sentiment/:logId/ai-response",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/ereputation/campaigns/:id/posts",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ereputation/campaigns/:id/posts",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/ereputation/pbn",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ereputation/pbn",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/ereputation/analyze-text",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/ereputation/score-global",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/compliance",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/compliance/consent-logs",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/compliance/consent",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/compliance/export-data",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/compliance/delete-data",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/compliance/data-retention",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/billing",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/billing/subscription",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/billing/invoices",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/billing/usage",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/billing/checkout",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/billing/portal",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/billing/webhook",
+          "tested": true
+        }
+      ]
+    },
+    {
+      "mountPath": "/integrations",
+      "coveragePercent": 100,
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/integrations/webhooks",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/integrations/webhooks/events",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/integrations/webhooks/logs",
+          "tested": true
+        },
+        {
+          "method": "GET",
+          "path": "/integrations/webhooks/:id/logs",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/integrations/webhooks",
+          "tested": true
+        },
+        {
+          "method": "PATCH",
+          "path": "/integrations/webhooks/:id",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/integrations/webhooks/:id/toggle",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/integrations/webhooks/:id/test",
+          "tested": true
+        },
+        {
+          "method": "DELETE",
+          "path": "/integrations/webhooks/:id",
+          "tested": true
+        },
+        {
+          "method": "POST",
+          "path": "/integrations/incoming/:webhookId",
+          "tested": true
+        }
+      ]
+    }
+  ],
+  "untestedMounts": []
+}

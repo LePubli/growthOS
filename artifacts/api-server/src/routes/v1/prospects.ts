@@ -240,9 +240,13 @@ router.patch("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
-  await db.delete(prospectsTable).where(
+  const result = await db.delete(prospectsTable).where(
     and(eq(prospectsTable.id, id), eq(prospectsTable.tenantId, req.auth!.tenantId))
-  );
+  ).returning({ id: prospectsTable.id });
+  if (result.length === 0) {
+    res.status(404).json({ error: "Prospect introuvable" });
+    return;
+  }
   res.json({ ok: true });
 });
 
