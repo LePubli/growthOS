@@ -1,0 +1,70 @@
+# OBJECTIF : INTERCONNEXION NATIVE DU PLUGIN E-RÉPUTATION AVEC L'ÉCOSYSTÈME GROWTHOS
+
+Le plugin E-Réputation est fonctionnel en silo. Tu dois maintenant le câbler nativement avec les plugins core de GrowthOS via l'EventBus et les services existants. Le but est de créer un "Flywheel" où la data E-Rep nourrit l'IA et le CRM en temps réel.
+
+# ⚠️ RÈGLES ARCHITECTURALES
+1. Utilise l'`EventBus` existant de GrowthOS pour la communication inter-plugins.
+2. Ne modifie pas la logique core des autres plugins, ajoute seulement des "listeners" ou des appels de services.
+3. Toutes les actions doivent être asynchrones pour ne pas bloquer l'UI.
+4. Respecte le multi-tenancy (tenant_id) dans tous les échanges.
+
+# PHASE 1 : E-RÉPUTATION -> SIGNAL INTELLIGENCE (Radar Commercial)
+Quand une chute SERP ou un sentiment négatif est détecté, cela doit créer un Signal "Hot" automatiquement.
+
+1. Dans `artifacts/api-server/src/lib/plugin-ereputation/SentimentService.ts` (ou le service qui gère les alertes) :
+   - Quand un sentiment négatif (score < 30) ou une chute SERP > 5 places est détecté, émettre un événement :
+     `pluginEventBus.emit('erep.alert', { tenantId, campaignId, type: 'reputation_crisis', severity: 'high', data: { ... } })`
+
+2. Créer un listener dans le plugin Signal Intelligence (ou dans un fichier d'initialisation global `src/lib/integrations/erep-signals.ts`) :
+   - Écouter `erep.alert`.
+   - Appeler `SignalService.createSignal()` avec :
+     - type: 'reputation' (ou 'news' si actualité négative)
+     - score: 90 (Hot)
+     - title: "Alerte Réputation : [Nom Campagne]"
+     - description: "Chute SERP détectée" ou "Mention négative virale"
+     - source: 'E-Reputation Plugin'
+
+# PHASE 2 : E-RÉPUTATION -> ACCOUNT INTELLIGENCE (Health Score)
+Le score de réputation doit impacter le Health Score global du compte (Account 360°).
+
+1. Dans `artifacts/api-server/src/lib/plugin-ereputation/CampaignService.ts` :
+   - Quand le `reputation_score` d'une campagne est mis à jour (après un audit), émettre :
+     `pluginEventBus.emit('erep.score.updated', { tenantId, targetAccountId, newScore })`
+
+2. Créer un listener dans Account Intelligence :
+   - Écouter `erep.score.updated`.
+   - Mettre à jour le champ `reputation_score` dans la table `accounts` (ajoute la colonne si elle n'existe pas via une migration rapide).
+   - Recalculer le `health_score` global du compte en intégrant ce nouveau paramètre (ex: pondération 10% réputation).
+
+# PHASE 3 : E-RÉPUTATION -> GROWTH MEMORY (Second Brain)
+Les audits et rapports doivent être indexés pour que l'AI SDR et le Deal Coach puissent les utiliser.
+
+1. Dans `artifacts/api-server/src/lib/plugin-ereputation/AuditService.ts` :
+   - Quand un audit est terminé, appeler directement le `MemoryService` :
+     ```typescript
+     await memoryService.indexDocument({
+       sourceType: 'ereputation_audit',
+       sourceId: auditId,
+       content: `Audit SEO/GEO pour ${campaignName}. Score: ${score}/100. Points forts: ${strengths}. Points faibles: ${weaknesses}. Stratégie IA: ${strategy}`,
+       metadata: { campaignId, score, date: new Date() }
+     });
+     ```
+
+# PHASE 4 : UNIFIED DASHBOARD (Executive Command Center)
+Ajouter les métriques E-Réputation dans le dashboard exécutif.
+
+1. Modifier `artifacts/api-server/src/routes/v1/executive.ts` (ou le service correspondant) :
+   - Ajouter un endpoint ou enrichir l'existant pour inclure :
+     - `average_reputation_score` (moyenne des campagnes actives)
+     - `active_reputation_alerts` (nombre d'alertes E-Rep non résolues)
+
+2. Modifier le frontend `artifacts/growthos/src/pages/ExecutivePage.tsx` :
+   - Ajouter un widget "Santé Réputation" affichant ces nouvelles métriques.
+
+# LIVRABLES ATTENDUS
+1. Fichier d'initialisation des listeners `src/lib/integrations/erep-integrations.ts` (montre-le dans le main.ts ou app.ts au démarrage).
+2. Migrations DB mineures si nécessaire (ex: ajout colonne `reputation_score` dans `accounts`).
+3. Code des listeners et émissions d'événements.
+4. Mise à jour du Dashboard Exécutif.
+
+Commence par la Phase 1 (Signaux) et la Phase 3 (Memory), ce sont les plus critiques pour l'IA.

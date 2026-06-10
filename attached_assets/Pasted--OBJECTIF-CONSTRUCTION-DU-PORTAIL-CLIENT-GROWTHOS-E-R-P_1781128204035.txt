@@ -1,0 +1,83 @@
+# OBJECTIF : CONSTRUCTION DU PORTAIL CLIENT GROWTHOS (E-RÉPUTATION)
+
+Tu vas créer un espace client sécurisé et isolé pour GrowthOS. Ce portail est destiné aux clients finaux (ex: entreprises ou personnalités suivies) pour qu'ils puissent consulter leurs campagnes E-Réputation, valider les contenus avant publication et télécharger leurs rapports.
+
+# ⚠️ CONTRAINTES ARCHITECTURALES CRITIQUES
+1. **Isolation Stricte (RBAC)** : Les utilisateurs avec le rôle `client` ne doivent JAMAIS voir l'interface d'administration ni les données des autres clients.
+2. **Non-Régression** : Ne modifie PAS l'interface admin existante (`AppShell`, routes `/admin`, etc.). Crée un nouveau layout dédié.
+3. **Stack** : React 18, Vite, Tailwind CSS, Radix UI, Recharts. Backend Express + JWT.
+4. **Mobile-First** : Le portail client doit être parfaitement responsive (préparation pour l'app mobile future).
+
+# PHASE 1 : BACKEND - SÉCURITÉ & ROUTES CLIENT
+
+## 1.1 Mise à jour de l'Authentification (RBAC)
+Dans `artifacts/api-server/src/middlewares/auth.ts` (ou équivalent) :
+- Ajoute un middleware `requireRole('client')` et `requireRole('admin')`.
+- Assure-toi que le JWT contient le `role` de l'utilisateur.
+
+## 1.2 Création des Routes Client (Scope E-Réputation)
+Crée `artifacts/api-server/src/routes/v1/client/ereputation.ts` :
+- `GET /client/ereputation/dashboard` : Retourne le score global, les alertes récentes et l'état des campagnes pour le client connecté.
+- `GET /client/ereputation/campaigns` : Liste les campagnes où `client_id = req.user.id`.
+- `GET /client/ereputation/campaigns/:id` : Détails d'une campagne (SERP, Sentiment).
+- `GET /client/ereputation/reports` : Liste des rapports PDF disponibles.
+- `POST /client/ereputation/content/:id/approve` : Le client valide un contenu généré par l'IA avant publication.
+- `POST /client/ereputation/content/:id/reject` : Le client refuse avec un commentaire.
+
+*Note : Toutes ces routes DOIVENT utiliser `requireAuth` + `requireRole('client')` et filtrer systématiquement par `client_id`.*
+
+## 1.3 Workflow de Validation de Contenu
+Modifie le service de publication social (`SocialMediaService` ou similaire) :
+- Avant de publier un post, le statut doit être `pending_approval`.
+- Quand le client appelle `/approve`, le statut passe à `scheduled` ou `published` et déclenche l'EventBus pour la publication réelle.
+
+# PHASE 2 : FRONTEND - LAYOUT & ROUTING CLIENT
+
+## 2.1 Création du Layout Client
+Crée `artifacts/growthos/src/layouts/ClientShell.tsx` :
+- Design épuré, professionnel, distinct de l'admin (ex: sidebar blanche, logo du client ou logo GrowthOS en mode "white-label").
+- Menu : Dashboard, Mes Campagnes, Contenus à valider, Rapports, Profil.
+- Déconnexion sécurisée.
+
+## 2.2 Routing
+Dans `artifacts/growthos/src/App.tsx` :
+- Ajoute une condition : Si `user.role === 'client'`, redirige vers `/client/dashboard` et utilise `ClientShell`.
+- Routes :
+  - `/client/dashboard`
+  - `/client/campaigns`
+  - `/client/campaigns/:id`
+  - `/client/approvals` (File d'attente des contenus à valider)
+  - `/client/reports`
+
+# PHASE 3 : PAGES DU PORTAIL CLIENT
+
+## 3.1 Dashboard Client (`ClientDashboardPage.tsx`)
+- **KPI Principal** : Grande jauge du "Score de Réputation Global" (0-100).
+- **Alertes** : Liste des 3 dernières alertes (ex: "Mention négative détectée", "Chute SERP").
+- **Activité récente** : Timeline simple des actions (ex: "Article publié sur Medium", "Audit SEO terminé").
+
+## 3.2 Liste des Campagnes (`ClientCampaignsPage.tsx`)
+- Cartes simples pour chaque campagne active.
+- Affiche : Nom de la campagne, Score actuel, Statut (Actif/Pause), Nombre de mots-clés suivis.
+- Clic sur une carte -> Accès aux détails (lecture seule).
+
+## 3.3 File de Validation (`ClientApprovalsPage.tsx`) - CRUCIAL
+- Liste des posts/articles générés par l'IA en attente.
+- Pour chaque item :
+  - Aperçu du contenu (texte, image).
+  - Plateforme cible (LinkedIn, X, Blog).
+  - Deux boutons d'action : ✅ **Valider et Publier** / ❌ **Refuser avec commentaire**.
+- L'action appelle les routes POST créées en Phase 1.3.
+
+## 3.4 Rapports (`ClientReportsPage.tsx`)
+- Liste des rapports PDF générés.
+- Bouton "Télécharger" pour chaque rapport.
+- Filtre par date et par campagne.
+
+# RÈGLES STRICTES D'EXÉCUTION
+1. **Sécurité d'abord** : Teste qu'un utilisateur `client` ne peut PAS accéder aux routes `/api/v1/admin/...` ou `/api/v1/plugins/...` (sauf si explicitement ouvert).
+2. **Zéro Mock en UI** : Connecte les pages aux vraies routes API créées en Phase 1.
+3. **Responsive** : Utilise les classes Tailwind (`md:`, `lg:`) pour que le `ClientShell` s'adapte parfaitement aux mobiles (menu burger sur mobile).
+4. **Interconnexion** : Quand un client valide un contenu, émets un événement `client.content.approved` via l'EventBus pour que le système de publication le traite.
+
+Commence par la Phase 1 (Backend & Sécurité), puis la Phase 2 (Layout), et enfin les Pages (Phase 3).

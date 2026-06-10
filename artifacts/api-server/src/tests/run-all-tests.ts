@@ -11,26 +11,49 @@ const DIM = "\x1b[2m";
 interface SuiteModule { run: () => Promise<SuiteResult> }
 
 const SUITES: Array<{ name: string; file: string }> = [
-  { name: "auth",              file: "./auth.test.ts" },
-  { name: "prospects",         file: "./prospects.test.ts" },
-  { name: "accounts",          file: "./accounts.test.ts" },
-  { name: "pipeline",          file: "./pipeline.test.ts" },
-  { name: "ai-sdr",            file: "./ai-sdr.test.ts" },
-  { name: "deal-coach",        file: "./deal-coach.test.ts" },
-  { name: "signals",           file: "./signals.test.ts" },
-  { name: "memory",            file: "./memory.test.ts" },
-  { name: "sequences",         file: "./sequences.test.ts" },
-  { name: "sourcing",          file: "./sourcing.test.ts" },
-  { name: "workflows",         file: "./workflows.test.ts" },
-  { name: "webhooks",          file: "./webhooks.test.ts" },
-  { name: "ereputation",       file: "./ereputation.test.ts" },
-  { name: "tenant-isolation",      file: "./tenant-isolation.test.ts" },
-  { name: "tenant-isolation-real", file: "./tenant-isolation-real.test.ts" },
-  { name: "billing",               file: "./billing.test.ts" },
-  { name: "compliance",        file: "./compliance.test.ts" },
-  { name: "api-public",        file: "./api-public.test.ts" },
-  { name: "integration",       file: "./integration.test.ts" },
-  { name: "performance",       file: "./performance.test.ts" },
+  // ── Core auth & tenancy
+  { name: "auth",                    file: "./auth.test.ts" },
+  { name: "tenant-isolation",        file: "./tenant-isolation.test.ts" },
+  { name: "tenant-isolation-real",   file: "./tenant-isolation-real.test.ts" },
+
+  // ── CRM & Pipeline
+  { name: "prospects",               file: "./prospects.test.ts" },
+  { name: "accounts",                file: "./accounts.test.ts" },
+  { name: "pipeline",                file: "./pipeline.test.ts" },
+  { name: "activities",              file: "./activities.test.ts" },
+  { name: "tasks",                   file: "./tasks.test.ts" },
+  { name: "meetings",                file: "./meetings.test.ts" },
+
+  // ── Outreach & Séquences
+  { name: "sequences",               file: "./sequences.test.ts" },
+  { name: "templates",               file: "./templates.test.ts" },
+
+  // ── Signaux & Intelligence
+  { name: "signals",                 file: "./signals.test.ts" },
+  { name: "sourcing",                file: "./sourcing.test.ts" },
+  { name: "enrichment",              file: "./enrichment.test.ts" },
+
+  // ── Plugins IA
+  { name: "ai-sdr",                  file: "./ai-sdr.test.ts" },
+  { name: "deal-coach",              file: "./deal-coach.test.ts" },
+  { name: "memory",                  file: "./memory.test.ts" },
+  { name: "knowledge",               file: "./knowledge.test.ts" },
+  { name: "ereputation",             file: "./ereputation.test.ts" },
+
+  // ── Revenue & Reporting
+  { name: "revenue",                 file: "./revenue.test.ts" },
+  { name: "reporting",               file: "./reporting.test.ts" },
+  { name: "executive",               file: "./executive.test.ts" },
+
+  // ── Infrastructure
+  { name: "notifications",           file: "./notifications.test.ts" },
+  { name: "workflows",               file: "./workflows.test.ts" },
+  { name: "webhooks",                file: "./webhooks.test.ts" },
+  { name: "billing",                 file: "./billing.test.ts" },
+  { name: "compliance",              file: "./compliance.test.ts" },
+  { name: "api-public",              file: "./api-public.test.ts" },
+  { name: "integration",             file: "./integration.test.ts" },
+  { name: "performance",             file: "./performance.test.ts" },
 ];
 
 const args = process.argv.slice(2);
@@ -55,7 +78,8 @@ async function main() {
   console.log(`${BOLD}${CYAN}║     GrowthOS — Suite de Tests E2E            ║${RESET}`);
   console.log(`${BOLD}${CYAN}╚══════════════════════════════════════════════╝${RESET}`);
   console.log(`${DIM}  Serveur API : ${process.env.API_BASE ?? "http://localhost:8080/api/v1"}${RESET}`);
-  console.log(`${DIM}  Démarré     : ${new Date().toLocaleString("fr-FR")}${RESET}\n`);
+  console.log(`${DIM}  Démarré     : ${new Date().toLocaleString("fr-FR")}${RESET}`);
+  console.log(`${DIM}  Suites      : ${SUITES.length} suites enregistrées${RESET}\n`);
 
   const suitesToRun = onlySuites.length > 0
     ? SUITES.filter((s) => onlySuites.includes(s.name))
@@ -87,15 +111,19 @@ async function main() {
       ? Math.round((r.passed / (r.passed + r.failed)) * 100)
       : 100;
     console.log(
-      `  ${icon} ${r.suiteName.padEnd(28)} ${String(r.passed).padStart(3)}/${r.passed + r.failed} tests  ${DIM}(${r.duration}ms)${RESET}`,
+      `  ${icon} ${r.suiteName.padEnd(34)} ${String(r.passed).padStart(3)}/${r.passed + r.failed} tests  ${DIM}(${r.duration}ms)${RESET}`,
     );
   }
 
   console.log(`\n${BOLD}══════════════════════════════════════${RESET}`);
-  const rateColor = passRate >= 80 ? GREEN : passRate >= 60 ? YELLOW : RED;
+  const rateColor = passRate >= 90 ? GREEN : passRate >= 75 ? YELLOW : RED;
   console.log(
     `  ${BOLD}Total : ${rateColor}${totalPassed}/${totalTests} tests passés (${passRate}%)${RESET}  ${DIM}durée: ${totalDuration}ms${RESET}`,
   );
+
+  // ── Couverture API (endpoint count)
+  const suiteCount = allResults.length;
+  console.log(`\n${DIM}  Suites exécutées : ${suiteCount}/${SUITES.length}${RESET}`);
 
   if (totalFailed > 0) {
     console.log(`\n${RED}${BOLD}Tests échoués :${RESET}`);

@@ -14,6 +14,10 @@ export interface CommandOverview {
   topSignals: { id: string; company: string; title: string; type: string; score: number; detectedAt: string }[];
   recentWins: { title: string; company: string | null; value: number; closedAt: string }[];
   pluginActivity: { pluginId: string; pluginName: string; action: string; createdAt: string }[];
+  // ── E-Réputation integration fields
+  averageReputationScore: number;
+  activeReputationAlerts: number;
+  reputationCrisisCount: number;
 }
 
 export interface AssistantResponse {
@@ -24,7 +28,7 @@ export interface AssistantResponse {
 
 class ExecutiveService {
   async getCommandOverview(tenantId: string): Promise<CommandOverview> {
-    const [kpis, health, signals, wins, auditLogs] = await Promise.all([
+    const [kpis, health, signals, wins, auditLogs, erepMetrics] = await Promise.all([
       revenueService.getCoreKPIs(tenantId).catch(() => null),
       dealCoachService.getPipelineHealth(tenantId).catch(() => null),
       pool.query<{ id: string; company: string; title: string; type: string; score: number; detected_at: string }>(
@@ -49,10 +53,28 @@ class ExecutiveService {
          ORDER BY created_at DESC
          LIMIT 6`,
       ).catch(() => ({ rows: [] as any[] })),
+      // ── E-Réputation metrics
+      pool.query<{ avg_score: string; active_alerts: string; crisis_count: string }>(
+        `SELECT
+           COALESCE(AVG(c.reputation_score), 50)::int        AS avg_score,
+           COALESCE((
+             SELECT COUNT(*) FROM erep_alerts
+             WHERE tenant_id = $1 AND is_resolved = false
+           ), 0)::int                                        AS active_alerts,
+           COALESCE((
+             SELECT COUNT(*) FROM erep_alerts
+             WHERE tenant_id = $1 AND is_resolved = false AND severity = 'high'
+           ), 0)::int                                        AS crisis_count
+         FROM erep_campaigns c
+         WHERE c.tenant_id = $1 AND c.status = 'active'`,
+        [tenantId],
+      ).catch(() => ({ rows: [{ avg_score: "50", active_alerts: "0", crisis_count: "0" }] as any[] })),
     ]);
 
     const forecast = kpis ? await revenueService.getForecast(tenantId).catch(() => []) : [];
     const forecast90 = forecast.find(f => f.period === "90d")?.weightedValue ?? 0;
+
+    const erep = erepMetrics.rows[0] ?? { avg_score: "50", active_alerts: "0", crisis_count: "0" };
 
     return {
       totalActiveDeals: health?.totalDeals ?? 0,
@@ -82,6 +104,10 @@ class ExecutiveService {
         action: l.action,
         createdAt: l.created_at,
       })),
+      // ── E-Réputation
+      averageReputationScore: parseInt(erep.avg_score ?? "50", 10),
+      activeReputationAlerts: parseInt(erep.active_alerts ?? "0", 10),
+      reputationCrisisCount: parseInt(erep.crisis_count ?? "0", 10),
     };
   }
 

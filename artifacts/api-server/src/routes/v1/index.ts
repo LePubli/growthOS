@@ -43,6 +43,7 @@ import billingRouter from "./billing";
 import billingWebhookRouter from "./billing-webhook";
 import integrationsRouter from "./integrations";
 import publicApiRouter from "./public-api";
+import clientEreputationRouter from "./client-ereputation";
 
 const router = Router();
 
@@ -91,5 +92,10 @@ router.use("/compliance",         requireAuth, requireTenant, complianceRouter);
 router.use("/sso",                requireAuth, requireTenant, ssoRouter);
 router.use("/billing",            requireAuth, requireTenant, billingRouter);
 router.use("/integrations",       requireAuth, requireTenant, integrationsRouter);
+
+// ── PORTAIL CLIENT — E-Réputation ────────────────────────────────────────────
+// Auth is handled inside the router (requireAuth + requireRole)
+// No requireTenant here: client tokens are tenant-scoped via JWT
+router.use("/client/ereputation", clientEreputationRouter);
 
 export default router;

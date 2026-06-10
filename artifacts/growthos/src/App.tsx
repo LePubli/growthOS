@@ -79,6 +79,11 @@ import SSOConfigPage from '@/pages/settings/SSOConfigPage';
 import APIDocsPage from '@/pages/APIDocsPage';
 import ProductAnalyticsPage from '@/pages/ProductAnalyticsPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ClientShell } from '@/plugins/client-portal/ClientShell';
+import ClientDashboardPage from '@/plugins/client-portal/ClientDashboardPage';
+import ClientCampaignsPage from '@/plugins/client-portal/ClientCampaignsPage';
+import ClientApprovalsPage from '@/plugins/client-portal/ClientApprovalsPage';
+import ClientReportsPage from '@/plugins/client-portal/ClientReportsPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -329,6 +334,20 @@ function AppRoutes() {
       </Route>
       <Route path="/analytics/product">
         {() => <DashboardLayout><ProductAnalyticsPage /></DashboardLayout>}
+      </Route>
+
+      {/* ── Portail Client E-Réputation ─────────────────────────────────── */}
+      <Route path="/client/ereputation/campaigns">
+        {() => <RequireAuth><ClientShell><ClientCampaignsPage /></ClientShell></RequireAuth>}
+      </Route>
+      <Route path="/client/ereputation/approvals">
+        {() => <RequireAuth><ClientShell><ClientApprovalsPage /></ClientShell></RequireAuth>}
+      </Route>
+      <Route path="/client/ereputation/reports">
+        {() => <RequireAuth><ClientShell><ClientReportsPage /></ClientShell></RequireAuth>}
+      </Route>
+      <Route path="/client/ereputation">
+        {() => <RequireAuth><ClientShell><ClientDashboardPage /></ClientShell></RequireAuth>}
       </Route>
 
       <Route>

@@ -5,19 +5,7 @@ import { enrichProspect, getEnrichmentData, getEnrichmentHistory, ALL_SOURCES } 
 
 const router = Router();
 
-/* POST /enrich/:prospectId — enrich a single prospect */
-router.post("/:prospectId", requireAuth, async (req, res) => {
-  const { prospectId } = req.params;
-  const tenantId = req.auth!.tenantId;
-  try {
-    const result = await enrichProspect(prospectId, tenantId);
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message ?? "Enrichment failed" });
-  }
-});
-
-/* POST /enrich-batch — enrich multiple prospects (fire and forget with SSE progress) */
+/* POST /enrich/batch — enrich multiple prospects (must be registered BEFORE /:prospectId) */
 router.post("/batch", requireAuth, async (req, res) => {
   const { prospectIds } = req.body as { prospectIds: string[] };
   const tenantId = req.auth!.tenantId;
@@ -25,7 +13,6 @@ router.post("/batch", requireAuth, async (req, res) => {
     res.status(400).json({ error: "prospectIds must be a non-empty array" });
     return;
   }
-  // Kick off enrichment asynchronously
   const results: { id: string; score?: number; error?: string }[] = [];
   (async () => {
     for (const id of prospectIds) {
@@ -39,6 +26,19 @@ router.post("/batch", requireAuth, async (req, res) => {
   })().catch(() => {});
   res.json({ accepted: prospectIds.length, message: "Enrichissement en cours en arrière-plan" });
 });
+
+/* POST /enrich/:prospectId — enrich a single prospect */
+router.post("/:prospectId", requireAuth, async (req, res) => {
+  const { prospectId } = req.params;
+  const tenantId = req.auth!.tenantId;
+  try {
+    const result = await enrichProspect(prospectId, tenantId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message ?? "Enrichment failed" });
+  }
+});
+
 
 /* GET /enrich/data/:prospectId — get enriched data */
 router.get("/data/:prospectId", requireAuth, async (req, res) => {

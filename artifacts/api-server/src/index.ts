@@ -1,7 +1,8 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration } from "@workspace/db";
+import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
+import { registerErepIntegrations } from "./lib/integrations/erep-integrations";
 
 const rawPort = process.env["PORT"];
 
@@ -27,7 +28,13 @@ runMigrations()
     await runSaaSMigration();
     logger.info("SaaS tables ready (billing, mentions, webhook_logs, analytics_events)");
 
+    await runErepIntegrationsMigration();
+    logger.info("E-Rep integration tables ready (erep_alerts, erep_approvals, accounts.reputation_health_score)");
+
     await seedBuiltInPlugins();
+
+    // ── Register cross-plugin EventBus integrations
+    registerErepIntegrations();
 
     app.listen(port, (err) => {
       if (err) {

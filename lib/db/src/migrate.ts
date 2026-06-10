@@ -532,6 +532,62 @@ export async function runEreputationMigration(): Promise<void> {
   await pool.query(SQL_EREPUTATION);
 }
 
+const SQL_EREP_INTEGRATIONS = `
+-- Alerts E-Rep persistées par l'EventBus
+CREATE TABLE IF NOT EXISTS erep_alerts (
+  id          UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID      REFERENCES erep_campaigns(id) ON DELETE CASCADE,
+  tenant_id   UUID      NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  type        TEXT      NOT NULL DEFAULT 'warning'
+              CHECK (type IN ('crisis','warning','score_drop','serp_drop')),
+  severity    TEXT      NOT NULL DEFAULT 'medium'
+              CHECK (severity IN ('high','medium','low')),
+  title       TEXT      NOT NULL,
+  description TEXT,
+  score       INTEGER   DEFAULT 50,
+  is_resolved BOOLEAN   NOT NULL DEFAULT false,
+  created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_erep_alerts_tenant   ON erep_alerts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_erep_alerts_campaign ON erep_alerts(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_erep_alerts_resolved ON erep_alerts(is_resolved);
+
+-- Colonne reputation_health_score sur accounts (ajout conditionnel — la table accounts
+-- est créée dans runEreputationMigration ou runMigrations selon l'environnement)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'accounts'
+  ) THEN
+    ALTER TABLE accounts ADD COLUMN IF NOT EXISTS reputation_health_score INTEGER DEFAULT 50;
+  END IF;
+END
+$$;
+
+-- Portail client : contenu en attente d'approbation
+CREATE TABLE IF NOT EXISTS erep_approvals (
+  id            UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id   UUID      REFERENCES erep_campaigns(id) ON DELETE CASCADE,
+  tenant_id     UUID      NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  post_id       UUID      REFERENCES erep_content_posts(id) ON DELETE CASCADE,
+  submitted_by  UUID      REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_by   UUID      REFERENCES users(id) ON DELETE SET NULL,
+  status        TEXT      NOT NULL DEFAULT 'pending_approval'
+                CHECK (status IN ('pending_approval','approved','rejected','scheduled')),
+  reviewer_note TEXT,
+  created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_erep_approvals_tenant   ON erep_approvals(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_erep_approvals_campaign ON erep_approvals(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_erep_approvals_status   ON erep_approvals(status);
+`;
+
+export async function runErepIntegrationsMigration(): Promise<void> {
+  await pool.query(SQL_EREP_INTEGRATIONS);
+}
+
 const SQL_TASKS = `
 CREATE TABLE IF NOT EXISTS tasks (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

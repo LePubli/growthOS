@@ -53,7 +53,7 @@ router.post("/login", async (req, res) => {
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, user.tenantId)).limit(1);
 
-  const payload: AuthPayload = { userId: user.id, tenantId: user.tenantId, email: user.email };
+  const payload: AuthPayload = { userId: user.id, tenantId: user.tenantId, email: user.email, role: (user as any).role ?? "member" };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
 

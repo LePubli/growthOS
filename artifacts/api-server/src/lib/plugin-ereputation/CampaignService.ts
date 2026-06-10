@@ -67,8 +67,18 @@ export class CampaignService {
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [name, tenantId, targetType, targetName, targetUrl ?? null, JSON.stringify(keywords)],
     );
-    logger.info({ campaignId: rows[0].id }, "E-reputation campaign created");
-    return this.mapCampaign(rows[0]);
+    const campaign = this.mapCampaign(rows[0]);
+    logger.info({ campaignId: campaign.id }, "E-reputation campaign created");
+
+    // ── Emit campaign created event for memory indexing
+    pluginEventBus.emit("erep.campaign.created", {
+      campaignId: campaign.id,
+      tenantId: input.tenantId,
+      targetName: input.targetName,
+      targetType: input.targetType,
+    }).catch((err) => logger.warn({ err }, "Could not emit erep.campaign.created"));
+
+    return campaign;
   }
 
   async getCampaign(campaignId: string, tenantId: string): Promise<Campaign | null> {
@@ -167,6 +177,26 @@ export class CampaignService {
         [final, campaignId],
       );
     } catch { /* ignore */ }
+
+    // ── Emit score update event for cross-plugin integration
+    try {
+      const { rows: campRows } = await pool.query<{ tenant_id: string; target_name: string; reputation_score: number }>(
+        `SELECT tenant_id, target_name, reputation_score FROM erep_campaigns WHERE id = $1`,
+        [campaignId],
+      );
+      if (campRows[0]) {
+        const previousScore = campRows[0].reputation_score ?? 50;
+        await pluginEventBus.emit("erep.score.updated", {
+          campaignId,
+          tenantId: campRows[0].tenant_id,
+          targetName: campRows[0].target_name,
+          previousScore,
+          newScore: final,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err }, "Could not emit erep.score.updated");
+    }
 
     return final;
   }

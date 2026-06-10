@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import {
   Crown, TrendingUp, Target, ShieldAlert, Zap, DollarSign, Loader2,
-  Trophy, ChevronRight, Activity, BarChart2,
+  Trophy, ChevronRight, Activity, BarChart2, Star, AlertTriangle,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { AIAssistantChat } from './AIAssistantChat';
@@ -19,6 +19,9 @@ interface CommandOverview {
   topSignals: { id: string; company: string; title: string; type: string; score: number; detectedAt: string }[];
   recentWins: { title: string; company: string | null; value: number; closedAt: string }[];
   pluginActivity: { pluginId: string; pluginName: string; action: string; createdAt: string }[];
+  averageReputationScore: number;
+  activeReputationAlerts: number;
+  reputationCrisisCount: number;
 }
 
 const SIGNAL_TYPE_COLORS: Record<string, string> = {
@@ -112,6 +115,87 @@ export default function CommandCenterPage() {
               label="Top signal" value={overview?.topSignals[0]?.company ?? '—'}
               sub={overview?.topSignals[0]?.title?.slice(0, 45) ?? 'Aucun signal récent'} href="/signals"
             />
+          </div>
+
+          {/* E-Réputation row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+            {/* Score moyen */}
+            <Link href="/ereputation" style={{ textDecoration: 'none' }}>
+              <div style={{ background: 'var(--card-bg)', border: '1.5px solid var(--card-border)', borderRadius: 16, padding: '16px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)')}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.transform = 'none')}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 10, background: 'linear-gradient(135deg,#7C3AED,#A855F7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Star size={15} color="#fff" />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>Score E-Réputation</span>
+                  </div>
+                  <ChevronRight size={13} color="var(--text-muted)" />
+                </div>
+                {(() => {
+                  const score = overview?.averageReputationScore ?? 50;
+                  const color = score >= 70 ? '#059669' : score >= 40 ? '#D97706' : '#DC2626';
+                  return (
+                    <>
+                      <div style={{ fontSize: 26, fontWeight: 900, color, marginBottom: 4 }}>{score}/100</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {score >= 70 ? '🟢 Réputation excellente' : score >= 40 ? '🟡 Réputation à surveiller' : '🔴 Réputation critique'}
+                      </div>
+                      <div style={{ marginTop: 8, height: 4, borderRadius: 4, background: 'var(--card-border)' }}>
+                        <div style={{ height: 4, borderRadius: 4, width: `${score}%`, background: color, transition: 'width 0.5s' }} />
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </Link>
+
+            {/* Alertes actives */}
+            <Link href="/ereputation" style={{ textDecoration: 'none' }}>
+              <div style={{
+                background: (overview?.activeReputationAlerts ?? 0) > 0 ? '#FEF2F2' : 'var(--card-bg)',
+                border: `1.5px solid ${(overview?.activeReputationAlerts ?? 0) > 0 ? '#FECACA' : 'var(--card-border)'}`,
+                borderRadius: 16, padding: '16px 20px', cursor: 'pointer', transition: 'all 0.15s',
+              }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)')}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.transform = 'none')}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 10, background: (overview?.activeReputationAlerts ?? 0) > 0 ? 'linear-gradient(135deg,#DC2626,#EF4444)' : 'linear-gradient(135deg,#6B7280,#9CA3AF)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <AlertTriangle size={15} color="#fff" />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>Alertes E-Rep actives</span>
+                  </div>
+                  <ChevronRight size={13} color="var(--text-muted)" />
+                </div>
+                <div style={{ fontSize: 26, fontWeight: 900, color: (overview?.activeReputationAlerts ?? 0) > 0 ? '#DC2626' : 'var(--text-primary)', marginBottom: 4 }}>
+                  {overview?.activeReputationAlerts ?? 0}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {(overview?.activeReputationAlerts ?? 0) === 0 ? 'Aucune alerte en cours ✓' : `dont ${overview?.reputationCrisisCount ?? 0} crises HIGH`}
+                </div>
+              </div>
+            </Link>
+
+            {/* Lien portail client */}
+            <Link href="/client/ereputation" style={{ textDecoration: 'none' }}>
+              <div style={{ background: 'linear-gradient(135deg,#1E1B4B 0%,#312E81 100%)', border: '1.5px solid #4338CA', borderRadius: 16, padding: '16px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)')}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.transform = 'none')}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Crown size={15} color="#fff" />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.8)' }}>Portail Client</span>
+                  </div>
+                  <ChevronRight size={13} color="rgba(255,255,255,0.6)" />
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 4 }}>E-Réputation</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Vue client · Approbations · Rapports</div>
+              </div>
+            </Link>
           </div>
 
           {/* Main grid */}

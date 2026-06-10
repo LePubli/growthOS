@@ -5,6 +5,7 @@ export interface AuthPayload {
   userId: string;
   tenantId: string;
   email: string;
+  role?: string;
 }
 
 declare global {
@@ -44,4 +45,21 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   } catch {
     res.status(401).json({ error: "Token invalide ou expiré" });
   }
+}
+
+/**
+ * Middleware RBAC : vérifie que l'utilisateur authentifié a l'un des rôles requis.
+ * Les admins (role='admin') peuvent accéder à tout.
+ * Usage : router.get("/", requireAuth, requireRole("client"), handler)
+ */
+export function requireRole(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const role = req.auth?.role ?? "member";
+    // Admins ont accès à tout
+    if (role === "admin" || roles.includes(role)) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: "Accès refusé — rôle insuffisant" });
+  };
 }
