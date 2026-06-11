@@ -35,6 +35,14 @@ function pushSSE(tenantId: string, data: Record<string, unknown>): void {
   }
 }
 
+/**
+ * Pousse un événement SSE sans persistance en DB.
+ * Utilisé pour alertes système (quota ≥80%, crise e-réputation…)
+ */
+export function pushSystemAlert(tenantId: string, alertType: string, data: Record<string, unknown>): void {
+  pushSSE(tenantId, { event: alertType, ...data });
+}
+
 export async function createNotification(input: CreateNotifInput): Promise<void> {
   try {
     const [notif] = await db.insert(notificationsTable).values({

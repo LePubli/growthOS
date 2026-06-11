@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { pool } from "@workspace/db";
+import { pushSystemAlert } from "../services/notification.service";
 
 export const PLAN_LIMITS: Record<string, Record<string, number>> = {
   starter:    { prospects: 500,   sequences: 3,  users: 2,   emails: 1000  },
@@ -14,13 +15,33 @@ export async function checkUsage(tenantId: string, resource: string): Promise<bo
 }
 
 export async function incrementUsage(tenantId: string, resource: string): Promise<void> {
-  await pool.query(
+  const result = await pool.query<{ current_usage: number; limit_value: number }>(
     `UPDATE usage_limits
      SET current_usage = current_usage + 1, updated_at = NOW()
      WHERE tenant_id = $1 AND resource = $2
-       AND period_start = date_trunc('month', NOW())`,
+       AND period_start = date_trunc('month', NOW())
+     RETURNING current_usage, limit_value`,
     [tenantId, resource],
   );
+
+  // Alerte SSE temps réel si usage ≥ 80% (seuils 80% et 95%)
+  const row = result.rows[0];
+  if (row && row.limit_value > 0) {
+    const pct = Math.round((row.current_usage / row.limit_value) * 100);
+    if (pct === 80 || pct === 95 || pct >= 100) {
+      try {
+        pushSystemAlert(tenantId, "quota.warning", {
+          resource,
+          used: row.current_usage,
+          limit: row.limit_value,
+          percent: pct,
+          message: pct >= 100
+            ? `Quota ${resource} atteint (${row.current_usage}/${row.limit_value})`
+            : `Quota ${resource} à ${pct}% (${row.current_usage}/${row.limit_value})`,
+        });
+      } catch { /* non-fatal */ }
+    }
+  }
 }
 
 export async function getUsage(

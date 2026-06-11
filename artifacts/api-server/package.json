@@ -16,7 +16,9 @@
     "audit:tenant": "tsx src/scripts/audit-tenant-routes.ts",
     "migrate:tenant": "tsx src/scripts/migrate-tenant-data.ts",
     "migrate:tenant:dry": "tsx src/scripts/migrate-tenant-data.ts --dry-run",
-    "coverage:api": "tsx src/scripts/api-coverage-dashboard.ts"
+    "coverage:api": "tsx src/scripts/api-coverage-dashboard.ts",
+    "cleanup:fake-data": "tsx src/scripts/cleanup-fake-data.ts",
+    "cleanup:fake-data:dry": "tsx src/scripts/cleanup-fake-data.ts -- --dry-run"
   },
   "dependencies": {
     "@types/adm-zip": "^0.5.8",

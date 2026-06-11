@@ -1,0 +1,56 @@
+# OBJECTIF : AGENTS IA AUTONOMES (AUTOPILOT)
+
+Tu vas créer un système d'agents IA qui agissent automatiquement en arrière-plan selon des règles définies par l'utilisateur, en respectant les limites du plan.
+
+## TÂCHE C.1 : Service Autopilot Backend
+
+1. Crée `artifacts/api-server/src/lib/autopilot/AutopilotService.ts` :
+   - `getRules(tenantId)` : Récupère les règles actives du tenant
+   - `evaluateRule(rule, context)` : Vérifie si les conditions sont remplies
+   - `executeAction(rule, context)` : Exécute l'action (envoyer email, créer tâche, alerter)
+   - `checkPlanLimit(tenantId, actionType)` : Vérifie si le plan autorise cette action auto
+
+2. Crée `artifacts/api-server/src/lib/autopilot/AgentWorker.ts` :
+   - Un worker qui écoute l'EventBus
+   - Quand un événement arrive (ex: `signal.received`, `erep.alert`), il :
+     1. Récupère les règles du tenant concerné
+     2. Évalue chaque règle
+     3. Si match + plan OK -> exécute l'action
+     4. Log l'action dans `autopilot_logs`
+
+3. Crée la migration `runAutopilotMigration()` :
+   - Table `autopilot_rules` (id, tenant_id, trigger_event, condition_json, action_type, action_config, is_active)
+   - Table `autopilot_logs` (id, tenant_id, rule_id, execution_result, created_at)
+
+## TÂCHE C.2 : Règles Prédéfinies (Templates)
+
+Implémente ces 3 règles par défaut pour chaque nouveau tenant :
+1. **"Crise Réputation"** : Si `erep.alert` avec severity='high' -> Créer une tâche urgente + Notification
+2. **"Signal Chaud"** : Si `signal.received` avec score > 85 -> Envoyer un draft email via AI SDR (sans envoyer, juste draft)
+3. **"Deal Stagnant"** : Si un deal reste 14j au même stage -> Notifier le commercial
+
+## TÂCHE C.3 : Frontend - Configuration Autopilot
+
+1. Crée `artifacts/growthos/src/pages/settings/AutopilotPage.tsx` :
+   - Liste des règles actives (toggle on/off)
+   - Bouton "Ajouter une règle" avec wizard :
+     - Étape 1 : Choisir le déclencheur (Signal, Deal, E-Rep)
+     - Étape 2 : Définir la condition (score > X, type = Y)
+     - Étape 3 : Choisir l'action (Notif, Tâche, Draft Email)
+   - Historique des exécutions (logs) avec statut (succès/échec/limité par plan)
+
+2. Ajoute la route `/settings/autopilot` dans `App.tsx` et le lien dans `AppShell`.
+
+## TÂCHE C.4 : Intégration EventBus
+
+Modifie `artifacts/api-server/src/index.ts` :
+- Initialise l'`AgentWorker` au démarrage
+- Abonne-le aux événements pertinents
+
+## RÈGLES
+1. Sécurité : Un agent ne peut JAMAIS envoyer un email réel sans validation humaine (pour l'instant, il crée juste un draft)
+2. Limits : Si le plan 'Starter' limite à 100 actions auto/mois, bloque après
+3. Logs : Chaque action auto doit être tracée pour l'audit
+4. Performance : Le worker doit être asynchrone pour ne pas bloquer l'API
+
+Commence par Tâche C.1.

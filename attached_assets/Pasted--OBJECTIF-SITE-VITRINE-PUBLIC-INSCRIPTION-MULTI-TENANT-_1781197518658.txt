@@ -1,0 +1,60 @@
+# OBJECTIF : SITE VITRINE PUBLIC & INSCRIPTION MULTI-TENANT
+
+Tu vas transformer GrowthOS pour qu'il soit accessible publiquement. Il faut ajouter des routes publiques (non protégées par JWT) pour la vente, tout en gardant l'app privée sécurisée.
+
+## TÂCHE B.1 : Routes Publiques & Landing Page
+
+1. Crée `artifacts/growthos/src/pages/public/LandingPage.tsx` :
+   - Hero section avec titre accrocheur ("GrowthOS : Le CRM IA tout-en-un")
+   - Section "Fonctionnalités" (grid avec icônes : AI SDR, Signal Intelligence, E-Réputation)
+   - Section "Tarifs" (récupère les plans depuis l'API publique `/api/v1/public/plans`)
+   - Section "Témoignages" (mockées pour l'instant)
+   - Footer avec liens légaux
+
+2. Crée `artifacts/growthos/src/pages/public/PricingPage.tsx` :
+   - Affichage détaillé des 3 plans (Starter, Pro, Enterprise)
+   - Boutons "Commencer" qui redirigent vers `/register?plan=pro`
+
+3. Crée `artifacts/growthos/src/pages/public/RegisterPage.tsx` :
+   - Formulaire : Nom entreprise, Email pro, Mot de passe, Nom du fondateur
+   - Code de parrainage (optionnel)
+   - Au submit : appelle `POST /api/v1/auth/register-public`
+
+4. Modifie `artifacts/growthos/src/App.tsx` :
+   - Ajoute les routes publiques AVANT les routes protégées :
+     - `/` -> LandingPage
+     - `/pricing` -> PricingPage
+     - `/register` -> RegisterPage
+     - `/login` -> LoginPage (existante)
+   - Si l'utilisateur est connecté et va sur `/`, redirige vers `/dashboard`
+
+## TÂCHE B.2 : Backend - Inscription Publique & Création Tenant
+
+1. Crée `artifacts/api-server/src/routes/v1/auth-public.ts` :
+   - `POST /register-public` :
+     1. Crée un nouveau `tenant` (nom = nom entreprise)
+     2. Crée le `user` (admin du tenant)
+     3. Assigne le rôle 'admin' au user
+     4. Crée une `subscription` avec le plan choisi (ou 'starter' par défaut)
+     5. Si code de parrainage présent, enregistre dans `referrals`
+     6. Retourne le JWT pour login auto
+
+2. Crée `artifacts/api-server/src/routes/v1/public.ts` :
+   - `GET /plans` : Retourne les plans actifs (sans les infos sensibles)
+   - `GET /health` : Status public de l'API
+
+3. Monte ces routes dans `index.ts` AVANT le middleware `requireAuth`.
+
+## TÂCHE B.3 : Blog SEO (Basique)
+
+1. Crée `artifacts/growthos/src/pages/public/BlogPage.tsx` :
+   - Liste d'articles (mockés pour l'instant, structure prête pour un CMS headless)
+   - Route `/blog` et `/blog/:slug`
+
+## RÈGLES
+1. Les routes publiques ne doivent JAMAIS exiger de JWT
+2. L'inscription doit créer un tenant isolé (multi-tenancy)
+3. Design : utilise Tailwind, reste cohérent avec le reste de l'app
+4. Mobile-first pour la landing page
+
+Commence par Tâche B.1.

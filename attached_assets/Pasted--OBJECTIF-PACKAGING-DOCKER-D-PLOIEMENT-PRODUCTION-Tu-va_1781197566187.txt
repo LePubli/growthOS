@@ -1,0 +1,68 @@
+# OBJECTIF : PACKAGING DOCKER & DÉPLOIEMENT PRODUCTION
+
+Tu vas containeriser GrowthOS pour qu'il soit prêt pour la production.
+
+## TÂCHE D.1 : Dockerisation
+
+1. Crée `artifacts/api-server/Dockerfile` :
+   - Base : `node:20-alpine`
+   - Multi-stage : build TypeScript -> production
+   - Expose port 3001
+   - Healthcheck : `curl -f http://localhost:3001/healthz`
+
+2. Crée `artifacts/growthos/Dockerfile` :
+   - Base : `node:20-alpine`
+   - Build Vite -> Nginx alpine pour servir les fichiers statiques
+   - Config Nginx pour le SPA routing (try_files $uri /index.html)
+   - Expose port 80
+
+3. Crée `docker-compose.yml` à la racine :
+   - Services :
+     - `postgres` (image postgres:16, volumes pour data)
+     - `redis` (image redis:alpine)
+     - `api` (build ./artifacts/api-server, depends_on postgres/redis)
+     - `frontend` (build ./artifacts/growthos, depends_on api)
+   - Networks : `growthos-net`
+   - Volumes : `pgdata`
+
+## TÂCHE D.2 : Gestion des Variables d'Environnement
+
+1. Crée `.env.example` à la racine avec TOUS les variables nécessaires :
+   - DB : `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+   - Redis : `REDIS_URL`
+   - Auth : `JWT_SECRET`, `JWT_REFRESH_SECRET`
+   - IA : `OPENAI_API_KEY`, `OLLAMA_BASE_URL`
+   - Stripe : `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
+   - App : `FRONTEND_URL`, `API_URL`
+
+2. Modifie le code pour qu'il lise ces variables (utilise `dotenv` dans l'API, `import.meta.env` dans le frontend avec préfixe `VITE_`).
+
+## TÂCHE D.3 : Script de Backup Base de Données
+
+1. Crée `scripts/backup-db.sh` :
+   - Dump PostgreSQL avec `pg_dump`
+   - Compression gzip
+   - Stockage local dans `/backups/` avec date
+   - Option pour envoyer vers S3 (commentée pour l'instant)
+
+2. Crée `scripts/restore-db.sh` :
+   - Restaure un dump dans la DB
+
+3. Ajoute un cron job dans le docker-compose pour backup quotidien à 3h du matin.
+
+## TÂCHE D.4 : Documentation de Déploiement
+
+1. Crée `DEPLOYMENT.md` à la racine :
+   - Prérequis (Docker, Docker Compose, Domaine)
+   - Installation : `docker compose up -d`
+   - Configuration SSL avec Traefik ou Caddy (exemple de config)
+   - Mise à jour : `docker compose pull && docker compose up -d`
+   - Backup/Restore
+
+## RÈGLES
+1. Les images Docker doivent faire < 500MB (utilise alpine)
+2. Ne jamais commiter le fichier `.env` (ajoute-le au .gitignore)
+3. Le frontend doit pouvoir changer l'URL de l'API via variable d'env (pour la prod)
+4. Healthchecks obligatoires sur tous les services
+
+Commence par Tâche D.1.
