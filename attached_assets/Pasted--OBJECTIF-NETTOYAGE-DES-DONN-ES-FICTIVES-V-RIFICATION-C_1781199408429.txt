@@ -1,0 +1,58 @@
+# OBJECTIF : NETTOYAGE DES DONNÉES FICTIVES & VÉRIFICATION CRUD RÉEL
+
+## TÂCHE 6.1 : Script de Nettoyage
+
+Crée `artifacts/api-server/src/scripts/cleanup-fake-data.ts` :
+- Supprime prospects avec email @example.com ou nom "Test*"
+- Supprime comptes avec domain @example.com ou name "Test*"
+- Supprime deals avec title "Test*"
+- Supprime signaux avec company="" (vide)
+- Log le nombre de lignes supprimées par table
+- Ajoute commande dans package.json : `"cleanup:fake-data": "tsx src/scripts/cleanup-fake-data.ts"`
+
+## TÂCHE 6.2 : Vérification CRUD Réel par Module
+
+Pour CHAQUE module ci-dessous, vérifie que le CRUD est 100% réel (pas de mock) :
+
+**Prospects** (`src/routes/v1/prospects.ts`) :
+- POST crée en DB avec tenant_id
+- GET lit depuis DB avec filtre tenant_id
+- PATCH modifie en DB (vérifie ownership tenant)
+- DELETE supprime en DB (vérifie ownership tenant)
+
+**Accounts** (`src/routes/v1/accounts.ts`) :
+- CRUD complet réel
+- Health Score calculé dynamiquement
+- Contacts associés = vrais prospects liés
+
+**Deals/Pipeline** (`src/routes/v1/pipeline.ts`) :
+- CRUD complet réel
+- Drag & drop kanban → PATCH avec nouveau stage
+- Health Score Deal Coach calculé en temps réel
+
+**Séquences** (`src/routes/v1/sequences.ts`) :
+- Création réelle avec étapes configurables
+- Activation/désactivation réelle (toggle is_active)
+- Tracking événements réel
+
+**Workflows** (`src/routes/v1/workflows.ts`) :
+- Création réelle avec déclencheurs et actions
+- Journal d'exécution = vraies logs DB
+
+**Webhooks** (`src/routes/v1/webhooks.ts`) :
+- CRUD complet réel
+- Livraison réelle avec signature HMAC
+- Logs d'envoi = vraies entrées DB
+
+Si un module utilise encore des mocks, remplace-les par de vraies requêtes DB.
+
+## TÂCHE 6.3 : Tests de Non-Régression
+
+Lance `pnpm test:e2e` et vérifie que les 289 tests existants passent toujours.
+
+## RÈGLES
+1. Zéro mock : si une page affiche des données, elles viennent de PostgreSQL
+2. Multi-tenancy : aucune fuite de données entre tenants
+3. Relations réelles : signaux liés à comptes, deals liés à accounts
+
+Commence par Tâche 6.1 (Script de nettoyage).
