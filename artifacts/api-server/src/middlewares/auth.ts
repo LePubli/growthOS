@@ -52,10 +52,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
  * Les admins (role='admin') peuvent accéder à tout.
  * Usage : router.get("/", requireAuth, requireRole("client"), handler)
  */
+/** Normalise le rôle "owner" en "admin" pour rétrocompatibilité. */
+export function normalizeRole(role?: string): string {
+  if (role === "owner") return "admin";
+  return role ?? "member";
+}
+
 export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const role = req.auth?.role ?? "member";
-    // Admins ont accès à tout
+    const role = normalizeRole(req.auth?.role);
+    // Admins (et "owner" normalisé en admin) ont accès à tout
     if (role === "admin" || roles.includes(role)) {
       next();
       return;

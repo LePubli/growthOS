@@ -8,10 +8,14 @@ import { registerSSEClient } from "../../services/notification.service";
 const router = Router();
 
 router.get("/stream", requireAuth, (req, res) => {
+  // Bug #3 : requireAuth supporte déjà Bearer header ET ?token= query param.
+  // Le SSE (EventSource) ne peut pas envoyer des headers custom depuis le navigateur —
+  // passer le token via ?token=<jwt> dans l'URL de l'EventSource.
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.flushHeaders();
 
   res.write(`: connected\n\n`);

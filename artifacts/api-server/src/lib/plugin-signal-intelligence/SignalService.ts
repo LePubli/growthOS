@@ -122,8 +122,9 @@ class SignalService {
   }
 
   async generateForAllAccounts(tenantId: string): Promise<Signal[]> {
+    // Bug #5 fix: filtrer aussi les company vides ('')
     const companiesRes = await pool.query<{ company: string }>(
-      `SELECT DISTINCT company FROM prospects WHERE tenant_id = $1 AND company IS NOT NULL LIMIT 10`,
+      `SELECT DISTINCT company FROM prospects WHERE tenant_id = $1 AND company IS NOT NULL AND TRIM(company) != '' LIMIT 10`,
       [tenantId],
     );
 

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { db } from "@workspace/db";
 import { usersTable, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { signAccessToken, signRefreshToken, JWT_REFRESH_SECRET, type AuthPayload } from "../../middlewares/auth";
+import { signAccessToken, signRefreshToken, JWT_REFRESH_SECRET, normalizeRole, type AuthPayload } from "../../middlewares/auth";
 
 const router = Router();
 
@@ -53,7 +53,8 @@ router.post("/login", async (req, res) => {
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, user.tenantId)).limit(1);
 
-  const payload: AuthPayload = { userId: user.id, tenantId: user.tenantId, email: user.email, role: (user as any).role ?? "member" };
+  // Bug #1 fix: normaliser "owner" → "admin" pour compatibilité RBAC
+  const payload: AuthPayload = { userId: user.id, tenantId: user.tenantId, email: user.email, role: normalizeRole((user as any).role) };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
 
@@ -98,11 +99,12 @@ router.post("/register", async (req, res) => {
     passwordHash,
     firstName: firstName || null,
     lastName: lastName || null,
-    role: "owner",
+    role: "admin",
     tenantId: tenant.id,
   }).returning();
 
-  const payload: AuthPayload = { userId: user.id, tenantId: tenant.id, email: user.email };
+  // Bug #1 & #6 fix: inclure le rôle dans le payload JWT dès l'inscription
+  const payload: AuthPayload = { userId: user.id, tenantId: tenant.id, email: user.email, role: "admin" };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
 

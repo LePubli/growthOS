@@ -10,8 +10,9 @@ export function requirePermission(permission: string) {
     const auth = req.auth;
     if (!auth) { res.status(401).json({ error: "Non authentifié" }); return; }
 
-    // Les admins ont toujours toutes les permissions
+    // Les admins (et "owner" normalisé) ont toujours toutes les permissions
     if (auth.role === "admin" || auth.role === "owner") { next(); return; }
+    // Note: "owner" est normalisé en "admin" par normalizeRole() dans requireRole()
 
     try {
       const ok = await rbacService.hasPermission(auth.userId, permission);

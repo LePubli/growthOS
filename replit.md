@@ -115,6 +115,19 @@ GrowthOS couvre les fonctionnalités suivantes :
 - StatusBadge Deep Audit : vert 200-304, orange 401/403, rouge 404/500/ERR
 - Imports lucide-react explicites (pas de barrel imports)
 
+## Bugfixes Production (juin 2026)
+
+- **RBAC owner/admin** : `normalizeRole()` dans `middlewares/auth.ts` — `"owner"` → `"admin"`. `/register` crée les users avec `role: "admin"`. Script migration : `pnpm run fix:owner-role`.
+- **AI SDR /status** : Retourne un statut dégradé `{ available: false, status: "degraded" }` au lieu de 500 si Ollama déconnecté.
+- **SSE Notifications 401** : `requireAuth` accepte `?token=<jwt>` query param. Pattern frontend : `new EventSource(\`/notifications/stream?token=${token}\`)`.
+- **Route Audit 404** : L'audit `/route-audit/scan` normalise les chemins avec le préfixe `/api/v1`.
+- **Signals company vide** : `SignalService.generateForAllAccounts` filtre `TRIM(company) != ''`.
+- **Refresh JWT role** : `/register` inclut le rôle dans le payload JWT (corrige les refresh tokens sans rôle).
+
+## Test Watch
+
+- `pnpm --filter @workspace/api-server run test:watch` — relance automatiquement les suites affectées quand un fichier change.
+
 ## Gotchas
 
 - **Migration TTY** : `drizzle-kit push` nécessite un terminal interactif. Toujours ajouter une fonction `runXxxMigration()` dans `migrate.ts` et l'appeler dans `index.ts` au démarrage.

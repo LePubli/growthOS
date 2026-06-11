@@ -20,7 +20,9 @@
     "cleanup:fake-data": "tsx src/scripts/cleanup-fake-data.ts",
     "cleanup:fake-data:dry": "tsx src/scripts/cleanup-fake-data.ts -- --dry-run",
     "seed:demo": "tsx src/scripts/cleanup-fake-data.ts && tsx src/db/seed-realistic-data.ts",
-    "test:report": "tsx src/scripts/test-coverage-report.ts"
+    "test:report": "tsx src/scripts/test-coverage-report.ts",
+    "test:watch": "tsx src/scripts/test-watch.ts",
+    "fix:owner-role": "tsx src/scripts/fix-owner-role.ts"
   },
   "dependencies": {
     "@types/adm-zip": "^0.5.8",

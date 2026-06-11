@@ -1,0 +1,100 @@
+Impact : Toutes les routes /api/v1/admin/* retournent 403 Forbidden :
+GET /api/v1/admin/users → 403 ❌
+GET /api/v1/admin/roles → 403 ❌
+GET /api/v1/admin/permissions → 403 ❌
+GET /api/v1/admin/plans → 403 ❌
+GET /api/v1/admin/tenants → 403 ❌
+GET /api/v1/admin/audit-logs → 403 ❌
+GET /api/v1/admin/api-keys → 403 ❌
+GET /api/v1/admin/quotas → 403 ❌
+Cause : L'utilisateur admin a le rôle owner dans le JWT, mais le middleware RBAC attend admin.
+Solutions à appliquer :
+Modifier artifacts/api-server/src/routes/v1/auth.ts :
+Dans la route POST /login, normaliser le rôle :
+typescript
+1
+Utiliser normalizedRole dans le payload JWT
+Modifier artifacts/api-server/src/middlewares/rbac.ts :
+Accepter aussi le rôle 'owner' comme équivalent à 'admin' :
+typescript
+123
+Créer un script de migration artifacts/api-server/src/scripts/fix-owner-role.ts :
+typescript
+123
+Ajouter la commande dans package.json : "fix:owner-role": "tsx src/scripts/fix-owner-role.ts"
+Exécuter le script après création
+BUG #2 : AI SDR Status 500
+Preuve dans les logs :
+12
+Cause : Le service Ollama n'est pas connecté ou le mock LLM crash sans gestion d'erreur.
+Solution :
+Modifier artifacts/api-server/src/routes/v1/ai-sdr.ts :
+Ajouter un try/catch complet autour de la vérification Ollama
+Si Ollama n'est pas connecté, retourner un statut dégradé au lieu de crasher :
+typescript
+1234567891011121314151617181920212223242526
+🐛 BUG #3 : Notifications Stream 401
+Preuve dans les logs :
+1
+Cause : Le token JWT n'est pas passé correctement au endpoint SSE (Server-Sent Events).
+Solution :
+Modifier artifacts/api-server/src/routes/v1/notifications.ts :
+Le endpoint SSE doit accepter le token via query param OU header Authorization :
+typescript
+1234567891011121314
+🐛 BUG #4 : Route Audit scanne les mauvaises routes (404 en masse)
+Preuve dans les logs : Des centaines de 404 sur /api/* au lieu de /api/v1/* :
+12345
+Cause : Le script de scan ne filtre pas par préfixe /api/v1/ et scanne aussi des routes qui n'existent pas.
+Solution :
+Modifier artifacts/api-server/src/routes/v1/route-audit.ts :
+Filtrer les routes pour ne retourner QUE celles avec le préfixe /api/v1/ :
+typescript
+12345678910111213141516171819202122232425262728293031
+🐛 BUG #5 : Signaux avec company="" vide
+Preuve dans les logs :
+json
+123
+Cause : Le générateur de signaux mock ne remplit pas le champ company.
+Solution :
+Modifier artifacts/api-server/src/routes/v1/signals.ts :
+Dans la route POST /generate, assurer que le champ company est toujours rempli avec une vraie entreprise :
+typescript
+1234567
+BUG #6 : Refresh Token ne préserve pas le rôle
+Preuve dans les logs :
+1
+Cause : Le handler de refresh token ne copie pas le rôle de l'ancien token vers le nouveau.
+Solution :
+Modifier artifacts/api-server/src/routes/v1/auth.ts :
+Dans la route POST /refresh, décoder l'ancien token pour récupérer le rôle
+Inclure le rôle dans le payload du nouveau token : { userId, tenantId, email, role: decodedToken.role }
+Vérifier que le refresh token contient bien toutes les infos nécessaires
+🧪 TESTS DE VALIDATION OBLIGATOIRES
+Après corrections, vérifier que :
+Test RBAC :
+bash
+123
+Test AI SDR Status :
+bash
+12
+Test Notifications Stream :
+bash
+12
+Test Route Audit :
+bash
+123
+Test Signaux :
+bash
+123
+Test Refresh Token :
+bash
+12
+RÈGLES STRICTES
+Ne casse AUCUNE fonctionnalité existante : Les 289 tests E2E doivent continuer à passer
+Rétrocompatibilité : Les corrections doivent fonctionner avec l'existant
+Logs structurés : Logger chaque correction appliquée
+Exécution : Exécuter le script fix-owner-role après avoir créé le fichier
+Redémarrage : Redémarrer l'API server après toutes les modifications
+Validation : Prendre un screenshot de l'UI admin après corrections pour vérifier que les pages admin fonctionnent
+Commence par le Bug #1 (RBAC owner/admin) car c'est le plus bloquant, puis enchaîne sur les autres.

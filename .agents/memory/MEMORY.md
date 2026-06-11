@@ -6,3 +6,4 @@
 - [GrowthOS RBAC](growthos-rbac.md) — Tables rbac_roles/permissions/user_roles; 4 rôles système; 45 permissions; UsersPage /admin/users; SSE notifications via notification.service.ts; seed password = demo1234
 - [GrowthOS SaaS Enterprise Phases](growthos-saas-phases.md) — Phases 1-4 : Billing+Stripe sans SDK, mentions, WebhookService HMAC, ApiKeyService rate-limit, ProductAnalytics, IntegrationsPage
 - [GrowthOS E2E Test Conventions](growthos-e2e-conventions.md) — 356 tests / 39 suites 100%; route-audit endpoint = /route-audit/scan; plugins list = /plugins/active; tenants table sans updated_at
+- [GrowthOS Auth Bugs](growthos-auth-bugs.md) — 6 bugs prod corrigés: owner→admin RBAC, AI SDR dégradé, SSE ?token=, route-audit prefix, signals company vide, refresh role

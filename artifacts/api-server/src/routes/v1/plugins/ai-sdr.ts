@@ -11,13 +11,20 @@ const DraftSchema = z.object({
   tone:      z.enum(["formal", "casual", "friendly"]).optional().default("friendly"),
 });
 
-// GET /ai-sdr/status — check Ollama availability
+// GET /ai-sdr/status — check Ollama availability (Bug #2 fix: retour dégradé au lieu de crash)
 router.get("/status", requireAuth, async (_req, res) => {
   try {
     const status = await aiSDRService.checkOllamaStatus();
     res.json(status);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    const msg = err instanceof Error ? err.message : "Service unavailable";
+    // Retourner un statut dégradé au lieu d'un 500
+    res.json({
+      available: false,
+      status: "degraded",
+      message: msg,
+      fallback: "Les drafts IA utiliseront des templates pré-définis.",
+    });
   }
 });
 

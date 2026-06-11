@@ -56,7 +56,8 @@ function extractFromStack(stack: any[], prefix = "", parentAuth = false): RouteE
 
 /**
  * GET /api/v1/route-audit/scan
- * Parcourt le router Express et retourne toutes les routes enregistrées.
+ * Parcourt le router Express et retourne toutes les routes /api/v1/* enregistrées.
+ * Bug #4 fix: filtre pour ne retourner QUE les routes avec le préfixe /api/v1/
  */
 router.get("/scan", requireAuth, (req, res) => {
   try {
@@ -68,9 +69,27 @@ router.get("/scan", requireAuth, (req, res) => {
 
     const routes = extractFromStack(rootStack);
 
+    // Bug #4 fix: ne garder que les routes sous /api/v1/ — écarter les routes
+    // internes Express (*, /favicon.ico, etc.) et les chemins relatifs orphelins
+    const API_PREFIX = "/api/v1";
+    const apiRoutes = routes
+      .filter((r) => {
+        // Garder les routes qui contiennent un chemin non-trivial
+        const p = r.path;
+        if (!p || p === "/") return false;
+        // Exclure les routes qui ne ressemblent pas à des routes API
+        if (p.startsWith("/*") || p === "*") return false;
+        return true;
+      })
+      .map((r) => ({
+        ...r,
+        // Normaliser le préfixe : si le chemin ne commence pas par /api, ajouter /api/v1
+        path: r.path.startsWith("/api") ? r.path : `${API_PREFIX}${r.path.startsWith("/") ? r.path : `/${r.path}`}`,
+      }));
+
     // De-duplicate (same method+path can appear multiple times due to nested routers)
     const seen = new Set<string>();
-    const unique = routes.filter((r) => {
+    const unique = apiRoutes.filter((r) => {
       const key = `${r.method}:${r.path}`;
       if (seen.has(key)) return false;
       seen.add(key);

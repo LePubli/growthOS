@@ -46,6 +46,63 @@
 - `MEMORY.md` — Mise à jour entry E2E conventions (42 suites)
 - `CHANGELOG.md` — Créé (ce fichier)
 
+### Mode Watch E2E
+
+- `artifacts/api-server/src/scripts/test-watch.ts` — surveillance `fs.watch` sur `routes/`, `tests/`, `lib/`
+- Debounce 800ms, détecte la suite affectée via `ROUTE_TO_SUITE` map
+- Commande : `pnpm --filter @workspace/api-server run test:watch [suites...]`
+
+---
+
+## [Session juin 2026 — Correctifs] — 6 Bugs Critiques Production
+
+### Bug #1 — JWT role "owner" bloquait toutes les routes /admin (CRITIQUE)
+
+**Cause** : Les nouveaux utilisateurs inscrits avaient `role: "owner"` en DB mais `requireRole("admin")` ne le reconnaissait pas.
+
+**Corrections** :
+- `middlewares/auth.ts` : ajout de `normalizeRole()` — `"owner"` → `"admin"` + export
+- `middlewares/auth.ts` `requireRole` : utilise `normalizeRole()` avant comparaison
+- `routes/v1/auth.ts` `/login` : normalise le rôle avec `normalizeRole()` dans le payload JWT
+- `routes/v1/auth.ts` `/register` : change `role: "owner"` → `role: "admin"` en DB + ajoute le rôle dans le JWT payload
+- `scripts/fix-owner-role.ts` : script de migration DB `owner` → `admin` pour les comptes existants
+- `package.json` : commande `fix:owner-role`
+
+### Bug #2 — AI SDR /status retournait 500 quand Ollama déconnecté
+
+**Cause** : Le catch retournait un 500 brutal sans contexte.
+
+**Correction** : `plugins/ai-sdr.ts` — retourne un statut dégradé `{ available: false, status: "degraded", message, fallback }` au lieu de crasher.
+
+### Bug #3 — Notifications SSE retournait 401
+
+**Cause** : `EventSource` navigateur ne peut pas envoyer de headers custom.
+
+**Correction** : `requireAuth` gérait déjà `?token=` query param. Ajout de `Access-Control-Allow-Origin: *` sur le stream et documentation du pattern `new EventSource("/stream?token=<jwt>")`.
+
+### Bug #4 — Route Audit scannait des routes sans préfixe /api/v1
+
+**Cause** : L'extracteur de stack Express retournait des chemins relatifs (`:id`, `/login`) sans le préfixe `/api/v1`.
+
+**Correction** : `route-audit.ts` — filtre les routes triviales (`/`, `/*`), normalise en ajoutant `/api/v1` aux chemins relatifs.
+
+### Bug #5 — Signaux générés avec company="" vide
+
+**Cause** : `generateForAllAccounts` ne filtrait pas `TRIM(company) != ''`.
+
+**Correction** : `SignalService.ts` — requête SQL filtre `AND TRIM(company) != ''`.
+
+### Bug #6 — Refresh token ne préservait pas le rôle (inscription)
+
+**Cause** : Le payload JWT de `/register` n'incluait pas le `role` → le refresh token héritait d'un rôle `undefined`.
+
+**Correction** : `routes/v1/auth.ts` `/register` — payload inclut explicitement `role: "admin"`.
+
+### Mode Watch E2E
+
+- `scripts/test-watch.ts` — `fs.watch` sur routes/tests/lib, debounce 800ms, auto-détection suite
+- Commande : `test:watch`
+
 ### Corrections session précédente (rappel)
 
 - Test `admin-roles` : `r.id → r.name` (comparaison par nom pas UUID)
