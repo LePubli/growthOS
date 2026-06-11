@@ -45,6 +45,11 @@ const SUITES: Array<{ name: string; file: string }> = [
   { name: "reporting",               file: "./reporting.test.ts" },
   { name: "executive",               file: "./executive.test.ts" },
 
+  // ── Admin & Analytics
+  { name: "admin-users",             file: "./admin-users.test.ts" },
+  { name: "product-analytics",       file: "./product-analytics.test.ts" },
+  { name: "client-portal",           file: "./client-portal.test.ts" },
+
   // ── Infrastructure
   { name: "notifications",           file: "./notifications.test.ts" },
   { name: "workflows",               file: "./workflows.test.ts" },

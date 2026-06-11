@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 import { registerErepIntegrations } from "./lib/integrations/erep-integrations";
+import { registerCrossPluginEvents } from "./lib/integrations/cross-plugin-events";
 
 const rawPort = process.env["PORT"];
 
@@ -35,6 +36,7 @@ runMigrations()
 
     // ── Register cross-plugin EventBus integrations
     registerErepIntegrations();
+    registerCrossPluginEvents();
 
     app.listen(port, (err) => {
       if (err) {

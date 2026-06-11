@@ -128,6 +128,134 @@ router.get("/stats", async (req, res) => {
   });
 });
 
+/* ── Analytics Overview — données réelles DB ── */
+router.get("/overview", requireAuth, async (req, res) => {
+  const tenantId = req.auth!.tenantId;
+  try {
+    const [counts, dealStages, signalTypes, taskStatus, sequences] = await Promise.all([
+      pool.query<{ prospects: string; deals: string; signals: string; tasks: string; meetings: string; activities: string }>(
+        `SELECT
+           (SELECT COUNT(*) FROM prospects   WHERE tenant_id = $1)::int AS prospects,
+           (SELECT COUNT(*) FROM deals       WHERE tenant_id = $1)::int AS deals,
+           (SELECT COUNT(*) FROM signals     WHERE tenant_id = $1)::int AS signals,
+           (SELECT COUNT(*) FROM tasks       WHERE tenant_id = $1)::int AS tasks,
+           (SELECT COUNT(*) FROM meetings    WHERE tenant_id = $1)::int AS meetings,
+           (SELECT COUNT(*) FROM activities  WHERE tenant_id = $1)::int AS activities`,
+        [tenantId],
+      ).catch(() => ({ rows: [{ prospects:"0",deals:"0",signals:"0",tasks:"0",meetings:"0",activities:"0" }] })),
+      pool.query(
+        `SELECT stage, COUNT(*)::int as count, COALESCE(SUM(value::numeric),0)::float as value
+         FROM deals WHERE tenant_id = $1 GROUP BY stage ORDER BY count DESC`,
+        [tenantId],
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT type, COUNT(*)::int as count FROM signals WHERE tenant_id = $1 GROUP BY type ORDER BY count DESC`,
+        [tenantId],
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT status, COUNT(*)::int as count FROM tasks WHERE tenant_id = $1 GROUP BY status`,
+        [tenantId],
+      ).catch(() => ({ rows: [] })),
+      pool.query<{ total: string; active: string }>(
+        `SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status = 'active')::int AS active
+         FROM sequences WHERE tenant_id = $1`,
+        [tenantId],
+      ).catch(() => ({ rows: [{ total:"0", active:"0" }] })),
+    ]);
+    const c = counts.rows[0];
+    res.json({
+      prospects: parseInt(c.prospects, 10),
+      deals: parseInt(c.deals, 10),
+      signals: parseInt(c.signals, 10),
+      tasks: parseInt(c.tasks, 10),
+      meetings: parseInt(c.meetings, 10),
+      activities: parseInt(c.activities, 10),
+      sequences: { total: parseInt(sequences.rows[0]?.total ?? "0", 10), active: parseInt(sequences.rows[0]?.active ?? "0", 10) },
+      dealsByStage: dealStages.rows,
+      signalsByType: signalTypes.rows,
+      tasksByStatus: taskStatus.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Erreur interne" });
+  }
+});
+
+/* ── Analytics Funnel — stages deals ── */
+router.get("/funnel", requireAuth, async (req, res) => {
+  const tenantId = req.auth!.tenantId;
+  const STAGES = ["lead","qualified","proposal","negotiation","won","lost"];
+  try {
+    const { rows } = await pool.query(
+      `SELECT stage, COUNT(*)::int as count, COALESCE(SUM(value::numeric),0)::float as value
+       FROM deals WHERE tenant_id = $1 GROUP BY stage`,
+      [tenantId],
+    );
+    const map = Object.fromEntries(rows.map((r: any) => [r.stage, { count: r.count, value: r.value }]));
+    res.json({ funnel: STAGES.map(s => ({ stage: s, count: map[s]?.count ?? 0, value: map[s]?.value ?? 0 })) });
+  } catch { res.status(500).json({ error: "Erreur interne" }); }
+});
+
+/* ── Analytics Usage — ressources vs limites ── */
+router.get("/usage", requireAuth, async (req, res) => {
+  const tenantId = req.auth!.tenantId;
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         (SELECT COUNT(*) FROM prospects WHERE tenant_id = $1)::int AS prospects,
+         (SELECT COUNT(*) FROM deals     WHERE tenant_id = $1)::int AS deals,
+         (SELECT COUNT(*) FROM sequences WHERE tenant_id = $1)::int AS sequences,
+         (SELECT COUNT(*) FROM signals   WHERE tenant_id = $1)::int AS signals,
+         (SELECT COUNT(*) FROM users     WHERE tenant_id = $1)::int AS users,
+         (SELECT COUNT(*) FROM tasks     WHERE tenant_id = $1)::int AS tasks`,
+      [tenantId],
+    ).catch(() => ({ rows: [{}] }));
+    const u = rows[0] ?? {};
+    const LIMITS: Record<string, number> = { prospects:10000, deals:5000, sequences:200, signals:50000, users:50, tasks:10000 };
+    res.json({
+      resources: Object.entries(LIMITS).map(([name, limit]) => ({
+        name,
+        used: parseInt(u[name] ?? "0", 10),
+        limit,
+        pct: Math.round((parseInt(u[name] ?? "0", 10) / limit) * 100),
+      })),
+    });
+  } catch { res.status(500).json({ error: "Erreur interne" }); }
+});
+
+/* ── Analytics Actions fréquentes ── */
+router.get("/actions-frequent", requireAuth, async (req, res) => {
+  const tenantId = req.auth!.tenantId;
+  try {
+    const { rows } = await pool.query(
+      `SELECT action, entity_type, COUNT(*)::int as count
+       FROM audit_logs
+       WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '30 days'
+       GROUP BY action, entity_type
+       ORDER BY count DESC
+       LIMIT 10`,
+      [tenantId],
+    ).catch(() => ({ rows: [] }));
+    res.json({ actions: rows });
+  } catch { res.status(500).json({ error: "Erreur interne" }); }
+});
+
+/* ── Analytics Entités actives ── */
+router.get("/entities-active", requireAuth, async (req, res) => {
+  const tenantId = req.auth!.tenantId;
+  try {
+    const { rows } = await pool.query(
+      `SELECT entity_type, entity_id, COUNT(*)::int as event_count, MAX(created_at) as last_event
+       FROM audit_logs
+       WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '30 days' AND entity_id IS NOT NULL
+       GROUP BY entity_type, entity_id
+       ORDER BY event_count DESC
+       LIMIT 10`,
+      [tenantId],
+    ).catch(() => ({ rows: [] }));
+    res.json({ entities: rows });
+  } catch { res.status(500).json({ error: "Erreur interne" }); }
+});
+
 /* ── Product Analytics : track frontend event ── */
 router.post("/track", requireAuth, async (req, res) => {
   const { event, properties } = req.body as { event?: string; properties?: Record<string, unknown> };

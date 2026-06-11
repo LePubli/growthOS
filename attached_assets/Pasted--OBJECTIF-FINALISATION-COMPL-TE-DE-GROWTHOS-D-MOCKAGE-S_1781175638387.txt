@@ -1,0 +1,382 @@
+# OBJECTIF : FINALISATION COMPLÈTE DE GROWTHOS - DÉ-MOCKAGE SYSTÉMATIQUE & INTERCONNEXION TOTALE
+
+GrowthOS a une architecture solide avec 35+ modules, mais la majorité des pages sont des coquilles vides : données mockées, boutons non fonctionnels, routes API 404, pas de vraies relations entre les entités. Tu dois transformer chaque page en fonctionnalité 100% opérationnelle connectée à de vraies données PostgreSQL.
+
+# ⚠️ RÈGLES CRITIQUES NON NÉGOCIABLES
+1. Ne casse AUCUNE fonctionnalité existante qui fonctionne
+2. Toutes les données doivent venir de PostgreSQL (zéro mock en UI)
+3. Multi-tenancy : toutes les tables doivent avoir tenant_id
+4. Interconnexion : chaque plugin doit communiquer avec les autres via EventBus
+5. Tests E2E obligatoires après chaque phase
+6. Boutons = actions réelles (pas de "coming soon")
+
+---
+
+# PHASE 1 : AUDIT COMPLET & DÉ-MOCKAGE SYSTÉMATIQUE
+
+## 1.1 Script d'Audit des Pages Frontend
+Crée `artifacts/growthos/src/scripts/audit-frontend.ts` qui :
+- Liste toutes les pages dans `src/pages/`
+- Pour chaque page, détecte :
+  - Données hardcodées (strings en dur, tableaux statiques)
+  - Appels API vers routes inexistantes (404)
+  - Boutons sans handler (onClick vide ou console.log)
+  - Composants avec props mockées
+- Génère un rapport : ✅ fonctionnel / ⚠️ partiel / ❌ coquille vide
+
+## 1.2 Script d'Audit des Routes API
+Crée `artifacts/api-server/src/scripts/audit-api-routes.ts` qui :
+- Liste toutes les routes déclarées dans `src/routes/v1/`
+- Pour chaque route, vérifie :
+  - Middleware requireAuth présent
+  - Middleware requireTenant présent
+  - Requête SQL réelle (pas de données mockées)
+  - Retourne les bonnes données structurées
+- Génère un rapport avec les routes à corriger
+
+## 1.3 Nettoyage des Données Fictives
+Crée `artifacts/api-server/src/scripts/cleanup-fake-data.ts` qui :
+- Supprime les prospects avec email @example.com ou nom "Test*"
+- Supprime les comptes avec domain @example.com
+- Supprime les deals avec title "Test*"
+- Supprime les signaux avec company="" (vide)
+- Log le nombre de lignes supprimées par table
+
+---
+
+# PHASE 2 : DÉ-MOCKAGE DES PAGES CRITIQUES IDENTIFIÉES
+
+## 2.1 Product Analytics (/analytics/product)
+**Problème actuel** : Routes 404 (/api/v1/analytics/overview, /api/v1/dashboard), données à 0, pas d'audit trail.
+
+**Backend - Créer routes manquantes** :
+- `GET /api/v1/analytics/overview` : Retourne stats réelles (prospects, deals, sequences, signals, tasks) depuis DB
+- `GET /api/v1/analytics/funnel` : Retourne funnel de conversion réel (stages des deals groupés)
+- `GET /api/v1/analytics/usage` : Retourne usage vs limites par ressource
+- `GET /api/v1/analytics/actions-frequent` : Retourne top 10 actions depuis audit_logs (30 derniers jours)
+- `GET /api/v1/analytics/entities-active` : Retourne top 10 entités les plus actives
+
+**Frontend - Connecter ProductAnalyticsPage** :
+- Remplacer toutes les données mockées par appels TanStack Query vers les routes ci-dessus
+- Afficher "Aucune donnée" si DB vide (pas de 0 mockés)
+- Connecter les graphiques Recharts aux vraies données
+
+## 2.2 Signal Intelligence (/signals)
+**Problème actuel** : Bouton "Générer Signaux Mock" encore présent, signaux sans relation avec prospects/comptes.
+
+**Actions** :
+- Supprimer le bouton "Générer Signaux Mock"
+- Vérifier que GET /api/v1/signals retourne les vrais signaux de la DB
+- Connecter bouton "Actionné" → PATCH /api/v1/signals/:id avec {status: 'actioned'}
+- Connecter bouton "Vue 360°" → Navigation vers /accounts/:name ou /prospects/:id réel
+- Connecter bouton "Rédiger draft" → Navigation vers /ai-sdr avec compte pré-rempli
+- S'assurer que les signaux ont company_id lié à un vrai compte
+
+## 2.3 Portail Client E-Réputation (/client/ereputation)
+**Problème actuel** : Erreur 403 pour admin, dashboard vide.
+
+**Actions** :
+- Modifier middleware pour accepter admin OU client sur routes /client/*
+- Connecter ClientDashboardPage à GET /api/v1/client/ereputation/dashboard
+- Afficher vraies campagnes, vraies alertes, vrais scores
+- Connecter workflow d'approbation : POST /approvals/:id/approve et /reject
+- S'assurer que les rapports PDF sont générés depuis vraies données
+
+## 2.4 Audit Routes (/route-audit)
+**Problème actuel** : 0 routes enregistrées, page vide.
+
+**Backend - Créer route scan** :
+- `GET /api/v1/route-audit/scan` : Scan Express router stack et retourne toutes les routes avec méthode, path, protected status
+
+**Frontend** :
+- Connecter RouteAuditPage à cette route
+- Afficher tableau complet des routes avec filtres (All/Auth/Public)
+- Bouton "Vérifier la santé" → appelle GET /api/healthz
+
+## 2.5 Audit Système (/admin/deep-audit)
+**Problème actuel** : "Aucun rapport disponible", bouton ne fait rien.
+
+**Backend - Créer route audit réel** :
+- `GET /api/v1/audit/deep` : Vérifie DB, plugins, routes, performance et retourne rapport complet
+- `POST /api/v1/audit/auto-fix` : Exécute corrections automatiques (réindexation, cache cleanup)
+
+**Frontend** :
+- Connecter bouton "Lancer l'audit" → GET /api/v1/audit/deep
+- Afficher rapport avec score, tables OK, plugins actifs, routes testées
+- Connecter bouton "Auto-fix" → POST /api/v1/audit/auto-fix
+
+---
+
+# PHASE 3 : ADMINISTRATION COMPLÈTE (CRUD RÉEL)
+
+## 3.1 Gestion des Utilisateurs (/admin/users)
+**Backend - Routes complètes** :
+- `GET /api/v1/admin/users` : Liste tous les utilisateurs avec leurs rôles
+- `POST /api/v1/admin/users` : Créer utilisateur (email, password hashé, firstName, lastName, role)
+- `PATCH /api/v1/admin/users/:id` : Modifier utilisateur
+- `DELETE /api/v1/admin/users/:id` : Supprimer (empêcher auto-suppression)
+- `POST /api/v1/admin/users/:id/roles` : Assigner rôle
+- `DELETE /api/v1/admin/users/:id/roles/:roleId` : Retirer rôle
+- `GET /api/v1/admin/roles` : Liste des rôles
+- `POST /api/v1/admin/roles` : Créer rôle custom
+- `PATCH /api/v1/admin/roles/:id` : Modifier rôle
+- `DELETE /api/v1/admin/roles/:id` : Supprimer rôle (sauf system roles)
+
+**Frontend - UsersPage complète** :
+- Tableau avec email, nom, rôle, statut, dernière connexion
+- Boutons : Modifier, Activer/Désactiver, Supprimer
+- Modal création/édition avec sélection de rôle
+- Gestion des rôles (CRUD complet)
+
+## 3.2 Gestion des Plans (/admin/plans)
+**Backend - Routes complètes** :
+- `GET /api/v1/admin/plans` : Liste tous les plans actifs
+- `POST /api/v1/admin/plans` : Créer plan (name, displayName, priceMonthly, priceYearly, features[], limits{})
+- `PATCH /api/v1/admin/plans/:id` : Modifier plan
+- `DELETE /api/v1/admin/plans/:id` : Soft delete (is_active = false)
+- `POST /api/v1/admin/users/:userId/change-plan` : Changer plan d'un utilisateur
+
+**Frontend - PlansPage complète** :
+- Liste des plans avec prix, features, limits
+- Boutons : Modifier, Supprimer, Créer nouveau plan
+- Modal création avec champs : nom, prix mensuel/annuel, features (liste), limits (JSON)
+- Section "Changer le plan d'un utilisateur" avec dropdown
+
+## 3.3 Gestion des Clés API Providers (/admin/api-keys)
+**Backend - Routes complètes** :
+- `GET /api/v1/admin/api-keys` : Liste toutes les clés du tenant (masquer api_key partiellement)
+- `POST /api/v1/admin/api-keys` : Ajouter clé (provider, apiKey, apiSecret, endpointUrl)
+- `DELETE /api/v1/admin/api-keys/:provider` : Supprimer clé
+- `POST /api/v1/admin/api-keys/:provider/test` : Tester la clé (appel réel à l'API)
+
+**Frontend - ApiKeysPage complète** :
+- Grid de cartes par provider (OpenAI, Ollama, SerpAPI, LinkedIn, Hunter.io, Clearbit, etc.)
+- Badge "Configurée" si clé présente
+- Bouton "Configurer" / "Supprimer" / "Tester"
+- Modal ajout avec sélection provider + champs clé/secret/endpoint
+- Indicateur de statut après test (✅ valide / ❌ invalide)
+
+---
+
+# PHASE 4 : INTERCONNEXION TOTALE DES PLUGINS
+
+## 4.1 EventBus - Événements Cross-Plugins
+Crée `artifacts/api-server/src/lib/integrations/cross-plugin-events.ts` qui enregistre les listeners :
+
+**Prospect créé** → 
+- Indexe dans Growth Memory
+- Déclenche workflows matching
+- Envoie webhook sortant si configuré
+
+**Deal stage changé** →
+- Met à jour Revenue Intelligence forecast
+- Déclenche workflows matching
+- Notifie commercial assigné
+- Envoie webhook sortant
+
+**Signal détecté** →
+- Crée notification temps réel
+- Déclenche workflows matching
+- Met à jour Account Health Score si lié à un compte
+
+**Audit E-Réputation terminé** →
+- Émet `erep.score.updated` → met à jour accounts.reputation_health_score
+- Émet `erep.alert` si score < 40 → crée signal dans Signal Intelligence
+- Indexe résumé dans Growth Memory
+- Notifie via SocketIO
+
+**Séquence email envoyée** →
+- Track ouverture/clic → crée activité CRM
+- Met à jour statistiques séquence
+- Déclenche étape suivante si configurée
+
+## 4.2 Account Intelligence - Health Score Unifié
+Modifie `AccountService.calculateHealthScore()` pour intégrer :
+- Activité récente (40%)
+- Engagement email (20%)
+- Progression pipeline (20%)
+- Score réputation E-Rep (10%)
+- Signaux d'intention (10%)
+
+## 4.3 Executive Command Center - Vue Consolidée
+Modifie `ExecutiveService.getOverview()` pour inclure :
+- averageReputationScore (moyenne des campagnes E-Rep actives)
+- activeReputationAlerts (nombre d'alertes E-Rep non résolues)
+- reputationCrisisCount (crises en cours)
+- Tous les KPIs des autres plugins consolidés
+
+---
+
+# PHASE 5 : VÉRIFICATION CRUD RÉEL SUR TOUS LES MODULES
+
+Pour CHAQUE module ci-dessous, vérifie et corrige pour que le CRUD soit 100% réel :
+
+## 5.1 Prospects
+- POST /api/v1/prospects → crée en DB avec tenant_id
+- GET /api/v1/prospects → lit depuis DB avec filtre tenant_id
+- PATCH /api/v1/prospects/:id → modifie en DB (vérifie ownership tenant)
+- DELETE /api/v1/prospects/:id → supprime en DB (vérifie ownership tenant)
+- Boutons UI : Créer, Modifier, Supprimer, Archiver → tous fonctionnels
+
+## 5.2 Accounts
+- CRUD complet réel
+- Health Score calculé dynamiquement
+- Contacts associés = vrais prospects liés
+- Deals en cours = vrais deals liés
+
+## 5.3 Deals/Pipeline
+- CRUD complet réel
+- Drag & drop kanban → PATCH /api/v1/deals/:id avec nouveau stage
+- Health Score Deal Coach calculé en temps réel
+- Statistiques pipeline = vraies agrégations SQL
+
+## 5.4 Séquences Email
+- Création réelle avec étapes configurables
+- Activation/désactivation réelle (toggle is_active)
+- Tracking événements réel (ouvertures, clics)
+- Statistiques = vraies agrégations
+
+## 5.5 Workflows
+- Création réelle avec déclencheurs et actions
+- Activation/désactivation réelle
+- Journal d'exécution = vraies logs DB
+- Déclenchement automatique sur événements EventBus
+
+## 5.6 Webhooks
+- CRUD complet réel (sortants et entrants)
+- Livraison réelle avec signature HMAC
+- Logs d'envoi = vraies entrées DB
+- Test de webhook = vrai appel HTTP
+
+## 5.7 E-Réputation
+- CRUD campagnes réel
+- Audit SEO/GEO = vrai calcul (même mocké mais structuré)
+- Suivi SERP = vraies positions historisées
+- Score réputation = vrai calcul pondéré
+- Gestion PBN = CRUD réel
+- Module social = planification réelle en DB
+- Analyse sentiment = vrai calcul NLP (même basique)
+
+---
+
+# PHASE 6 : TESTS E2E COMPLETS
+
+## 6.1 Suite de Tests Complète
+Crée/étends `artifacts/api-server/src/tests/` avec :
+
+- `admin-users.test.ts` : CRUD utilisateurs + rôles
+- `admin-plans.test.ts` : CRUD plans + changement plan
+- `admin-api-keys.test.ts` : CRUD clés API + test
+- `product-analytics.test.ts` : Routes analytics réelles
+- `signal-intelligence.test.ts` : Signaux liés à comptes
+- `client-portal.test.ts` : Portail client avec RBAC
+- `audit-routes.test.ts` : Scan routes API
+- `deep-audit.test.ts` : Audit système complet
+- `cross-plugin-events.test.ts` : Interconnexion plugins
+
+## 6.2 Script de Rapport de Couverture
+Crée `artifacts/api-server/src/scripts/test-coverage-report.ts` qui :
+- Exécute tous les tests
+- Génère rapport HTML avec :
+  - Nombre de tests passés/échoués par module
+  - Couverture API (routes testées vs totales)
+  - Temps d'exécution
+  - Graphiques de couverture
+
+---
+
+# PHASE 7 : NAVIGATION & UX
+
+## 7.1 Menu Latéral - Vérification Cohérence
+Vérifie que le menu actuel (visible dans les captures) est bien connecté :
+- Toutes les sections (Tableau de bord, CRM & Pipeline, Sourcing, Marketing, Marketing & Réputation, IA & Revenue, Intelligence, Équipe, Développeurs, Conformité, Système)
+- Chaque lien mène à la bonne page
+- Permissions RBAC appliquées (admin voit tout, commercial voit moins)
+
+## 7.2 Gestion des États de Chargement
+Pour chaque page :
+- Skeleton loaders pendant chargement
+- État vide avec message "Aucune donnée" + bouton "Créer"
+- État erreur avec message clair + bouton "Réessayer"
+- Toast notifications pour actions réussies/échouées
+
+## 7.3 Validation des Formulaires
+Pour chaque formulaire de création/édition :
+- Validation côté client (Zod/Yup)
+- Validation côté serveur
+- Messages d'erreur clairs
+- Prevention double-submit
+
+---
+
+# PHASE 8 : SÉCURITÉ & PERFORMANCE
+
+## 8.1 Vérification Multi-Tenancy
+Pour chaque route API :
+- requireAuth présent
+- requireTenant présent
+- Filtre tenant_id dans toutes les queries SQL
+- Test d'isolation : Tenant A ne voit pas données Tenant B
+
+## 8.2 Rate Limiting
+- Rate limiting sur routes publiques (/auth, /webhooks)
+- Rate limiting par API key
+- Headers X-RateLimit-* retournés
+
+## 8.3 Cache Redis
+- Cache des requêtes fréquentes (dashboard stats, health scores)
+- Invalidation cache après mutations
+- TTL configurables par type de donnée
+
+---
+
+# LIVRABLES ATTENDUS
+
+1. ✅ Script d'audit frontend et API (rapports complets)
+2. ✅ Données fictives nettoyées
+3. ✅ Product Analytics connecté à vraies données
+4. ✅ Signal Intelligence sans mocks
+5. ✅ Portail Client fonctionnel (admin + client)
+6. ✅ Audit Routes avec scan réel
+7. ✅ Audit Système avec rapport réel
+8. ✅ CRUD Utilisateurs complet (admin)
+9. ✅ CRUD Plans complet (admin)
+10. ✅ CRUD Clés API Providers complet
+11. ✅ Interconnexion EventBus entre tous les plugins
+12. ✅ CRUD réel sur tous les modules (Prospects, Accounts, Deals, Séquences, Workflows, Webhooks, E-Réputation)
+13. ✅ Tests E2E complets (200+ tests)
+14. ✅ Rapport de couverture HTML
+15. ✅ Menu cohérent avec permissions RBAC
+16. ✅ États de chargement/erreur/vide sur toutes les pages
+17. ✅ Validation formulaires client + serveur
+18. ✅ Multi-tenancy vérifié sur toutes les routes
+19. ✅ Rate limiting + cache Redis
+20. ✅ Documentation mise à jour (replit.md, MEMORY.md, CHANGELOG.md)
+
+---
+
+# ORDRE D'EXÉCUTION OBLIGATOIRE
+
+1. **Phase 1** : Audit complet (savoir ce qui est cassé)
+2. **Phase 2** : Dé-mockage des 5 pages critiques identifiées
+3. **Phase 3** : Administration complète (Users, Plans, API Keys)
+4. **Phase 4** : Interconnexion EventBus
+5. **Phase 5** : Vérification CRUD sur tous les modules
+6. **Phase 6** : Tests E2E
+7. **Phase 7** : Navigation & UX
+8. **Phase 8** : Sécurité & Performance
+
+---
+
+# RÈGLES STRICTES FINALES
+
+1. **Zéro tolérance aux mocks** : Si une page affiche des données, elles viennent de PostgreSQL
+2. **Boutons = Actions** : Chaque bouton déclenche une vraie requête API
+3. **Relations réelles** : Signaux liés à comptes, deals liés à accounts, activities liées à prospects
+4. **Multi-tenancy** : Aucune fuite de données entre tenants
+5. **Tests** : Chaque fonctionnalité a au moins 3 tests E2E
+6. **Logs** : Chaque action critique est loggée avec tenant_id et user_id
+7. **Performance** : Aucune requête N+1, index DB sur colonnes filtrées
+8. **Ne rien casser** : Les 289 tests existants doivent continuer à passer
+
+Commence par la Phase 1 (Audit) pour avoir une vision claire, puis attaque les phases dans l'ordre. Livre un rapport d'avancement après chaque phase.

@@ -16,7 +16,7 @@ const router = Router();
 
 // ── Auth guards (appliqués à toutes les routes de ce fichier) ───────────────
 router.use(requireAuth);
-router.use(requireRole("client", "admin", "member")); // Accessible aux membres pour démo
+router.use(requireRole("client", "admin")); // Portail réservé aux clients et admins
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  GET /client/ereputation/dashboard
@@ -305,6 +305,41 @@ router.post("/approvals", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  GET /client/ereputation/alerts
+//  Liste des alertes e-réputation actives du tenant
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/alerts", async (req, res) => {
+  const tenantId = req.auth!.tenantId;
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.id, a.campaign_id, a.type, a.severity, a.title, a.description,
+              a.score, a.is_resolved, a.created_at,
+              c.name AS campaign_name
+       FROM erep_alerts a
+       LEFT JOIN erep_campaigns c ON c.id = a.campaign_id
+       WHERE a.tenant_id = $1
+       ORDER BY a.created_at DESC
+       LIMIT 100`,
+      [tenantId],
+    );
+    res.json(rows.map(r => ({
+      id: r.id,
+      campaignId: r.campaign_id,
+      campaignName: r.campaign_name ?? null,
+      type: r.type,
+      severity: r.severity,
+      title: r.title,
+      description: r.description,
+      score: r.score,
+      isResolved: r.is_resolved,
+      createdAt: r.created_at,
+    })));
+  } catch (err) {
+    res.status(500).json({ error: "Erreur interne" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  GET /client/ereputation/reports
 //  Rapport consolidé : scores, tendances, alertes résolues
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,6 +424,54 @@ router.get("/reports", async (req, res) => {
     logger.error({ err }, "Client reports error");
     res.status(500).json({ error: "Erreur interne" });
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  GET /client/ereputation/events — SSE stream (approbations en attente)
+//  Envoie le count des approbations pending toutes les 15 secondes
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/events", requireAuth, (req, res) => {
+  const tenantId = req.auth!.tenantId;
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.flushHeaders();
+
+  const sendCount = async () => {
+    try {
+      const { rows } = await pool.query<{ count: string }>(
+        `SELECT COUNT(*)::int AS count FROM erep_approvals
+         WHERE tenant_id = $1 AND status = 'pending_approval'`,
+        [tenantId],
+      );
+      const count = parseInt(rows[0]?.count ?? "0", 10);
+
+      const alertsRes = await pool.query<{ count: string }>(
+        `SELECT COUNT(*)::int AS count FROM erep_alerts
+         WHERE tenant_id = $1 AND is_resolved = false`,
+        [tenantId],
+      );
+      const alerts = parseInt(alertsRes.rows[0]?.count ?? "0", 10);
+
+      res.write(`data: ${JSON.stringify({ pendingApprovals: count, activeAlerts: alerts, ts: Date.now() })}\n\n`);
+    } catch {
+      res.write(`data: ${JSON.stringify({ pendingApprovals: 0, activeAlerts: 0, ts: Date.now() })}\n\n`);
+    }
+  };
+
+  // Envoyer immédiatement puis toutes les 15s
+  sendCount();
+  const interval = setInterval(sendCount, 15000);
+
+  // Heartbeat toutes les 30s pour maintenir la connexion
+  const heartbeat = setInterval(() => res.write(": ping\n\n"), 30000);
+
+  req.on("close", () => {
+    clearInterval(interval);
+    clearInterval(heartbeat);
+  });
 });
 
 export default router;

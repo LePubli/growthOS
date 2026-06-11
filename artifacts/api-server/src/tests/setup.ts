@@ -57,8 +57,8 @@ export async function createTestContext(): Promise<TestContext> {
   );
   const userId: string = userRes.rows[0].id;
 
-  const adminToken = signAccessToken({ userId: adminUserId, tenantId, email: adminEmail });
-  const userToken = signAccessToken({ userId, tenantId, email: userEmail });
+  const adminToken = signAccessToken({ userId: adminUserId, tenantId, email: adminEmail, role: "admin" });
+  const userToken = signAccessToken({ userId, tenantId, email: userEmail, role: "commercial" });
 
   const cleanup = async () => {
     for (const table of CLEANUP_TABLES) {

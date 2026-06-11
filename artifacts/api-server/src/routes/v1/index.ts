@@ -44,6 +44,7 @@ import billingWebhookRouter from "./billing-webhook";
 import integrationsRouter from "./integrations";
 import publicApiRouter from "./public-api";
 import clientEreputationRouter from "./client-ereputation";
+import adminUsersRouter from "./admin-users";
 
 const router = Router();
 
@@ -97,5 +98,8 @@ router.use("/integrations",       requireAuth, requireTenant, integrationsRouter
 // Auth is handled inside the router (requireAuth + requireRole)
 // No requireTenant here: client tokens are tenant-scoped via JWT
 router.use("/client/ereputation", clientEreputationRouter);
+
+// ── Admin Users & Roles ───────────────────────────────────────────────────────
+router.use("/admin", adminUsersRouter);
 
 export default router;

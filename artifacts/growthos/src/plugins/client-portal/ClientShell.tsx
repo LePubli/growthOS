@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { Star, LayoutDashboard, Megaphone, CheckSquare, FileBarChart, ArrowLeft, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
@@ -16,7 +16,26 @@ interface ClientShellProps {
 
 export function ClientShell({ children }: ClientShellProps) {
   const [location] = useLocation();
-  const { user, logout } = useAuthStore();
+  const { user, logout, accessToken } = useAuthStore() as any;
+  const [pendingCount, setPendingCount] = useState(0);
+  const [alertCount, setAlertCount] = useState(0);
+
+  // ── SSE — compteur approbations en attente
+  useEffect(() => {
+    if (!accessToken) return;
+    const apiBase = (import.meta as any).env?.VITE_API_URL ?? '';
+    const url = `${apiBase}/api/v1/client/ereputation/events?token=${encodeURIComponent(accessToken)}`;
+    const es = new EventSource(url);
+    es.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        setPendingCount(d.pendingApprovals ?? 0);
+        setAlertCount(d.activeAlerts ?? 0);
+      } catch {}
+    };
+    es.onerror = () => es.close();
+    return () => es.close();
+  }, [accessToken]);
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--body-bg)' }}>
@@ -81,9 +100,14 @@ export function ClientShell({ children }: ClientShellProps) {
                 >
                   {item.icon}
                   {item.label}
-                  {item.href === '/client/ereputation/approvals' && (
-                    <span style={{ marginLeft: 'auto', fontSize: 10, padding: '1px 6px', borderRadius: 20, background: '#EF4444', color: '#fff', fontWeight: 800 }}>
-                      •
+                  {item.href === '/client/ereputation/approvals' && pendingCount > 0 && (
+                    <span style={{ marginLeft: 'auto', fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#EF4444', color: '#fff', fontWeight: 800 }}>
+                      {pendingCount}
+                    </span>
+                  )}
+                  {item.href === '/client/ereputation' && alertCount > 0 && (
+                    <span style={{ marginLeft: 'auto', fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#D97706', color: '#fff', fontWeight: 800 }}>
+                      {alertCount}
                     </span>
                   )}
                 </div>
