@@ -6,7 +6,7 @@ description: Pièges récurrents dans les tests E2E GrowthOS — méthodes runne
 # GrowthOS E2E Test Conventions
 
 ## État actuel
-324 tests / 33 suites — 100% passants.
+42 suites enregistrées dans run-all-tests.ts. 324 tests passants sur 33 suites avant extension session juin 2026.
 
 ## Pièges critiques
 
@@ -44,3 +44,19 @@ await ctx2.cleanup();
 ```
 
 **Why:** `userToken` a `role: "commercial"` — il sera bloqué par `requireRole("admin")`. Utiliser `adminToken` pour tester l'isolation sur des routes admin.
+
+## Nouvelles suites (session juin 2026)
+- `signal-intelligence` — filtrage par company, scores d'intention
+- `admin-plans` — CRUD plans + plansService.changeUserPlan(tenantId, planId)
+- `admin-api-keys` — providerKeysService, PROVIDERS array exposé sur GET /admin/api-keys/providers
+- `audit-routes` — GET /route-audit → tableau avec {method, path, auth}; ≥50 routes attendues
+- `deep-audit` — GET /audit/deep → {cached, report}; cache 60s; ?force=true bypass
+- `cross-plugin-events` — EventBus notifications cross-plugin, isolation tenant events
+
+## Commandes
+```bash
+pnpm --filter @workspace/api-server run test:e2e         # toutes les suites
+pnpm --filter @workspace/api-server run test:e2e -- signal-intelligence  # une suite
+pnpm --filter @workspace/api-server run test:report      # exécute + génère test-report.html
+pnpm --filter @workspace/api-server run seed:demo        # reset + reseed données démo
+```

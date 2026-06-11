@@ -47,8 +47,20 @@ const SUITES: Array<{ name: string; file: string }> = [
 
   // ── Admin & Analytics
   { name: "admin-users",             file: "./admin-users.test.ts" },
+  { name: "admin-plans",             file: "./admin-plans.test.ts" },
+  { name: "admin-api-keys",          file: "./admin-api-keys.test.ts" },
   { name: "product-analytics",       file: "./product-analytics.test.ts" },
   { name: "client-portal",           file: "./client-portal.test.ts" },
+
+  // ── Signaux & Intelligence (étendu)
+  { name: "signal-intelligence",     file: "./signal-intelligence.test.ts" },
+
+  // ── Audit & Système
+  { name: "audit-routes",            file: "./audit-routes.test.ts" },
+  { name: "deep-audit",              file: "./deep-audit.test.ts" },
+
+  // ── Cross-plugin
+  { name: "cross-plugin-events",     file: "./cross-plugin-events.test.ts" },
 
   // ── Infrastructure
   { name: "notifications",           file: "./notifications.test.ts" },

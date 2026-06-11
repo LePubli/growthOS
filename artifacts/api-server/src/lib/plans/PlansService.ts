@@ -182,7 +182,7 @@ export class PlansService {
     if (!plan.isActive) throw new Error("Ce plan n'est plus disponible");
 
     // Mettre à jour le plan sur le tenant
-    await pool.query(`UPDATE tenants SET plan = $1, updated_at = NOW() WHERE id = $2`, [plan.name, tenantId]);
+    await pool.query(`UPDATE tenants SET plan = $1 WHERE id = $2`, [plan.name, tenantId]);
 
     // UPSERT subscription
     const { rows } = await pool.query(
