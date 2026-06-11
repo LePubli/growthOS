@@ -1,0 +1,73 @@
+# OBJECTIF : DÉ-MOCKAGE DES 5 PAGES CRITIQUES
+
+Plusieurs pages affichent des routes 404 ou des données vides. Tu dois les connecter à de vraies données PostgreSQL.
+
+## TÂCHE 1.1 : Product Analytics (/analytics/product)
+
+**Problème** : Routes GET /api/v1/analytics/overview et /api/v1/dashboard retournent 404.
+
+**Backend** - Crée `artifacts/api-server/src/routes/v1/analytics.ts` :
+- `GET /overview` : Retourne stats réelles (COUNT prospects, deals, sequences, signals, tasks) filtrées par tenant_id
+- `GET /funnel` : Retourne répartition des deals par stage (GROUP BY stage)
+- `GET /usage` : Retourne usage vs limites par ressource
+- `GET /actions-frequent` : Top 10 actions depuis audit_logs (30 derniers jours)
+- `GET /entities-active` : Top 10 entités les plus actives
+
+Monte la route dans `src/routes/v1/index.ts` : `router.use('/analytics', analyticsRouter)`
+
+**Frontend** - Modifie `artifacts/growthos/src/pages/ProductAnalyticsPage.tsx` :
+- Remplace TOUTES les données mockées par des appels TanStack Query vers les routes ci-dessus
+- Affiche "Aucune donnée" si DB vide (pas de 0 hardcodés)
+- Connecte les graphiques Recharts aux vraies données
+
+## TÂCHE 1.2 : Audit Routes (/route-audit)
+
+**Problème** : 0 routes enregistrées, page vide.
+
+**Backend** - Crée `artifacts/api-server/src/routes/v1/route-audit.ts` :
+- `GET /scan` : Parcours `req.app._router.stack` et retourne toutes les routes avec method, path, protected status
+
+**Frontend** - Modifie `artifacts/growthos/src/pages/RouteAuditPage.tsx` :
+- Appelle GET /api/v1/route-audit/scan
+- Affiche tableau avec filtres (All/Auth/Public)
+- Bouton "Vérifier la santé" → GET /api/healthz
+
+## TÂCHE 1.3 : Audit Système (/admin/deep-audit)
+
+**Problème** : "Aucun rapport disponible", bouton ne fait rien.
+
+**Backend** - Modifie `artifacts/api-server/src/routes/v1/audit.ts` :
+- `GET /deep` : Vérifie DB (SELECT 1), compte tables (information_schema), compte plugins actifs, scan routes. Retourne {score, dbStatus, tablesCount, pluginsCount, routesCount, duration}
+- `POST /auto-fix` : Exécute corrections (réindexation, cache cleanup)
+
+**Frontend** - Modifie `artifacts/growthos/src/pages/DeepAuditPage.tsx` :
+- Bouton "Lancer l'audit" → GET /api/v1/audit/deep
+- Affiche rapport avec score, tables OK, plugins actifs
+- Bouton "Auto-fix" → POST /api/v1/audit/auto-fix
+
+## TÂCHE 1.4 : Signal Intelligence (/signals)
+
+**Problème** : Bouton "Générer Signaux Mock" encore présent.
+
+- Supprime le bouton "Générer Signaux Mock" de `SignalsPage.tsx`
+- Vérifie que GET /api/v1/signals retourne les vrais signaux de la DB
+- Connecte bouton "Actionné" → PATCH /api/v1/signals/:id avec {status: 'actioned'}
+- Connecte bouton "Vue 360°" → Navigation vers /accounts/:name réel
+- Connecte bouton "Rédiger draft" → Navigation vers /ai-sdr avec compte pré-rempli
+
+## TÂCHE 1.5 : Portail Client (/client/ereputation)
+
+**Problème** : Erreur 403 pour admin.
+
+- Modifie le middleware des routes `/client/*` pour accepter admin OU client
+- Connecte ClientDashboardPage à GET /api/v1/client/ereputation/dashboard
+- Affiche vraies campagnes, vraies alertes, vrais scores
+
+## RÈGLES
+1. Zéro mock en UI : toutes les données viennent de PostgreSQL
+2. Multi-tenancy : toutes les queries filtrent par tenant_id
+3. États de chargement : skeleton loaders pendant fetch
+4. États vides : message "Aucune donnée" + bouton "Créer"
+5. Tests : lance `pnpm test:e2e` après chaque tâche pour vérifier non-régression
+
+Commence par Tâche 1.1 (Product Analytics).
