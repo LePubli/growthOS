@@ -66,6 +66,27 @@ export function requireUsage(resource: string) {
   };
 }
 
+async function _getLimitFromPlan(tenantId: string, resource: string): Promise<number> {
+  // 1. Essayer via subscriptions → plans (DB dynamique)
+  const planRow = await pool.query(
+    `SELECT p.limits, p.name as plan_name
+     FROM subscriptions s
+     JOIN plans p ON p.id = s.plan_id
+     WHERE s.tenant_id = $1 AND p.is_active = true
+     ORDER BY s.created_at DESC LIMIT 1`,
+    [tenantId],
+  );
+  if (planRow.rows.length > 0) {
+    const limits: Record<string, number> = planRow.rows[0].limits ?? {};
+    if (resource in limits) return limits[resource];
+  }
+
+  // 2. Fallback : tenants.plan → PLAN_LIMITS statique
+  const tenant = await pool.query(`SELECT plan FROM tenants WHERE id = $1`, [tenantId]);
+  const plan = (tenant.rows[0]?.plan ?? "starter") as string;
+  return PLAN_LIMITS[plan]?.[resource] ?? 1000;
+}
+
 async function _getOrInitUsage(
   tenantId: string,
   resource: string,
@@ -77,9 +98,7 @@ async function _getOrInitUsage(
   );
   if (existing.rows.length > 0) return existing.rows[0];
 
-  const tenant = await pool.query(`SELECT plan FROM tenants WHERE id = $1`, [tenantId]);
-  const plan = (tenant.rows[0]?.plan ?? "starter") as string;
-  const limitValue = PLAN_LIMITS[plan]?.[resource] ?? 1000;
+  const limitValue = await _getLimitFromPlan(tenantId, resource);
 
   const result = await pool.query(
     `INSERT INTO usage_limits (tenant_id, resource, limit_value, current_usage, period_start)

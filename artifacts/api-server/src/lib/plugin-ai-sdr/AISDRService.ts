@@ -63,19 +63,29 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
   { id: "event", name: "Événement", goal: "invite to an exclusive webinar or event", tone: "casual", description: "Event-based outreach", emoji: "🎯" },
 ];
 
-/* ─── Ollama integration ─────────────────────────────────── */
+/* ─── Ollama / LLM integration ──────────────────────────── */
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-const OLLAMA_MODEL    = process.env.OLLAMA_MODEL    ?? "llama3.2";
+import { providerKeysService } from "../provider-keys/ProviderKeysService";
 
-async function ollamaGenerate(prompt: string): Promise<string | null> {
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.2";
+
+async function getOllamaConfig(tenantId?: string): Promise<{ baseUrl: string; model: string }> {
+  if (tenantId) {
+    const dbKey = await providerKeysService.getKeyWithFallback(tenantId, "ollama").catch(() => null);
+    if (dbKey?.endpointUrl) return { baseUrl: dbKey.endpointUrl, model: OLLAMA_MODEL };
+  }
+  return { baseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434", model: OLLAMA_MODEL };
+}
+
+async function ollamaGenerate(prompt: string, tenantId?: string): Promise<string | null> {
   try {
+    const { baseUrl, model } = await getOllamaConfig(tenantId);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
-    const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+    const res = await fetch(`${baseUrl}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false }),
+      body: JSON.stringify({ model, prompt, stream: false }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -275,7 +285,7 @@ Write a ${tone} cold outreach EMAIL in French to achieve the goal: "${ctx.goal}"
 Return a JSON object with keys: subject (string), body (string), tone (string).
 Return ONLY valid JSON, no markdown, no explanation.`;
 
-    const raw = await ollamaGenerate(prompt);
+    const raw = await ollamaGenerate(prompt, ctx.tenantId);
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as { subject?: string; body?: string; tone?: string };

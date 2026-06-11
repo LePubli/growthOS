@@ -47,6 +47,7 @@ import clientEreputationRouter from "./client-ereputation";
 import adminUsersRouter from "./admin-users";
 import adminPlansRouter from "./admin-plans";
 import adminAuditRouter from "./admin-audit";
+import adminApiKeysRouter from "./admin-api-keys";
 import routeAuditRouter from "./route-audit";
 
 const router = Router();
@@ -110,6 +111,9 @@ router.use("/admin", adminPlansRouter);
 
 // ── Admin Audit Logs ──────────────────────────────────────────────────────────
 router.use("/admin", adminAuditRouter);
+
+// ── Admin Provider API Keys ───────────────────────────────────────────────────
+router.use("/admin", adminApiKeysRouter);
 
 // ── Route Audit ───────────────────────────────────────────────────────────────
 router.use("/route-audit", requireAuth, routeAuditRouter);

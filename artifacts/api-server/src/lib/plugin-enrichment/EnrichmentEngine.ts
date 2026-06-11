@@ -436,11 +436,30 @@ export async function enrichProspect(prospectId: string, tenantId: string): Prom
   if (!rows.length) throw new Error("Prospect not found");
   const prospect = rows[0];
 
-  // Fetch API configs
+  // Fetch API configs (enrichment_api_configs + provider_api_keys fallback)
   const { rows: configs } = await pool.query(
     `SELECT source_id, api_key, is_active FROM enrichment_api_configs`
   ).catch(() => ({ rows: [] as any[] }));
   const configMap = new Map(configs.map((c: any) => [c.source_id, c]));
+
+  // Enrichir configMap avec provider_api_keys (fallback pour hunter, linkedin, etc.)
+  const PROVIDER_TO_SOURCE: Record<string, string> = {
+    hunter: "hunter", linkedin: "linkedin", clearbit: "clearbit",
+    dropcontact: "dropcontact", apollo: "apollo", crunchbase: "crunchbase",
+  };
+  const { rows: providerKeys } = await pool.query(
+    `SELECT provider, api_key FROM provider_api_keys WHERE tenant_id = $1 AND is_active = true`,
+    [tenantId],
+  ).catch(() => ({ rows: [] as any[] }));
+  for (const pk of providerKeys) {
+    const sourceId = PROVIDER_TO_SOURCE[pk.provider];
+    if (sourceId && !configMap.has(sourceId)) {
+      // Déchiffrement basique (préfixe enc: ou b64:)
+      let key = pk.api_key as string;
+      if (key.startsWith("b64:")) key = Buffer.from(key.slice(4), "base64").toString("utf8");
+      configMap.set(sourceId, { source_id: sourceId, api_key: key, is_active: true });
+    }
+  }
 
   // Create history entry
   const { rows: [hist] } = await pool.query(

@@ -7,7 +7,7 @@ import {
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
   Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route, ShieldCheck, Package, Database,
-  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift, ClipboardList, Lock, Code2, FlaskConical, CreditCard,
+  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift, ClipboardList, Lock, Code2, FlaskConical, CreditCard, KeyRound,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -138,6 +138,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/users', label: 'Utilisateurs & Rôles', icon: <Users size={16} /> },
       { href: '/admin/plans', label: 'Plans & Abonnements', icon: <CreditCard size={16} /> },
       { href: '/admin/audit', label: 'Journal d\'audit', icon: <Shield size={16} /> },
+      { href: '/admin/api-keys', label: 'Clés API Providers', icon: <KeyRound size={16} /> },
       { href: '/admin/plugins-upload', label: 'Upload Plugins', icon: <Upload size={16} /> },
       { href: '/admin/deep-audit', label: 'Audit Système', icon: <ShieldCheck size={16} /> },
       { href: '/themes', label: 'Thèmes', icon: <Palette size={16} /> },

@@ -757,6 +757,26 @@ export async function runSaaSMigration(): Promise<void> {
   await pool.query(SQL_SAAS);
 }
 
+export async function runProviderKeysMigration(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS provider_api_keys (
+      id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id      UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      provider       TEXT        NOT NULL,
+      api_key        TEXT        NOT NULL,
+      api_secret     TEXT,
+      endpoint_url   TEXT,
+      is_active      BOOLEAN     NOT NULL DEFAULT true,
+      last_used_at   TIMESTAMP,
+      created_at     TIMESTAMP   NOT NULL DEFAULT NOW(),
+      updated_at     TIMESTAMP   NOT NULL DEFAULT NOW(),
+      CONSTRAINT provider_api_keys_tenant_provider_uq UNIQUE(tenant_id, provider)
+    );
+    CREATE INDEX IF NOT EXISTS provider_api_keys_tenant_idx   ON provider_api_keys(tenant_id);
+    CREATE INDEX IF NOT EXISTS provider_api_keys_provider_idx ON provider_api_keys(provider);
+  `);
+}
+
 export async function runPlansMigration(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS plans (

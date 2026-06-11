@@ -42,19 +42,29 @@ interface DealRow {
   tenant_id: string;
 }
 
-/* ─── Ollama helper ──────────────────────────────────────── */
+/* ─── Ollama / LLM helper ────────────────────────────────── */
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-const OLLAMA_MODEL    = process.env.OLLAMA_MODEL    ?? "llama3.2";
+import { providerKeysService } from "../provider-keys/ProviderKeysService";
 
-async function ollamaGenerate(prompt: string): Promise<string | null> {
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.2";
+
+async function getOllamaConfig(tenantId?: string): Promise<{ baseUrl: string; model: string }> {
+  if (tenantId) {
+    const dbKey = await providerKeysService.getKeyWithFallback(tenantId, "ollama").catch(() => null);
+    if (dbKey?.endpointUrl) return { baseUrl: dbKey.endpointUrl, model: OLLAMA_MODEL };
+  }
+  return { baseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434", model: OLLAMA_MODEL };
+}
+
+async function ollamaGenerate(prompt: string, tenantId?: string): Promise<string | null> {
   try {
+    const { baseUrl, model } = await getOllamaConfig(tenantId);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
-    const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+    const res = await fetch(`${baseUrl}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false }),
+      body: JSON.stringify({ model, prompt, stream: false }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -295,7 +305,7 @@ Risques: ${riskFactors.map(r => r.label).join(", ")}
 Signaux: ${signals.slice(0, 2).map(s => s.title).join(", ") || "Aucun"}
 Réponse: uniquement les 3 recommandations numérotées, concises et actionnables.`;
 
-    const ollamaRaw = await ollamaGenerate(prompt);
+    const ollamaRaw = await ollamaGenerate(prompt, tenantId);
     aiRecommendations = ollamaRaw ?? mockRecommendations(company, riskFactors, signals, deal.stage);
 
     // 9. Persist results

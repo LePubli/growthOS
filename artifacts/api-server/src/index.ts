@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration } from "@workspace/db";
+import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration, runProviderKeysMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 import { registerErepIntegrations } from "./lib/integrations/erep-integrations";
 import { registerCrossPluginEvents } from "./lib/integrations/cross-plugin-events";
@@ -37,6 +37,9 @@ runMigrations()
 
     await runPlansMigration();
     logger.info("Plans tables ready (plans x3 defaults, subscriptions updated)");
+
+    await runProviderKeysMigration();
+    logger.info("Provider API keys table ready (provider_api_keys)");
 
     await seedBuiltInPlugins();
 
