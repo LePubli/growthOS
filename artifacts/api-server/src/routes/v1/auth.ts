@@ -125,7 +125,7 @@ router.post("/refresh", (req, res) => {
   }
   try {
     const payload = jwt.verify(token, JWT_REFRESH_SECRET) as AuthPayload;
-    const newAccess = signAccessToken({ userId: payload.userId, tenantId: payload.tenantId, email: payload.email });
+    const newAccess = signAccessToken({ userId: payload.userId, tenantId: payload.tenantId, email: payload.email, role: payload.role });
     res.json({ accessToken: newAccess });
   } catch {
     res.status(401).json({ error: "Refresh token invalide" });

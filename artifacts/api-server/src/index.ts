@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration } from "@workspace/db";
+import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 import { registerErepIntegrations } from "./lib/integrations/erep-integrations";
 import { registerCrossPluginEvents } from "./lib/integrations/cross-plugin-events";
@@ -31,6 +31,9 @@ runMigrations()
 
     await runErepIntegrationsMigration();
     logger.info("E-Rep integration tables ready (erep_alerts, erep_approvals, accounts.reputation_health_score)");
+
+    await runRBACMigration();
+    logger.info("RBAC tables ready (rbac_roles, rbac_permissions, rbac_user_roles, users.is_active)");
 
     await seedBuiltInPlugins();
 

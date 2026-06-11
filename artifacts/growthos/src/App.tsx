@@ -78,7 +78,9 @@ import CompliancePage from '@/pages/CompliancePage';
 import SSOConfigPage from '@/pages/settings/SSOConfigPage';
 import APIDocsPage from '@/pages/APIDocsPage';
 import ProductAnalyticsPage from '@/pages/ProductAnalyticsPage';
+import UsersPage from '@/pages/admin/UsersPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { useSignalNotifications } from '@/hooks/useSignalNotifications';
 import { ClientShell } from '@/plugins/client-portal/ClientShell';
 import ClientDashboardPage from '@/plugins/client-portal/ClientDashboardPage';
 import ClientCampaignsPage from '@/plugins/client-portal/ClientCampaignsPage';
@@ -103,6 +105,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
+  useSignalNotifications();
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
@@ -334,6 +337,9 @@ function AppRoutes() {
       </Route>
       <Route path="/analytics/product">
         {() => <DashboardLayout><ProductAnalyticsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/admin/users">
+        {() => <DashboardLayout><UsersPage /></DashboardLayout>}
       </Route>
 
       {/* ── Portail Client E-Réputation ─────────────────────────────────── */}

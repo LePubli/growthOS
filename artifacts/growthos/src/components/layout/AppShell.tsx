@@ -135,6 +135,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/referral', label: 'Parrainage', icon: <Gift size={16} /> },
       { href: '/marketplace', label: 'Marketplace', icon: <Store size={16} />, badge: 1 },
       { href: '/plugins', label: 'Plugins', icon: <Puzzle size={16} /> },
+      { href: '/admin/users', label: 'Utilisateurs & Rôles', icon: <Users size={16} /> },
       { href: '/admin/plugins-upload', label: 'Upload Plugins', icon: <Upload size={16} /> },
       { href: '/admin/deep-audit', label: 'Audit Système', icon: <ShieldCheck size={16} /> },
       { href: '/themes', label: 'Thèmes', icon: <Palette size={16} /> },

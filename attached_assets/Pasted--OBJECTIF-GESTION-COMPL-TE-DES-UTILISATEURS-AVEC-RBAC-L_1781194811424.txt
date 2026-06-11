@@ -1,0 +1,76 @@
+# OBJECTIF : GESTION COMPLÈTE DES UTILISATEURS AVEC RBAC
+
+L'admin ne peut actuellement ni créer, ni modifier, ni supprimer des utilisateurs, ni gérer les rôles.
+
+## TÂCHE 2.1 : Migration DB
+
+Crée `artifacts/api-server/db/migrations/050_rbac.sql` :
+- Table `roles` (id, name, description, permissions JSONB, is_system)
+- Table `permissions` (id, name, description, module)
+- Table `role_permissions` (role_id, permission_id) - many-to-many
+- Table `user_roles` (user_id, role_id, assigned_at, assigned_by) - many-to-many
+- Ajoute colonne `role TEXT DEFAULT 'commercial'` sur table `users`
+- Insère 4 rôles système : admin, manager, commercial, viewer avec leurs permissions
+- Insère ~40 permissions (prospects:read, prospects:write, deals:read, etc.)
+
+## TÂCHE 2.2 : Middleware RBAC
+
+Crée `artifacts/api-server/src/middlewares/rbac.ts` :
+- `requirePermission(permission)` : Vérifie si l'utilisateur a la permission via user_roles → role_permissions → permissions. Admin bypass.
+- `requireRole(...roles)` : Vérifie le rôle de l'utilisateur
+
+## TÂCHE 2.3 : Service RBAC
+
+Crée `artifacts/api-server/src/lib/rbac/RBACService.ts` :
+- `getRoles()` : Liste tous les rôles avec leurs permissions
+- `createRole(name, description, permissions[])`
+- `updateRole(roleId, updates)`
+- `deleteRole(roleId)` : Empêche suppression des rôles système
+- `assignRole(userId, roleId, assignedBy)`
+- `removeRole(userId, roleId)`
+- `getUserRoles(userId)`
+- `getPermissions()` : Liste toutes les permissions
+
+## TÂCHE 2.4 : Routes Admin Users
+
+Crée `artifacts/api-server/src/routes/v1/admin/users.ts` :
+- `GET /` : Liste utilisateurs avec leurs rôles (JOIN user_roles + roles)
+- `POST /` : Créer utilisateur (hash password avec bcrypt)
+- `PATCH /:id` : Modifier utilisateur
+- `DELETE /:id` : Supprimer (empêcher auto-suppression)
+- `POST /:id/roles` : Assigner rôle
+- `DELETE /:id/roles/:roleId` : Retirer rôle
+- `GET /roles` : Liste rôles
+- `POST /roles` : Créer rôle custom
+- `PATCH /roles/:id` : Modifier rôle
+- `DELETE /roles/:id` : Supprimer rôle
+
+Toutes les routes utilisent `requireAuth` + `requireRole('admin')`.
+
+Monte dans `src/routes/v1/index.ts` : `router.use('/admin/users', adminUsersRouter)`
+
+## TÂCHE 2.5 : Frontend UsersPage
+
+Crée `artifacts/growthos/src/pages/admin/UsersPage.tsx` :
+- Tableau avec email, nom, rôle, statut, dernière connexion
+- Boutons : Modifier, Activer/Désactiver, Supprimer
+- Modal création/édition avec sélection de rôle
+- Gestion des rôles (CRUD complet dans un onglet séparé)
+- Utilise TanStack Query pour fetch/mutations
+
+Ajoute la route `/admin/users` dans `App.tsx`.
+
+## TÂCHE 2.6 : Intégration JWT
+
+Modifie `artifacts/api-server/src/routes/v1/auth.ts` :
+- Au login, inclure le rôle de l'utilisateur dans le JWT payload
+- Au refresh, préserver le rôle
+
+## RÈGLES
+1. Sécurité : requireRole('admin') sur toutes les routes admin
+2. Multi-tenancy : tenant_id sur toutes les tables
+3. Hash password : bcrypt avec salt 10
+4. Tests E2E : CRUD utilisateurs + RBAC
+5. Ne pas casser l'auth existante
+
+Commence par Tâche 2.1 (Migration DB).

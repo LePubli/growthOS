@@ -757,6 +757,111 @@ export async function runSaaSMigration(): Promise<void> {
   await pool.query(SQL_SAAS);
 }
 
+export async function runRBACMigration(): Promise<void> {
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+
+    CREATE TABLE IF NOT EXISTS rbac_roles (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      description TEXT,
+      permissions JSONB NOT NULL DEFAULT '[]',
+      is_system BOOLEAN NOT NULL DEFAULT false,
+      tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS rbac_roles_name_tenant_idx
+      ON rbac_roles (name, COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'::uuid));
+
+    CREATE TABLE IF NOT EXISTS rbac_permissions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      module TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS rbac_role_permissions (
+      role_id UUID NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
+      permission_id UUID NOT NULL REFERENCES rbac_permissions(id) ON DELETE CASCADE,
+      PRIMARY KEY (role_id, permission_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS rbac_user_roles (
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role_id UUID NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
+      assigned_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      assigned_by UUID REFERENCES users(id) ON DELETE SET NULL,
+      PRIMARY KEY (user_id, role_id)
+    );
+
+    -- Permissions
+    INSERT INTO rbac_permissions (name, description, module) VALUES
+      ('prospects:read',    'Voir les prospects',            'crm'),
+      ('prospects:write',   'Créer/modifier les prospects',  'crm'),
+      ('prospects:delete',  'Supprimer les prospects',       'crm'),
+      ('deals:read',        'Voir le pipeline',              'crm'),
+      ('deals:write',       'Créer/modifier les deals',      'crm'),
+      ('deals:delete',      'Supprimer les deals',           'crm'),
+      ('signals:read',      'Voir les signaux',              'intelligence'),
+      ('signals:write',     'Gérer les signaux',             'intelligence'),
+      ('sequences:read',    'Voir les séquences',            'outreach'),
+      ('sequences:write',   'Créer/modifier les séquences',  'outreach'),
+      ('sequences:send',    'Envoyer les séquences',         'outreach'),
+      ('templates:read',    'Voir les templates',            'outreach'),
+      ('templates:write',   'Créer/modifier les templates',  'outreach'),
+      ('activities:read',   'Voir les activités',            'crm'),
+      ('activities:write',  'Créer les activités',           'crm'),
+      ('accounts:read',     'Voir les comptes',              'intelligence'),
+      ('accounts:write',    'Modifier les comptes',          'intelligence'),
+      ('enrichment:read',   'Voir l enrichissement',         'intelligence'),
+      ('enrichment:write',  'Lancer l enrichissement',       'intelligence'),
+      ('sourcing:read',     'Voir le sourcing',              'intelligence'),
+      ('sourcing:write',    'Lancer le sourcing',            'intelligence'),
+      ('analytics:read',    'Voir les analytics',            'analytics'),
+      ('analytics:export',  'Exporter les données',          'analytics'),
+      ('meetings:read',     'Voir les réunions',             'collaboration'),
+      ('meetings:write',    'Créer les réunions',            'collaboration'),
+      ('tasks:read',        'Voir les tâches',               'collaboration'),
+      ('tasks:write',       'Créer/modifier les tâches',     'collaboration'),
+      ('workflows:read',    'Voir les workflows',            'automation'),
+      ('workflows:write',   'Créer/modifier les workflows',  'automation'),
+      ('webhooks:read',     'Voir les webhooks',             'system'),
+      ('webhooks:write',    'Configurer les webhooks',       'system'),
+      ('plugins:read',      'Voir les plugins',              'system'),
+      ('plugins:write',     'Activer/désactiver les plugins','system'),
+      ('users:read',        'Voir les utilisateurs',         'admin'),
+      ('users:write',       'Créer/modifier les utilisateurs','admin'),
+      ('users:delete',      'Supprimer les utilisateurs',    'admin'),
+      ('roles:read',        'Voir les rôles',                'admin'),
+      ('roles:write',       'Créer/modifier les rôles',      'admin'),
+      ('billing:read',      'Voir la facturation',           'admin'),
+      ('billing:write',     'Modifier la facturation',       'admin'),
+      ('ereputation:read',  'Voir l e-réputation',           'ereputation'),
+      ('ereputation:write', 'Gérer l e-réputation',          'ereputation'),
+      ('ai:use',            'Utiliser les outils IA',        'ai'),
+      ('memory:read',       'Voir la mémoire',               'ai'),
+      ('memory:write',      'Écrire dans la mémoire',        'ai')
+    ON CONFLICT (name) DO NOTHING;
+
+    -- Rôles système
+    INSERT INTO rbac_roles (name, description, permissions, is_system, tenant_id) VALUES
+      ('admin',      'Administrateur — accès complet',
+       '["prospects:read","prospects:write","prospects:delete","deals:read","deals:write","deals:delete","signals:read","signals:write","sequences:read","sequences:write","sequences:send","templates:read","templates:write","activities:read","activities:write","accounts:read","accounts:write","enrichment:read","enrichment:write","sourcing:read","sourcing:write","analytics:read","analytics:export","meetings:read","meetings:write","tasks:read","tasks:write","workflows:read","workflows:write","webhooks:read","webhooks:write","plugins:read","plugins:write","users:read","users:write","users:delete","roles:read","roles:write","billing:read","billing:write","ereputation:read","ereputation:write","ai:use","memory:read","memory:write"]'::jsonb,
+       true, NULL),
+      ('manager',    'Manager — supervision équipe + analytics',
+       '["prospects:read","prospects:write","deals:read","deals:write","signals:read","sequences:read","sequences:write","sequences:send","activities:read","activities:write","accounts:read","enrichment:read","analytics:read","analytics:export","meetings:read","meetings:write","tasks:read","tasks:write","users:read","ereputation:read","ai:use","memory:read"]'::jsonb,
+       true, NULL),
+      ('commercial', 'Commercial — CRM + prospection + outreach',
+       '["prospects:read","prospects:write","deals:read","deals:write","signals:read","sequences:read","sequences:write","sequences:send","templates:read","activities:read","activities:write","accounts:read","meetings:read","meetings:write","tasks:read","tasks:write","ai:use","memory:read","memory:write"]'::jsonb,
+       true, NULL),
+      ('viewer',     'Observateur — lecture seule',
+       '["prospects:read","deals:read","signals:read","sequences:read","activities:read","accounts:read","analytics:read","meetings:read","tasks:read","ereputation:read"]'::jsonb,
+       true, NULL)
+    ON CONFLICT DO NOTHING;
+  `);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {
