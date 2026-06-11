@@ -82,7 +82,7 @@ export default function RouteAuditPage() {
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery<AuditData>({
     queryKey: ['route-audit'],
-    queryFn: () => apiClient.get('/admin/route-audit') as Promise<AuditData>,
+    queryFn: () => apiClient.get('/route-audit/scan') as Promise<AuditData>,
     staleTime: 30_000,
   });
 

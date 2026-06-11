@@ -129,4 +129,4 @@ GrowthOS couvre les fonctionnalités suivantes :
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
 - Seed: `pnpm --filter @workspace/api-server run seed:realistic` — 30 prospects, 15 deals, 20 signals
 - E2E test: `pnpm --filter @workspace/api-server run test:e2e` — 13 scénarios automatisés
-- Auth credentials demo: `admin@growthos.fr` / `pierre@growthos.fr`, tenant `growthos-demo`
+- Auth credentials demo: `admin@growthos.fr` / `pierre@growthos.fr`, tenant `growthos-demo`, password `demo1234`

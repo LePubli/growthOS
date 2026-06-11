@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import {
   Zap, Star, Eye, EyeOff, RefreshCw, TrendingUp, Users, DollarSign,
-  Newspaper, Cpu, Filter, X, UserPlus, Mail, SlidersHorizontal,
-  Flame, Thermometer, Wind, ChevronDown, Loader2,
+  Newspaper, Cpu, X, UserPlus, Mail, SlidersHorizontal,
+  Flame, Thermometer, Wind, ChevronDown, Loader2, MousePointerClick, Building2,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -107,6 +107,15 @@ export default function SignalsPage() {
   const dismissMutation = useMutation({
     mutationFn: (id: string) => apiClient.patch(`/signals/${id}`, { isRead: true }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['signals-page'] }),
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: (id: string) => apiClient.patch(`/signals/${id}/status`, { status: 'actioned' }),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['signals-page'] });
+      toast.success('Signal marqué comme actionné');
+    },
+    onError: () => toast.error('Erreur lors de la mise à jour'),
   });
 
   const addProspectMutation = useMutation({
@@ -303,14 +312,23 @@ export default function SignalsPage() {
                       ))}
                     </div>
                   )}
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={e => { e.stopPropagation(); addProspectMutation.mutate(signal); }}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                       <UserPlus size={12} />Ajouter en prospect
                     </button>
+                    <button onClick={e => { e.stopPropagation(); navigate(`/accounts/${encodeURIComponent(signal.company)}`); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1px solid var(--card-border)', background: 'var(--body-bg)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      <Building2 size={12} />Vue 360°
+                    </button>
                     <button onClick={e => { e.stopPropagation(); navigate(`/ai-sdr?company=${encodeURIComponent(signal.company)}`); }}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1px solid var(--card-border)', background: 'var(--body-bg)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                      <Mail size={12} />Rédiger message
+                      <Mail size={12} />Rédiger draft
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); actionMutation.mutate(signal.id); }}
+                      disabled={actionMutation.isPending}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1px solid #D97706', background: '#FFFBEB', color: '#D97706', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      <MousePointerClick size={12} />Actionné
                     </button>
                     <button onClick={e => { e.stopPropagation(); navigate(`/signals/${signal.id}`); }}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1px solid var(--card-border)', background: 'var(--body-bg)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -327,7 +345,7 @@ export default function SignalsPage() {
           <div style={{ textAlign: 'center', padding: '64px 0' }}>
             <Zap size={40} style={{ margin: '0 auto 12px', color: 'var(--card-border)', display: 'block' }} />
             <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-              {rawSignals.length === 0 ? 'Aucun signal détecté — lancez le seeding pour commencer' : 'Aucun signal correspondant aux filtres'}
+              {rawSignals.length === 0 ? 'Aucun signal détecté pour l\'instant' : 'Aucun signal correspondant aux filtres'}
             </p>
             <button onClick={() => { setFilter('all'); setScoreMin(0); }} style={{ marginTop: 10, padding: '7px 16px', borderRadius: 10, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}>
               Réinitialiser les filtres

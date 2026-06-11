@@ -53,7 +53,7 @@ async function seed() {
   const tenantId = await upsertTenant("growthos-demo", "GrowthOS Demo");
   console.log(`✅  Tenant: ${tenantId}`);
 
-  const HASH = "$2b$10$demohashedpassword123456789012";
+  const HASH = "$2b$10$R18mCBtFQsApGNQ0Fi0KaOey0GxvDJ5TnBA8MGsS4SfiZTAM5L0Ee"; // demo1234
   const adminId = await upsertUser("admin@growthos.fr",   HASH, "Sophie", "Martin",  "admin",  tenantId);
   const userId2  = await upsertUser("pierre@growthos.fr", HASH, "Pierre", "Dubois",  "member", tenantId);
   console.log(`✅  Users: admin=${adminId}  member=${userId2}`);

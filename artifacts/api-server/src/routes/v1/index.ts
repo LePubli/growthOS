@@ -45,6 +45,7 @@ import integrationsRouter from "./integrations";
 import publicApiRouter from "./public-api";
 import clientEreputationRouter from "./client-ereputation";
 import adminUsersRouter from "./admin-users";
+import routeAuditRouter from "./route-audit";
 
 const router = Router();
 
@@ -101,5 +102,8 @@ router.use("/client/ereputation", clientEreputationRouter);
 
 // ── Admin Users & Roles ───────────────────────────────────────────────────────
 router.use("/admin", adminUsersRouter);
+
+// ── Route Audit ───────────────────────────────────────────────────────────────
+router.use("/route-audit", requireAuth, routeAuditRouter);
 
 export default router;
