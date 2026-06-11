@@ -154,8 +154,8 @@ export async function run(): Promise<SuiteResult> {
     const body = r.body as any[];
     assert.ok(Array.isArray(body), "Réponse doit être un tableau");
     assert.ok(body.length >= 4, `Doit avoir au moins 4 rôles, reçu ${body.length}`);
-    const adminRole = body.find((r: any) => r.id === "admin");
-    assert.ok(adminRole, "Rôle admin manquant");
+    const adminRole = body.find((r: any) => r.name === "admin");
+    assert.ok(adminRole, `Rôle admin manquant — rôles disponibles : ${body.map((r: any) => r.name).join(", ")}`);
     assert.ok(adminRole.isSystem, "isSystem attendu");
   });
 
