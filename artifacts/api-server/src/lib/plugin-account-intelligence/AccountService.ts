@@ -4,14 +4,16 @@ import { logger } from "../logger";
 export type EngagementLevel = "low" | "medium" | "high" | "very_high";
 
 export interface ScoreBreakdown {
-  prospectsCount: number;
-  prospectsScore: number;
-  meetingsCount: number;
-  meetingsScore: number;
-  memorySignalsCount: number;
-  memoryScore: number;
-  recencyScore: number;
+  recentActivityScore: number;
+  emailEngagementScore: number;
+  pipelineProgressionScore: number;
+  reputationScore: number;
+  intentSignalsScore: number;
   total: number;
+  // legacy fields kept for upsertMetrics compatibility
+  prospectsCount: number;
+  meetingsCount: number;
+  memorySignalsCount: number;
 }
 
 export interface AccountMetrics {
@@ -53,74 +55,131 @@ function toEngagementLevel(score: number): EngagementLevel {
   return "low";
 }
 
-function recencyScore(lastActivityAt: Date | null): number {
-  if (!lastActivityAt) return 0;
-  const daysSince = (Date.now() - lastActivityAt.getTime()) / (1000 * 60 * 60 * 24);
-  if (daysSince <= 7) return 25;
-  if (daysSince <= 30) return 18;
-  if (daysSince <= 90) return 10;
-  if (daysSince <= 180) return 4;
-  return 0;
-}
-
 /* ─── Service ────────────────────────────────────────────── */
 
 class AccountService {
+  /**
+   * Calcule le Health Score unifié (100 pts) en 5 facteurs pondérés :
+   *   40% Activité récente (activities + meetings last 30j)
+   *   20% Engagement email (emails envoyés via séquences)
+   *   20% Progression pipeline (deals actifs hors lost/won)
+   *   10% Score E-Réputation (accounts.reputation_health_score)
+   *   10% Signaux d'intention (signals last 60j)
+   */
   async calculateHealthScore(accountId: string, tenantId: string): Promise<ScoreBreakdown> {
     const companyPattern = `%${accountId}%`;
 
-    // Prospects linked to this account
-    const prospectsRes = await pool.query<{ count: string; max_score: string; last_updated: Date | null }>(
-      `SELECT COUNT(*) AS count, COALESCE(MAX(score),0) AS max_score, MAX(updated_at) AS last_updated
-       FROM prospects
-       WHERE LOWER(company) = LOWER($1) AND tenant_id = $2`,
-      [accountId, tenantId],
+    const [activitiesRes, meetingsRes, emailsRes, dealsRes, reputationRes, signalsRes] =
+      await Promise.all([
+        // ── Activité récente (40 pts max)
+        pool.query<{ count: string }>(
+          `SELECT COUNT(*) AS count
+           FROM activities
+           WHERE tenant_id = $1
+             AND prospect_id IN (
+               SELECT id FROM prospects
+               WHERE tenant_id = $1 AND LOWER(company) = LOWER($2)
+             )
+             AND created_at > NOW() - INTERVAL '30 days'`,
+          [tenantId, accountId],
+        ).catch(() => ({ rows: [{ count: "0" }] })),
+
+        // Meetings (inclus dans activité récente)
+        pool.query<{ count: string; last_created: Date | null }>(
+          `SELECT COUNT(*) AS count, MAX(created_at) AS last_created
+           FROM meetings
+           WHERE tenant_id = $1 AND LOWER(title) LIKE LOWER($2)`,
+          [tenantId, companyPattern],
+        ).catch(() => ({ rows: [{ count: "0", last_created: null }] })),
+
+        // ── Engagement email (20 pts max)
+        pool.query<{ count: string }>(
+          `SELECT COUNT(*) AS count
+           FROM activities
+           WHERE tenant_id = $1
+             AND type = 'email'
+             AND prospect_id IN (
+               SELECT id FROM prospects
+               WHERE tenant_id = $1 AND LOWER(company) = LOWER($2)
+             )
+             AND created_at > NOW() - INTERVAL '90 days'`,
+          [tenantId, accountId],
+        ).catch(() => ({ rows: [{ count: "0" }] })),
+
+        // ── Progression pipeline (20 pts max)
+        pool.query<{ count: string; total_value: string }>(
+          `SELECT COUNT(*) AS count, COALESCE(SUM(value), 0) AS total_value
+           FROM deals
+           WHERE tenant_id = $1
+             AND LOWER(company) LIKE LOWER($2)
+             AND stage NOT IN ('won', 'lost')`,
+          [tenantId, companyPattern],
+        ).catch(() => ({ rows: [{ count: "0", total_value: "0" }] })),
+
+        // ── Score E-Réputation (10 pts max) — depuis accounts
+        pool.query<{ reputation_health_score: number | null }>(
+          `SELECT reputation_health_score
+           FROM accounts
+           WHERE tenant_id = $1 AND LOWER(name) LIKE LOWER($2)
+           LIMIT 1`,
+          [tenantId, companyPattern],
+        ).catch(() => ({ rows: [] as any[] })),
+
+        // ── Signaux d'intention (10 pts max)
+        pool.query<{ count: string }>(
+          `SELECT COUNT(*) AS count
+           FROM signals
+           WHERE tenant_id = $1
+             AND LOWER(company) LIKE LOWER($2)
+             AND detected_at > NOW() - INTERVAL '60 days'`,
+          [tenantId, companyPattern],
+        ).catch(() => ({ rows: [{ count: "0" }] })),
+      ]);
+
+    // ── Calcul facteur 1 : Activité récente (40 pts)
+    const recentActivities = parseInt(activitiesRes.rows[0]?.count ?? "0", 10);
+    const recentMeetings   = parseInt(meetingsRes.rows[0]?.count ?? "0", 10);
+    const recentActivityScore = Math.min(40,
+      recentActivities * 4 + recentMeetings * 8,
     );
-    const prospectsCount = parseInt(prospectsRes.rows[0]?.count ?? "0", 10);
-    const maxProspectScore = parseInt(String(prospectsRes.rows[0]?.max_score ?? "0"), 10);
-    const prospectsScore = Math.min(30, prospectsCount * 8 + Math.round(maxProspectScore * 0.15));
 
-    // Meetings mentioning this company (via memory_documents)
-    const meetingsRes = await pool.query<{ count: string; last_created: Date | null }>(
-      `SELECT COUNT(*) AS count, MAX(m.created_at) AS last_created
-       FROM meetings m
-       WHERE LOWER(m.title) LIKE LOWER($1) AND m.tenant_id = $2`,
-      [companyPattern, tenantId],
+    // ── Calcul facteur 2 : Engagement email (20 pts)
+    const emailCount = parseInt(emailsRes.rows[0]?.count ?? "0", 10);
+    const emailEngagementScore = Math.min(20, emailCount * 4);
+
+    // ── Calcul facteur 3 : Progression pipeline (20 pts)
+    const activeDeals = parseInt(dealsRes.rows[0]?.count ?? "0", 10);
+    const pipelineValue = parseFloat(dealsRes.rows[0]?.total_value ?? "0");
+    const pipelineProgressionScore = Math.min(20,
+      activeDeals * 5 + Math.min(5, Math.floor(pipelineValue / 10000)),
     );
-    const meetingsCount = parseInt(meetingsRes.rows[0]?.count ?? "0", 10);
-    const meetingsScore = Math.min(25, meetingsCount * 12);
 
-    // Memory signals (documents mentioning this company)
-    const memoryRes = await pool.query<{ count: string; last_created: Date | null }>(
-      `SELECT COUNT(*) AS count, MAX(created_at) AS last_created
-       FROM memory_documents
-       WHERE LOWER(content) LIKE LOWER($1) AND tenant_id = $2`,
-      [companyPattern, tenantId],
+    // ── Calcul facteur 4 : E-Réputation (10 pts)
+    const rawReputation = reputationRes.rows[0]?.reputation_health_score ?? null;
+    const reputationScore = rawReputation !== null
+      ? Math.round((rawReputation / 100) * 10)
+      : 5; // neutre si pas de données
+
+    // ── Calcul facteur 5 : Signaux d'intention (10 pts)
+    const signalCount = parseInt(signalsRes.rows[0]?.count ?? "0", 10);
+    const intentSignalsScore = Math.min(10, signalCount * 3);
+
+    const total = Math.min(100,
+      recentActivityScore + emailEngagementScore + pipelineProgressionScore +
+      reputationScore + intentSignalsScore,
     );
-    const memorySignalsCount = parseInt(memoryRes.rows[0]?.count ?? "0", 10);
-    const memoryScore = Math.min(20, memorySignalsCount * 5);
-
-    // Last activity across all sources
-    const dates: (Date | null)[] = [
-      prospectsRes.rows[0]?.last_updated ?? null,
-      meetingsRes.rows[0]?.last_created ?? null,
-      memoryRes.rows[0]?.last_created ?? null,
-    ];
-    const validDates = dates.filter((d): d is Date => d !== null);
-    const lastActivity = validDates.length > 0 ? new Date(Math.max(...validDates.map((d) => d.getTime()))) : null;
-    const recency = recencyScore(lastActivity);
-
-    const total = Math.min(100, prospectsScore + meetingsScore + memoryScore + recency);
 
     return {
-      prospectsCount,
-      prospectsScore,
-      meetingsCount,
-      meetingsScore,
-      memorySignalsCount,
-      memoryScore,
-      recencyScore: recency,
+      recentActivityScore,
+      emailEngagementScore,
+      pipelineProgressionScore,
+      reputationScore,
+      intentSignalsScore,
       total,
+      // legacy
+      prospectsCount: activeDeals,
+      meetingsCount: recentMeetings,
+      memorySignalsCount: signalCount,
     };
   }
 
@@ -128,12 +187,12 @@ class AccountService {
     const breakdown = await this.calculateHealthScore(accountId, tenantId);
     const engagementLevel = toEngagementLevel(breakdown.total);
 
-    // Derive lastActivityAt from a cross-source query
     const lastRes = await pool.query<{ last_at: Date | null }>(
       `SELECT GREATEST(
          (SELECT MAX(updated_at) FROM prospects WHERE LOWER(company)=LOWER($1) AND tenant_id=$2),
          (SELECT MAX(created_at) FROM meetings WHERE LOWER(title) LIKE LOWER($3) AND tenant_id=$2),
-         (SELECT MAX(created_at) FROM memory_documents WHERE LOWER(content) LIKE LOWER($3) AND tenant_id=$2)
+         (SELECT MAX(created_at) FROM activities WHERE tenant_id=$2
+            AND prospect_id IN (SELECT id FROM prospects WHERE tenant_id=$2 AND LOWER(company)=LOWER($1)))
        ) AS last_at`,
       [accountId, tenantId, `%${accountId}%`],
     );
@@ -152,7 +211,7 @@ class AccountService {
       [accountId, tenantId, breakdown.total, engagementLevel, lastActivityAt, JSON.stringify(breakdown)],
     );
 
-    const row = await pool.query<AccountMetrics & { account_id: string; tenant_id: string; health_score: number; engagement_level: EngagementLevel; last_activity_at: Date | null; score_breakdown: ScoreBreakdown; updated_at: Date }>(
+    const row = await pool.query(
       `SELECT account_id AS "accountId", tenant_id AS "tenantId", health_score AS "healthScore",
               engagement_level AS "engagementLevel", last_activity_at AS "lastActivityAt",
               score_breakdown AS "scoreBreakdown", updated_at AS "updatedAt"
@@ -166,7 +225,6 @@ class AccountService {
   async getAccount360(accountId: string, tenantId: string): Promise<Account360 | null> {
     const companyPattern = `%${accountId}%`;
 
-    // Contacts (prospects) for this account
     const prospectsRes = await pool.query<{ first_name: string; last_name: string; email: string; job_title: string; updated_at: Date }>(
       `SELECT first_name, last_name, email, job_title, updated_at
        FROM prospects
@@ -174,9 +232,6 @@ class AccountService {
        ORDER BY updated_at DESC LIMIT 20`,
       [accountId, tenantId],
     );
-    if (prospectsRes.rows.length === 0) {
-      logger.warn({ accountId }, "No prospects found for account");
-    }
 
     const contacts = prospectsRes.rows.map((p) => ({
       name: `${p.first_name || ""} ${p.last_name || ""}`.trim() || accountId,
@@ -184,10 +239,8 @@ class AccountService {
       role: p.job_title || "",
     }));
 
-    // Domain from first contact email
     const domain = contacts.find((c) => c.email.includes("@"))?.email.split("@")[1] || "";
 
-    // Recent meetings (by title match)
     const meetingsRes = await pool.query<{ id: string; title: string; status: string; created_at: Date; summary: string | null }>(
       `SELECT id, title, status, created_at, summary
        FROM meetings
@@ -203,7 +256,6 @@ class AccountService {
       summary: m.summary,
     }));
 
-    // Memory signals
     const memoryRes = await pool.query<{ id: string; content: string; source_type: string; created_at: Date }>(
       `SELECT id, content, source_type, created_at
        FROM memory_documents
@@ -218,7 +270,6 @@ class AccountService {
       createdAt: d.created_at.toISOString(),
     }));
 
-    // Build timeline
     const timeline: TimelineEvent[] = [
       ...prospectsRes.rows.map((p) => ({
         id: `prospect-${p.email}`,
@@ -246,7 +297,6 @@ class AccountService {
       })),
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 30);
 
-    // Compute and persist metrics
     const metrics = await this.upsertMetrics(accountId, tenantId);
 
     return {

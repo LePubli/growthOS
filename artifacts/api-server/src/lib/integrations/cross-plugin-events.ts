@@ -235,7 +235,78 @@ export function registerCrossPluginEvents(): void {
     },
   );
 
-  // ── 5. meeting.completed ──────────────────────────────────────────────────
+  // ── 5. erep.audit.completed ───────────────────────────────────────────────
+  pluginEventBus.on(
+    "erep.audit.completed",
+    PLUGIN_ID,
+    async (p: {
+      tenantId: string; campaignId: string; score: number;
+      summary?: string; campaignName?: string;
+    }) => {
+      logger.info({ campaignId: p.campaignId, score: p.score }, "erep.audit.completed cross-plugin");
+
+      const isCritical = p.score < 40;
+
+      // 1. Propager erep.score.updated → mise à jour accounts.reputation_health_score
+      try {
+        pluginEventBus.emit("erep.score.updated", {
+          campaignId: p.campaignId,
+          tenantId: p.tenantId,
+          newScore: p.score,
+          previousScore: null,
+        });
+      } catch (err) {
+        logger.warn({ err }, "erep.score.updated emit failed");
+      }
+
+      await Promise.allSettled([
+        // Indexer le résumé dans Growth Memory
+        p.summary && memoryService.indexDocument({
+          sourceType: "erep_audit",
+          sourceId: p.campaignId,
+          content: `Audit e-réputation ${p.campaignName ?? p.campaignId} : score ${p.score}/100. ${p.summary}`,
+          tenantId: p.tenantId,
+          metadata: { campaignId: p.campaignId, score: p.score },
+        }),
+
+        // Notification (urgence si score critique)
+        createNotification(
+          p.tenantId,
+          isCritical ? "erep_crisis" : "erep_audit_done",
+          isCritical ? "🔴 Crise E-Réputation détectée" : "Audit E-Réputation terminé",
+          `Score ${p.score}/100${isCritical ? " — Action urgente requise !" : " ✓"}${p.campaignName ? ` · ${p.campaignName}` : ""}`,
+        ),
+
+        // Si score < 40 : créer un signal dans Signal Intelligence
+        isCritical && pool.query(
+          `INSERT INTO signals (tenant_id, company, title, type, score, source, detected_at)
+           VALUES ($1, 'E-Réputation', $2, 'reputation', $3, 'erep-audit', NOW())`,
+          [
+            p.tenantId,
+            `Score e-réputation critique : ${p.score}/100${p.campaignName ? ` (${p.campaignName})` : ""}`,
+            Math.max(10, 100 - p.score),
+          ],
+        ).catch(() => {}),
+      ]);
+
+      // 3. Émettre erep.alert si critique → géré par erep-integrations listener
+      if (isCritical) {
+        try {
+          pluginEventBus.emit("erep.alert", {
+            campaignId: p.campaignId,
+            tenantId: p.tenantId,
+            alertType: "score_critical",
+            severity: "high",
+            message: `Score e-réputation critique : ${p.score}/100${p.campaignName ? ` (${p.campaignName})` : ""}`,
+          });
+        } catch (err) {
+          logger.warn({ err }, "erep.alert emit failed");
+        }
+      }
+    },
+  );
+
+  // ── 6. meeting.completed ──────────────────────────────────────────────────
   pluginEventBus.on(
     "meeting.completed",
     PLUGIN_ID,
@@ -266,7 +337,7 @@ export function registerCrossPluginEvents(): void {
   );
 
   logger.info(
-    { events: ["prospect.created","deal.stage.changed","signal.detected","sequence.email.sent","meeting.completed"] },
+    { events: ["prospect.created","deal.stage.changed","signal.detected","erep.audit.completed","sequence.email.sent","meeting.completed"] },
     "Cross-plugin integrations registered on EventBus",
   );
 }

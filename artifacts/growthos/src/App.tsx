@@ -82,6 +82,7 @@ import UsersPage from '@/pages/admin/UsersPage';
 import PlansPage from '@/pages/admin/PlansPage';
 import AuditPage from '@/pages/admin/AuditPage';
 import ApiKeysPage from '@/pages/admin/ApiKeysPage';
+import QuotaMonitoringPage from '@/pages/admin/QuotaMonitoringPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useSignalNotifications } from '@/hooks/useSignalNotifications';
 import { ClientShell } from '@/plugins/client-portal/ClientShell';
@@ -352,6 +353,9 @@ function AppRoutes() {
       </Route>
       <Route path="/admin/api-keys">
         {() => <DashboardLayout><ApiKeysPage /></DashboardLayout>}
+      </Route>
+      <Route path="/admin/quotas">
+        {() => <DashboardLayout><QuotaMonitoringPage /></DashboardLayout>}
       </Route>
 
       {/* ── Portail Client E-Réputation ─────────────────────────────────── */}

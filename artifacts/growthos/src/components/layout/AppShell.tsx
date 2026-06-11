@@ -139,6 +139,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/plans', label: 'Plans & Abonnements', icon: <CreditCard size={16} /> },
       { href: '/admin/audit', label: 'Journal d\'audit', icon: <Shield size={16} /> },
       { href: '/admin/api-keys', label: 'Clés API Providers', icon: <KeyRound size={16} /> },
+      { href: '/admin/quotas', label: 'Quotas & Limites', icon: <BarChart2 size={16} /> },
       { href: '/admin/plugins-upload', label: 'Upload Plugins', icon: <Upload size={16} /> },
       { href: '/admin/deep-audit', label: 'Audit Système', icon: <ShieldCheck size={16} /> },
       { href: '/themes', label: 'Thèmes', icon: <Palette size={16} /> },

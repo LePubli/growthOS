@@ -48,6 +48,7 @@ import adminUsersRouter from "./admin-users";
 import adminPlansRouter from "./admin-plans";
 import adminAuditRouter from "./admin-audit";
 import adminApiKeysRouter from "./admin-api-keys";
+import adminQuotasRouter from "./admin-quotas";
 import routeAuditRouter from "./route-audit";
 
 const router = Router();
@@ -114,6 +115,9 @@ router.use("/admin", adminAuditRouter);
 
 // ── Admin Provider API Keys ───────────────────────────────────────────────────
 router.use("/admin", adminApiKeysRouter);
+
+// ── Admin Quota Monitoring ────────────────────────────────────────────────────
+router.use("/admin", adminQuotasRouter);
 
 // ── Route Audit ───────────────────────────────────────────────────────────────
 router.use("/route-audit", requireAuth, routeAuditRouter);
