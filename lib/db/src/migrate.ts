@@ -757,6 +757,52 @@ export async function runSaaSMigration(): Promise<void> {
   await pool.query(SQL_SAAS);
 }
 
+export async function runPlansMigration(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS plans (
+      id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+      name             TEXT        NOT NULL UNIQUE,
+      display_name     TEXT        NOT NULL,
+      description      TEXT,
+      price_monthly    INTEGER     NOT NULL DEFAULT 0,
+      price_yearly     INTEGER     NOT NULL DEFAULT 0,
+      features         JSONB       NOT NULL DEFAULT '[]',
+      limits           JSONB       NOT NULL DEFAULT '{}',
+      is_active        BOOLEAN     NOT NULL DEFAULT true,
+      is_default       BOOLEAN     NOT NULL DEFAULT false,
+      stripe_price_id  TEXT,
+      stripe_price_yearly_id TEXT,
+      created_at       TIMESTAMP   NOT NULL DEFAULT NOW(),
+      updated_at       TIMESTAMP   NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS plan_id UUID REFERENCES plans(id) ON DELETE SET NULL;
+    ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+    ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMP;
+    ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN DEFAULT false;
+
+    -- 3 plans par défaut
+    INSERT INTO plans (name, display_name, description, price_monthly, price_yearly, features, limits, is_active, is_default)
+    VALUES
+      ('starter', 'Starter', 'Idéal pour démarrer votre prospection B2B',
+       4900, 49000,
+       '["Jusqu\''à 500 prospects","3 séquences email","2 utilisateurs","1 000 emails/mois","Support email","Export CSV"]'::jsonb,
+       '{"users":2,"prospects":500,"sequences":3,"emails_per_month":1000,"enrichments_per_month":50,"signals_per_month":20}'::jsonb,
+       true, true),
+      ('pro', 'Pro', 'Pour les équipes de vente ambitieuses',
+       14900, 149000,
+       '["Jusqu\''à 5 000 prospects","Séquences illimitées","10 utilisateurs","50 000 emails/mois","Enrichissement IA","Signaux d\''intention","Support prioritaire","API access"]'::jsonb,
+       '{"users":10,"prospects":5000,"sequences":-1,"emails_per_month":50000,"enrichments_per_month":500,"signals_per_month":200}'::jsonb,
+       true, false),
+      ('enterprise', 'Enterprise', 'Solutions sur mesure pour les grandes équipes',
+       49900, 499000,
+       '["Prospects illimités","Utilisateurs illimités","Emails illimités","Toutes intégrations","SLA garanti","Account Manager dédié","Onboarding custom","SSO / SAML"]'::jsonb,
+       '{"users":-1,"prospects":-1,"sequences":-1,"emails_per_month":-1,"enrichments_per_month":-1,"signals_per_month":-1}'::jsonb,
+       true, false)
+    ON CONFLICT (name) DO NOTHING;
+  `);
+}
+
 export async function runRBACMigration(): Promise<void> {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;

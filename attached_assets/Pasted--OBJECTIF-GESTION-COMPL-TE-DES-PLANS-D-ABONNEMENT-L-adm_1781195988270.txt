@@ -1,0 +1,59 @@
+# OBJECTIF : GESTION COMPLÈTE DES PLANS D'ABONNEMENT
+
+L'admin ne peut ni créer, ni modifier, ni supprimer des plans, ni faire passer un utilisateur d'un plan à un autre.
+
+## TÂCHE 3.1 : Migration DB
+
+Crée `artifacts/api-server/db/migrations/051_plans.sql` :
+- Table `plans` (id, name, display_name, description, price_monthly, price_yearly, features JSONB, limits JSONB, is_active, is_default, stripe_price_id)
+- Table `subscriptions` (id, user_id, tenant_id, plan_id, status, current_period_start, current_period_end, cancel_at_period_end, stripe_subscription_id)
+- Insère 3 plans par défaut : Starter (49€/mois), Pro (149€/mois), Enterprise (499€/mois) avec features et limits réalistes
+
+## TÂCHE 3.2 : Service Plans
+
+Crée `artifacts/api-server/src/lib/plans/PlansService.ts` :
+- `getPlans()` : Liste plans actifs triés par prix
+- `createPlan(data)` : Crée un plan
+- `updatePlan(planId, updates)` : Modifie un plan
+- `deletePlan(planId)` : Soft delete (is_active = false)
+- `changeUserPlan(userId, planId)` : Change le plan d'un utilisateur (UPSERT subscriptions)
+- `getUserPlan(userId)` : Récupère le plan actif d'un utilisateur
+- `checkLimit(userId, resource)` : Vérifie si quota dépassé
+- `getCurrentUsage(userId, resource)` : Compte l'usage actuel
+
+## TÂCHE 3.3 : Routes Admin Plans
+
+Crée `artifacts/api-server/src/routes/v1/admin/plans.ts` :
+- `GET /` : Liste plans
+- `POST /` : Créer plan
+- `PATCH /:id` : Modifier plan
+- `DELETE /:id` : Supprimer plan (soft)
+- `POST /users/:userId/change-plan` : Changer plan d'un utilisateur
+
+Monte dans `src/routes/v1/index.ts`.
+
+## TÂCHE 3.4 : Frontend PlansPage
+
+Crée `artifacts/growthos/src/pages/admin/PlansPage.tsx` :
+- Liste des plans avec prix, features, limits
+- Boutons : Modifier, Supprimer, Créer nouveau plan
+- Modal création avec champs : nom, prix mensuel/annuel, features (liste dynamique), limits (JSON editor)
+- Section "Changer le plan d'un utilisateur" : dropdown utilisateur + dropdown plan + bouton "Appliquer"
+
+Ajoute la route `/admin/plans` dans `App.tsx`.
+
+## TÂCHE 3.5 : Middleware Usage Limit
+
+Crée `artifacts/api-server/src/middlewares/usageLimit.ts` :
+- Vérifie `checkLimit` avant les actions coûteuses (création prospect, envoi email, enrichissement)
+- Retourne 402 Payment Required si quota dépassé
+- Incrémente l'usage après action réussie
+
+## RÈGLES
+1. Prix en centimes (4900 = 49€)
+2. Limits JSONB : {users: 5, prospects: 1000, enrichments_per_month: 100}
+3. Soft delete pour les plans (ne jamais supprimer en dur)
+4. Tests E2E : CRUD plans + changement plan utilisateur
+5. Ne pas casser la facturation Stripe existante
+
+Commence par Tâche 3.1 (Migration DB).

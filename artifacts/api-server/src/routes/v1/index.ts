@@ -45,6 +45,8 @@ import integrationsRouter from "./integrations";
 import publicApiRouter from "./public-api";
 import clientEreputationRouter from "./client-ereputation";
 import adminUsersRouter from "./admin-users";
+import adminPlansRouter from "./admin-plans";
+import adminAuditRouter from "./admin-audit";
 import routeAuditRouter from "./route-audit";
 
 const router = Router();
@@ -102,6 +104,12 @@ router.use("/client/ereputation", clientEreputationRouter);
 
 // ── Admin Users & Roles ───────────────────────────────────────────────────────
 router.use("/admin", adminUsersRouter);
+
+// ── Admin Plans & Subscriptions ───────────────────────────────────────────────
+router.use("/admin", adminPlansRouter);
+
+// ── Admin Audit Logs ──────────────────────────────────────────────────────────
+router.use("/admin", adminAuditRouter);
 
 // ── Route Audit ───────────────────────────────────────────────────────────────
 router.use("/route-audit", requireAuth, routeAuditRouter);

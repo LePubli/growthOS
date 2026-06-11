@@ -1,0 +1,64 @@
+# OBJECTIF : GESTION DES CLÉS API DES PROVIDERS IA
+
+L'admin ne peut pas ajouter les clés API des providers IA (OpenAI, Ollama, SerpAPI, etc.) pour que les modules fonctionnent réellement.
+
+## TÂCHE 4.1 : Migration DB
+
+Crée `artifacts/api-server/db/migrations/052_provider_api_keys.sql` :
+- Table `provider_api_keys` (id, tenant_id, provider, api_key, api_secret, endpoint_url, is_active, last_used_at)
+- Contrainte UNIQUE(tenant_id, provider)
+- Index sur tenant_id et provider
+
+## TÂCHE 4.2 : Service ProviderKeys
+
+Crée `artifacts/api-server/src/lib/api-keys/ProviderKeysService.ts` :
+- `getKeys(tenantId)` : Liste toutes les clés (masquer api_key partiellement : sk-...1234)
+- `upsertKey(tenantId, provider, apiKey, apiSecret?, endpointUrl?)` : Ajoute ou met à jour
+- `deleteKey(tenantId, provider)` : Supprime une clé
+- `getKey(tenantId, provider)` : Récupère une clé spécifique (pour utilisation par les services)
+- `testKey(provider, apiKey)` : Teste la validité de la clé (appel réel à l'API)
+
+## TÂCHE 4.3 : Routes Admin API Keys
+
+Crée `artifacts/api-server/src/routes/v1/admin/api-keys.ts` :
+- `GET /` : Liste clés du tenant
+- `POST /` : Ajouter/mettre à jour une clé
+- `DELETE /:provider` : Supprimer une clé
+- `POST /:provider/test` : Tester une clé
+
+Monte dans `src/routes/v1/index.ts`.
+
+## TÂCHE 4.4 : Frontend ApiKeysPage
+
+Crée `artifacts/growthos/src/pages/admin/ApiKeysPage.tsx` :
+- Grid de cartes par provider :
+  - OpenAI (GPT-4, GPT-3.5 pour AI SDR et Deal Coach)
+  - Ollama (LLM local Llama, Mistral)
+  - SerpAPI (Suivi SERP et SEO)
+  - LinkedIn API (Enrichissement LinkedIn)
+  - Hunter.io (Recherche emails)
+  - Clearbit (Enrichissement données)
+  - Anthropic/Claude (Alternative à OpenAI)
+  - Google Gemini (Alternative IA)
+  - Mistral API (IA européenne)
+- Badge "Configurée" si clé présente
+- Bouton "Configurer" / "Supprimer" / "Tester"
+- Modal ajout avec sélection provider + champs clé/secret/endpoint
+- Indicateur de statut après test (✅ valide / ❌ invalide)
+
+Ajoute la route `/admin/api-keys` dans `App.tsx`.
+
+## TÂCHE 4.5 : Intégration avec les Services IA
+
+Modifie les services qui utilisent l'IA pour qu'ils lisent les clés depuis `provider_api_keys` :
+- `artifacts/api-server/src/lib/ai/LLMService.ts` : Lire clé OpenAI/Ollama depuis DB au lieu de process.env
+- `artifacts/api-server/src/lib/plugin-ereputation/AuditService.ts` : Lire clé SerpAPI depuis DB
+- `artifacts/api-server/src/lib/enrichment/EnrichmentService.ts` : Lire clés Hunter.io, Clearbit depuis DB
+
+## RÈGLES
+1. Sécurité : Ne JAMAIS retourner la clé complète dans les réponses API (masquer : sk-...1234)
+2. Chiffrement : Stocker api_key et api_secret chiffrés en DB (crypto.createCipheriv)
+3. Tests E2E : CRUD clés + test clé
+4. Ne pas casser les services IA existants (fallback sur process.env si pas de clé en DB)
+
+Commence par Tâche 4.1 (Migration DB).

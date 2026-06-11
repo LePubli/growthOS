@@ -1,0 +1,70 @@
+# OBJECTIF : INTERCONNEXION TOTALE DES PLUGINS VIA EVENTBUS
+
+Les plugins fonctionnent en silo. Tu dois les câbler pour qu'ils communiquent entre eux via l'EventBus existant.
+
+## TÂCHE 5.1 : Module d'Intégration Cross-Plugins
+
+Crée `artifacts/api-server/src/lib/integrations/cross-plugin-events.ts` :
+
+Enregistre les listeners EventBus suivants :
+
+**Prospect créé** (`prospect.created`) →
+- Indexe dans Growth Memory via `memoryService.indexDocument()`
+- Déclenche workflows matching via `workflowService.trigger()`
+- Envoie webhook sortant si configuré
+
+**Deal stage changé** (`deal.stage_changed`) →
+- Met à jour Revenue Intelligence forecast
+- Déclenche workflows matching
+- Notifie commercial assigné (créer notification)
+- Envoie webhook sortant
+
+**Signal détecté** (`signal.received`) →
+- Crée notification temps réel via `notificationService.create()`
+- Déclenche workflows matching
+- Met à jour Account Health Score si lié à un compte
+
+**Audit E-Réputation terminé** (`erep.audit.completed`) →
+- Émet `erep.score.updated` → met à jour `accounts.reputation_health_score`
+- Si score < 40 : émet `erep.alert` → crée signal dans Signal Intelligence
+- Indexe résumé dans Growth Memory
+- Notifie via SocketIO
+
+**Séquence email envoyée** (`sequence.email_sent`) →
+- Track ouverture/clic → crée activité CRM
+- Met à jour statistiques séquence
+- Déclenche étape suivante si configurée
+
+## TÂCHE 5.2 : Account Intelligence - Health Score Unifié
+
+Modifie `artifacts/api-server/src/lib/account-intelligence/AccountService.ts` :
+- `calculateHealthScore(accountId)` intègre maintenant :
+  - Activité récente (40%)
+  - Engagement email (20%)
+  - Progression pipeline (20%)
+  - Score réputation E-Rep (10%) - depuis `accounts.reputation_health_score`
+  - Signaux d'intention (10%)
+
+## TÂCHE 5.3 : Executive Command Center - Vue Consolidée
+
+Modifie `artifacts/api-server/src/lib/executive/ExecutiveService.ts` :
+- `getOverview()` inclut maintenant :
+  - `averageReputationScore` (moyenne des campagnes E-Rep actives)
+  - `activeReputationAlerts` (nombre d'alertes E-Rep non résolues)
+  - `reputationCrisisCount` (crises en cours)
+
+Modifie `artifacts/growthos/src/pages/CommandCenterPage.tsx` :
+- Ajoute widget "Santé Réputation" avec ces nouvelles métriques
+
+## TÂCHE 5.4 : Branchement au Démarrage
+
+Modifie `artifacts/api-server/src/index.ts` :
+- Importe et appelle `registerCrossPluginEvents()` au démarrage après l'initialisation de l'EventBus
+
+## RÈGLES
+1. Async : Tous les listeners doivent être asynchrones pour ne pas bloquer l'UI
+2. Error handling : Try/catch sur chaque listener pour ne pas casser le flux principal
+3. Logs : Logger chaque événement émis et reçu
+4. Tests E2E : Vérifier qu'un événement émis déclenche bien les actions attendues
+
+Commence par Tâche 5.1 (Module d'intégration).

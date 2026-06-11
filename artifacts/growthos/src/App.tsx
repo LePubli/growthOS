@@ -79,6 +79,8 @@ import SSOConfigPage from '@/pages/settings/SSOConfigPage';
 import APIDocsPage from '@/pages/APIDocsPage';
 import ProductAnalyticsPage from '@/pages/ProductAnalyticsPage';
 import UsersPage from '@/pages/admin/UsersPage';
+import PlansPage from '@/pages/admin/PlansPage';
+import AuditPage from '@/pages/admin/AuditPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useSignalNotifications } from '@/hooks/useSignalNotifications';
 import { ClientShell } from '@/plugins/client-portal/ClientShell';
@@ -340,6 +342,12 @@ function AppRoutes() {
       </Route>
       <Route path="/admin/users">
         {() => <DashboardLayout><UsersPage /></DashboardLayout>}
+      </Route>
+      <Route path="/admin/plans">
+        {() => <DashboardLayout><PlansPage /></DashboardLayout>}
+      </Route>
+      <Route path="/admin/audit">
+        {() => <DashboardLayout><AuditPage /></DashboardLayout>}
       </Route>
 
       {/* ── Portail Client E-Réputation ─────────────────────────────────── */}
