@@ -95,11 +95,23 @@ const CHANNEL_CONFIG = {
   call:     { icon: '📞', label: 'Appel',    color: '#059669', bg: '#ECFDF5' },
 };
 
+/* ─── Provider config ────────────────────────────────────── */
+type Provider = 'ollama' | 'openai' | 'deepseek' | 'mistral' | 'anthropic' | 'gemini';
+
+const PROVIDERS_CONFIG: { value: Provider; label: string; icon: string; badge: string }[] = [
+  { value: 'ollama',    label: 'Ollama',    icon: '🦙', badge: 'Local'    },
+  { value: 'deepseek',  label: 'DeepSeek',  icon: '🔮', badge: 'Cloud'   },
+  { value: 'openai',    label: 'OpenAI',    icon: '🤖', badge: 'Cloud'   },
+  { value: 'mistral',   label: 'Mistral',   icon: '🌪️', badge: 'Cloud'  },
+  { value: 'anthropic', label: 'Anthropic', icon: '🧠', badge: 'Cloud'   },
+];
+
 /* ─── Main page ──────────────────────────────────────────── */
 export default function AISDRPage() {
   const [account, setAccount]   = useState('');
   const [goal, setGoal]         = useState('');
   const [tone, setTone]         = useState<Tone>('friendly');
+  const [provider, setProvider] = useState<Provider>('ollama');
   const [activeTab, setActiveTab] = useState<Tab>('email');
   const [emailDraft, setEmailDraft]   = useState<EmailDraft | null>(null);
   const [linkedInDraft, setLinkedInDraft] = useState<LinkedInDraft | null>(null);
@@ -132,7 +144,7 @@ export default function AISDRPage() {
     }
     setGenerating(true);
     setHasGenerated(false);
-    const payload = { accountId: account.trim(), goal: goal.trim(), tone };
+    const payload = { accountId: account.trim(), goal: goal.trim(), tone, provider };
     try {
       const [email, linkedin, sequence] = await Promise.all([
         apiClient.post('/ai-sdr/draft/email', payload),
@@ -143,7 +155,8 @@ export default function AISDRPage() {
       setLinkedInDraft(linkedin as LinkedInDraft);
       setSequenceDraft(sequence as SequenceDraft);
       setHasGenerated(true);
-      const via = (email as EmailDraft).generatedBy === 'ollama' ? `Ollama (${(email as EmailDraft).model})` : 'Mock LLM';
+      const gen = (email as EmailDraft).generatedBy;
+      const via = gen === 'mock' ? 'Mock LLM' : gen === 'ollama' ? `Ollama (${(email as EmailDraft).model ?? 'llama3.2'})` : gen.charAt(0).toUpperCase() + gen.slice(1);
       toast.success(`Drafts générés via ${via}`);
     } catch {
       toast.error('Erreur lors de la génération');
@@ -258,7 +271,7 @@ export default function AISDRPage() {
               />
             </div>
 
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 12 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Ton</label>
               <div style={{ display: 'flex', gap: 6 }}>
                 {TONES.map(t => (
@@ -273,6 +286,28 @@ export default function AISDRPage() {
                     }}
                   >
                     {t.emoji} {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Modèle IA</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {PROVIDERS_CONFIG.map(p => (
+                  <button
+                    key={p.value}
+                    onClick={() => setProvider(p.value)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 9, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                      border: `1.5px solid ${provider === p.value ? '#7C3AED' : 'var(--card-border)'}`,
+                      background: provider === p.value ? '#F5F3FF' : 'var(--body-bg)',
+                      color: provider === p.value ? '#7C3AED' : 'var(--text-muted)',
+                    }}
+                  >
+                    <span>{p.icon}</span>
+                    <span>{p.label}</span>
+                    <span style={{ fontSize: 9, padding: '1px 4px', borderRadius: 4, background: provider === p.value ? '#EDE9FE' : '#F3F4F6', color: provider === p.value ? '#5B21B6' : '#9CA3AF', fontWeight: 700 }}>{p.badge}</span>
                   </button>
                 ))}
               </div>

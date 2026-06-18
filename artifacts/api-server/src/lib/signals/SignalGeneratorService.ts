@@ -124,11 +124,23 @@ class SignalGeneratorService {
 
         const resp = await fetch(feed.url, {
           signal: ctrl.signal,
-          headers: { "User-Agent": "GrowthOS/1.0 SignalBot" },
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "application/rss+xml, application/xml, text/xml, application/atom+xml, */*;q=0.8",
+            "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+            "Cache-Control": "no-cache",
+          },
         });
         clearTimeout(timer);
 
-        if (!resp.ok) { logger.warn({ url: feed.url, status: resp.status }, "RSS fetch failed"); continue; }
+        if (!resp.ok) {
+          if (resp.status === 403 || resp.status === 404) {
+            logger.warn({ url: feed.url, status: resp.status }, "RSS feed blocked or not found — skipped");
+          } else {
+            logger.warn({ url: feed.url, status: resp.status }, "RSS fetch failed");
+          }
+          continue;
+        }
 
         const xml = await resp.text();
         const items = parseRSSItems(xml);

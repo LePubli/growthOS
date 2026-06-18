@@ -1,0 +1,81 @@
+# OBJECTIF : INTÉGRATION DEEPSEEK DANS LES PLUGINS IA + CORRECTION DE 3 BUGS CRITIQUES
+
+Tu es un Lead Fullstack Engineer. Tu dois résoudre 4 problèmes majeurs identifiés dans les logs et l'UI. Tu dois écrire toi-même le code nécessaire en suivant ces instructions précises.
+
+# ⚠️ RÈGLES STRICTES
+1. Ne casse AUCUNE fonctionnalité existante (les tests E2E doivent passer).
+2. DeepSeek doit être une option optionnelle : si aucune clé n'est configurée en DB, le système doit fallback sur le provider par défaut ou le mode mock.
+3. Toutes les modifications frontend doivent utiliser les composants UI existants (Radix/Tailwind).
+4. Logs structurés : chaque appel LLM doit logger le provider utilisé.
+
+---
+
+#  TÂCHE 1 : INTÉGRATION DEEPSEEK DANS TOUS LES PLUGINS IA (CRITIQUE)
+
+**Contexte** : DeepSeek est actuellement configurable dans `/admin/api-keys`, mais il n'est pas utilisable dans les modules IA (AI SDR, Deal Coach, Executive, Knowledge, Meetings).
+
+## 1.1 Backend : Mise à jour du Service LLM Central
+Modifie le service central de gestion des LLM (ex: `LLMService.ts` ou `AiService.ts`) :
+- Ajoute DeepSeek dans le registre des providers supportés.
+- Configure l'endpoint de base de DeepSeek (`https://api.deepseek.com/v1`) et ses modèles par défaut (`deepseek-chat`, `deepseek-coder`).
+- Modifie la méthode de génération pour gérer DeepSeek. L'API de DeepSeek étant compatible OpenAI, adapte le payload de la requête `fetch` en conséquence.
+- Assure-toi que la méthode récupère dynamiquement la clé API DeepSeek stockée en base de données (via le service `ProviderKeysService`) avant de faire l'appel.
+
+## 1.2 Backend : Mise à jour des Routes des Plugins IA
+Pour chaque route de génération IA (AI SDR, Deal Coach, Executive Assistant, etc.) :
+- Modifie la validation du body de la requête pour accepter 'deepseek' comme valeur valide pour le champ `provider`.
+- Assure-toi que le paramètre `provider` est bien transmis au Service LLM central.
+
+## 1.3 Frontend : Ajout dans les sélecteurs de Provider
+Pour CHAQUE page contenant un sélecteur de modèle IA (AI SDR, Deal Coach, Executive Command, Knowledge Base, Meeting Intelligence) :
+- Ajoute DeepSeek dans le tableau/la liste des providers disponibles.
+- Donne-lui un label clair ("DeepSeek") et une icône distinctive (ex: 🔮 ou une icône lucide-react appropriée).
+- Vérifie que lorsque DeepSeek est sélectionné, l'ID 'deepseek' est bien envoyé dans le corps de la requête API.
+
+---
+
+# 🐛 TÂCHE 2 : CORRECTION DU BUG D'URL DUPLIQUÉE (PORTAIL CLIENT)
+
+**Preuve** : Les logs montrent des appels vers `/api/v1/api/v1/client/ereputation/events` qui retournent 404.
+
+**Instruction** :
+- Ouvre les fichiers frontend du Portail Client (dans `src/pages/client/` ou `src/lib/api-client.ts`).
+- Recherche tous les appels API qui commencent par `/api/v1/api/v1/...`.
+- Corrige-les pour qu'ils commencent uniquement par `/api/v1/...` (ou utilise le client API de base qui préfixe déjà automatiquement, auquel cas supprime le préfixe `/api/v1/` en dur dans les appels).
+- Vérifie qu'aucune autre page du portail client ne souffre de ce doublon.
+
+---
+
+# 🐛 TÂCHE 3 : CORRECTION DU RSS FEED 403 (LE MONDE / LES ECHOS)
+
+**Preuve** : Le cron de signaux échoue sur `https://www.lesechos.fr/rss/rss_tech.xml` avec un statut 403.
+
+**Instruction** :
+- Ouvre le service ou le fichier Cron qui gère le scraping RSS (`SignalCron.ts` ou `RssService.ts`).
+- Modifie la fonction de fetch des flux RSS.
+- Ajoute un header `User-Agent` réaliste (ex: un User-Agent de navigateur Chrome standard) et un header `Accept` pour le XML/RSS dans la requête `fetch`.
+- Ajoute une gestion d'erreur propre : si le flux retourne un 403 ou 404, log un warning et retourne un tableau vide au lieu de faire planter le cron pour ce tenant.
+
+---
+
+#  TÂCHE 4 : NETTOYAGE DES LOGS NOTIFICATIONS STREAM 401
+
+**Preuve** : Le frontend appelle `/api/v1/notifications/stream` sans token, reçoit un 401, puis rappelle avec le token.
+
+**Instruction** :
+- Ouvre le hook ou le composant frontend qui gère la connexion SSE des notifications (ex: `useSignalNotifications.ts` ou `NotificationCenter.tsx`).
+- Ajoute une condition de garde (guard clause) au début du `useEffect` ou de la fonction de connexion : si le `accessToken` (ou le token JWT) n'est pas encore défini ou est nul, la fonction doit retourner immédiatement (`return`) sans tenter d'appeler l'API.
+- Cela évitera le premier appel 401 inutile dans les logs backend.
+
+---
+
+#  VALIDATION FINALE
+
+Une fois le code écrit :
+1. Redémarre le serveur API.
+2. Vérifie que la page AI SDR affiche bien DeepSeek dans le sélecteur.
+3. Vérifie dans les logs backend que le cron RSS ne renvoie plus d'erreur 403.
+4. Vérifie que le premier appel au stream de notifications ne retourne plus 401.
+5. Lance la suite de tests E2E pour confirmer l'absence de régression.
+
+Commence par la Tâche 1 (DeepSeek), c'est la plus complexe.

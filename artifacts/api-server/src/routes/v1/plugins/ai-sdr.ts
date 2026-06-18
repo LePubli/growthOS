@@ -9,6 +9,7 @@ const DraftSchema = z.object({
   accountId: z.string().min(1, "accountId is required"),
   goal:      z.string().min(3, "goal must be at least 3 characters"),
   tone:      z.enum(["formal", "casual", "friendly"]).optional().default("friendly"),
+  provider:  z.enum(["ollama", "openai", "deepseek", "mistral", "anthropic", "gemini"]).optional().default("ollama"),
 });
 
 // GET /ai-sdr/status — check Ollama availability (Bug #2 fix: retour dégradé au lieu de crash)

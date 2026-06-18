@@ -23,8 +23,7 @@ export function ClientShell({ children }: ClientShellProps) {
   // ── SSE — compteur approbations en attente
   useEffect(() => {
     if (!accessToken) return;
-    const apiBase = (import.meta as any).env?.VITE_API_URL ?? '';
-    const url = `${apiBase}/api/v1/client/ereputation/events?token=${encodeURIComponent(accessToken)}`;
+    const url = `/api/v1/client/ereputation/events?token=${encodeURIComponent(accessToken)}`;
     const es = new EventSource(url);
     es.onmessage = (e) => {
       try {

@@ -40,7 +40,8 @@ router.get("/deals", requireAuth, async (req, res) => {
 // POST /deal-coach/deals/:id/analyze — trigger analysis
 router.post("/deals/:id/analyze", requireAuth, async (req, res) => {
   try {
-    const result = await dealCoachService.analyzeDeal(req.params.id, req.auth!.tenantId);
+    const provider = (req.body as { provider?: string }).provider ?? "ollama";
+    const result = await dealCoachService.analyzeDeal(req.params.id, req.auth!.tenantId, provider);
     res.json(result);
   } catch (err: any) {
     console.error(err);

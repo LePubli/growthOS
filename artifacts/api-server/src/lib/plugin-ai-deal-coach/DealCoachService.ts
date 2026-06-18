@@ -42,39 +42,9 @@ interface DealRow {
   tenant_id: string;
 }
 
-/* ─── Ollama / LLM helper ────────────────────────────────── */
+/* ─── LLM central ────────────────────────────────────────── */
 
-import { providerKeysService } from "../provider-keys/ProviderKeysService";
-
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.2";
-
-async function getOllamaConfig(tenantId?: string): Promise<{ baseUrl: string; model: string }> {
-  if (tenantId) {
-    const dbKey = await providerKeysService.getKeyWithFallback(tenantId, "ollama").catch(() => null);
-    if (dbKey?.endpointUrl) return { baseUrl: dbKey.endpointUrl, model: OLLAMA_MODEL };
-  }
-  return { baseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434", model: OLLAMA_MODEL };
-}
-
-async function ollamaGenerate(prompt: string, tenantId?: string): Promise<string | null> {
-  try {
-    const { baseUrl, model } = await getOllamaConfig(tenantId);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-    const res = await fetch(`${baseUrl}/api/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt, stream: false }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) return null;
-    const data = await res.json() as { response?: string };
-    return data.response?.trim() ?? null;
-  } catch {
-    return null;
-  }
-}
+import { llmService } from "../llm/LLMService";
 
 /* ─── Health score formula ───────────────────────────────── */
 
@@ -235,7 +205,7 @@ function mockRecommendations(
 /* ─── Service ────────────────────────────────────────────── */
 
 class DealCoachService {
-  async analyzeDeal(dealId: string, tenantId: string): Promise<CoachResult> {
+  async analyzeDeal(dealId: string, tenantId: string, provider = "ollama"): Promise<CoachResult> {
     // 1. Fetch deal
     const dealRes = await pool.query<DealRow>(
       `SELECT * FROM deals WHERE id = $1 AND tenant_id = $2`,
@@ -305,7 +275,8 @@ Risques: ${riskFactors.map(r => r.label).join(", ")}
 Signaux: ${signals.slice(0, 2).map(s => s.title).join(", ") || "Aucun"}
 Réponse: uniquement les 3 recommandations numérotées, concises et actionnables.`;
 
-    const ollamaRaw = await ollamaGenerate(prompt, tenantId);
+    const ollamaRaw = await llmService.generate(prompt, { provider, tenantId });
+    logger.info({ dealId, company, provider }, "LLM used for deal coaching");
     aiRecommendations = ollamaRaw ?? mockRecommendations(company, riskFactors, signals, deal.stage);
 
     // 9. Persist results

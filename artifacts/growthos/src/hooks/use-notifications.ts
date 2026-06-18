@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/stores/auth.store';
 
 export interface AppNotification {
   id: string;
@@ -17,6 +18,7 @@ export function useNotifications() {
   const [notifs, setNotifs] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const esRef = useRef<EventSource | null>(null);
+  const { isAuthenticated, accessToken } = useAuthStore();
 
   const fetchNotifs = useCallback(async () => {
     try {
@@ -35,15 +37,8 @@ export function useNotifications() {
   }, [fetchNotifs]);
 
   useEffect(() => {
-    const token = (() => {
-      try {
-        const raw = localStorage.getItem('growthos-auth');
-        if (!raw) return null;
-        return JSON.parse(raw)?.state?.accessToken ?? null;
-      } catch { return null; }
-    })();
-
-    if (!token) return;
+    if (!isAuthenticated || !accessToken) return;
+    const token = accessToken;
 
     const url = `/api/v1/notifications/stream`;
     const es = new EventSource(url + `?token=${encodeURIComponent(token)}`);
@@ -70,7 +65,7 @@ export function useNotifications() {
       es.close();
       esRef.current = null;
     };
-  }, []);
+  }, [isAuthenticated, accessToken]);
 
   const markRead = useCallback(async (id: string) => {
     setNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));

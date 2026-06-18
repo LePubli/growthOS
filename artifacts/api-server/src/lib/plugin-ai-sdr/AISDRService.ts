@@ -9,13 +9,14 @@ export interface DraftContext {
   goal: string;
   tone?: "formal" | "casual" | "friendly";
   tenantId: string;
+  provider?: string;
 }
 
 export interface EmailDraft {
   subject: string;
   body: string;
   tone: string;
-  generatedBy: "ollama" | "mock";
+  generatedBy: "ollama" | "deepseek" | "openai" | "mistral" | "anthropic" | "gemini" | "mock";
   model?: string;
   contextUsed: { signals: number; memories: number; account: string };
 }
@@ -23,7 +24,7 @@ export interface EmailDraft {
 export interface LinkedInDraft {
   message: string;
   characterCount: number;
-  generatedBy: "ollama" | "mock";
+  generatedBy: "ollama" | "deepseek" | "openai" | "mistral" | "anthropic" | "gemini" | "mock";
   model?: string;
   contextUsed: { signals: number; memories: number; account: string };
 }
@@ -39,7 +40,7 @@ export interface SequenceStep {
 export interface SequenceDraft {
   name: string;
   steps: SequenceStep[];
-  generatedBy: "ollama" | "mock";
+  generatedBy: "ollama" | "deepseek" | "openai" | "mistral" | "anthropic" | "gemini" | "mock";
   model?: string;
   contextUsed: { signals: number; memories: number; account: string };
 }
@@ -63,40 +64,11 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
   { id: "event", name: "Événement", goal: "invite to an exclusive webinar or event", tone: "casual", description: "Event-based outreach", emoji: "🎯" },
 ];
 
-/* ─── Ollama / LLM integration ──────────────────────────── */
+/* ─── LLM central ────────────────────────────────────────── */
 
-import { providerKeysService } from "../provider-keys/ProviderKeysService";
+import { llmService } from "../llm/LLMService";
 
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.2";
-
-async function getOllamaConfig(tenantId?: string): Promise<{ baseUrl: string; model: string }> {
-  if (tenantId) {
-    const dbKey = await providerKeysService.getKeyWithFallback(tenantId, "ollama").catch(() => null);
-    if (dbKey?.endpointUrl) return { baseUrl: dbKey.endpointUrl, model: OLLAMA_MODEL };
-  }
-  return { baseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434", model: OLLAMA_MODEL };
-}
-
-async function ollamaGenerate(prompt: string, tenantId?: string): Promise<string | null> {
-  try {
-    const { baseUrl, model } = await getOllamaConfig(tenantId);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-    const res = await fetch(`${baseUrl}/api/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt, stream: false }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) return null;
-    const data = await res.json() as { response?: string };
-    return data.response?.trim() ?? null;
-  } catch (err) {
-    logger.debug({ err }, "Ollama not reachable — falling back to MockLLM");
-    return null;
-  }
-}
 
 /* ─── Context builder ────────────────────────────────────── */
 
@@ -285,7 +257,8 @@ Write a ${tone} cold outreach EMAIL in French to achieve the goal: "${ctx.goal}"
 Return a JSON object with keys: subject (string), body (string), tone (string).
 Return ONLY valid JSON, no markdown, no explanation.`;
 
-    const raw = await ollamaGenerate(prompt, ctx.tenantId);
+    const provider = ctx.provider ?? "ollama";
+    const raw = await llmService.generate(prompt, { provider, tenantId: ctx.tenantId });
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as { subject?: string; body?: string; tone?: string };
@@ -294,13 +267,13 @@ Return ONLY valid JSON, no markdown, no explanation.`;
             subject: parsed.subject,
             body: parsed.body,
             tone: parsed.tone ?? tone,
-            generatedBy: "ollama",
-            model: OLLAMA_MODEL,
+            generatedBy: provider as EmailDraft["generatedBy"],
+            model: provider === "ollama" ? OLLAMA_MODEL : undefined,
             contextUsed: { signals: signals.length, memories: memories.length, account: accountName },
           };
         }
       } catch {
-        logger.warn({ raw }, "Failed to parse Ollama JSON, falling back to mock");
+        logger.warn({ raw, provider }, "Failed to parse LLM JSON, falling back to mock");
       }
     }
 
@@ -318,7 +291,8 @@ Write a SHORT ${tone} LinkedIn connection message in French (max 300 characters)
 Return a JSON object with key: message (string).
 Return ONLY valid JSON, no markdown.`;
 
-    const raw = await ollamaGenerate(prompt);
+    const provider = ctx.provider ?? "ollama";
+    const raw = await llmService.generate(prompt, { provider, tenantId: ctx.tenantId });
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as { message?: string };
@@ -327,13 +301,13 @@ Return ONLY valid JSON, no markdown.`;
           return {
             message: msg,
             characterCount: msg.length,
-            generatedBy: "ollama",
-            model: OLLAMA_MODEL,
+            generatedBy: provider as LinkedInDraft["generatedBy"],
+            model: provider === "ollama" ? OLLAMA_MODEL : undefined,
             contextUsed: { signals: signals.length, memories: memories.length, account: accountName },
           };
         }
       } catch {
-        logger.warn({ raw }, "Failed to parse Ollama JSON, falling back to mock");
+        logger.warn({ raw, provider }, "Failed to parse LLM JSON, falling back to mock");
       }
     }
 
@@ -352,7 +326,8 @@ Return a JSON object with:
 - steps: array of {step, day, channel, subject?, body}
 Return ONLY valid JSON.`;
 
-    const raw = await ollamaGenerate(prompt);
+    const provider = ctx.provider ?? "ollama";
+    const raw = await llmService.generate(prompt, { provider, tenantId: ctx.tenantId });
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as { name?: string; steps?: SequenceStep[] };
@@ -360,13 +335,13 @@ Return ONLY valid JSON.`;
           return {
             name: parsed.name,
             steps: parsed.steps,
-            generatedBy: "ollama",
-            model: OLLAMA_MODEL,
+            generatedBy: provider as SequenceDraft["generatedBy"],
+            model: provider === "ollama" ? OLLAMA_MODEL : undefined,
             contextUsed: { signals: signals.length, memories: memories.length, account: accountName },
           };
         }
       } catch {
-        logger.warn({ raw }, "Failed to parse Ollama sequence JSON, falling back to mock");
+        logger.warn({ raw, provider }, "Failed to parse LLM sequence JSON, falling back to mock");
       }
     }
 
@@ -396,7 +371,7 @@ export interface PlaybookDraft {
   objections: { objection: string; response: string }[];
   competitorNotes: string;
   nextSteps: string[];
-  generatedBy: "ollama" | "mock";
+  generatedBy: "ollama" | "deepseek" | "openai" | "mistral" | "anthropic" | "gemini" | "mock";
   model?: string;
   contextUsed: { signals: number; memories: number; account: string };
 }
@@ -491,7 +466,8 @@ Return a JSON object with:
 - nextSteps: string[] (4 action items)
 Return ONLY valid JSON, no markdown.`;
 
-  const raw = await ollamaGenerate(prompt);
+  const provider = ctx.provider ?? "ollama";
+  const raw = await llmService.generate(prompt, { provider, tenantId: ctx.tenantId });
   if (raw) {
     try {
       const p = JSON.parse(raw) as Partial<PlaybookDraft>;
@@ -502,8 +478,8 @@ Return ONLY valid JSON, no markdown.`;
           objections: p.objections,
           competitorNotes: p.competitorNotes ?? "",
           nextSteps: p.nextSteps,
-          generatedBy: "ollama",
-          model: OLLAMA_MODEL,
+          generatedBy: provider as PlaybookDraft["generatedBy"],
+          model: provider === "ollama" ? OLLAMA_MODEL : undefined,
           contextUsed: { signals: signals.length, memories: memories.length, account: accountName },
         };
       }

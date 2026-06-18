@@ -341,6 +341,7 @@ export default function DealCoachPage() {
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState('');
+  const [provider, setProvider] = useState('ollama');
 
   const { data: health } = useQuery<PipelineHealth>({
     queryKey: ['deal-coach-health'],
@@ -360,7 +361,7 @@ export default function DealCoachPage() {
   });
 
   const analyzeMutation = useMutation({
-    mutationFn: (id: string) => apiClient.post(`/deal-coach/deals/${id}/analyze`, {}),
+    mutationFn: (id: string) => apiClient.post(`/deal-coach/deals/${id}/analyze`, { provider }),
     onMutate: (id) => setAnalyzingId(id),
     onSuccess: (result: any) => {
       toast.success(`Health Score: ${result.healthScore}/100 — ${result.riskFactors?.length ?? 0} risque(s) détecté(s)`);
@@ -398,6 +399,31 @@ export default function DealCoachPage() {
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 22, fontWeight: 900, color: 'var(--text-primary)', margin: '0 0 4px' }}>AI Deal Coach</h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Health Score, détection de risques et recommandations pour chaque deal actif</p>
+        </div>
+        {/* Provider selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Modèle IA</span>
+          {[
+            { value: 'ollama',    icon: '🦙', label: 'Ollama'    },
+            { value: 'deepseek',  icon: '🔮', label: 'DeepSeek'  },
+            { value: 'openai',    icon: '🤖', label: 'OpenAI'    },
+            { value: 'mistral',   icon: '🌪️', label: 'Mistral'  },
+            { value: 'anthropic', icon: '🧠', label: 'Anthropic' },
+          ].map(p => (
+            <button
+              key={p.value}
+              onClick={() => setProvider(p.value)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 8,
+                fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                border: `1.5px solid ${provider === p.value ? '#DC2626' : 'var(--card-border)'}`,
+                background: provider === p.value ? '#FEF2F2' : 'var(--card-bg)',
+                color: provider === p.value ? '#DC2626' : 'var(--text-muted)',
+              }}
+            >
+              <span>{p.icon}</span><span>{p.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
