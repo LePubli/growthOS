@@ -1,0 +1,37 @@
+# OBJECTIF : AUDIT INFRA & BACKUPS (SANS TOUCHER AUX DOCKERFILES EXISTANTS)
+
+Tu es un Lead DevOps. J'ai déjà des Dockerfiles fonctionnels à la racine et dans les APIs pour Coolify. **Ne les réécris pas et n'en crée pas de nouveaux.** 
+
+Ton objectif est de sécuriser et documenter l'existant.
+
+## TÂCHE 1 : Audit des Dockerfiles existants
+Analyse mes Dockerfiles actuels. Vérifie simplement :
+1. Utilisent-ils des images de base légères (ex: `alpine`) ?
+2. Ont-ils un `HEALTHCHECK` configuré ?
+3. Sont-ils en multi-stage build pour éviter d'inclure les `node_modules` de dev en prod ?
+*Si tout est bon, dis-le moi. Si tu vois une faille de sécurité critique ou un poids excessif, propose une correction ciblée.*
+
+## TÂCHE 2 : Synchronisation des Variables d'Environnement
+Crée ou mets à jour un fichier `.env.example` à la racine du projet. 
+Il doit lister TOUTES les variables d'environnement nécessaires à l'application (DB, Redis, JWT, Stripe, OpenAI, Ollama, URLs) avec des valeurs par défaut sûres et des commentaires expliquant à quoi sert chaque variable.
+*Important : Ne commite jamais de vraies clés API.*
+
+## TÂCHE 3 : Scripts de Backup Base de Données
+Les Dockerfiles ne font pas les backups. Crée un dossier `scripts/` à la racine avec :
+1. `backup-db.sh` : Un script bash qui fait un `pg_dump` de la base PostgreSQL, le compresse en `.sql.gz` avec un timestamp, et le sauvegarde localement.
+2. `restore-db.sh` : Un script pour restaurer un backup.
+3. Ajoute un exemple de configuration Cron (dans un fichier `crontab.example`) pour lancer le backup tous les jours à 3h du matin.
+
+## TÂCHE 4 : Documentation de Déploiement
+Crée un fichier `DEPLOYMENT.md` clair et concis à la racine. Il doit expliquer :
+1. Les prérequis (Docker, Coolify, Domaine).
+2. Comment configurer le fichier `.env` à partir du `.env.example`.
+3. Comment déployer sur Coolify (ou via docker-compose si applicable).
+4. Comment gérer les backups et les mises à jour.
+
+## RÈGLES STRICTES
+1. **NE PAS MODIFIER** les Dockerfiles existants sauf avis contraire de ta part.
+2. **NE PAS COMMIT** le fichier `.env` (ajoute-le au `.gitignore` s'il n'y est pas).
+3. Les scripts bash doivent être exécutables et robustes (gestion des erreurs avec `set -e`).
+
+Commence par l'audit des Dockerfiles existants.
