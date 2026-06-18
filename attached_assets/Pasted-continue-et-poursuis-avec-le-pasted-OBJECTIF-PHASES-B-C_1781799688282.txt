@@ -1,0 +1,52 @@
+continue et poursuis avec le pasted:# OBJECTIF : PHASES B, C, D - GO-TO-MARKET, AGENTS IA AUTONOMES & PACKAGING PRODUCTION
+
+Tu es un Lead Fullstack Engineer. GrowthOS est stable, le RBAC et les bugs critiques sont corrigés. Tu vas maintenant implémenter les 3 dernières phases stratégiques pour transformer GrowthOS en un SaaS vendable et déployable.
+
+⚠️ RÈGLES CRITIQUES
+Ne casse AUCUNE fonctionnalité existante (les 356 tests E2E doivent passer).
+Multi-tenancy obligatoire sur toutes les nouvelles données.
+Sécurité : Les routes publiques ne doivent JAMAIS exposer de données internes.
+Exécution séquentielle : Termine la Phase B, puis C, puis D.
+PHASE B : SITE VITRINE & GO-TO-MARKET (Rendre l'app publique)
+1. Frontend - Pages Publiques
+Crée les pages suivantes dans artifacts/growthos/src/pages/public/ :
+
+LandingPage.tsx (/) : Hero section, fonctionnalités clés (AI SDR, E-Réputation, Signaux), témoignages, CTA vers /register.
+PricingPage.tsx (/pricing) : Affiche les 3 plans (Starter, Pro, Enterprise) récupérés via une API publique.
+RegisterPage.tsx (/register) : Formulaire d'inscription (Nom entreprise, Email pro, Mot de passe, Code parrainage optionnel).
+Modifie App.tsx pour ajouter ces routes AVANT les routes protégées. Si l'utilisateur est connecté et va sur /, redirige vers /dashboard.
+
+2. Backend - Inscription Multi-Tenant
+Crée artifacts/api-server/src/routes/v1/auth-public.ts (montée AVANT le middleware requireAuth) :
+
+POST /register-public :
+Crée un nouveau tenant (nom = nom entreprise).
+Crée le user (admin du tenant) avec le rôle 'admin'.
+Crée une subscription avec le plan choisi (ou 'starter' par défaut).
+Retourne le JWT pour login automatique.
+Crée artifacts/api-server/src/routes/v1/public.ts :
+
+GET /plans : Retourne les plans actifs (sans infos sensibles).
+--- # 🟡 PHASE C : AGENTS IA AUTONOMES (Le "Killer Feature")
+
+1. Base de données
+Ajoute dans la migration DB (migrate.ts) :
+
+Table autopilot_rules (id, tenant_id, trigger_event, condition_json, action_type, action_config, is_active).
+Table autopilot_logs (id, tenant_id, rule_id, execution_result, created_at).
+2. Backend - Service Autopilot
+Crée artifacts/api-server/src/lib/autopilot/AutopilotService.ts :
+
+getRules(tenantId) : Récupère les règles actives.
+evaluateAndExecute(event, tenantId) : Évalue les conditions et exécute l'action (ex: créer une tâche, envoyer une notification, générer un draft email).
+Crée artifacts/api-server/src/lib/autopilot/AgentWorker.ts :
+
+Un listener sur l'EventBus qui écoute les événements (signal.received, erep.alert, deal.stage_changed).
+Quand un événement arrive, il appelle AutopilotService.evaluateAndExecute().
+3. Frontend - Configuration Autopilot
+Crée artifacts/growthos/src/pages/settings/AutopilotPage.tsx (/settings/autopilot) :
+
+Liste des règles actives avec toggle ON/OFF.
+Bouton "Ajouter une règle" (Wizard : Choisir déclencheur -> Définir condition -> Choisir action).
+Historique des exécutions (logs) avec statut (succès/échec/limité par plan).
+Monte l'AgentWorker dans artifacts/api-server/src/index.ts au démarrage.

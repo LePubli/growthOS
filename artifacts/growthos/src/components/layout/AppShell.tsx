@@ -99,6 +99,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/memory', label: 'Mémoire', icon: <Brain size={16} />, pluginId: 'growth-memory' },
       { href: '/meetings', label: 'Réunions', icon: <Video size={16} />, pluginId: 'meeting-intelligence' },
       { href: '/ai', label: 'Agent IA', icon: <Bot size={16} /> },
+      { href: '/settings/autopilot', label: 'Autopilot IA', icon: <Sparkles size={16} /> },
       { href: '/workflows', label: 'Workflows', icon: <Globe size={16} /> },
       { href: '/calendar', label: 'Calendrier', icon: <CalIcon size={16} /> },
     ],

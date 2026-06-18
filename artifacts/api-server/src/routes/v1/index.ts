@@ -50,14 +50,20 @@ import adminAuditRouter from "./admin-audit";
 import adminApiKeysRouter from "./admin-api-keys";
 import adminQuotasRouter from "./admin-quotas";
 import routeAuditRouter from "./route-audit";
+import authPublicRouter from "./auth-public";
+import plansPublicRouter from "./plans-public";
+import autopilotRouter from "./autopilot";
+import adminCronRouter from "./admin-cron";
 
 const router = Router();
 
 // ── ROUTES PUBLIQUES (pas d'auth requise) ────────────────────────────────
 router.use("/auth",            authRouter);
+router.use("/auth",            authPublicRouter);
 router.use("/api-docs",        apiDocsRouter);
 router.use("/public",          publicApiRouter);
 router.use("/billing/webhook", billingWebhookRouter);
+router.use("/plans",           plansPublicRouter);
 
 // ── ROUTES PROTÉGÉES (requireAuth + requireTenant au niveau mount) ────────
 router.use("/prospects",          requireAuth, requireTenant, prospectsRouter);
@@ -121,5 +127,11 @@ router.use("/admin", adminQuotasRouter);
 
 // ── Route Audit ───────────────────────────────────────────────────────────────
 router.use("/route-audit", requireAuth, routeAuditRouter);
+
+// ── Autopilot — Agents IA autonomes ──────────────────────────────────────────
+router.use("/autopilot", requireAuth, requireTenant, autopilotRouter);
+
+// ── Admin — Signal Cron ───────────────────────────────────────────────────────
+router.use("/admin/cron", adminCronRouter);
 
 export default router;

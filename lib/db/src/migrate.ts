@@ -928,6 +928,38 @@ export async function runRBACMigration(): Promise<void> {
   `);
 }
 
+export async function runAutopilotMigration(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS autopilot_rules (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      trigger_event TEXT NOT NULL,
+      condition_json JSONB NOT NULL DEFAULT '{}',
+      action_type TEXT NOT NULL,
+      action_config JSONB NOT NULL DEFAULT '{}',
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS autopilot_logs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      rule_id UUID REFERENCES autopilot_rules(id) ON DELETE SET NULL,
+      trigger_event TEXT NOT NULL,
+      execution_result TEXT NOT NULL DEFAULT 'success',
+      result_details JSONB NOT NULL DEFAULT '{}',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_autopilot_rules_tenant ON autopilot_rules(tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_autopilot_rules_event ON autopilot_rules(trigger_event);
+    CREATE INDEX IF NOT EXISTS idx_autopilot_logs_tenant ON autopilot_logs(tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_autopilot_logs_rule ON autopilot_logs(rule_id);
+  `);
+}
+
 export async function runMigrations(maxAttempts = 10): Promise<void> {
   let attempt = 0;
   while (attempt < maxAttempts) {

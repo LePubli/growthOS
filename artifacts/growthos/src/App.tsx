@@ -86,6 +86,10 @@ import QuotaMonitoringPage from '@/pages/admin/QuotaMonitoringPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useSignalNotifications } from '@/hooks/useSignalNotifications';
 import { ClientShell } from '@/plugins/client-portal/ClientShell';
+import LandingPage from '@/pages/public/LandingPage';
+import PricingPage from '@/pages/public/PricingPage';
+import RegisterPage from '@/pages/public/RegisterPage';
+import AutopilotPage from '@/pages/settings/AutopilotPage';
 import ClientDashboardPage from '@/plugins/client-portal/ClientDashboardPage';
 import ClientCampaignsPage from '@/plugins/client-portal/ClientCampaignsPage';
 import ClientApprovalsPage from '@/plugins/client-portal/ClientApprovalsPage';
@@ -110,12 +114,17 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   useSignalNotifications();
+  const { isAuthenticated } = useAuthStore();
+
   return (
     <Switch>
-      <Route path="/login" component={LoginPage} />
+      {/* ── Routes publiques (pas d'auth requise) ─────────────────────── */}
       <Route path="/">
-        {() => <Redirect to="/dashboard" />}
+        {() => isAuthenticated ? <Redirect to="/dashboard" /> : <LandingPage />}
       </Route>
+      <Route path="/pricing" component={PricingPage} />
+      <Route path="/register" component={RegisterPage} />
+      <Route path="/login" component={LoginPage} />
 
       <Route path="/dashboard">
         {() => <DashboardLayout><DashboardPage /></DashboardLayout>}
@@ -209,6 +218,9 @@ function AppRoutes() {
       </Route>
       <Route path="/settings/integrations">
         {() => <DashboardLayout><IntegrationsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/settings/autopilot">
+        {() => <DashboardLayout><AutopilotPage /></DashboardLayout>}
       </Route>
 
       <Route path="/activities">

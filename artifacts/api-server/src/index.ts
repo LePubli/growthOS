@@ -1,10 +1,11 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration, runProviderKeysMigration } from "@workspace/db";
+import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration, runProviderKeysMigration, runAutopilotMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 import { registerErepIntegrations } from "./lib/integrations/erep-integrations";
 import { registerCrossPluginEvents } from "./lib/integrations/cross-plugin-events";
 import { startSignalCron } from "./lib/cron/SignalCron";
+import { startAgentWorker } from "./lib/autopilot/AgentWorker";
 
 const rawPort = process.env["PORT"];
 
@@ -42,6 +43,9 @@ runMigrations()
     await runProviderKeysMigration();
     logger.info("Provider API keys table ready (provider_api_keys)");
 
+    await runAutopilotMigration();
+    logger.info("Autopilot tables ready (autopilot_rules, autopilot_logs)");
+
     await seedBuiltInPlugins();
 
     // ── Register cross-plugin EventBus integrations
@@ -57,6 +61,9 @@ runMigrations()
 
       // ── Démarrer le cron de génération de signaux (toutes les 2h)
       startSignalCron();
+
+      // ── Démarrer l'AgentWorker (Autopilot IA)
+      startAgentWorker();
     });
   })
   .catch((err) => {
