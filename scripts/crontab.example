@@ -1,0 +1,17 @@
+# =============================================================
+# GrowthOS — Exemple de configuration Cron pour les backups
+#
+# Pour installer :
+#   crontab -e
+# puis coller les lignes ci-dessous en adaptant les chemins.
+#
+# Pour vérifier les crons actifs :
+#   crontab -l
+# =============================================================
+
+# Backup quotidien à 3h00 du matin
+# Logs enregistrés dans /var/log/growthos-backup.log
+0 3 * * * /chemin/vers/projet/scripts/backup-db.sh /chemin/vers/backups >> /var/log/growthos-backup.log 2>&1
+
+# (Optionnel) Backup hebdomadaire complet chaque dimanche à 2h00
+# 0 2 * * 0 /chemin/vers/projet/scripts/backup-db.sh /chemin/vers/backups/weekly >> /var/log/growthos-backup-weekly.log 2>&1
