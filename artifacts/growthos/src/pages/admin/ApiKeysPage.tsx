@@ -299,7 +299,7 @@ export default function ApiKeysPage() {
   const configured = providers.filter(p => p.configured).length;
 
   const CATEGORIES = [
-    { label: 'IA & LLM', ids: ['openai', 'anthropic', 'gemini', 'mistral', 'ollama'] },
+    { label: 'IA & LLM', ids: ['openai', 'anthropic', 'gemini', 'mistral', 'deepseek', 'ollama'] },
     { label: 'Enrichissement & Prospection', ids: ['hunter', 'clearbit', 'dropcontact', 'apollo', 'crunchbase', 'linkedin'] },
     { label: 'SEO & Réputation', ids: ['serpapi'] },
   ];

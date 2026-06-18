@@ -1,0 +1,162 @@
+# OBJECTIF : REMPLACER LES MOCKS DE SIGNAUX PAR UN VRAI SYSTÈME + AJOUTER DEEPSEEK + FIX RÔLE OWNER
+
+Tu dois résoudre 3 problèmes critiques identifiés dans les captures d'écran :
+1. Les signaux sont toujours des mocks (bouton "Générer Signaux Mock" encore présent)
+2. Le provider DeepSeek manque dans la page Clés API
+3. L'utilisateur a toujours le rôle "owner" au lieu de "admin"
+
+#  PROBLÈME #1 : SIGNAUX MOCKÉS (CRITIQUE)
+
+**État actuel** : La page `/signals` affiche des signaux générés aléatoirement avec `company=""` vide. Le bouton "Générer Signaux Mock" est encore présent.
+
+**Objectif** : Remplacer par un vrai système de génération de signaux depuis des sources réelles avec cron automatique.
+
+## Solution 1.1 : Supprimer le bouton mock
+
+Dans `artifacts/growthos/src/pages/SignalsPage.tsx` :
+- Supprimer le bouton "Générer Signaux Mock"
+- Le remplacer par un bouton "Lancer une recherche" qui ouvre un modal de configuration
+
+## Solution 1.2 : Créer un vrai service de génération de signaux
+
+Crée `artifacts/api-server/src/lib/signals/SignalGeneratorService.ts` :
+
+```typescript
+import { db } from '../../lib/db';
+import { logger } from '../../lib/logger';
+
+export class SignalGeneratorService {
+  // Sources de signaux réelles
+  private sources = {
+    rss: [
+      'https://www.lemonde.fr/economie/rss_full.xml',
+      'https://www.challenges.fr/rss',
+      'https://feeds.feedburner.com/TechCrunch',
+    ],
+    apis: {
+      crunchbase: 'https://api.crunchbase.com/v3.1',
+      linkedin: 'https://api.linkedin.com/v2',
+    }
+  };
+
+  // Générer des signaux depuis une source spécifique
+  async generateFromSource(sourceType: string, config: any): Promise<Signal[]> {
+    const signals: Signal[] = [];
+
+    switch (sourceType) {
+      case 'rss':
+        // Parser les flux RSS et extraire les signaux
+        const items = await this.fetchRSS(config.url);
+        for (const item of items) {
+          const signal = this.parseRSSItem(item);
+          if (signal) signals.push(signal);
+        }
+        break;
+
+      case 'crunchbase':
+        // Appeler l'API Crunchbase pour les levées de fonds
+        const fundingRounds = await this.fetchCrunchbaseFunding(config.apiKey);
+        for (const round of fundingRounds) {
+          signals.push(this.parseFundingRound(round));
+        }
+        break;
+
+      case 'linkedin':
+        // Appeler LinkedIn pour les recrutements
+        const jobs = await this.fetchLinkedInJobs(config.apiKey, config.keywords);
+        for (const job of jobs) {
+          signals.push(this.parseJobPosting(job));
+        }
+        break;
+
+      case 'serpapi':
+        // Suivi SERP pour les mentions
+        const results = await this.fetchSerpResults(config.apiKey, config.keywords);
+        for (const result of results) {
+          signals.push(this.parseSerpResult(result));
+        }
+        break;
+    }
+
+    // Sauvegarder en DB
+    for (const signal of signals) {
+      await db.query(`
+        INSERT INTO signals (tenant_id, company, type, title, description, source, score, status, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', NOW())
+        ON CONFLICT DO NOTHING
+      `, [signal.tenantId, signal.company, signal.type, signal.title, signal.description, signal.source, signal.score]);
+    }
+
+    return signals;
+  }
+
+  // Fetch RSS
+  private async fetchRSS(url: string): Promise<any[]> {
+    try {
+      const response = await fetch(url);
+      const xml = await response.text();
+      // Parser XML et extraire les items
+      const items = this.parseXML(xml);
+      return items;
+    } catch (err) {
+      logger.error({ err, url }, 'Failed to fetch RSS');
+      return [];
+    }
+  }
+
+  // Parser un item RSS en signal
+  private parseRSSItem(item: any): Signal | null {
+    // Extraire le titre, la description, la date
+    // Détecter le type de signal (funding, hiring, news, etc.)
+    // Retourner un objet Signal
+    return {
+      tenantId: 'default',
+      company: item.company || 'Unknown',
+      type: 'news',
+      title: item.title,
+      description: item.description,
+      source: 'rss',
+      score: 50,
+    };
+  }
+
+  // Fetch Crunchbase
+  private async fetchCrunchbaseFunding(apiKey: string): Promise<any[]> {
+    try {
+      const response = await fetch(`${this.sources.apis.crunchbase}/funding-rounds`, {
+        headers: { 'X-cb-user-key': apiKey }
+      });
+      const data = await response.json();
+      return data.funding_rounds || [];
+    } catch (err) {
+      logger.error({ err }, 'Failed to fetch Crunchbase');
+      return [];
+    }
+  }
+
+  // Fetch LinkedIn Jobs
+  private async fetchLinkedInJobs(apiKey: string, keywords: string[]): Promise<any[]> {
+    try {
+      const response = await fetch(`${this.sources.apis.linkedin}/jobs`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` }
+      });
+      const data = await response.json();
+      return data.elements || [];
+    } catch (err) {
+      logger.error({ err }, 'Failed to fetch LinkedIn');
+      return [];
+    }
+  }
+
+  // Fetch SERP
+  private async fetchSerpResults(apiKey: string, keywords: string[]): Promise<any[]> {
+    try {
+      const response = await fetch(`https://serpapi.com/search.json?q=${keywords.join('+')}&api_key=${apiKey}`);
+      const data = await response.json();
+      return data.organic_results || [];
+    } catch (err) {
+      logger.error({ err }, 'Failed to fetch SERP');
+      return [];
+    }
+  }
+}

@@ -5,6 +5,7 @@ import {
   Zap, Star, Eye, EyeOff, RefreshCw, TrendingUp, Users, DollarSign,
   Newspaper, Cpu, X, UserPlus, Mail, SlidersHorizontal,
   Flame, Thermometer, Wind, ChevronDown, Loader2, MousePointerClick, Building2,
+  Search, Rss, Globe, CheckCircle, AlertCircle, Plus,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -50,6 +51,165 @@ function timeAgo(iso?: string): string {
   return `il y a ${Math.floor(d/1440)}j`;
 }
 
+/* ─── Modal de recherche de signaux ─────────── */
+
+type SourceType = 'rss' | 'serpapi' | 'crunchbase';
+
+interface SearchResult {
+  inserted: number;
+  total: number;
+  source: string;
+  signals: Array<{ company: string; type: string; title: string; score: number }>;
+}
+
+function SearchModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (r: SearchResult) => void }) {
+  const [sourceType, setSourceType] = useState<SourceType>('rss');
+  const [keywords, setKeywords] = useState('');
+  const [companies, setCompanies] = useState('');
+  const [maxResults, setMaxResults] = useState(15);
+  const [result, setResult] = useState<SearchResult | null>(null);
+
+  const generateMutation = useMutation({
+    mutationFn: () => apiClient.post('/signals/generate-real', {
+      sourceType,
+      keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+      companies: companies.split(',').map(c => c.trim()).filter(Boolean),
+      maxResults,
+    }) as Promise<SearchResult>,
+    onSuccess: (data) => {
+      setResult(data);
+      onSuccess(data);
+    },
+    onError: (e: any) => toast.error(e?.error ?? 'Erreur lors de la recherche'),
+  });
+
+  const SOURCE_OPTIONS: { id: SourceType; label: string; icon: React.ReactNode; desc: string; free: boolean }[] = [
+    { id: 'rss',       label: 'Flux RSS',    icon: <Rss size={15}/>,   desc: 'Actualités business temps réel (Les Echos, Maddyness, TechCrunch…)', free: true },
+    { id: 'serpapi',   label: 'SerpAPI',     icon: <Globe size={15}/>, desc: 'Résultats Google — clé API requise (configurée dans Clés API)', free: false },
+    { id: 'crunchbase', label: 'Crunchbase', icon: <DollarSign size={15}/>, desc: 'Levées de fonds & startups — clé API requise', free: false },
+  ];
+
+  const inputStyle = {
+    width: '100%', padding: '8px 12px', borderRadius: 8,
+    border: '1px solid var(--card-border)', background: 'var(--body-bg)',
+    color: 'var(--text-primary)', fontSize: 13, boxSizing: 'border-box' as const,
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+      <div style={{ background: 'var(--card-bg)', borderRadius: 18, padding: 28, width: 540, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+              <Search size={16} />
+            </div>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>Lancer une recherche</h2>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Génère des signaux depuis des sources réelles</p>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={18} /></button>
+        </div>
+
+        {/* Source selection */}
+        <div style={{ marginBottom: 18 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Source de données</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {SOURCE_OPTIONS.map(opt => (
+              <button key={opt.id} onClick={() => setSourceType(opt.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sourceType === opt.id ? 'var(--color-primary)' : 'var(--card-border)'}`, background: sourceType === opt.id ? '#EEF2FF' : 'var(--body-bg)', cursor: 'pointer', textAlign: 'left' }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: sourceType === opt.id ? 'var(--color-primary)' : 'var(--card-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: sourceType === opt.id ? '#fff' : 'var(--text-muted)', flexShrink: 0 }}>
+                  {opt.icon}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{opt.label}</span>
+                    <span style={{ padding: '1px 7px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: opt.free ? '#DCFCE7' : '#FEF3C7', color: opt.free ? '#059669' : '#D97706' }}>
+                      {opt.free ? 'GRATUIT' : 'CLÉ REQUISE'}
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{opt.desc}</p>
+                </div>
+                {sourceType === opt.id && <CheckCircle size={16} color="var(--color-primary)" style={{ flexShrink: 0 }} />}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 5 }}>
+              Mots-clés <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optionnel, séparés par virgules)</span>
+            </label>
+            <input value={keywords} onChange={e => setKeywords(e.target.value)} style={inputStyle}
+              placeholder="financement, levée de fonds, recrutement, scale-up…" />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 5 }}>
+              Entreprises cibles <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optionnel, séparées par virgules)</span>
+            </label>
+            <input value={companies} onChange={e => setCompanies(e.target.value)} style={inputStyle}
+              placeholder="Acme Corp, TechStartup, MonEntreprise…" />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 5 }}>
+              Résultats max : <strong style={{ color: 'var(--color-primary)' }}>{maxResults}</strong>
+            </label>
+            <input type="range" min={5} max={50} step={5} value={maxResults} onChange={e => setMaxResults(+e.target.value)}
+              style={{ width: '100%', accentColor: 'var(--color-primary)' }} />
+          </div>
+        </div>
+
+        {/* SerpAPI hint */}
+        {sourceType !== 'rss' && (
+          <div style={{ padding: '8px 12px', borderRadius: 8, background: '#FFFBEB', border: '1px solid #FDE68A', marginBottom: 16, fontSize: 12, color: '#92400E', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <AlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>La clé <strong>{sourceType === 'serpapi' ? 'SerpAPI' : 'Crunchbase'}</strong> doit être configurée dans <strong>Admin → Clés API</strong>. Si absente, la recherche utilisera les flux RSS automatiquement.</span>
+          </div>
+        )}
+
+        {/* Result */}
+        {result && (
+          <div style={{ padding: '10px 14px', borderRadius: 10, background: '#F0FDF4', border: '1px solid #BBF7D0', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <CheckCircle size={15} color="#059669" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>
+                {result.inserted} signal{result.inserted > 1 ? 's' : ''} ajouté{result.inserted > 1 ? 's' : ''} depuis <em>{result.source}</em>
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {result.signals.slice(0, 4).map((s, i) => (
+                <div key={i} style={{ fontSize: 11, color: '#064E3B', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669', flexShrink: 0, display: 'inline-block' }} />
+                  <span style={{ fontWeight: 600 }}>{s.company}</span>
+                  <span style={{ color: '#6B7280' }}>— {s.title.slice(0, 60)}{s.title.length > 60 ? '…' : ''}</span>
+                </div>
+              ))}
+              {result.signals.length > 4 && (
+                <div style={{ fontSize: 11, color: '#6B7280', paddingLeft: 12 }}>+ {result.signals.length - 4} autres…</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 9, border: '1px solid var(--card-border)', background: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 13 }}>
+            {result ? 'Fermer' : 'Annuler'}
+          </button>
+          <button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}
+            style={{ padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--color-primary)', color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, fontSize: 13 }}>
+            {generateMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+            {generateMutation.isPending ? 'Recherche en cours…' : result ? 'Relancer' : 'Lancer la recherche'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────── main ─────────────── */
 export default function SignalsPage() {
   const [, navigate] = useLocation();
@@ -59,13 +219,13 @@ export default function SignalsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showSearchModal, setShowSearchModal] = useState(false);
 
   // ── Fetch signals from API
   const { data: rawSignals = [], isLoading, refetch, isFetching } = useQuery<Signal[]>({
     queryKey: ['signals-page'],
     queryFn: async () => {
       const data: any = await apiClient.get('/signals?limit=200');
-      // API returns { data: [...] } or array directly
       const arr = Array.isArray(data) ? data : (data?.data ?? data?.signals ?? []);
       return arr.map((s: any) => ({
         id: s.id,
@@ -111,7 +271,7 @@ export default function SignalsPage() {
 
   const actionMutation = useMutation({
     mutationFn: (id: string) => apiClient.patch(`/signals/${id}/status`, { status: 'actioned' }),
-    onSuccess: (_, id) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['signals-page'] });
       toast.success('Signal marqué comme actionné');
     },
@@ -128,11 +288,10 @@ export default function SignalsPage() {
       source: 'signal',
     }),
     onSuccess: (_, s) => { toast.success(`${s.company} ajouté aux prospects`); qc.invalidateQueries({ queryKey: ['prospects'] }); },
-    onError: () => toast.error('Erreur lors de l\'ajout'),
+    onError: () => toast.error("Erreur lors de l'ajout"),
   });
 
   // ── Filters
-  const signals = rawSignals.filter(s => !s.isRead || filter === 'all' || filter === 'starred');
   const hot    = rawSignals.filter(s => s.score >= 85).length;
   const warm   = rawSignals.filter(s => s.score >= 65 && s.score < 85).length;
   const cold   = rawSignals.filter(s => s.score < 65).length;
@@ -166,6 +325,11 @@ export default function SignalsPage() {
           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{unread} non lu{unread > 1 ? 's' : ''} · {filtered.length} signaux actifs</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {/* Lancer une recherche (sources réelles) */}
+          <button onClick={() => setShowSearchModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>
+            <Search size={13} />Lancer une recherche
+          </button>
           <button onClick={() => setShowFilters(v => !v)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: '1px solid var(--card-border)', background: showFilters ? 'var(--color-primary)' : 'var(--card-bg)', color: showFilters ? '#fff' : 'var(--text-secondary)', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
             <SlidersHorizontal size={13} />Filtres
@@ -347,12 +511,30 @@ export default function SignalsPage() {
             <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
               {rawSignals.length === 0 ? 'Aucun signal détecté pour l\'instant' : 'Aucun signal correspondant aux filtres'}
             </p>
-            <button onClick={() => { setFilter('all'); setScoreMin(0); }} style={{ marginTop: 10, padding: '7px 16px', borderRadius: 10, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}>
-              Réinitialiser les filtres
-            </button>
+            {rawSignals.length === 0 ? (
+              <button onClick={() => setShowSearchModal(true)}
+                style={{ marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 20px', borderRadius: 10, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                <Search size={14} />Lancer une première recherche
+              </button>
+            ) : (
+              <button onClick={() => { setFilter('all'); setScoreMin(0); }} style={{ marginTop: 10, padding: '7px 16px', borderRadius: 10, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}>
+                Réinitialiser les filtres
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {/* Modal */}
+      {showSearchModal && (
+        <SearchModal
+          onClose={() => setShowSearchModal(false)}
+          onSuccess={(r) => {
+            toast.success(`${r.inserted} signal${r.inserted > 1 ? 's' : ''} ajouté${r.inserted > 1 ? 's' : ''} depuis ${r.source}`);
+            qc.invalidateQueries({ queryKey: ['signals-page'] });
+          }}
+        />
+      )}
     </div>
   );
 }

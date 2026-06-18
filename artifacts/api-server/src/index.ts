@@ -4,6 +4,7 @@ import { runMigrations, runSourcingMigration, runNotificationsMigration, runPros
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 import { registerErepIntegrations } from "./lib/integrations/erep-integrations";
 import { registerCrossPluginEvents } from "./lib/integrations/cross-plugin-events";
+import { startSignalCron } from "./lib/cron/SignalCron";
 
 const rawPort = process.env["PORT"];
 
@@ -53,6 +54,9 @@ runMigrations()
         process.exit(1);
       }
       logger.info({ port }, "Server listening");
+
+      // ── Démarrer le cron de génération de signaux (toutes les 2h)
+      startSignalCron();
     });
   })
   .catch((err) => {

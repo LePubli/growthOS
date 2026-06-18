@@ -73,18 +73,19 @@ export interface ProviderKey {
 }
 
 export const PROVIDERS = [
-  { id: "openai",    name: "OpenAI (GPT-4/3.5)",   icon: "🤖", description: "AI SDR, Deal Coach, génération de contenu" },
-  { id: "anthropic", name: "Anthropic / Claude",    icon: "🧠", description: "Alternative à OpenAI, vision avancée" },
-  { id: "gemini",    name: "Google Gemini",         icon: "✨", description: "IA Google, multimodal" },
-  { id: "mistral",   name: "Mistral API",           icon: "🌪️", description: "IA européenne souveraine" },
-  { id: "ollama",    name: "Ollama (local)",        icon: "🦙", description: "LLM local — Llama, Mistral, Qwen", hasEndpoint: true },
-  { id: "serpapi",   name: "SerpAPI",               icon: "🔍", description: "Suivi SERP, résultats Google" },
-  { id: "linkedin",  name: "LinkedIn API",          icon: "💼", description: "Enrichissement LinkedIn", hasSecret: true },
-  { id: "hunter",    name: "Hunter.io",             icon: "📧", description: "Recherche emails professionnels" },
-  { id: "clearbit",  name: "Clearbit",              icon: "🔮", description: "Enrichissement données B2B" },
-  { id: "dropcontact", name: "Dropcontact",         icon: "📨", description: "Enrichissement email FR" },
-  { id: "apollo",    name: "Apollo.io",             icon: "🚀", description: "Base de contacts B2B" },
-  { id: "crunchbase", name: "Crunchbase",           icon: "💰", description: "Données startup & funding" },
+  { id: "openai",     name: "OpenAI (GPT-4/3.5)",   icon: "🤖", description: "AI SDR, Deal Coach, génération de contenu" },
+  { id: "anthropic",  name: "Anthropic / Claude",    icon: "🧠", description: "Alternative à OpenAI, vision avancée" },
+  { id: "gemini",     name: "Google Gemini",         icon: "✨", description: "IA Google, multimodal" },
+  { id: "mistral",    name: "Mistral API",           icon: "🌪️", description: "IA européenne souveraine" },
+  { id: "deepseek",   name: "DeepSeek",              icon: "🐋", description: "LLM open-source haute performance" },
+  { id: "ollama",     name: "Ollama (local)",        icon: "🦙", description: "LLM local — Llama, Mistral, Qwen", hasEndpoint: true },
+  { id: "serpapi",    name: "SerpAPI",               icon: "🔍", description: "Suivi SERP, résultats Google" },
+  { id: "linkedin",   name: "LinkedIn API",          icon: "💼", description: "Enrichissement LinkedIn", hasSecret: true },
+  { id: "hunter",     name: "Hunter.io",             icon: "📧", description: "Recherche emails professionnels" },
+  { id: "clearbit",   name: "Clearbit",              icon: "🔮", description: "Enrichissement données B2B" },
+  { id: "dropcontact", name: "Dropcontact",          icon: "📨", description: "Enrichissement email FR" },
+  { id: "apollo",     name: "Apollo.io",             icon: "🚀", description: "Base de contacts B2B" },
+  { id: "crunchbase", name: "Crunchbase",            icon: "💰", description: "Données startup & funding" },
 ] as const;
 
 export class ProviderKeysService {
@@ -253,6 +254,14 @@ async function _testProvider(provider: string, apiKey: string, endpointUrl?: str
         });
         if (r.ok) return { ok: true, message: "Mistral ✅ Clé valide" };
         return { ok: false, message: `Mistral ❌ HTTP ${r.status}` };
+      }
+      case "deepseek": {
+        const r = await fetch("https://api.deepseek.com/v1/models", {
+          headers: { Authorization: `Bearer ${apiKey}` }, signal: ctrl.signal,
+        });
+        if (r.ok) return { ok: true, message: "DeepSeek ✅ Clé valide" };
+        if (r.status === 401) return { ok: false, message: "DeepSeek ❌ Clé invalide ou expirée" };
+        return { ok: false, message: `DeepSeek ❌ HTTP ${r.status}` };
       }
       case "gemini": {
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, { signal: ctrl.signal });
