@@ -52,7 +52,8 @@ export function CommentsPanel({ entityType, entityId }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    apiClient.get(`/activities?entityType=${entityType}&entityId=${entityId}`)
+    const paramKey = entityType === 'prospect' ? 'prospectId' : 'dealId';
+    apiClient.get('/activities', { params: { [paramKey]: entityId } })
       .then((d: any) => {
         const list = Array.isArray(d) ? d : d?.data || [];
         if (list.length > 0) {
@@ -77,9 +78,10 @@ export function CommentsPanel({ entityType, entityId }: Props) {
       createdAt: 'à l\'instant',
     };
     try {
+      const entityParam = entityType === 'prospect' ? { prospectId: entityId } : { dealId: entityId };
       await apiClient.post('/activities', {
         type, title: TYPE_META[type].label, description: content.trim(),
-        entityType, entityId, status: 'done',
+        ...entityParam, status: 'done',
       });
     } catch {}
     setActivities(prev => [newActivity, ...prev]);
