@@ -79,8 +79,8 @@ class ApiClient {
     );
   }
 
-  async get<T = any>(url: string, params?: Record<string, any>): Promise<T> {
-    return this.axios.get(url, { params }) as unknown as T;
+  async get<T = any>(url: string, options?: { params?: Record<string, any> }): Promise<T> {
+    return this.axios.get(url, { params: options?.params }) as unknown as T;
   }
 
   async post<T = any>(url: string, data?: any): Promise<T> {

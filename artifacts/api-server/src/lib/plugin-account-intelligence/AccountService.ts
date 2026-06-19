@@ -189,10 +189,10 @@ class AccountService {
 
     const lastRes = await pool.query<{ last_at: Date | null }>(
       `SELECT GREATEST(
-         (SELECT MAX(updated_at) FROM prospects WHERE LOWER(company)=LOWER($1) AND tenant_id=$2),
-         (SELECT MAX(created_at) FROM meetings WHERE LOWER(title) LIKE LOWER($3) AND tenant_id=$2),
-         (SELECT MAX(created_at) FROM activities WHERE tenant_id=$2
-            AND prospect_id IN (SELECT id FROM prospects WHERE tenant_id=$2 AND LOWER(company)=LOWER($1)))
+         (SELECT MAX(updated_at) FROM prospects WHERE LOWER(company)=LOWER($1) AND tenant_id=$2::uuid),
+         (SELECT MAX(created_at) FROM meetings WHERE LOWER(title) LIKE LOWER($3) AND tenant_id=$2::uuid),
+         (SELECT MAX(created_at) FROM activities WHERE tenant_id=$2::uuid
+            AND prospect_id IN (SELECT id FROM prospects WHERE tenant_id=$2::uuid AND LOWER(company)=LOWER($1)))
        ) AS last_at`,
       [accountId, tenantId, `%${accountId}%`],
     );
@@ -200,7 +200,7 @@ class AccountService {
 
     await pool.query(
       `INSERT INTO account_metrics (account_id, tenant_id, health_score, engagement_level, last_activity_at, score_breakdown, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW())
+       VALUES ($1, $2::uuid, $3, $4, $5, $6::jsonb, NOW())
        ON CONFLICT (account_id, tenant_id)
        DO UPDATE SET
          health_score     = EXCLUDED.health_score,
@@ -215,7 +215,7 @@ class AccountService {
       `SELECT account_id AS "accountId", tenant_id AS "tenantId", health_score AS "healthScore",
               engagement_level AS "engagementLevel", last_activity_at AS "lastActivityAt",
               score_breakdown AS "scoreBreakdown", updated_at AS "updatedAt"
-       FROM account_metrics WHERE account_id = $1 AND tenant_id = $2`,
+       FROM account_metrics WHERE account_id = $1 AND tenant_id = $2::uuid`,
       [accountId, tenantId],
     );
 

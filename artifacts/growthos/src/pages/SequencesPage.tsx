@@ -210,6 +210,9 @@ export default function SequencesPage() {
       const l = Array.isArray(d) ? d : d.data || [];
       setSequences(l);
     }).catch(()=>{}).finally(()=>setLoading(false));
+    const onNouveau = () => setShowNew(true);
+    window.addEventListener('growthos:nouveau', onNouveau);
+    return () => window.removeEventListener('growthos:nouveau', onNouveau);
   },[]);
 
   const toggle = async (id:string, e:React.MouseEvent) => {

@@ -149,6 +149,9 @@ export default function ActivitiesPage() {
       .then((data:any)=>{ setActivities(Array.isArray(data)&&data.length>0?data:MOCK_ACTIVITIES); })
       .catch(()=>setActivities(MOCK_ACTIVITIES))
       .finally(()=>setLoading(false));
+    const onNouveau = () => setShowCreate(true);
+    window.addEventListener('growthos:nouveau', onNouveau);
+    return () => window.removeEventListener('growthos:nouveau', onNouveau);
   },[]);
 
   const addActivity = (a:any)=>setActivities(prev=>[a,...prev]);
