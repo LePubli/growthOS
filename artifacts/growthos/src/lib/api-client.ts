@@ -41,13 +41,19 @@ class ApiClient {
       async (error) => {
         const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-        if (error.response?.status === 401 && !original._retry) {
+        if (
+          error.response?.status === 401 &&
+          !original._retry &&
+          !original.url?.includes('/auth/refresh') &&
+          !original.url?.includes('/auth/login')
+        ) {
           original._retry = true;
           if (!this.refreshing) {
             this.refreshing = this.doRefresh().finally(() => { this.refreshing = null; });
           }
           try {
             const newToken = await this.refreshing;
+            this.saveAccessToken(newToken);
             if (original.headers) {
               original.headers['Authorization'] = `Bearer ${newToken}`;
             }
@@ -131,6 +137,21 @@ class ApiClient {
   private async doRefresh(): Promise<string> {
     const result = await this.axios.post('/auth/refresh', {});
     return (result as any).accessToken;
+  }
+
+  private saveAccessToken(token: string) {
+    try {
+      const raw = localStorage.getItem('growthos-auth');
+      if (raw) {
+        const state = JSON.parse(raw);
+        if (state?.state) {
+          state.state.accessToken = token;
+        } else {
+          state.accessToken = token;
+        }
+        localStorage.setItem('growthos-auth', JSON.stringify(state));
+      }
+    } catch { /* ignore */ }
   }
 
   private clearAuth() {

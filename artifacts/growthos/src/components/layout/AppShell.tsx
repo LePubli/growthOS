@@ -469,8 +469,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           )}
 
-          {/* New button — icon only on mobile */}
-          <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '0' : '5px 12px', width: isMobile ? 32 : 'auto', height: isMobile ? 32 : 'auto', justifyContent: 'center', fontSize: 13, fontWeight: 500, background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', flexShrink: 0 }}>
+          {/* New button — context-aware, dispatches 'growthos:nouveau' event */}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('growthos:nouveau', { detail: { path: location } }))}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '0' : '5px 12px', width: isMobile ? 32 : 'auto', height: isMobile ? 32 : 'auto', justifyContent: 'center', fontSize: 13, fontWeight: 500, background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', flexShrink: 0 }}>
             <Plus size={13} />
             {!isMobile && 'Nouveau'}
           </button>

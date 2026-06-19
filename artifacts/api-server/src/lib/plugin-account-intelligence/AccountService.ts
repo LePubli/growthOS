@@ -297,7 +297,21 @@ class AccountService {
       })),
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 30);
 
-    const metrics = await this.upsertMetrics(accountId, tenantId);
+    let metrics: AccountMetrics;
+    try {
+      metrics = await this.upsertMetrics(accountId, tenantId);
+    } catch (err) {
+      logger.warn({ accountId, err }, "upsertMetrics failed — using default metrics");
+      metrics = {
+        accountId,
+        tenantId,
+        healthScore: 0,
+        engagementLevel: "low",
+        lastActivityAt: null,
+        scoreBreakdown: { recentActivityScore:0, emailEngagementScore:0, pipelineProgressionScore:0, reputationScore:0, intentSignalsScore:0, total:0, prospectsCount:0, meetingsCount:0, memorySignalsCount:0 },
+        updatedAt: new Date().toISOString(),
+      };
+    }
 
     return {
       accountId,

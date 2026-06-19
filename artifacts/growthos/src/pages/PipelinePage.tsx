@@ -190,6 +190,9 @@ export default function PipelinePage() {
 
   useEffect(() => {
     apiClient.get('/pipeline').then((d:any)=>{ const l=Array.isArray(d)?d:d?.data||[]; setDeals(l); }).catch(()=>{});
+    const onNouveau = () => setShowModal(true);
+    window.addEventListener('growthos:nouveau', onNouveau);
+    return () => window.removeEventListener('growthos:nouveau', onNouveau);
   }, []);
 
   const onDragStart = (e:React.DragEvent, id:string) => { draggingId.current=id; e.dataTransfer.effectAllowed='move'; };

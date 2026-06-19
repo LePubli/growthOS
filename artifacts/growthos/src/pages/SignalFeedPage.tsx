@@ -289,7 +289,7 @@ export default function SignalFeedPage() {
           style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#0F172A,#1E3A5F)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: generating ? 'not-allowed' : 'pointer', opacity: generating ? 0.7 : 1 }}
         >
           <RefreshCw size={14} style={{ animation: generating ? 'spin 1s linear infinite' : 'none' }} />
-          {generating ? 'Génération…' : 'Générer Signaux Mock'}
+          {generating ? 'Génération…' : 'Générer des signaux'}
         </button>
       </div>
 
@@ -339,7 +339,7 @@ export default function SignalFeedPage() {
         <div style={{ textAlign: 'center', padding: '60px 20px' }}>
           <Radar size={48} color="var(--card-border)" style={{ margin: '0 auto 16px' }} />
           <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>Aucun signal détecté</p>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>Cliquez sur "Générer Signaux Mock" pour simuler des signaux business.</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>Cliquez sur "Générer des signaux" pour générer des signaux business.</p>
           <button
             onClick={handleGenerate}
             disabled={generating}

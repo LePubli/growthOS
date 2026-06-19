@@ -1,0 +1,39 @@
+URL qui crash : GET /api/v1/accounts/TechCorp/360
+Cause :
+La route reçoit "TechCorp" (texte) comme paramètre
+Le service getAccount360 passe ce texte directement à upsertMetrics qui attend un UUID
+Comparaison text = uuid → crash PostgreSQL
+Solution :
+Lire artifacts/api-server/src/routes/v1/accounts.ts ligne ~73
+Lire artifacts/api-server/src/lib/plugin-account-intelligence/AccountService.ts lignes 190 et 300
+Modifier la route pour :
+D'abord chercher le compte par nom (WHERE name = $1 OR slug = $1)
+Récupérer son UUID
+Passer l'UUID à getAccount360
+Dans upsertMetrics ligne 190, ajouter un cast explicite si nécessaire : ::uuid ou vérifier le type de la colonne
+Gérer le cas "compte non trouvé" → retourner 404 au lieu de 500
+🐛 BUG #3 : Bouton "+ Nouveau" ne crée pas de deal (CRITIQUE)
+Preuve : Capture d'écran (bouton "+ Nouveau" dans la header)
+Cause : Le bouton redirige vers /pipeline au lieu d'ouvrir un modal de création de deal.
+Solution :
+Lire artifacts/growthos/src/components/AppShell.tsx ou Header.tsx (où se trouve le bouton "+ Nouveau")
+Modifier le comportement :
+Si on est sur /pipeline → ouvrir un modal CreateDealModal
+Si on est sur /prospects → ouvrir un modal CreateProspectModal
+Si on est sur /accounts → ouvrir un modal CreateAccountModal
+Sinon → comportement par défaut
+Créer les modals de création s'ils n'existent pas :
+artifacts/growthos/src/components/CreateDealModal.tsx
+artifacts/growthos/src/components/CreateProspectModal.tsx
+artifacts/growthos/src/components/CreateAccountModal.tsx
+Chaque modal doit appeler la route POST correspondante et rafraîchir la liste après création.
+🐛 BUG #4 : Bouton "Générer Signaux Mock" encore présent
+Preuve : Capture d'écran Signaux
+Cause : Le bouton n'a pas été supprimé/renommé lors des corrections précédentes.
+Solution :
+Lire artifacts/growthos/src/pages/SignalsPage.tsx
+Renommer le bouton "Générer Signaux Mock" → "Générer des signaux" (car maintenant c'est réel)
+OU supprimer le bouton si la génération automatique via cron suffit
+Vérifier que la route POST /api/v1/signals/generate retourne bien des signaux avec company non vide (déjà corrigé dans les logs récents ✅)
+🐛 BUG #5 : Refresh Token 401 (CRITIQUE - RÉCURRENT)
+Preuve : Logs API répétés

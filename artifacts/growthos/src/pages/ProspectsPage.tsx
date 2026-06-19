@@ -256,6 +256,11 @@ export default function ProspectsPage() {
     } catch { setProspects([]); } finally { setLoading(false); }
   };
 
+  useEffect(()=>{
+    const onNouveau = () => setShowCreate(true);
+    window.addEventListener('growthos:nouveau', onNouveau);
+    return () => window.removeEventListener('growthos:nouveau', onNouveau);
+  }, []);
   useEffect(()=>{ fetchProspects(); },[status, page, noGeo]);
   useEffect(()=>{ const t=setTimeout(fetchProspects,400); return()=>clearTimeout(t); },[search]);
 

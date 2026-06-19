@@ -407,7 +407,7 @@ export default function ProspectDetailPage() {
 
   const fetchEnrichmentHistory = async () => {
     try {
-      const history = await apiClient.get(`/plugins/enrichment/history/${id}`) as any[];
+      const history = await apiClient.get(`/enrich/history/${id}`) as any[];
       if (Array.isArray(history) && history.length > 0) {
         setLastEnrichedAt(new Date(history[0].createdAt));
       }
@@ -417,7 +417,7 @@ export default function ProspectDetailPage() {
   const handleEnrich = async () => {
     setEnriching(true);
     try {
-      const result = await apiClient.post(`/plugins/enrichment/${id}`, {}) as any;
+      const result = await apiClient.post(`/enrich/${id}`, {}) as any;
       const count = result.sourcesSucceeded ?? result.sourcesAttempted ?? 0;
       setLastEnrichedAt(new Date());
       await fetchProspect();
