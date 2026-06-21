@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration, runProviderKeysMigration, runAutopilotMigration } from "@workspace/db";
+import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration, runProviderKeysMigration, runAutopilotMigration, runDealProspectLinkMigration, runSignalEnhanceMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 import { registerErepIntegrations } from "./lib/integrations/erep-integrations";
 import { registerCrossPluginEvents } from "./lib/integrations/cross-plugin-events";
@@ -45,6 +45,12 @@ runMigrations()
 
     await runAutopilotMigration();
     logger.info("Autopilot tables ready (autopilot_rules, autopilot_logs)");
+
+    await runDealProspectLinkMigration();
+    logger.info("Deal prospect link ready (deals.prospect_id)");
+
+    await runSignalEnhanceMigration();
+    logger.info("Signal enhance ready (signals.source, signals.prospect_id)");
 
     await seedBuiltInPlugins();
 

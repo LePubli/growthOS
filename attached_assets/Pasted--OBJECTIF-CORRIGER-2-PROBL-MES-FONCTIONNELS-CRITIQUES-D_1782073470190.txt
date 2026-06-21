@@ -1,0 +1,175 @@
+# OBJECTIF : CORRIGER 2 PROBLÈMES FONCTIONNELS CRITIQUES
+
+Deux fonctionnalités fondamentales du CRM sont inopérantes :
+1. Le Pipeline est VIDE car il n'existe aucun moyen de convertir un prospect en deal
+2. Les Signaux génèrent toujours des données mock sans source réelle ni ciblage
+
+Tu dois rendre ces deux fonctionnalités 100% opérationnelles avec de vraies données en DB.
+
+# ⚠️ RÈGLES STRICTES
+1. Ne casse AUCUNE fonctionnalité existante
+2. Toutes les créations doivent persister en PostgreSQL avec tenant_id
+3. Les relations entre entités doivent être réelles (deal.prospect_id → prospects.id)
+4. Tests E2E obligatoires après implémentation
+
+---
+
+# 🐛 PROBLÈME #1 : PIPELINE VIDE — AUCUN TRANSFERT PROSPECT → DEAL
+
+**État actuel** : Le pipeline affiche 0 deal. Il n'existe aucun bouton ni workflow pour convertir un prospect qualifié en opportunité commerciale (deal).
+
+## 1.1 Bouton "Convertir en Deal" sur la fiche Prospect
+
+Modifie `artifacts/growthos/src/pages/ProspectDetailPage.tsx` (ou le composant équivalent) :
+- Ajoute un bouton "Convertir en Deal" visible uniquement si le prospect a un score de propension > 50 ou si le prospect est au statut "qualified"
+- Au clic, ouvre un modal de création de deal avec les champs pré-remplis depuis le prospect :
+  - Titre du deal (par défaut : "Contrat {nom entreprise}")
+  - Montant estimé (champ libre, obligatoire)
+  - Étape initiale (par défaut : "Lead" ou "Qualified")
+  - Date de clôture estimée (par défaut : +30 jours)
+  - Prospect lié (auto-rempli, non modifiable)
+
+## 1.2 Route Backend de Conversion
+
+Modifie `artifacts/api-server/src/routes/v1/pipeline.ts` (ou crée une route dédiée) :
+- `POST /api/v1/pipeline/from-prospect` :
+  - Reçoit : prospectId, title, value, stage, closeDate
+  - Vérifie que le prospect existe et appartient au tenant
+  - Crée un deal avec prospect_id = prospectId
+  - Met à jour le statut du prospect à "converted"
+  - Retourne le deal créé avec statut 201
+
+## 1.3 Bouton "Nouveau Deal" dans le Pipeline
+
+Modifie `artifacts/growthos/src/pages/PipelinePage.tsx` :
+- Le modal "Nouveau Deal" (déjà connecté au bouton "+ Nouveau" de la header) doit avoir :
+  - Un champ "Prospect associé" avec un sélecteur (dropdown searchable) listant tous les prospects du tenant
+  - Titre du deal
+  - Montant estimé
+  - Étape (Lead / Qualified / Proposal / Negotiation / Won / Lost)
+  - Date de clôture estimée
+- Au submit : appelle POST /api/v1/pipeline avec prospect_id inclus
+
+## 1.4 Vue Liste avec bouton de conversion
+
+Modifie `artifacts/growthos/src/pages/ProspectsPage.tsx` :
+- Dans le tableau des prospects, ajoute une colonne "Actions" avec un bouton "→ Deal" pour chaque prospect
+- Ce bouton appelle la même route POST /api/v1/pipeline/from-prospect avec un montant par défaut de 0 (l'utilisateur le modifiera ensuite)
+
+---
+
+# 🐛 PROBLÈME #2 : SIGNAUX MOCK SANS SOURCE NI CIBLAGE
+
+**État actuel** : Le bouton "Générer des signaux" (anciennement "Mock") crée des signaux aléatoires sans source réelle, sans lien avec un prospect/client, et sans possibilité de configuration.
+
+## 2.1 Backend : Route de génération avec source et cible
+
+Modifie `artifacts/api-server/src/routes/v1/signals.ts` :
+
+Remplace la route POST /generate actuelle par une route complète :
+
+`POST /api/v1/signals/generate` :
+- Body attendu :
+  - sourceType : 'rss' | 'manual' | 'crunchbase' | 'linkedin' | 'serpapi'
+  - targetType : 'prospect' | 'account' | 'custom'
+  - targetId : UUID (si targetType = prospect ou account)
+  - targetName : string (si targetType = custom, ex: nom d'entreprise)
+  - targetType_detail : 'hiring' | 'funding' | 'tech_change' | 'news' | 'leadership_change' (optionnel, pour filtrer)
+  - keywords : string[] (optionnel, pour la recherche)
+  - rssUrl : string (si sourceType = rss)
+
+- Logique :
+  1. Si sourceType = 'manual' : créer directement un signal avec les infos fournies
+  2. Si sourceType = 'rss' : parser le flux RSS, extraire les items, créer un signal par item
+  3. Si sourceType = 'crunchbase'/'linkedin'/'serpapi' : utiliser la clé API configurée dans provider_api_keys pour faire un vrai appel
+
+- Pour chaque signal créé :
+  - Si targetType = 'prospect' : lier le signal au prospect via prospect_id
+  - Si targetType = 'account' : lier le signal au compte via account_id et remplir company depuis le compte
+  - Si targetType = 'custom' : remplir company depuis targetName
+  - Le champ company ne doit JAMAIS être vide
+
+## 2.2 Frontend : Modal de configuration des signaux
+
+Modifie `artifacts/growthos/src/pages/SignalsPage.tsx` (ou crée un composant dédié) :
+
+Remplace le bouton "Générer des signaux" par un bouton qui ouvre un modal en 3 étapes (wizard) :
+
+**Étape 1 : Choisir la source**
+- Boutons/cards pour chaque source :
+  - 📰 Flux RSS (demande une URL)
+  - ✏️ Saisie manuelle
+  - 🏢 Crunchbase (nécessite clé API configurée)
+  - 💼 LinkedIn (nécessite clé API configurée)
+  - 🔍 SERP / Mentions web (nécessite clé SerpAPI)
+- Si une clé API n'est pas configurée pour une source, affiche un message "Configurez votre clé dans /admin/api-keys" et grise le bouton
+
+**Étape 2 : Choisir la cible**
+- Radio buttons :
+  - 🎯 Prospect existant (dropdown searchable avec les prospects du tenant)
+  - 🏢 Compte client existant (dropdown searchable avec les accounts du tenant)
+  - ✍️ Cible personnalisée (champ texte libre : nom de l'entreprise ou personne)
+
+**Étape 3 : Filtres optionnels**
+- Type de signal à rechercher (checkboxes) : Recrutement, Levée de fonds, Changement technologique, Actualité, Changement de direction
+- Mots-clés (champ texte, séparés par des virgules)
+- Bouton "Générer les signaux"
+
+## 2.3 Saisie manuelle d'un signal
+
+Ajoute une route `POST /api/v1/signals` (sans /generate) :
+- Permet de créer un seul signal manuellement
+- Body : company, type, title, description, score, prospect_id (optionnel), account_id (optionnel)
+- Frontend : bouton "+ Signal manuel" dans SignalsPage qui ouvre un formulaire simple
+
+## 2.4 Affichage des signaux avec lien vers la cible
+
+Modifie `artifacts/growthos/src/pages/SignalsPage.tsx` :
+- Chaque carte de signal doit afficher :
+  - Le nom de l'entreprise (company) — plus jamais vide
+  - Le type de signal avec icône
+  - La source (RSS, Manuel, Crunchbase, etc.)
+  - Si lié à un prospect : lien cliquable vers /prospects/:id
+  - Si lié à un account : lien cliquable vers /accounts/:name
+  - Boutons d'action : "Actionné", "Vue 360°", "Rédiger draft"
+
+---
+
+# 🧪 TESTS DE VALIDATION
+
+Après implémentation, teste :
+
+1. **Pipeline** :
+   - Va sur /prospects, clique sur un prospect qualifié
+   - Clique "Convertir en Deal" → modal s'ouvre avec champs pré-remplis
+   - Crée le deal → vérifie qu'il apparaît dans /pipeline
+   - Vérifie en DB que deal.prospect_id pointe vers le bon prospect
+
+2. **Signaux avec source RSS** :
+   - Va sur /signals
+   - Clique "Générer des signaux" → wizard s'ouvre
+   - Choisis "Flux RSS", entre une URL valide (ex: https://techcrunch.com/feed/)
+   - Choisis une cible (prospect existant)
+   - Clique "Générer" → des signaux apparaissent avec company rempli et source = rss
+
+3. **Signaux manuels** :
+   - Clique "+ Signal manuel"
+   - Remplis company, type, title
+   - Crée → le signal apparaît dans la liste
+
+4. **Lien Signal → Prospect** :
+   - Clique sur un signal lié à un prospect
+   - Clique "Vue 360°" → redirige vers la fiche du prospect
+
+---
+
+# RÈGLES STRICTES
+
+1. Le champ company des signaux ne doit JAMAIS être vide en DB
+2. Les deals créés doivent toujours avoir un prospect_id lié
+3. Les signaux liés à un prospect doivent apparaître dans la timeline du prospect
+4. Le wizard de signaux doit être responsive (mobile-first)
+5. Gestion d'erreur : si une source RSS est inaccessible, afficher un message clair sans crasher
+6. Logs structurés : logger chaque signal créé avec source, target, company
+
+Commence par le Problème #1 (Pipeline/Conversion) car c'est le cœur du CRM, puis enchaîne sur le Problème #2 (Signaux réels).

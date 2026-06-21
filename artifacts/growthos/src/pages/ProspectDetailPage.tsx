@@ -6,7 +6,7 @@ import {
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
   Archive, RotateCcw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
   ExternalLink, Navigation, Zap, BadgeCheck, ChevronDown, ChevronUp,
-  Building, Database, BarChart2, Users, Newspaper,
+  Building, Database, BarChart2, Users, Newspaper, GitMerge,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -388,6 +388,9 @@ export default function ProspectDetailPage() {
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [lastEnrichedAt, setLastEnrichedAt] = useState<Date | null>(null);
+  const [showConvertModal, setShowConvertModal] = useState(false);
+  const [convertLoading, setConvertLoading] = useState(false);
+  const [convertForm, setConvertForm] = useState({ title: '', value: '0', stage: 'lead', closeDate: '' });
 
   const fetchProspect = async () => {
     try {
@@ -494,6 +497,39 @@ export default function ProspectDetailPage() {
     }
   };
 
+  const openConvertModal = () => {
+    const daysFrom30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    setConvertForm({
+      title: `Deal ${prospect.company || fullName}`,
+      value: '0',
+      stage: ['qualified', 'negotiation'].includes(prospect.status) ? prospect.status : 'lead',
+      closeDate: daysFrom30,
+    });
+    setShowConvertModal(true);
+  };
+
+  const convertToDeal = async () => {
+    setConvertLoading(true);
+    try {
+      const deal = await apiClient.post('/pipeline/from-prospect', {
+        prospectId: id,
+        title: convertForm.title,
+        company: prospect.company || '',
+        value: Number(convertForm.value) || 0,
+        stage: convertForm.stage,
+        closeDate: convertForm.closeDate || undefined,
+      }) as any;
+      setProspect((p: any) => ({ ...p, status: 'converted' }));
+      setShowConvertModal(false);
+      toast.success('Prospect converti en deal ✓');
+      navigate(`/pipeline/${deal.id}`);
+    } catch (e: any) {
+      toast.error(e?.error || 'Erreur lors de la conversion');
+    } finally {
+      setConvertLoading(false);
+    }
+  };
+
   const archiveProspect = async () => {
     const isArchived = prospect.status === 'archived';
     try {
@@ -536,6 +572,52 @@ export default function ProspectDetailPage() {
         <AddActivityModal prospectId={id} onClose={() => setShowAddActivity(false)} onSaved={fetchActivities} />
       )}
 
+      {showConvertModal && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:16 }} onClick={()=>setShowConvertModal(false)}>
+          <div style={{ background:'var(--card-bg)',borderRadius:20,padding:28,width:'100%',maxWidth:480,boxShadow:'0 20px 60px rgba(0,0,0,.25)' }} onClick={e=>e.stopPropagation()}>
+            <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20 }}>
+              <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+                <div style={{ width:36,height:36,borderRadius:10,background:'#6366F1',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff' }}><GitMerge size={16}/></div>
+                <div>
+                  <h2 style={{ margin:0,fontSize:16,fontWeight:700,color:'var(--text-primary)' }}>Convertir en Deal</h2>
+                  <p style={{ margin:0,fontSize:12,color:'var(--text-muted)' }}>{fullName} · {prospect.company}</p>
+                </div>
+              </div>
+              <button onClick={()=>setShowConvertModal(false)} style={{ background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)' }}><X size={18}/></button>
+            </div>
+            <div style={{ display:'flex',flexDirection:'column',gap:12,marginBottom:20 }}>
+              {[
+                { k:'title', l:'Titre du deal *', type:'text' },
+                { k:'value', l:'Valeur estimée (€)', type:'number' },
+                { k:'closeDate', l:'Date de closing estimée', type:'date' },
+              ].map(f=>(
+                <div key={f.k}>
+                  <label style={{ display:'block',fontSize:12,fontWeight:600,color:'var(--text-secondary)',marginBottom:4 }}>{f.l}</label>
+                  <input type={f.type} value={(convertForm as any)[f.k]} onChange={e=>setConvertForm(p=>({...p,[f.k]:e.target.value}))}
+                    style={{ width:'100%',padding:'9px 12px',border:'1px solid var(--card-border)',borderRadius:10,fontSize:13,background:'var(--body-bg)',color:'var(--text-primary)',outline:'none',boxSizing:'border-box' }}/>
+                </div>
+              ))}
+              <div>
+                <label style={{ display:'block',fontSize:12,fontWeight:600,color:'var(--text-secondary)',marginBottom:4 }}>Étape</label>
+                <select value={convertForm.stage} onChange={e=>setConvertForm(p=>({...p,stage:e.target.value}))}
+                  style={{ width:'100%',padding:'9px 12px',border:'1px solid var(--card-border)',borderRadius:10,fontSize:13,background:'var(--body-bg)',color:'var(--text-primary)',outline:'none' }}>
+                  <option value="lead">Lead</option>
+                  <option value="qualified">Qualifié</option>
+                  <option value="proposal">Proposition</option>
+                  <option value="negotiation">Négociation</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display:'flex',gap:10 }}>
+              <button onClick={()=>setShowConvertModal(false)} style={{ flex:1,padding:11,borderRadius:12,border:'1px solid var(--card-border)',background:'transparent',color:'var(--text-secondary)',fontSize:14,cursor:'pointer' }}>Annuler</button>
+              <button onClick={convertToDeal} disabled={!convertForm.title||convertLoading} style={{ flex:2,padding:11,borderRadius:12,border:'none',background:'#6366F1',color:'#fff',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,opacity:!convertForm.title||convertLoading?0.6:1 }}>
+                {convertLoading?<Loader2 size={14} className="animate-spin"/>:<GitMerge size={14}/>}Convertir en Deal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <button onClick={() => navigate('/prospects')} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
@@ -564,6 +646,14 @@ export default function ProspectDetailPage() {
             style={{ color: prospect.status === 'archived' ? '#059669' : 'var(--text-muted)' }}>
             {prospect.status === 'archived' ? <RotateCcw size={18} /> : <Archive size={18} />}
           </button>
+          {prospect.status !== 'converted' && (prospect.score >= 50 || ['qualified', 'negotiation'].includes(prospect.status)) && (
+            <button onClick={openConvertModal}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+              style={{ background:'#EEF2FF',color:'#6366F1',border:'1px solid #C7D2FE' }}
+              title="Convertir ce prospect en deal pipeline">
+              <GitMerge size={14}/>Convertir
+            </button>
+          )}
           {editing ? (
             <>
               <button onClick={() => setEditing(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>

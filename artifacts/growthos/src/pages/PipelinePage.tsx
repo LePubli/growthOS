@@ -52,11 +52,30 @@ function computeHealthScore(deal: Deal): { score: number; color: string; label: 
 
 function NewDealModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:Deal)=>void }) {
   const [form, setForm] = useState({ title:'', company:'', value:'', stage:'lead', probability:'20', closeDate:'', prospect:'', priority:'medium' });
+  const [saving, setSaving] = useState(false);
   const set = (k:string,v:string) => setForm(f=>({...f,[k]:v}));
-  const save = () => {
+  const save = async () => {
     if (!form.title || !form.company) { toast.error('Titre et entreprise requis'); return; }
-    onSave({ ...form, value:Number(form.value)||0, probability:Number(form.probability)||20, id:crypto.randomUUID() } as Deal);
-    onClose(); toast.success('Deal créé');
+    setSaving(true);
+    try {
+      const deal = await apiClient.post('/pipeline', {
+        title: form.title,
+        company: form.company,
+        prospect: form.prospect || undefined,
+        value: Number(form.value) || 0,
+        stage: form.stage,
+        probability: Number(form.probability) || 20,
+        closeDate: form.closeDate || undefined,
+        priority: form.priority,
+      }) as any;
+      onSave(deal as Deal);
+      onClose();
+      toast.success('Deal créé ✓');
+    } catch (e: any) {
+      toast.error(e?.error || 'Erreur lors de la création');
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:50, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={onClose}>
@@ -99,7 +118,9 @@ function NewDealModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:Deal)=>
         </div>
         <div style={{ display:'flex', gap:10 }}>
           <button onClick={onClose} style={{ flex:1, padding:11, borderRadius:12, border:'1px solid var(--card-border)', background:'transparent', color:'var(--text-secondary)', fontSize:14, cursor:'pointer' }}>Annuler</button>
-          <button onClick={save} style={{ flex:2, padding:11, borderRadius:12, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>Créer le deal</button>
+          <button onClick={save} disabled={saving} style={{ flex:2, padding:11, borderRadius:12, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:14, fontWeight:700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            {saving ? '⏳ Création…' : 'Créer le deal'}
+          </button>
         </div>
       </div>
     </div>

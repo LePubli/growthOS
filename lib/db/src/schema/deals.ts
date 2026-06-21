@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
+import { prospectsTable } from "./prospects";
 
 export const dealsTable = pgTable("deals", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -13,6 +14,7 @@ export const dealsTable = pgTable("deals", {
   probability: integer("probability").default(20),
   closeDate: text("close_date"),
   prospect: text("prospect"),
+  prospectId: uuid("prospect_id").references(() => prospectsTable.id, { onDelete: "set null" }),
   tenantId: uuid("tenant_id").references(() => tenantsTable.id, { onDelete: "cascade" }).notNull(),
   createdBy: uuid("created_by").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),

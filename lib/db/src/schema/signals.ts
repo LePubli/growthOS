@@ -2,6 +2,7 @@ import { pgTable, text, uuid, timestamp, integer, boolean } from "drizzle-orm/pg
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { prospectsTable } from "./prospects";
 
 export const signalsTable = pgTable("signals", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -12,6 +13,8 @@ export const signalsTable = pgTable("signals", {
   score: integer("score").default(50),
   isRead: boolean("is_read").default(false),
   isStarred: boolean("is_starred").default(false),
+  source: text("source").default("manual"),
+  prospectId: uuid("prospect_id").references(() => prospectsTable.id, { onDelete: "set null" }),
   tenantId: uuid("tenant_id").references(() => tenantsTable.id, { onDelete: "cascade" }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

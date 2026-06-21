@@ -974,3 +974,16 @@ export async function runMigrations(maxAttempts = 10): Promise<void> {
     }
   }
 }
+
+export async function runDealProspectLinkMigration(): Promise<void> {
+  await pool.query(`
+    ALTER TABLE deals ADD COLUMN IF NOT EXISTS prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL;
+  `);
+}
+
+export async function runSignalEnhanceMigration(): Promise<void> {
+  await pool.query(`
+    ALTER TABLE signals ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
+    ALTER TABLE signals ADD COLUMN IF NOT EXISTS prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL;
+  `);
+}

@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import {
   Search, Plus, Star, Mail, Phone, Upload, FileText,
   Download, RefreshCw, ChevronRight, Building2, Loader2,
-  CheckCircle, AlertCircle, X, Trash2, Tag, ArchiveX, CheckSquare, Square, MapPin, MapPinOff,
+  CheckCircle, AlertCircle, X, Trash2, Tag, ArchiveX, CheckSquare, Square, MapPin, MapPinOff, GitMerge,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -346,6 +346,25 @@ export default function ProspectsPage() {
     } catch { toast.error('Erreur'); }
   };
 
+  const convertToDeal = async (e: React.MouseEvent, p: any) => {
+    e.stopPropagation();
+    const name = [p.firstName, p.lastName].filter(Boolean).join(' ') || p.company || 'ce prospect';
+    if (!confirm(`Convertir "${name}" en deal pipeline ?`)) return;
+    try {
+      await apiClient.post('/pipeline/from-prospect', {
+        prospectId: p.id,
+        title: `Deal ${p.company || name}`,
+        company: p.company || '',
+        value: 0,
+        stage: ['qualified', 'negotiation'].includes(p.status) ? p.status : 'lead',
+      });
+      toast.success(`${p.company || name} → Deal créé ✓`);
+      fetchProspects();
+    } catch (err: any) {
+      toast.error(err?.error || 'Erreur lors de la conversion');
+    }
+  };
+
   const byStatus = STATUS_OPTIONS.reduce((acc,s) => {
     if(s.value!=='all') acc[s.value]=prospects.filter(p=>p.status===s.value).length;
     return acc;
@@ -544,9 +563,18 @@ export default function ProspectsPage() {
                   )}
                 </td>
                 <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
-                  <button onClick={()=>navigate(`/prospects/${p.id}`)} className="text-gray-300 hover:text-teal-600">
-                    <ChevronRight className="w-5 h-5"/>
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {p.status !== 'converted' && (p.score >= 50 || ['qualified','negotiation'].includes(p.status)) && (
+                      <button onClick={(e)=>convertToDeal(e,p)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        title="Convertir en deal pipeline">
+                        <GitMerge className="w-3 h-3"/>Deal
+                      </button>
+                    )}
+                    <button onClick={()=>navigate(`/prospects/${p.id}`)} className="text-gray-300 hover:text-teal-600">
+                      <ChevronRight className="w-5 h-5"/>
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

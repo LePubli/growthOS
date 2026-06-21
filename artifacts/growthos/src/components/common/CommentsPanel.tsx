@@ -49,6 +49,7 @@ export function CommentsPanel({ entityType, entityId }: Props) {
   const [content, setContent] = useState('');
   const [type, setType] = useState<ActivityType>('comment');
   const [sending, setSending] = useState(false);
+  const [filterType, setFilterType] = useState<ActivityType | 'all'>('all');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -135,9 +136,23 @@ export function CommentsPanel({ entityType, entityId }: Props) {
         </div>
       </div>
 
+      {/* Type filter */}
+      <div style={{ display:'flex', gap:5, marginBottom:14, flexWrap:'wrap' }}>
+        <button onClick={()=>setFilterType('all')}
+          style={{ padding:'4px 12px', borderRadius:9999, cursor:'pointer', fontSize:11, fontWeight:600, background: filterType==='all' ? 'var(--color-primary)' : 'var(--body-bg)', color: filterType==='all' ? '#fff' : 'var(--text-muted)', border: filterType==='all' ? '1px solid var(--color-primary)' : '1px solid var(--card-border)' }}>
+          Tous ({activities.length})
+        </button>
+        {QUICK_TYPES.map(qt=>(
+          <button key={qt.type} onClick={()=>setFilterType(qt.type===filterType?'all':qt.type)}
+            style={{ display:'flex', alignItems:'center', gap:4, padding:'4px 10px', borderRadius:9999, cursor:'pointer', fontSize:11, fontWeight:600, background: filterType===qt.type ? TYPE_META[qt.type].bg : 'var(--body-bg)', color: filterType===qt.type ? TYPE_META[qt.type].color : 'var(--text-muted)', border: filterType===qt.type ? `1px solid ${TYPE_META[qt.type].color}40` : '1px solid var(--card-border)' }}>
+            {qt.icon}{qt.label}
+          </button>
+        ))}
+      </div>
+
       {/* Activity feed */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {activities.map((act, i) => {
+        {(filterType==='all' ? activities : activities.filter(a=>a.type===filterType)).map((act, i) => {
           const meta = TYPE_META[act.type] || TYPE_META.comment;
           return (
             <div key={act.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -168,10 +183,10 @@ export function CommentsPanel({ entityType, entityId }: Props) {
             </div>
           );
         })}
-        {activities.length === 0 && (
+        {(filterType==='all' ? activities : activities.filter(a=>a.type===filterType)).length === 0 && (
           <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
             <MessageSquare size={32} style={{ margin: '0 auto 8px', opacity: 0.3 }} />
-            <div style={{ fontSize: 13 }}>Aucune activité — ajoutez une note ou un appel</div>
+            <div style={{ fontSize: 13 }}>{filterType==='all' ? 'Aucune activité — ajoutez une note ou un appel' : `Aucune activité de type "${TYPE_META[filterType]?.label}"`}</div>
           </div>
         )}
       </div>

@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { signalsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { signalsTable, prospectsTable } from "@workspace/db";
+import { eq, and, desc, gte, isNull } from "drizzle-orm";
 import { signalService } from "../../lib/plugin-signal-intelligence/SignalService";
 import { signalGeneratorService } from "../../lib/signals/SignalGeneratorService";
 import { providerKeysService } from "../../lib/provider-keys/ProviderKeysService";
@@ -20,6 +20,8 @@ const signalSchema = z.object({
   score: z.number().int().min(0).max(100).optional().default(50),
   isRead: z.boolean().optional(),
   isStarred: z.boolean().optional(),
+  source: z.string().optional().default("manual"),
+  prospectId: z.string().uuid().optional(),
 });
 
 router.get("/", async (req, res) => {
@@ -100,6 +102,9 @@ const generateRealSchema = z.object({
   companies: z.array(z.string()).optional().default([]),
   maxResults: z.number().int().min(1).max(50).optional().default(15),
   apiKey: z.string().optional(),
+  targetType: z.enum(["prospect", "account", "custom"]).optional(),
+  targetId: z.string().uuid().optional(),
+  targetName: z.string().optional(),
 });
 
 router.post("/generate-real", async (req, res) => {
@@ -112,6 +117,28 @@ router.post("/generate-real", async (req, res) => {
     }
 
     const config = parse.data;
+    const { targetType, targetId, targetName } = config;
+
+    // Si ciblage prospect, récupérer l'entreprise du prospect et l'ajouter aux sociétés
+    let resolvedCompany: string | null = null;
+    if (targetType === "prospect" && targetId) {
+      const [prospect] = await db.select().from(prospectsTable)
+        .where(and(eq(prospectsTable.id, targetId), eq(prospectsTable.tenantId, tenantId)))
+        .limit(1);
+      if (prospect?.company) {
+        resolvedCompany = prospect.company;
+        if (!config.companies.includes(prospect.company)) {
+          config.companies = [...config.companies, prospect.company];
+        }
+      }
+    } else if (targetType === "account" && targetName) {
+      resolvedCompany = targetName;
+      if (!config.companies.includes(targetName)) {
+        config.companies = [...config.companies, targetName];
+      }
+    } else if (targetType === "custom" && targetName) {
+      resolvedCompany = targetName;
+    }
 
     // Si sourceType nécessite une clé API et qu'elle n'est pas dans le body,
     // essayer de la récupérer depuis la DB du tenant
@@ -126,11 +153,36 @@ router.post("/generate-real", async (req, res) => {
       (config.sourceType !== "rss" && !apiKey) ? "rss" : config.sourceType
     );
 
+    const generatedAt = new Date();
+
     const result = await signalGeneratorService.generate(tenantId, {
       ...config,
       sourceType: effectiveSource as any,
       apiKey,
     });
+
+    // Lier les signaux générés à la cible (prospect/account/source)
+    if (result.inserted > 0) {
+      try {
+        const updateData: any = { source: effectiveSource };
+        if (targetType === "prospect" && targetId) {
+          updateData.prospectId = targetId;
+        }
+        // Mettre à jour les signaux fraîchement insérés (créés depuis generatedAt)
+        await db.update(signalsTable)
+          .set(updateData)
+          .where(
+            and(
+              eq(signalsTable.tenantId, tenantId),
+              gte(signalsTable.createdAt, generatedAt),
+              isNull(signalsTable.source)
+            )
+          );
+      } catch (e) {
+        // Non-bloquant
+        console.warn("Échec du lien prospect→signal:", e);
+      }
+    }
 
     // Notifier si des signaux hot ont été générés
     const hotCount = result.signals.filter(s => s.score >= 85).length;
@@ -138,7 +190,7 @@ router.post("/generate-real", async (req, res) => {
       createNotification({
         type: "signal",
         title: `${hotCount} signal${hotCount > 1 ? "s" : ""} chaud${hotCount > 1 ? "s" : ""} détecté${hotCount > 1 ? "s" : ""} ⚡`,
-        body: `Recherche depuis ${result.source} — ${result.inserted} nouveau${result.inserted > 1 ? "x" : ""} signal${result.inserted > 1 ? "s" : ""}`,
+        body: `Recherche depuis ${result.source}${resolvedCompany ? ` — ${resolvedCompany}` : ""} — ${result.inserted} nouveau${result.inserted > 1 ? "x" : ""} signal${result.inserted > 1 ? "s" : ""}`,
         href: "/signals",
         tenantId,
       }).catch(() => {});

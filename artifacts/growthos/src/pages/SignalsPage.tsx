@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import {
@@ -62,12 +62,31 @@ interface SearchResult {
   signals: Array<{ company: string; type: string; title: string; score: number }>;
 }
 
+type TargetType = 'none' | 'prospect' | 'account';
+
 function SearchModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (r: SearchResult) => void }) {
   const [sourceType, setSourceType] = useState<SourceType>('rss');
   const [keywords, setKeywords] = useState('');
   const [companies, setCompanies] = useState('');
   const [maxResults, setMaxResults] = useState(15);
   const [result, setResult] = useState<SearchResult | null>(null);
+  const [targetType, setTargetType] = useState<TargetType>('none');
+  const [targetId, setTargetId] = useState('');
+  const [targetName, setTargetName] = useState('');
+  const [prospects, setProspects] = useState<Array<{ id: string; name: string; company: string }>>([]);
+
+  useEffect(() => {
+    if (targetType === 'prospect' && prospects.length === 0) {
+      apiClient.get('/prospects', { params: { limit: '100' } }).then((d: any) => {
+        const arr = Array.isArray(d) ? d : d?.data || [];
+        setProspects(arr.map((p: any) => ({
+          id: p.id,
+          name: [p.firstName, p.lastName].filter(Boolean).join(' ') || p.company || '—',
+          company: p.company || '',
+        })));
+      }).catch(() => {});
+    }
+  }, [targetType]);
 
   const generateMutation = useMutation({
     mutationFn: () => apiClient.post('/signals/generate-real', {
@@ -75,6 +94,11 @@ function SearchModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
       keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
       companies: companies.split(',').map(c => c.trim()).filter(Boolean),
       maxResults,
+      ...(targetType !== 'none' && {
+        targetType,
+        ...(targetType === 'prospect' && targetId ? { targetId } : {}),
+        ...(targetType === 'account' && targetName ? { targetName } : {}),
+      }),
     }) as Promise<SearchResult>,
     onSuccess: (data) => {
       setResult(data);
@@ -135,6 +159,33 @@ function SearchModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Target */}
+        <div style={{ marginBottom: 18 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cible</label>
+          <div style={{ display: 'flex', gap: 8, marginBottom: targetType !== 'none' ? 10 : 0 }}>
+            {([['none','Aucune'],['prospect','Prospect'],['account','Compte']] as [TargetType, string][]).map(([v, l]) => (
+              <button key={v} onClick={() => setTargetType(v)}
+                style={{ padding: '6px 14px', borderRadius: 9999, cursor: 'pointer', fontSize: 12, fontWeight: 600, border: targetType === v ? '2px solid var(--color-primary)' : '1px solid var(--card-border)', background: targetType === v ? 'var(--color-primary)' : 'var(--card-bg)', color: targetType === v ? '#fff' : 'var(--text-secondary)' }}>
+                {l}
+              </button>
+            ))}
+          </div>
+          {targetType === 'prospect' && (
+            <select value={targetId} onChange={e => setTargetId(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', border: '1px solid var(--card-border)', borderRadius: 10, fontSize: 13, background: 'var(--body-bg)', color: 'var(--text-primary)', outline: 'none' }}>
+              <option value="">— Tous les prospects —</option>
+              {prospects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}{p.company ? ` (${p.company})` : ''}</option>
+              ))}
+            </select>
+          )}
+          {targetType === 'account' && (
+            <input value={targetName} onChange={e => setTargetName(e.target.value)}
+              placeholder="Nom de l'entreprise ciblée…"
+              style={{ width: '100%', padding: '9px 12px', border: '1px solid var(--card-border)', borderRadius: 10, fontSize: 13, background: 'var(--body-bg)', color: 'var(--text-primary)', outline: 'none' }} />
+          )}
         </div>
 
         {/* Filters */}

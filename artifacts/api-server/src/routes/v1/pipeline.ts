@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { dealsTable } from "@workspace/db";
+import { dealsTable, prospectsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { createNotification } from "../../services/notification.service";
 import { actionLogger } from "../../lib/ActionLogger";
@@ -98,6 +98,62 @@ router.delete("/:id", async (req, res) => {
     and(eq(dealsTable.id, id), eq(dealsTable.tenantId, req.auth!.tenantId))
   );
   res.json({ ok: true });
+});
+
+// POST /pipeline/from-prospect — convertir un prospect en deal
+const fromProspectSchema = z.object({
+  prospectId: z.string().uuid(),
+  title: z.string().min(1),
+  company: z.string().optional(),
+  value: z.number().min(0).optional().default(0),
+  stage: z.enum(["lead", "qualified", "proposal", "negotiation", "won", "lost"]).optional().default("lead"),
+  probability: z.number().int().min(0).max(100).optional().default(20),
+  closeDate: z.string().optional(),
+});
+
+router.post("/from-prospect", async (req, res) => {
+  const tenantId = req.auth!.tenantId;
+  const parse = fromProspectSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: "Données invalides", details: parse.error.issues });
+    return;
+  }
+
+  const { prospectId, value, ...rest } = parse.data;
+
+  const [prospect] = await db.select().from(prospectsTable)
+    .where(and(eq(prospectsTable.id, prospectId), eq(prospectsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!prospect) {
+    res.status(404).json({ error: "Prospect introuvable" });
+    return;
+  }
+
+  const [deal] = await db.insert(dealsTable).values({
+    ...rest,
+    prospect: [prospect.firstName, prospect.lastName].filter(Boolean).join(" ") || prospect.company || "",
+    company: rest.company || prospect.company || "",
+    prospectId,
+    value: String(value ?? 0),
+    tenantId,
+    createdBy: req.auth!.userId,
+  }).returning();
+
+  // Mettre le prospect en statut "converted"
+  await db.update(prospectsTable)
+    .set({ status: "converted", updatedAt: new Date() } as any)
+    .where(eq(prospectsTable.id, prospectId));
+
+  createNotification({
+    type: "deal",
+    title: "Prospect converti en deal 🎯",
+    body: `${prospect.firstName || prospect.company || "Prospect"} → Deal "${deal.title}"`,
+    href: `/pipeline/${deal.id}`,
+    tenantId,
+    userId: req.auth!.userId,
+  }).catch(() => {});
+
+  res.status(201).json({ ...deal, value: Number(deal.value) });
 });
 
 export default router;
