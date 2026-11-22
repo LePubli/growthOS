@@ -140,7 +140,9 @@ async function auditRoutes(
       onProgress?.(++completed, routes.length);
     }
   }
-  await Promise.all(Array.from({ length: Math.min(2, routes.length) }, () => worker()));
+  // Sequential probes avoid concurrent reads against lightweight test backends
+  // and keep CPU/DB pressure minimal on the shared production VPS.
+  await worker();
   return { results, discovered: discovered.length, skipped };
 }
 
@@ -177,13 +179,9 @@ export async function runDeepAudit(
   const { userId, tenantId, email, role } = admin;
   const token = signAccessToken({ userId, tenantId, email, role });
 
-  const [routeAudit, dbResults] = await Promise.all([
-    auditRoutes(app, `http://localhost:${port}`, token, onProgress).catch(err => {
-      logger.error({ err }, "Route audit failed");
-      throw err;
-    }),
-    auditDatabase(),
-  ]);
+  // Do not compete with our own DB probes: this is a diagnostic, not a load test.
+  const dbResults = await auditDatabase();
+  const routeAudit = await auditRoutes(app, `http://localhost:${port}`, token, onProgress);
   const routeResults = routeAudit.results;
 
   const routesOk    = routeResults.filter(r => r.status >= 200 && r.status < 400).length;
