@@ -232,7 +232,7 @@ try {
     "Inventaire de routes distingué des lectures HTTP réellement testées");
   const prospectProbe = audited.report.backend.allRoutes.find(r => r.route === "/api/v1/prospects");
   check(prospectProbe?.status === 200,
-    "Route CRM testée avec le véritable tenant administrateur, sans faux HTTP 500");
+    `Route CRM avec tenant administrateur : HTTP ${prospectProbe?.status ?? 'absent'} (${prospectProbe?.error ?? 'aucun détail'})`);
 
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
 } catch (error) {
