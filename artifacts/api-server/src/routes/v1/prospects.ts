@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { prospectsTable } from "@workspace/db";
-import { eq, and, or, ilike, desc, count, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, or, ilike, desc, count, isNull, isNotNull, inArray, sql } from "drizzle-orm";
 
 import { actionLogger } from "../../lib/ActionLogger";
 
@@ -168,44 +168,100 @@ router.post("/", async (req, res) => {
 });
 
 router.post("/bulk", async (req, res) => {
-  const { prospects } = req.body as { prospects: any[] };
-  if (!Array.isArray(prospects) || prospects.length === 0) {
-    res.status(400).json({ error: "Tableau de prospects requis" });
+  const bulkSchema = z.object({
+    prospects: z.array(prospectSchema.extend({ email: z.string().email() })
+      .refine(p => Boolean(p.firstName?.trim() || p.lastName?.trim()), "Nom requis")).min(1).max(1000),
+    duplicateMode: z.enum(["skip", "update", "create"]).default("skip"),
+  });
+  const parsed = bulkSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Données d'import invalides", details: parsed.error.issues });
     return;
   }
-  const rows = prospects.slice(0, 1000).map((p) => ({
-    firstName: p.firstName || null,
-    lastName: p.lastName || null,
-    email: p.email || null,
-    phone: p.phone || null,
-    company: p.company || null,
-    jobTitle: p.jobTitle || null,
-    website: p.website || null,
-    address: p.address || null,
-    lat: p.lat != null ? parseFloat(p.lat) : null,
-    lng: p.lng != null ? parseFloat(p.lng) : null,
-    status: (p.status as any) || "new",
-    tenantId: req.auth!.tenantId,
-    createdBy: req.auth!.userId,
+
+  const { duplicateMode } = parsed.data;
+  const tenantId = req.auth!.tenantId;
+  const userId = req.auth!.userId;
+  const rows = parsed.data.prospects.map(p => ({
+    firstName: p.firstName?.trim() || null,
+    lastName: p.lastName?.trim() || null,
+    email: p.email.trim().toLowerCase(),
+    phone: p.phone?.trim() || null,
+    company: p.company?.trim() || null,
+    jobTitle: p.jobTitle?.trim() || null,
+    website: p.website?.trim() || null,
+    address: p.address?.trim() || null,
+    lat: p.lat ?? null,
+    lng: p.lng ?? null,
+    status: p.status,
+    tenantId,
+    createdBy: userId,
   }));
 
-  const inserted = await db.insert(prospectsTable).values(rows).returning({ id: prospectsTable.id, address: prospectsTable.address, lat: prospectsTable.lat });
+  const emails = [...new Set(rows.map(p => p.email))];
+  const result = await db.transaction(async tx => {
+    const existing = await tx.select({ id: prospectsTable.id, email: prospectsTable.email })
+      .from(prospectsTable)
+      .where(and(eq(prospectsTable.tenantId, tenantId),
+        inArray(sql<string>`lower(trim(${prospectsTable.email}))`, emails)));
+    const existingByEmail = new Map(
+      existing.filter(p => p.email).map(p => [p.email!.trim().toLowerCase(), p.id]),
+    );
+    const pendingCreates: typeof rows = [];
+    const pendingCreateIndex = new Map<string, number>();
+    const pendingUpdates = new Map<string, { id: string; data: typeof rows[number] }>();
+    let duplicates = 0;
+    let skipped = 0;
 
-  // Background geocoding for rows that have an address but no coordinates
-  // Rate-limited: 1 request/second to respect Nominatim ToS
-  const toGeocode = inserted.filter(r => r.address && r.lat == null);
-  if (toGeocode.length > 0) {
+    for (const row of rows) {
+      const existingId = existingByEmail.get(row.email);
+      const createIndex = pendingCreateIndex.get(row.email);
+      const duplicate = existingId !== undefined || createIndex !== undefined;
+      if (duplicate) duplicates++;
+      if (duplicate && duplicateMode === "skip") { skipped++; continue; }
+      if (existingId && duplicateMode === "update") {
+        pendingUpdates.set(row.email, { id: existingId, data: row });
+      } else if (createIndex !== undefined && duplicateMode === "update") {
+        // Repeated email inside a single CSV: the last row wins.
+        pendingCreates[createIndex] = row;
+      } else {
+        if (!pendingCreateIndex.has(row.email)) pendingCreateIndex.set(row.email, pendingCreates.length);
+        pendingCreates.push(row);
+      }
+    }
+
+    const inserted = pendingCreates.length
+      ? await tx.insert(prospectsTable).values(pendingCreates).returning({
+          id: prospectsTable.id, address: prospectsTable.address, lat: prospectsTable.lat,
+        })
+      : [];
+    for (const { id, data } of pendingUpdates.values()) {
+      await tx.update(prospectsTable).set({
+        firstName: data.firstName, lastName: data.lastName, phone: data.phone,
+        company: data.company, jobTitle: data.jobTitle, website: data.website,
+        address: data.address, lat: data.lat, lng: data.lng, status: data.status,
+        updatedAt: new Date(),
+      }).where(and(eq(prospectsTable.id, id), eq(prospectsTable.tenantId, tenantId)));
+    }
+    return { inserted, imported: inserted.length, updated: pendingUpdates.size, duplicates, skipped };
+  });
+
+  // Background geocoding; never block the HTTP response for network lookups.
+  const toGeocode = result.inserted.filter(r => r.address && r.lat == null);
+  if (toGeocode.length) {
     (async () => {
-      for (let i = 0; i < toGeocode.length; i++) {
-        const { id, address } = toGeocode[i];
-        if (address) await geocodeAndUpdate(id, address);
-        // 1.2s between requests to stay under Nominatim's 1 req/s limit
-        if (i < toGeocode.length - 1) await new Promise(r => setTimeout(r, 1200));
+      for (const [index, item] of toGeocode.entries()) {
+        if (item.address) await geocodeAndUpdate(item.id, item.address);
+        if (index < toGeocode.length - 1) await new Promise(r => setTimeout(r, 1200));
       }
     })().catch(() => {});
   }
 
-  res.status(201).json({ count: inserted.length, geocoding: toGeocode.length });
+  res.status(201).json({
+    imported: result.imported, updated: result.updated,
+    duplicates: result.duplicates, skipped: result.skipped,
+    geocoding: toGeocode.length,
+  });
 });
 
 router.patch("/:id", async (req, res) => {
