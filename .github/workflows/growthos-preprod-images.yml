@@ -10,15 +10,53 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: growthos-preprod-images-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build-and-publish:
+  validate:
     runs-on: ubuntu-latest
+    steps:
+      - name: Read the preproduction branch
+        uses: actions/checkout@v6
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Set up pinned pnpm 10
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.26.1
+          run_install: false
+
+      - name: Install exactly the locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check API TypeScript
+        run: pnpm --filter @workspace/api-server typecheck
+
+      - name: Check interface TypeScript
+        run: pnpm --filter @workspace/growthos typecheck
+
+      - name: Build API for integration tests
+        run: pnpm --filter @workspace/api-server build
+
+      - name: Test first-run wizard and CRM without external email
+        run: node scripts/smoke-wizard.mjs
+
+      - name: Test cloud AI connectors without real API calls
+        run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/ai-connector-probes.test.ts
+
+  build-and-publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:

@@ -14,8 +14,10 @@ déclenchement manuel quand GitHub l'autorise). Il construit deux images :
 - `ghcr.io/lepubli/growthos-api:<SHA_DU_COMMIT>`
 - `ghcr.io/lepubli/growthos-web:<SHA_DU_COMMIT>`
 
-Vérifier que **les deux jobs sont verts** dans GitHub → Actions →
-« GrowthOS preproduction images ». Noter le SHA complet (40 caractères) du
+Vérifier que **le job de validation et les deux jobs Docker sont verts** dans
+GitHub → Actions → « GrowthOS preproduction images ». Le job de validation
+vérifie TypeScript, le wizard, le CRM et les sondes IA hors ligne avant toute
+publication d'image. Noter le SHA complet (40 caractères) du
 commit construit. Les deux images doivent avoir **le même SHA**.
 
 Si les packages GHCR sont privés (cas fréquent au premier build), il faudra
