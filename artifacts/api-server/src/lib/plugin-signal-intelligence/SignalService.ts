@@ -70,6 +70,8 @@ function hashCode(s: string): number {
 
 class SignalService {
   async generateMockSignals(company: string, tenantId: string): Promise<Signal[]> {
+    // Historical demo entry point. Never insert fabricated intent signals into a real tenant.
+    throw new Error("Mock signal generation is disabled");
     const seed = hashCode(`${company}-${Date.now()}`);
     const count = 1 + (seed % 3);
     const created: Signal[] = [];
@@ -122,6 +124,7 @@ class SignalService {
   }
 
   async generateForAllAccounts(tenantId: string): Promise<Signal[]> {
+    throw new Error("Mock signal generation is disabled; use verified sources");
     // Bug #5 fix: filtrer aussi les company vides ('')
     const companiesRes = await pool.query<{ company: string }>(
       `SELECT DISTINCT company FROM prospects WHERE tenant_id = $1 AND company IS NOT NULL AND TRIM(company) != '' LIMIT 10`,

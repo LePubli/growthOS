@@ -13,6 +13,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useSignalNotifications } from '@/hooks/useSignalNotifications';
 import { ClientShell } from '@/plugins/client-portal/ClientShell';
 import LandingPage from '@/pages/public/LandingPage';
+import UnavailablePage from '@/pages/UnavailablePage';
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
@@ -25,6 +26,7 @@ const SequenceDetailPage = lazy(() => import('@/pages/SequenceDetailPage'));
 const SignalsPage = lazy(() => import('@/pages/SignalsPage'));
 const SignalDetailPage = lazy(() => import('@/pages/SignalDetailPage'));
 const SourcingPage = lazy(() => import('@/pages/SourcingPage'));
+const SiteAuditPage = lazy(() => import('@/pages/SiteAuditPage'));
 const PluginsPage = lazy(() => import('@/pages/PluginsPage'));
 const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage'));
 const WorkflowDetailPage = lazy(() => import('@/pages/WorkflowDetailPage'));
@@ -201,6 +203,9 @@ function AppRoutes() {
       <Route path="/sourcing">
         {() => <DashboardLayout><SourcingPage /></DashboardLayout>}
       </Route>
+      <Route path="/seo-check">
+        {() => <DashboardLayout><SiteAuditPage /></DashboardLayout>}
+      </Route>
       <Route path="/sourcing/:id">
         {() => <DashboardLayout><SourcingJobPage /></DashboardLayout>}
       </Route>
@@ -236,10 +241,10 @@ function AppRoutes() {
         {() => <DashboardLayout><ApiPage /></DashboardLayout>}
       </Route>
       <Route path="/settings/billing">
-        {() => <DashboardLayout><BillingPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Facturation" description="Le parcours de paiement Stripe et les factures réelles ne sont pas encore certifiés." /></DashboardLayout>}
       </Route>
       <Route path="/settings/integrations">
-        {() => <DashboardLayout><IntegrationsPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Intégrations externes" description="Les statuts Gmail, Slack et autres fournisseurs doivent être reliés aux connexions réelles avant affichage." /></DashboardLayout>}
       </Route>
       <Route path="/settings/autopilot">
         {() => <DashboardLayout><AutopilotPage /></DashboardLayout>}
@@ -258,7 +263,7 @@ function AppRoutes() {
         {() => <DashboardLayout><IntegrationsHubPage /></DashboardLayout>}
       </Route>
       <Route path="/inbound">
-        {() => <DashboardLayout><InboundPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Prospection entrante" description="Les formulaires, leads et conversions affichés auparavant étaient des données de démonstration." /></DashboardLayout>}
       </Route>
       <Route path="/abm">
         {() => <DashboardLayout><ABMPage /></DashboardLayout>}
@@ -271,7 +276,7 @@ function AppRoutes() {
         {() => <DashboardLayout><ContactsPage /></DashboardLayout>}
       </Route>
       <Route path="/contact-intel">
-        {() => <DashboardLayout><ContactIntelPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Intelligence contact" description="Les données d'enrichissement contact ne sont pas encore vérifiées auprès de fournisseurs réels." /></DashboardLayout>}
       </Route>
       <Route path="/crm-sync">
         {() => <DashboardLayout><CRMSyncPage /></DashboardLayout>}
@@ -297,13 +302,13 @@ function AppRoutes() {
         {() => <DashboardLayout><ERepSERPPage /></DashboardLayout>}
       </Route>
       <Route path="/ereputation/sentiment">
-        {() => <DashboardLayout><ERepSentimentPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Veille des mentions" description="La collecte externe d'avis et le flux de sentiments doivent être raccordés à des sources vérifiables." /></DashboardLayout>}
       </Route>
       <Route path="/ereputation/social">
-        {() => <DashboardLayout><ERepSocialPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Calendrier social" description="Les publications et résultats sociaux ne sont pas encore synchronisés avec les réseaux réels." /></DashboardLayout>}
       </Route>
       <Route path="/ereputation/pbn">
-        {() => <DashboardLayout><ERepPBNPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Réseau de sites" description="Aucun indicateur d'autorité ou de backlinks non mesuré ne doit être présenté comme réel." /></DashboardLayout>}
       </Route>
       <Route path="/ereputation">
         {() => <DashboardLayout><ERepDashboardPage /></DashboardLayout>}
@@ -333,10 +338,10 @@ function AppRoutes() {
         {() => <DashboardLayout><CalendarPage /></DashboardLayout>}
       </Route>
       <Route path="/proposals">
-        {() => <DashboardLayout><ProposalsPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Propositions commerciales" description="Le générateur de propositions n'est pas encore connecté au CRM et à un stockage permanent." /></DashboardLayout>}
       </Route>
       <Route path="/shared-dashboards">
-        {() => <DashboardLayout><SharedDashboardsPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Tableaux de bord partagés" description="La gestion réelle des accès et des tableaux partagés n'a pas encore été validée." /></DashboardLayout>}
       </Route>
       <Route path="/route-audit">
         {() => <DashboardLayout><RouteAuditPage /></DashboardLayout>}
@@ -358,7 +363,7 @@ function AppRoutes() {
         {() => <DashboardLayout><HelpCenterPage /></DashboardLayout>}
       </Route>
       <Route path="/referral">
-        {() => <DashboardLayout><ReferralPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Parrainage" description="Aucun programme de parrainage réel ni statistiques de commissions ne sont configurés." /></DashboardLayout>}
       </Route>
 
       <Route path="/audit-trail">

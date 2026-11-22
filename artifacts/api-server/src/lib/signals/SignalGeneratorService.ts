@@ -152,6 +152,8 @@ class SignalGeneratorService {
 
           // Filtrer par mots-clés si configurés
           if (keywords.length > 0 && !keywords.some(k => text.includes(k))) continue;
+          // A signal must actually mention its requested company; never attach unrelated news.
+          if (companies.length > 0 && !companies.some(c => text.includes(c))) continue;
 
           const type = detectSignalType(item.title, item.description);
           const company = companies.length > 0

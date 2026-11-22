@@ -234,7 +234,7 @@ function AccountPanel({ account, onClose }: { account:Account; onClose:()=>void 
               style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:10, borderRadius:12, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
               <Users size={13}/>Prospects
             </button>
-            <button onClick={()=>toast.success(`Séquence lancée pour ${account.name}`)}
+            <button onClick={()=>{ navigate('/sequences'); onClose(); toast.info('Les séquences sont en mode brouillon : aucun envoi automatique.'); }}
               style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:10, borderRadius:12, border:'1px solid var(--card-border)', background:'var(--body-bg)', color:'var(--text-secondary)', fontSize:13, fontWeight:600, cursor:'pointer' }}>
               <Mail size={13}/>Séquence
             </button>
@@ -248,7 +248,9 @@ function AccountPanel({ account, onClose }: { account:Account; onClose:()=>void 
 /* ─────────────── main ─────────────── */
 export default function AccountsPage() {
   const [, navigate] = useLocation();
-  const [accounts, setAccounts] = useState<Account[]>(MOCK_ACCOUNTS);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('Tous');
   const [industryFilter, setIndustryFilter] = useState('Tous');
@@ -256,7 +258,16 @@ export default function AccountsPage() {
   const [selected, setSelected] = useState<Account|null>(null);
 
   useEffect(()=>{
-    apiClient.get('/accounts').then((d:any)=>{ const l=Array.isArray(d)?d:d?.data||[]; if(l.length>0) console.log('API accounts:',l.length); }).catch(()=>{});
+    apiClient.get('/accounts').then((d:any)=>{
+      const list = Array.isArray(d) ? d : d?.data || [];
+      setAccounts(list.map((a:any)=>({
+        id:a.id, name:a.name||'Sans nom', domain:a.domain||'', industry:a.industry||'',
+        size:a.size||'', city:a.city||'', contactCount:Number(a.contactCount)||0,
+        dealValue:Number(a.dealValue)||0, dealCount:Number(a.dealCount)||0,
+        status:a.status||'prospect', lastActivity:a.lastActivity||'—', score:Number(a.score)||0,
+        contacts:Array.isArray(a.contacts)?a.contacts:[], timeline:Array.isArray(a.timeline)?a.timeline:[],
+      })));
+    }).catch(()=>setError('Impossible de charger les comptes réels.')).finally(()=>setLoading(false));
   },[]);
 
   const filtered = accounts.filter(a=>{
@@ -270,7 +281,7 @@ export default function AccountsPage() {
   const totalValue = accounts.reduce((s,a)=>s+a.dealValue,0);
   const customers = accounts.filter(a=>a.status==='customer').length;
   const totalContacts = accounts.reduce((s,a)=>s+a.contactCount,0);
-  const avgScore = Math.round(accounts.reduce((s,a)=>s+a.score,0)/accounts.length);
+  const avgScore = accounts.length ? Math.round(accounts.reduce((s,a)=>s+a.score,0)/accounts.length) : 0;
 
   const industries = ['Tous',...Array.from(new Set(accounts.map(a=>a.industry)))];
 
@@ -279,7 +290,7 @@ export default function AccountsPage() {
       {selected && <AccountPanel account={selected} onClose={()=>setSelected(null)}/>}
 
       {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20, flexWrap:'wrap', gap:12 }}>
         <div>
           <h1 style={{ fontSize:22, fontWeight:700, color:'var(--text-primary)', margin:'0 0 2px' }}>Comptes</h1>
           <p style={{ fontSize:13, color:'var(--text-muted)', margin:0 }}>{accounts.length} entreprises · vue Account-Based</p>
@@ -292,14 +303,16 @@ export default function AccountsPage() {
               </button>
             ))}
           </div>
-          <button onClick={()=>toast.info('Nouveau compte…')} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:11, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-            <Plus size={14}/>Nouveau compte
+          <button onClick={()=>navigate('/prospects')} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:11, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+            <Plus size={14}/>Ajouter un prospect
           </button>
         </div>
       </div>
 
       {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
+      {error && <p role="alert" style={{ color:'#DC2626', padding:12 }}>{error}</p>}
+      {!loading && !error && accounts.length===0 && <div style={{padding:24, marginBottom:18, border:'1px dashed var(--card-border)', borderRadius:14, background:'var(--card-bg)', color:'var(--text-muted)'}}>Aucun compte enregistré. Importez des entreprises depuis la prospection ou ajoutez votre premier prospect.</div>}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))', gap:12, marginBottom:20 }}>
         {[
           { l:'Comptes',       v:accounts.length, icon:<Building2 size={17}/>, c:'#2563EB', bg:'#EFF6FF' },
           { l:'Clients actifs',v:customers,       icon:<TrendingUp size={17}/>,c:'#059669', bg:'#ECFDF5' },

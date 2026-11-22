@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "../../lib/logger";
+import { providerKeysService } from "../provider-keys/ProviderKeysService";
 
 /* ─────────────────────────────────────────────────────────────
    SOURCE REGISTRY — 23 sources (free + paid + scraping)
@@ -45,6 +46,9 @@ export const ALL_SOURCES: SourceDef[] = [
   { id: "apollo",        name: "Apollo.io (contacts)",          type: "api",    dataType: "org_chart", free: false, rateLimitPerMinute: 60,  description: "Contacts, organigramme B2B" },
 ];
 
+/** Only these connectors have an actual implementation. The catalogue is not a list of working integrations. */
+export const IMPLEMENTED_SOURCES = new Set(["pappers", "insee", "google_news", "wappalyzer", "hunter"]);
+
 /* ─────────────────────────────────────────────────────────────
    IN-MEMORY CACHE (1h TTL)
 ───────────────────────────────────────────────────────────── */
@@ -72,82 +76,6 @@ async function waitForRateLimit(sourceId: string, perMinute: number): Promise<vo
   const next = rateLimitQueues.get(sourceId) ?? now;
   if (next > now) await new Promise(r => setTimeout(r, next - now));
   rateLimitQueues.set(sourceId, Date.now() + minInterval);
-}
-
-/* ─────────────────────────────────────────────────────────────
-   MOCK DATA GENERATORS (used when source unavailable / dev)
-───────────────────────────────────────────────────────────── */
-function mockLegal(company: string) {
-  const siren = Math.floor(100_000_000 + Math.random() * 899_999_999);
-  return {
-    siren: String(siren),
-    siret: `${siren}00018`,
-    formeJuridique: ["SAS", "SARL", "SA", "SCI"][Math.floor(Math.random() * 4)],
-    dateCreation: `${2008 + Math.floor(Math.random() * 15)}-${String(Math.ceil(Math.random() * 12)).padStart(2, "0")}-01`,
-    effectif: `${Math.floor(5 + Math.random() * 200)} salariés`,
-    capitalSocial: `${Math.floor(5 + Math.random() * 500) * 1000} €`,
-    dirigeants: [{ nom: "Dupont", prenom: "Jean-Marie", role: "Président" }],
-    adresseSiege: company ? `12 Rue de la Paix, 75001 Paris` : null,
-  };
-}
-
-function mockFinancial(company: string) {
-  const raised = Math.random() > 0.6;
-  return {
-    chiffreAffaires: `${Math.floor(500 + Math.random() * 50000)}K€`,
-    resultatNet: `${Math.floor(-50 + Math.random() * 500)}K€`,
-    funding: raised ? {
-      totalRaised: `${Math.floor(1 + Math.random() * 50)}M€`,
-      lastRound: ["Seed", "Série A", "Série B"][Math.floor(Math.random() * 3)],
-      lastRoundDate: `202${Math.floor(Math.random() * 5)}-Q${Math.ceil(Math.random() * 4)}`,
-      investors: ["BpiFrance", "Alven", "Kima Ventures"].slice(0, Math.ceil(Math.random() * 3)),
-    } : null,
-  };
-}
-
-function mockJobs(company: string) {
-  const count = Math.floor(Math.random() * 12);
-  const titles = ["Développeur Full Stack", "Commercial B2B", "Chef de Projet", "Data Analyst", "Responsable Marketing", "DevOps Engineer"];
-  return {
-    openPositions: count,
-    roles: titles.slice(0, Math.min(count, 4)).map((t, i) => ({
-      title: t,
-      location: ["Paris", "Lyon", "Bordeaux", "Remote"][i % 4],
-      postedAt: new Date(Date.now() - i * 7 * 24 * 3600_000).toISOString().slice(0, 10),
-    })),
-    hiringSignal: count >= 3 ? "Forte croissance" : count >= 1 ? "Recrutement modéré" : "Stable",
-  };
-}
-
-function mockDigital(website?: string) {
-  return {
-    technologies: ["React", "Node.js", "AWS", "HubSpot", "Salesforce"].slice(0, Math.ceil(Math.random() * 5)),
-    socialMedia: { linkedin: "https://linkedin.com/company/acme", twitter: "@acme" },
-    domainAuthority: Math.floor(20 + Math.random() * 60),
-    monthlyVisitors: `${Math.floor(5 + Math.random() * 500)}K`,
-    emailFormats: ["{first}.{last}@{domain}"],
-  };
-}
-
-function mockSocial() {
-  return {
-    linkedin: { followers: Math.floor(500 + Math.random() * 50000), employees: Math.floor(10 + Math.random() * 5000) },
-    twitter: { followers: Math.floor(200 + Math.random() * 10000), recentTweets: Math.floor(Math.random() * 20) },
-    lastActivity: new Date(Date.now() - Math.random() * 30 * 24 * 3600_000).toISOString(),
-  };
-}
-
-function mockNews(company: string) {
-  const sentiments = ["positif", "neutre", "positif"] as const;
-  return {
-    articles: Array.from({ length: Math.floor(Math.random() * 5) }, (_, i) => ({
-      title: `${company} ${["lance", "annonce", "signe"][i % 3]} ${["un partenariat", "une levée de fonds", "une expansion"][i % 3]}`,
-      source: ["Les Echos", "Le Monde", "BFM Business"][i % 3],
-      publishedAt: new Date(Date.now() - i * 5 * 24 * 3600_000).toISOString().slice(0, 10),
-      sentiment: sentiments[i % 3],
-      url: `https://example.com/news/${i}`,
-    })),
-  };
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -179,7 +107,7 @@ function detectSignals(sourceId: string, data: any, company: string): DetectedSi
     // Nouveau dirigeant
     if (sourceId === "pappers" || sourceId === "infogreffe") {
       if (data?.dirigeants?.length > 0) {
-        signals.push({ type: "leadership_change", title: "Dirigeant identifié", description: `${data.dirigeants[0].prenom} ${data.dirigeants[0].nom} — ${data.dirigeants[0].role}`, source: sourceId, impactScore: 60 });
+        signals.push({ type: "leadership_identified", title: "Dirigeant identifié", description: `${data.dirigeants[0].prenom} ${data.dirigeants[0].nom} — ${data.dirigeants[0].role}`, source: sourceId, impactScore: 40 });
       }
     }
     // Stack technique premium
@@ -211,7 +139,7 @@ function detectSignals(sourceId: string, data: any, company: string): DetectedSi
    LEAD SCORE
 ───────────────────────────────────────────────────────────── */
 function calculateLeadScore(results: Record<string, any>, signals: DetectedSignal[]): number {
-  let score = 30; // base
+  let score = 0; // no observed data means no observed qualification score
   if (results.legal?.siren) score += 10;
   if (results.financial?.chiffreAffaires) score += 10;
   if (results.financial?.funding) score += 15;
@@ -243,10 +171,11 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
 async function callSourceForProspect(
   source: SourceDef,
   prospect: any,
+  tenantId: string,
   apiKey?: string
 ): Promise<any> {
   const company = prospect.company || "";
-  const cacheKey = `${source.id}:${company.toLowerCase().trim()}`;
+  const cacheKey = `${tenantId}:${prospect.id}:${source.id}`;
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
@@ -261,62 +190,60 @@ async function callSourceForProspect(
       try {
         switch (source.id) {
           case "pappers": {
-            if (!apiKey || !company) return mockLegal(company);
+            if (!apiKey || !company) return null;
             const r = await fetch(
               `https://api.pappers.fr/v1/entreprise?api_token=${apiKey}&q=${encodeURIComponent(company)}&cibles=nom_entreprise`,
               { signal: ctrl.signal }
             );
-            if (!r.ok) return mockLegal(company);
+            if (!r.ok) return null;
             const d = await r.json() as any;
-            return d.resultats?.[0] ?? mockLegal(company);
+            return d.resultats?.[0] ?? null;
           }
           case "insee": {
-            if (!apiKey || !company) return mockLegal(company);
+            if (!apiKey || !company) return null;
             const r = await fetch(
               `https://api.insee.fr/api-sirene/3.8/siret?q=denominationUniteLegale:"${encodeURIComponent(company)}"&nombre=1`,
               { headers: { Authorization: `Bearer ${apiKey}` }, signal: ctrl.signal }
             );
-            if (!r.ok) return mockLegal(company);
+            if (!r.ok) return null;
             const d = await r.json() as any;
-            return d.etablissements?.[0] ?? mockLegal(company);
+            return d.etablissements?.[0] ?? null;
           }
           case "crunchbase":
           case "dealroom": {
-            if (!apiKey || !company) return mockFinancial(company);
-            // Real API call would go here
-            return mockFinancial(company);
+            // Not integrated: never invent financial figures.
+            return null;
           }
           case "wappalyzer": {
-            if (!apiKey || !prospect.website) return mockDigital(prospect.website);
+            if (!apiKey || !prospect.website) return null;
             const r = await fetch(
               `https://api.wappalyzer.com/v2/lookup/?urls=${encodeURIComponent(prospect.website)}`,
               { headers: { "x-api-key": apiKey }, signal: ctrl.signal }
             );
-            if (!r.ok) return mockDigital(prospect.website);
+            if (!r.ok) return null;
             return await r.json();
           }
           case "hunter": {
-            if (!apiKey || !prospect.company) return mockDigital(prospect.website);
+            if (!apiKey || !prospect.company) return null;
             const domain = prospect.website?.replace(/^https?:\/\//, "").split("/")[0] || "";
-            if (!domain) return mockDigital(prospect.website);
+            if (!domain) return null;
             const r = await fetch(
               `https://api.hunter.io/v2/domain-search?domain=${domain}&api_key=${apiKey}`,
               { signal: ctrl.signal }
             );
-            if (!r.ok) return mockDigital(prospect.website);
+            if (!r.ok) return null;
             return await r.json();
           }
           case "dropcontact": {
-            if (!apiKey) return mockDigital(prospect.website);
-            return mockDigital(prospect.website);
+            return null;
           }
           case "google_news": {
-            if (!company) return mockNews(company);
+            if (!company) return null;
             const r = await fetch(
               `https://news.google.com/rss/search?q=${encodeURIComponent(company)}&hl=fr&gl=FR&ceid=FR:fr`,
               { signal: ctrl.signal }
             );
-            if (!r.ok) return mockNews(company);
+            if (!r.ok) return null;
             const xml = await r.text();
             const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 5).map(m => {
               const title = m[1].match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)?.[1] ?? "";
@@ -325,17 +252,17 @@ async function callSourceForProspect(
             });
             return { articles: items };
           }
-          // All scraping + social sources → mock in dev (real scrapers need puppeteer/playwright)
+          // Unimplemented integrations are explicitly unavailable; synthetic data must never reach CRM.
           case "wtj": case "indeed": case "apec":
-            return mockJobs(company);
+            return null;
           case "twitter": case "facebook": case "instagram":
-            return mockSocial();
+            return null;
           case "societe_info": case "infogreffe": case "bodacc":
-            return mockLegal(company);
+            return null;
           case "google_maps": case "google_search": case "pages_jaunes": case "website":
-            return mockDigital(prospect.website);
+            return null;
           case "linkedin": case "apollo":
-            return mockSocial();
+            return null;
           default:
             return null;
         }
@@ -436,29 +363,13 @@ export async function enrichProspect(prospectId: string, tenantId: string): Prom
   if (!rows.length) throw new Error("Prospect not found");
   const prospect = rows[0];
 
-  // Fetch API configs (enrichment_api_configs + provider_api_keys fallback)
-  const { rows: configs } = await pool.query(
-    `SELECT source_id, api_key, is_active FROM enrichment_api_configs`
-  ).catch(() => ({ rows: [] as any[] }));
-  const configMap = new Map(configs.map((c: any) => [c.source_id, c]));
-
-  // Enrichir configMap avec provider_api_keys (fallback pour hunter, linkedin, etc.)
-  const PROVIDER_TO_SOURCE: Record<string, string> = {
-    hunter: "hunter", linkedin: "linkedin", clearbit: "clearbit",
-    dropcontact: "dropcontact", apollo: "apollo", crunchbase: "crunchbase",
-  };
-  const { rows: providerKeys } = await pool.query(
-    `SELECT provider, api_key FROM provider_api_keys WHERE tenant_id = $1 AND is_active = true`,
-    [tenantId],
-  ).catch(() => ({ rows: [] as any[] }));
-  for (const pk of providerKeys) {
-    const sourceId = PROVIDER_TO_SOURCE[pk.provider];
-    if (sourceId && !configMap.has(sourceId)) {
-      // Déchiffrement basique (préfixe enc: ou b64:)
-      let key = pk.api_key as string;
-      if (key.startsWith("b64:")) key = Buffer.from(key.slice(4), "base64").toString("utf8");
-      configMap.set(sourceId, { source_id: sourceId, api_key: key, is_active: true });
-    }
+  // Only tenant-scoped, AES-decrypted provider keys. Never read the legacy
+  // global enrichment_api_configs table (a cross-tenant secret leak).
+  const configMap = new Map<string, string>();
+  for (const sourceId of IMPLEMENTED_SOURCES) {
+    if (sourceId === "google_news") continue;
+    const key = await providerKeysService.getKeyWithFallback(tenantId, sourceId).catch(() => null);
+    if (key?.apiKey) configMap.set(sourceId, key.apiKey);
   }
 
   // Create history entry
@@ -466,10 +377,7 @@ export async function enrichProspect(prospectId: string, tenantId: string): Prom
     `INSERT INTO enrichment_history (prospect_id, status, triggered_by)
      VALUES ($1, 'running', 'manual') RETURNING id`,
     [prospectId]
-  ).catch(async () => {
-    // table may not exist yet, return dummy
-    return { rows: [{ id: "00000000-0000-0000-0000-000000000000" }] };
-  });
+  );
 
   const startedAt = Date.now();
   const results: Record<string, any> = {};
@@ -478,16 +386,13 @@ export async function enrichProspect(prospectId: string, tenantId: string): Prom
   let failed = 0;
 
   // Filter active sources
-  const activeSources = ALL_SOURCES.filter(s => {
-    const cfg = configMap.get(s.id);
-    return cfg ? cfg.is_active !== false : s.free;
-  });
+  const activeSources = ALL_SOURCES.filter(s => IMPLEMENTED_SOURCES.has(s.id) &&
+    (s.id === "google_news" || configMap.has(s.id)));
 
   for (const source of activeSources) {
     try {
-      const cfg = configMap.get(source.id);
-      const apiKey = cfg?.api_key ?? undefined;
-      const data = await callSourceForProspect(source, prospect, apiKey);
+      const apiKey = configMap.get(source.id);
+      const data = await callSourceForProspect(source, prospect, tenantId, apiKey);
       if (data) {
         results[source.id] = data;
         results[source.dataType] = results[source.dataType] ?? {};
@@ -511,8 +416,8 @@ export async function enrichProspect(prospectId: string, tenantId: string): Prom
 
   // Update prospect score
   await pool.query(
-    `UPDATE prospects SET score = $1, updated_at = NOW() WHERE id = $2`,
-    [score, prospectId]
+    `UPDATE prospects SET score = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+    [score, prospectId, tenantId]
   ).catch(() => {});
 
   // Interconnect
@@ -534,19 +439,21 @@ export async function enrichProspect(prospectId: string, tenantId: string): Prom
 }
 
 /* Get enriched data for a prospect */
-export async function getEnrichmentData(prospectId: string): Promise<any[]> {
+export async function getEnrichmentData(prospectId: string, tenantId: string): Promise<any[]> {
   const { rows } = await pool.query(
-    `SELECT * FROM enrichment_data WHERE prospect_id = $1 ORDER BY fetched_at DESC`,
-    [prospectId]
+    `SELECT e.* FROM enrichment_data e JOIN prospects p ON p.id = e.prospect_id
+     WHERE e.prospect_id = $1 AND p.tenant_id = $2 ORDER BY e.fetched_at DESC`,
+    [prospectId, tenantId]
   ).catch(() => ({ rows: [] as any[] }));
   return rows;
 }
 
 /* Get enrichment history */
-export async function getEnrichmentHistory(prospectId: string): Promise<any[]> {
+export async function getEnrichmentHistory(prospectId: string, tenantId: string): Promise<any[]> {
   const { rows } = await pool.query(
-    `SELECT * FROM enrichment_history WHERE prospect_id = $1 ORDER BY started_at DESC LIMIT 20`,
-    [prospectId]
+    `SELECT h.* FROM enrichment_history h JOIN prospects p ON p.id = h.prospect_id
+     WHERE h.prospect_id = $1 AND p.tenant_id = $2 ORDER BY h.started_at DESC LIMIT 20`,
+    [prospectId, tenantId]
   ).catch(() => ({ rows: [] as any[] }));
   return rows;
 }

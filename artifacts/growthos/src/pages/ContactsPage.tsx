@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import {
   Search, Plus, Mail, Phone, Linkedin, Globe, Building2,
@@ -6,6 +6,7 @@ import {
   Grid3X3, List,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import apiClient from '@/lib/api-client';
 
 const TAGS = ['Décideur','Technique','Finance','Marketing','Opérations','C-Suite','VP','Manager'];
 
@@ -118,16 +119,15 @@ function ContactRow({ c, onStar, onClick }: { c: typeof MOCK_CONTACTS[0]; onStar
   );
 }
 
-function CreateContactModal({ onClose, onSave }: { onClose:()=>void; onSave:(c:any)=>void }) {
+function CreateContactModal({ onClose, onSave }: { onClose:()=>void; onSave:(c:any)=>Promise<void> }) {
   const [form, setForm] = useState({ firstName:'', lastName:'', title:'', company:'', email:'', phone:'', linkedin:'', city:'', tags:[] as string[] });
   const s = (k:string,v:string) => setForm(f=>({...f,[k]:v}));
   const toggleTag = (t:string) => setForm(f=>({...f,tags:f.tags.includes(t)?f.tags.filter(x=>x!==t):[...f.tags,t]}));
 
-  const save = () => {
+  const save = async () => {
     if (!form.firstName && !form.email) { toast.error('Prénom ou email requis'); return; }
-    onSave({ ...form, id: Date.now().toString(), starred:false, score:0 });
-    onClose();
-    toast.success('Contact créé');
+    try { await onSave(form); onClose(); toast.success('Contact enregistré dans le CRM'); }
+    catch { toast.error('Le contact n’a pas été enregistré'); }
   };
 
   return (
@@ -174,14 +174,28 @@ function CreateContactModal({ onClose, onSave }: { onClose:()=>void; onSave:(c:a
 
 export default function ContactsPage() {
   const [, navigate] = useLocation();
-  const [contacts, setContacts] = useState(MOCK_CONTACTS);
+  const [contacts, setContacts] = useState<typeof MOCK_CONTACTS>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState('Tous');
   const [view, setView] = useState<'grid'|'list'>('grid');
   const [showCreate, setShowCreate] = useState(false);
   const [showStarredOnly, setShowStarredOnly] = useState(false);
 
-  const allTags = ['Tous', ...TAGS];
+  const allTags = ['Tous']; // Tags are not persisted in the prospect schema yet.
+
+  const normalize = (p:any): typeof MOCK_CONTACTS[number] => ({
+    id:p.id, firstName:p.firstName||'', lastName:p.lastName||'',
+    title:p.jobTitle||'', company:p.company||'', email:p.email||'', phone:p.phone||'',
+    linkedin:'', city:'', tags:[], starred:!!p.isStarred, score:Number(p.score)||0,
+  });
+  useEffect(()=>{
+    apiClient.get('/prospects', { params:{limit:200} })
+      .then((d:any)=>setContacts((d?.data||[]).map(normalize)))
+      .catch(()=>setError('Impossible de charger les contacts réels.'))
+      .finally(()=>setLoading(false));
+  },[]);
 
   const filtered = contacts.filter(c => {
     const q = search.toLowerCase();
@@ -191,17 +205,28 @@ export default function ContactsPage() {
     return matchSearch && matchTag && matchStar;
   });
 
-  const toggleStar = (id: string) => {
-    setContacts(cs => cs.map(c => c.id===id ? {...c, starred:!c.starred} : c));
+  const toggleStar = async (id: string) => {
+    const contact=contacts.find(c=>c.id===id);
+    if (!contact) return;
+    try {
+      await apiClient.patch(`/prospects/${id}`, {isStarred:!contact.starred});
+      setContacts(cs=>cs.map(c=>c.id===id?{...c,starred:!c.starred}:c));
+    } catch { toast.error('Mise à jour du favori impossible'); }
   };
 
-  const addContact = (c: any) => setContacts(cs => [c, ...cs]);
+  const addContact = async (c:any) => {
+    const saved:any = await apiClient.post('/prospects', {
+      firstName:c.firstName, lastName:c.lastName, email:c.email, phone:c.phone,
+      company:c.company, jobTitle:c.title,
+    });
+    setContacts(cs=>[normalize(saved),...cs]);
+  };
 
   const byCompany = filtered.reduce((acc, c) => { acc[c.company] = (acc[c.company]||0)+1; return acc; }, {} as Record<string,number>);
   const topCompanies = Object.entries(byCompany).sort((a,b)=>b[1]-a[1]).slice(0,3);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
       {showCreate && <CreateContactModal onClose={()=>setShowCreate(false)} onSave={addContact}/>}
 
       {/* Header */}
@@ -227,7 +252,7 @@ export default function ContactsPage() {
           { label:'Total', value:contacts.length, color:'bg-blue-50 text-blue-600' },
           { label:'Décideurs', value:contacts.filter(c=>c.tags.includes('Décideur')).length, color:'bg-purple-50 text-purple-600' },
           { label:'C-Suite', value:contacts.filter(c=>c.tags.includes('C-Suite')).length, color:'bg-amber-50 text-amber-600' },
-          { label:'Score moyen', value:Math.round(contacts.reduce((s,c)=>s+c.score,0)/contacts.length), color:'bg-green-50 text-green-700' },
+          { label:'Score moyen', value:contacts.length?Math.round(contacts.reduce((s,c)=>s+c.score,0)/contacts.length):'—', color:'bg-green-50 text-green-700' },
         ].map(s=>(
           <div key={s.label} className="bg-white rounded-2xl border border-gray-200 p-4">
             <div className={`text-2xl font-bold mb-1 ${s.color.split(' ')[1]}`}>{s.value}</div>
@@ -236,9 +261,11 @@ export default function ContactsPage() {
         ))}
       </div>
 
-      <div className="flex gap-6">
+      {error && <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 text-sm">{error}</div>}
+      {loading && <p className="mb-3 text-sm text-gray-500">Chargement des contacts…</p>}
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* Sidebar filters */}
-        <div className="w-48 flex-shrink-0 space-y-4">
+        <div className="w-full lg:w-48 flex-shrink-0 space-y-4">
           <div className="bg-white rounded-2xl border border-gray-200 p-4">
             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Filtrer par tag</div>
             <div className="space-y-1">
@@ -296,13 +323,13 @@ export default function ContactsPage() {
           ) : view === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filtered.map(c=>(
-                <ContactCard key={c.id} c={c} onStar={toggleStar} onClick={()=>navigate(`/prospects`)}/>
+                <ContactCard key={c.id} c={c} onStar={toggleStar} onClick={()=>navigate(`/prospects/${c.id}`)}/>
               ))}
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
               {filtered.map(c=>(
-                <ContactRow key={c.id} c={c} onStar={toggleStar} onClick={()=>navigate(`/prospects`)}/>
+                <ContactRow key={c.id} c={c} onStar={toggleStar} onClick={()=>navigate(`/prospects/${c.id}`)}/>
               ))}
             </div>
           )}

@@ -60,16 +60,9 @@ export default function ERepDashboardPage() {
 
   const activeCampaigns = campaigns.filter(c => c.status === 'active').length;
 
-  const mockSerpEvolution = Array.from({ length: 8 }, (_, i) => ({
-    date: new Date(Date.now() - (7 - i) * 86400000 * 4).toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' }),
-    score: Math.floor(Math.random() * 20 + 55),
-  }));
-
-  const sentimentData = [
-    { name: 'Positif', value: 62, color: PIE_COLORS.pos },
-    { name: 'Négatif', value: 18, color: PIE_COLORS.neg },
-    { name: 'Neutre', value: 20, color: PIE_COLORS.neu },
-  ];
+  // Source-level trends are not yet aggregated. Empty is honest; generated charts are not.
+  const mockSerpEvolution: {date:string;score:number}[] = [];
+  const sentimentData: {name:string;value:number;color:string}[] = [];
 
   if (isLoading) {
     return (
@@ -103,10 +96,10 @@ export default function ERepDashboardPage() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Score Global', value: globalScore, suffix: '/100', icon: <Shield size={18} />, color: SCORE_COLOR(globalScore) },
+          { label: 'Score Global (indicatif)', value: globalScore||'—', suffix: globalScore?'/100':'', icon: <Shield size={18} />, color: SCORE_COLOR(globalScore) },
           { label: 'Campagnes actives', value: activeCampaigns, suffix: '', icon: <Target size={18} />, color: '#2563EB' },
-          { label: 'Mentions négatives (24h)', value: 3, suffix: '', icon: <AlertTriangle size={18} />, color: '#DC2626' },
-          { label: 'Backlinks actifs', value: 47, suffix: '', icon: <Link2 size={18} />, color: '#059669' },
+          { label: 'Mentions négatives (24h)', value: '—', suffix: '', icon: <AlertTriangle size={18} />, color: '#DC2626' },
+          { label: 'Backlinks actifs', value: '—', suffix: '', icon: <Link2 size={18} />, color: '#059669' },
         ].map((kpi) => (
           <div key={kpi.label} className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex items-center justify-between mb-3">
@@ -124,14 +117,14 @@ export default function ERepDashboardPage() {
         {/* Score gauge */}
         <div className="rounded-2xl border p-6 flex flex-col items-center justify-center" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
           <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-muted)' }}>SCORE DE RÉPUTATION GLOBAL</h2>
-          <ScoreGauge score={globalScore} />
+          {globalScore?<ScoreGauge score={globalScore}/>:<p className="text-sm text-slate-500">Non évalué : aucune mesure exploitable</p>}
           <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>Basé sur {campaigns.length} campagne{campaigns.length > 1 ? 's' : ''}</p>
         </div>
 
         {/* Score evolution */}
         <div className="rounded-2xl border p-6 col-span-2" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
           <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-muted)' }}>ÉVOLUTION DU SCORE</h2>
-          <ResponsiveContainer width="100%" height={160}>
+          {mockSerpEvolution.length===0 ? <p className="text-sm text-slate-500">Aucune série de mesures disponible. Les courbes simulées ont été supprimées.</p> : <ResponsiveContainer width="100%" height={160}>
             <LineChart data={mockSerpEvolution}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--card-border)" />
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
@@ -139,7 +132,7 @@ export default function ERepDashboardPage() {
               <Tooltip contentStyle={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 8, fontSize: 12 }} />
               <Line type="monotone" dataKey="score" stroke="#2563EB" strokeWidth={2.5} dot={false} />
             </LineChart>
-          </ResponsiveContainer>
+          </ResponsiveContainer>}
         </div>
       </div>
 
@@ -147,7 +140,8 @@ export default function ERepDashboardPage() {
         {/* Sentiment pie */}
         <div className="rounded-2xl border p-6" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
           <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-muted)' }}>RÉPARTITION DES SENTIMENTS</h2>
-          <div className="flex items-center gap-4">
+          {sentimentData.length===0 && <p className="text-sm text-slate-500 mb-4">Aucune collecte de mentions vérifiée.</p>}
+          {sentimentData.length>0 && <div className="flex items-center gap-4">
             <ResponsiveContainer width={140} height={140}>
               <PieChart>
                 <Pie data={sentimentData} cx="50%" cy="50%" innerRadius={40} outerRadius={65} dataKey="value" paddingAngle={3}>
@@ -164,7 +158,7 @@ export default function ERepDashboardPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Campaigns list */}

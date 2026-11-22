@@ -213,12 +213,31 @@ try {
   const crm = await request("GET", "/prospects", undefined, token);
   check(crm.status === 200 && crm.body.total === 2, "Entreprises présentes dans le CRM");
 
+  const enrichmentSources = await request("GET", "/enrich/sources", undefined, token);
+  check(enrichmentSources.status === 200 && enrichmentSources.body.some(s => s.id === "google_news" && s.implemented) &&
+    enrichmentSources.body.some(s => s.id === "linkedin" && !s.implemented && !s.isActive),
+    "Enrichissement : connecteurs réels distingués des sources non implémentées");
+  check((await request("PUT", "/enrich/api-config/hunter", { apiKey: "secret" }, token)).status === 410,
+    "Ancienne configuration globale des clés désactivée");
+  check((await request("POST", "/enrich/test-connection/hunter", {}, token)).status === 501,
+    "Aucun faux test de connexion réussi");
+  check((await request("POST", "/enrich/batch", { prospectIds: [results.body.data[0].id] }, token)).status === 501,
+    "Enrichissement asynchrone sans file persistante désactivé");
+  check((await request("POST", "/seo-audit/check", { url: "https://127.0.0.1/admin" }, token)).status === 400,
+    "Inspection SEO : accès aux adresses internes refusé");
+  check((await request("POST", "/seo-audit/check", { url: "https://example.org" })).status === 401,
+    "Inspection SEO réservée aux utilisateurs authentifiés");
+  check((await request("POST", "/meetings", { title: "Réunion sans audio" }, token)).status === 501,
+    "Aucune transcription de réunion inventée");
+
   const sequence = await request("POST", "/sequences", {
     name: "Brouillon de test", status: "draft", steps: [],
   }, token);
   check(sequence.status === 201, "Brouillon de séquence enregistré");
   check((await request("POST", `/sequences/${sequence.body.id}/toggle`, {}, token)).status === 409,
     "Activation prématurée de séquence refusée");
+  check((await request("POST", `/sequences/${sequence.body.id}/events`, { type: "reply" }, token)).status === 501,
+    "Aucune fausse réponse email injectée par une API non vérifiée");
   check((await request("POST", `/email/sequences/${sequence.body.id}/launch`, {}, token)).status === 409,
     "Envoi sans gestion du désabonnement bloqué");
   check((await request("POST", "/email/send", {

@@ -277,7 +277,8 @@ Réponse: uniquement les 3 recommandations numérotées, concises et actionnable
 
     const llmResult = await llmService.generate(prompt, { provider, tenantId });
     logger.info({ dealId, company, provider }, "LLM used for deal coaching");
-    aiRecommendations = llmResult ?? mockRecommendations(company, riskFactors, signals, deal.stage);
+    if (!llmResult) throw new Error("Analyse IA indisponible : aucune recommandation fictive ne sera enregistrée.");
+    aiRecommendations = llmResult;
 
     // 9. Persist results
     await pool.query(

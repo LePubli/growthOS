@@ -6,8 +6,19 @@ import { sentimentAnalyzer } from "../../../lib/plugin-ereputation/SentimentAnal
 import { db } from "@workspace/db";
 import { signalsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 
 const router = Router();
+router.use(requireAuth);
+
+// All nested campaign endpoints must be tenant-scoped (not just the dashboard).
+router.param('id', async (req, res, next, id) => {
+  try {
+    const campaign = await campaignService.getCampaign(String(id), req.auth!.tenantId);
+    if (!campaign) { res.status(404).json({ error: 'Campagne introuvable' }); return; }
+    next();
+  } catch { res.status(500).json({ error: 'Vérification de campagne impossible' }); }
+});
 
 /* GET /ereputation/campaigns */
 router.get("/campaigns", requireAuth, async (req, res) => {
@@ -54,7 +65,7 @@ router.post("/campaigns/:id/audit", requireAuth, async (req, res) => {
 /* POST /ereputation/campaigns/:id/generate-strategy */
 router.post("/campaigns/:id/generate-strategy", requireAuth, async (req, res) => {
   try {
-    const strategy = await strategyEngine.generateAutomatedStrategy(String(req.params.id));
+    const strategy = await strategyEngine.generateAutomatedStrategy(String(req.params.id), req.auth!.tenantId);
     res.json({ strategy });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -63,11 +74,14 @@ router.post("/campaigns/:id/generate-strategy", requireAuth, async (req, res) =>
 
 /* POST /ereputation/campaigns/:id/generate-content */
 router.post("/campaigns/:id/generate-content", requireAuth, async (req, res) => {
-  const { platform, tone } = req.body as { platform: string; tone: string };
-  if (!platform) { res.status(400).json({ error: "platform requis" }); return; }
+  const parsed = z.object({
+    platform: z.enum(["LinkedIn", "X", "Blog", "Newsletter", "Instagram"]),
+    tone: z.enum(["professionnel", "inspirant", "éducatif", "storytelling"]).default("professionnel"),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Plateforme ou ton invalide" }); return; }
   try {
-    const content = await strategyEngine.generateContent(String(req.params.id), platform as any, (tone ?? "professionnel") as any);
-    res.json({ content });
+    const content = await strategyEngine.generateContent(String(req.params.id), req.auth!.tenantId, parsed.data.platform, parsed.data.tone);
+    res.json({ content, status: "draft", published: false });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -103,9 +117,7 @@ router.post("/campaigns/:id/sentiment", requireAuth, async (req, res) => {
 
 /* POST /ereputation/campaigns/:id/sentiment/:logId/ai-response */
 router.post("/campaigns/:id/sentiment/:logId/ai-response", requireAuth, async (req, res) => {
-  const { text } = req.body as { text: string };
-  const response = `Merci pour votre retour. Nous prenons note de votre expérience et allons immédiatement investiguer afin de vous apporter la meilleure solution possible. Notre équipe vous contactera sous 24h. — L'équipe GrowthOS`;
-  res.json({ response });
+  res.status(501).json({ error: "Réponse automatique indisponible : elle nécessiterait un fournisseur IA et une validation humaine." });
 });
 
 /* GET /ereputation/campaigns/:id/posts */
@@ -118,6 +130,7 @@ router.get("/campaigns/:id/posts", requireAuth, async (req, res) => {
 router.post("/campaigns/:id/posts", requireAuth, async (req, res) => {
   const { platform, content, scheduledAt } = req.body;
   if (!platform || !content) { res.status(400).json({ error: "platform et content requis" }); return; }
+  if (scheduledAt) { res.status(409).json({ error: "Planification non disponible sans moteur de publication. Enregistrez un brouillon sans date." }); return; }
   const post = await campaignService.createPost(String(req.params.id), platform, content, scheduledAt);
   res.status(201).json(post);
 });
@@ -158,26 +171,25 @@ router.get("/score-global", requireAuth, async (req, res) => {
 
   const campaigns = await campaignService.listCampaigns(tenantId);
 
-  let sentimentScore = 70;
+  let sentimentScore: number | null = null;
   if (campaigns.length > 0) {
     const logs = await campaignService.getSentimentLogs(campaigns[0].id);
     if (logs.length > 0) {
-      const avg = logs.reduce((s: number, l: any) => s + (l.score ?? 0.5), 0) / logs.length;
+      const avg = logs.reduce((s: number, l: any) => s + (Number(l.score) || 0), 0) / logs.length;
       sentimentScore = Math.round((avg + 1) / 2 * 100);
     }
   }
 
-  const positiveSignals = signals.filter((s) => (s.score ?? 50) >= 70).length;
-  const negativeSignals = signals.filter((s) => (s.score ?? 50) < 40).length;
-  const signalScore = signals.length === 0
-    ? 65
-    : Math.round(65 + (positiveSignals - negativeSignals * 1.5) / Math.max(signals.length, 1) * 30);
+  // Signal impact scores are NOT sentiment polarity; using them as such produces
+  // a fictitious global reputation score. Only evaluated mentions can be scored.
+  const positiveSignals = 0;
+  const negativeSignals = 0;
+  const signalScore: number | null = null;
+  const score = sentimentScore;
 
-  const score = Math.min(99, Math.max(10, Math.round(sentimentScore * 0.45 + signalScore * 0.55)));
-
-  const grade = score >= 80 ? "A" : score >= 65 ? "B" : score >= 50 ? "C" : score >= 35 ? "D" : "F";
-  const label = score >= 80 ? "Excellente" : score >= 65 ? "Bonne" : score >= 50 ? "Moyenne" : "À améliorer";
-  const trend = positiveSignals > negativeSignals ? "up" : positiveSignals === negativeSignals ? "stable" : "down";
+  const grade = score===null ? null : score >= 80 ? "A" : score >= 65 ? "B" : score >= 50 ? "C" : score >= 35 ? "D" : "F";
+  const label = score===null ? "Non évalué" : score >= 80 ? "Excellente" : score >= 65 ? "Bonne" : score >= 50 ? "Moyenne" : "À améliorer";
+  const trend = null; // No historical comparison; don't fabricate a trend.
 
   res.json({
     score,

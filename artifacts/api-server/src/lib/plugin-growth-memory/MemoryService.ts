@@ -29,15 +29,8 @@ export interface MemoryStats {
   bySourceType: Record<string, number>;
 }
 
-/** Mock embedding — random 1536-dim vector. Swap for OpenAI later. */
-function mockEmbedding(): number[] {
-  const v: number[] = [];
-  for (let i = 0; i < 1536; i++) v.push(Math.random() * 2 - 1);
-  return v;
-}
-
 class MemoryService {
-  /** Upsert a document + generate (mock) embedding. Returns the document id. */
+  /** Upsert searchable text only. Do not insert random embeddings pretending to be semantic vectors. */
   async indexDocument(data: IndexDocumentInput): Promise<string> {
     const client = await pool.connect();
     try {
@@ -62,15 +55,6 @@ class MemoryService {
       );
 
       const documentId = docResult.rows[0].id;
-      const embedding = mockEmbedding();
-
-      await client.query(
-        `INSERT INTO memory_embeddings (document_id, embedding)
-         VALUES ($1, $2::jsonb)
-         ON CONFLICT (document_id)
-         DO UPDATE SET embedding = EXCLUDED.embedding`,
-        [documentId, JSON.stringify(embedding)],
-      );
 
       await client.query("COMMIT");
       logger.info({ documentId, sourceType: data.sourceType }, "Memory document indexed");

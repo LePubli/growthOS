@@ -68,6 +68,7 @@ class ApiClient {
         const message =
           error.response?.data?.message ||
           error.response?.data?.detail ||
+          error.response?.data?.error ||
           error.message ||
           'Une erreur est survenue';
         const errorMessage = Array.isArray(message) ? message.join(', ') : message;

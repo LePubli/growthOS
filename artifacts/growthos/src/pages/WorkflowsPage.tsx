@@ -73,13 +73,14 @@ function NewWorkflowModal({ onClose, onCreate }: { onClose:()=>void; onCreate:(w
     if(!trigger) { toast.error('Choisissez un déclencheur'); return; }
     if(selectedActions.length===0) { toast.error('Au moins une action requise'); return; }
     setLoading(true);
-    const wf = { name, trigger, actions:selectedActions, status:'active', executions:0, lastRun:'—', errors:0 };
+    const wf = { name, trigger, actions:selectedActions, status:'draft', executions:0, lastRun:'—', errors:0 };
     try {
-      const saved = await apiClient.post('/workflows', wf).catch(()=>null);
-      onCreate(saved || { ...wf, id: Date.now().toString() });
-      toast.success('Workflow créé et activé');
+      const saved = await apiClient.post('/workflows', wf);
+      onCreate(saved);
+      toast.success('Brouillon enregistré. Exécution automatique non disponible.');
       onClose();
-    } finally { setLoading(false); }
+    } catch { toast.error('Impossible de créer le workflow'); }
+    finally { setLoading(false); }
   };
 
   return (
@@ -226,7 +227,7 @@ function NewWorkflowModal({ onClose, onCreate }: { onClose:()=>void; onCreate:(w
 
 export default function WorkflowsPage() {
   const [, navigate] = useLocation();
-  const [workflows, setWorkflows] = useState(MOCK_WORKFLOWS);
+  const [workflows, setWorkflows] = useState<any[]>([]);
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -234,30 +235,35 @@ export default function WorkflowsPage() {
   useEffect(()=>{
     apiClient.get('/workflows').then((d:any)=>{
       const l = Array.isArray(d)?d:d?.data||[];
-      if(l.length>0) setWorkflows(l.map((w:any)=>({...w,actions:Array.isArray(w.actions)?w.actions:[],trigger:w.trigger||'prospect_created',errors:w.errors||0})));
-    }).catch(()=>{});
+      setWorkflows(l.map((w:any)=>({...w,actions:Array.isArray(w.actions)?w.actions:[],trigger:w.trigger||'prospect_created',errors:w.errors||0})));
+    }).catch(()=>toast.error('Impossible de charger les workflows'));
   },[]);
 
   const toggle = async (id:string, e:React.MouseEvent) => {
     e.stopPropagation();
-    setWorkflows(ws=>ws.map(w=>w.id===id?{...w,status:w.status==='active'?'paused':'active'}:w));
-    await apiClient.patch(`/workflows/${id}`, {}).catch(()=>{});
-    toast.success('Statut mis à jour');
+    try {
+      const wf=workflows.find(w=>w.id===id);
+      if (!wf) return;
+      if (wf.status!=='active') { toast.warning('Activation impossible : moteur d’exécution non disponible'); return; }
+      const updated:any=await apiClient.post(`/workflows/${id}/toggle`,{});
+      setWorkflows(ws=>ws.map(w=>w.id===id?updated:w));
+      toast.success('Workflow mis en pause');
+    } catch { toast.error('Mise à jour impossible'); }
   };
 
-  const duplicate = (wf:any, e:React.MouseEvent) => {
+  const duplicate = async (wf:any, e:React.MouseEvent) => {
     e.stopPropagation();
-    const copy = {...wf, id:Date.now().toString(), name:`${wf.name} (copie)`, status:'paused', executions:0, errors:0};
-    setWorkflows(ws=>[...ws,copy]);
-    toast.success('Workflow dupliqué');
+    try {
+      const copy:any=await apiClient.post('/workflows',{ name:`${wf.name} (copie)`, description:wf.description||'', trigger:wf.trigger, triggerConfig:wf.triggerConfig||{}, actions:wf.actions||[], status:'draft' });
+      setWorkflows(ws=>[copy,...ws]); toast.success('Brouillon dupliqué');
+    } catch { toast.error('Duplication impossible'); }
   };
 
-  const remove = (id:string, e:React.MouseEvent) => {
+  const remove = async (id:string, e:React.MouseEvent) => {
     e.stopPropagation();
     if(!confirm('Supprimer ce workflow ?')) return;
-    setWorkflows(ws=>ws.filter(w=>w.id!==id));
-    apiClient.delete(`/workflows/${id}`).catch(()=>{});
-    toast.success('Workflow supprimé');
+    try { await apiClient.delete(`/workflows/${id}`); setWorkflows(ws=>ws.filter(w=>w.id!==id)); toast.success('Workflow supprimé'); }
+    catch { toast.error('Suppression impossible'); }
   };
 
   const filtered = workflows.filter(w=>{

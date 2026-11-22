@@ -63,8 +63,8 @@ export class CampaignService {
   async createCampaign(input: CreateCampaignInput): Promise<Campaign> {
     const { name, targetType, targetName, targetUrl, keywords, tenantId } = input;
     const { rows } = await pool.query(
-      `INSERT INTO erep_campaigns (name, tenant_id, target_type, target_name, target_url, keywords)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      `INSERT INTO erep_campaigns (name, tenant_id, target_type, target_name, target_url, keywords, reputation_score)
+       VALUES ($1, $2, $3, $4, $5, $6, 0) RETURNING *`,
       [name, tenantId, targetType, targetName, targetUrl ?? null, JSON.stringify(keywords)],
     );
     const campaign = this.mapCampaign(rows[0]);
@@ -122,10 +122,9 @@ export class CampaignService {
 
   /** Algorithme pondéré : 40% SERP + 30% Sentiment + 20% Backlinks + 10% Social */
   async calculateReputationScore(campaignId: string): Promise<number> {
-    let serpScore = 50;
-    let sentimentScore = 50;
-    let backlinkScore = 50;
-    let socialScore = 50;
+    let serpScore: number | null = null;
+    let sentimentScore: number | null = null;
+    let backlinkScore: number | null = null;
 
     try {
       const serpRes = await pool.query(
@@ -133,8 +132,8 @@ export class CampaignService {
          FROM erep_serp_tracking WHERE campaign_id = $1 AND date >= CURRENT_DATE - INTERVAL '30 days'`,
         [campaignId],
       );
-      serpScore = Math.round(parseFloat(serpRes.rows[0]?.score ?? "50") || 50);
-    } catch { /* mock */ }
+      if (serpRes.rows[0]?.score != null) serpScore = Math.round(Number(serpRes.rows[0].score));
+    } catch { /* unavailable measurements are not guessed */ }
 
     try {
       const sentRes = await pool.query(
@@ -153,23 +152,24 @@ export class CampaignService {
         sentimentScore = Math.round((pos / total) * 100 - (neg / total) * 30);
         sentimentScore = Math.max(0, Math.min(100, sentimentScore));
       }
-    } catch { /* mock */ }
+    } catch { /* unavailable measurements are not guessed */ }
 
     try {
       const pbnRes = await pool.query(
         `SELECT AVG(da_score) as avg_da FROM erep_pbn_sites WHERE campaign_id = $1 AND status = 'active'`,
         [campaignId],
       );
-      const avgDa = parseFloat(pbnRes.rows[0]?.avg_da ?? "0") || 0;
-      backlinkScore = Math.min(100, Math.round(avgDa * 1.5));
-    } catch { /* mock */ }
+      if (pbnRes.rows[0]?.avg_da != null) backlinkScore = Math.min(100, Math.round(Number(pbnRes.rows[0].avg_da) * 1.5));
+    } catch { /* unavailable measurements are not guessed */ }
 
-    const final = Math.round(
-      serpScore * 0.4 +
-      sentimentScore * 0.3 +
-      backlinkScore * 0.2 +
-      socialScore * 0.1,
-    );
+    // Normalize only the weights backed by an actual reading. Social is not
+    // measured by this service, so it must not influence the reputation score.
+    const readings = [
+      {score:serpScore,weight:0.4}, {score:sentimentScore,weight:0.3},
+      {score:backlinkScore,weight:0.2},
+    ].filter((r):r is {score:number;weight:number}=>r.score!==null);
+    const weight = readings.reduce((sum,r)=>sum+r.weight,0);
+    const final = weight ? Math.round(readings.reduce((sum,r)=>sum+r.score*r.weight,0)/weight) : 0;
 
     try {
       await pool.query(
@@ -202,6 +202,12 @@ export class CampaignService {
   }
 
   async runAudit(campaignId: string, tenantId: string): Promise<Record<string, unknown>> {
+    const evidence = await pool.query<{total:string}>(
+      `SELECT (SELECT COUNT(*) FROM erep_serp_tracking WHERE campaign_id = $1) +
+              (SELECT COUNT(*) FROM erep_sentiment_logs WHERE campaign_id = $1) AS total`, [campaignId]);
+    if (Number(evidence.rows[0]?.total||0)===0) {
+      throw new Error('Aucune mesure SERP ou mention réelle : audit impossible sans données.');
+    }
     const score = await this.calculateReputationScore(campaignId);
 
     const strengths: string[] = [];
@@ -214,12 +220,7 @@ export class CampaignService {
     const technicalDetails = {
       score,
       checkedAt: new Date().toISOString(),
-      mockMetrics: {
-        serpCoverage: `${Math.floor(Math.random() * 30 + 60)}%`,
-        sentimentRatio: `${Math.floor(Math.random() * 30 + 60)}% positif`,
-        backlinkDA: Math.floor(Math.random() * 40 + 20),
-        socialReach: Math.floor(Math.random() * 5000 + 1000),
-      },
+      measurements: { source: 'erep_serp_tracking + erep_sentiment_logs', count: Number(evidence.rows[0]?.total||0) },
       strengths,
       weaknesses,
     };
@@ -232,9 +233,7 @@ export class CampaignService {
         [campaignId, score, JSON.stringify(technicalDetails), "En attente de génération"],
       );
       auditId = rows[0].id;
-    } catch {
-      auditId = "mock-audit-" + Date.now();
-    }
+    } catch { throw new Error('Enregistrement de l’audit impossible'); }
 
     const campaign = await this.getCampaign(campaignId, tenantId);
     if (campaign) {
@@ -291,7 +290,7 @@ export class CampaignService {
         [campaignId],
       );
       return rows;
-    } catch { return this.mockSerpData(); }
+    } catch { return []; }
   }
 
   async addSerpEntry(campaignId: string, keyword: string, position: number, url?: string, volume?: number): Promise<void> {
@@ -312,7 +311,7 @@ export class CampaignService {
         [campaignId, platform, content, scheduledAt ?? null],
       );
       return rows[0];
-    } catch { return { id: "mock", platform, contentText: content, status: "draft" }; }
+    } catch { throw new Error('Enregistrement du contenu impossible'); }
   }
 
   async getPosts(campaignId: string): Promise<Record<string, unknown>[]> {
@@ -332,7 +331,7 @@ export class CampaignService {
         [tenantId],
       );
       return rows;
-    } catch { return this.mockPbnSites(); }
+    } catch { return []; }
   }
 
   async addPbnSite(tenantId: string, campaignId: string | null, url: string, daScore: number, paScore: number): Promise<Record<string, unknown>> {
@@ -343,7 +342,7 @@ export class CampaignService {
         [tenantId, campaignId ?? null, url, daScore, paScore],
       );
       return rows[0];
-    } catch { return { id: "mock", url, daScore, paScore, status: "active" }; }
+    } catch { throw new Error('Enregistrement du site impossible'); }
   }
 
   async getSentimentLogs(campaignId: string): Promise<Record<string, unknown>[]> {
@@ -353,7 +352,7 @@ export class CampaignService {
         [campaignId],
       );
       return rows;
-    } catch { return this.mockSentimentLogs(); }
+    } catch { return []; }
   }
 
   private async getSerpEvolution(campaignId: string) {
@@ -365,7 +364,7 @@ export class CampaignService {
         [campaignId],
       );
       return rows.map(r => ({ date: r.date, avgPosition: parseFloat(r.avg_position) }));
-    } catch { return this.mockSerpEvolution(); }
+    } catch { return []; }
   }
 
   private async getSentimentSummary(campaignId: string) {
@@ -379,7 +378,7 @@ export class CampaignService {
         if (r.sentiment in summary) summary[r.sentiment as keyof typeof summary] = parseInt(r.count, 10);
       }
       return summary;
-    } catch { return { pos: 12, neg: 3, neu: 8 }; }
+    } catch { return { pos: 0, neg: 0, neu: 0 }; }
   }
 
   private async getRecentPosts(campaignId: string): Promise<Post[]> {
@@ -393,13 +392,16 @@ export class CampaignService {
   }
 
   private async getScoreBreakdown(campaignId: string) {
-    try {
-      const serpScore = Math.floor(Math.random() * 40 + 50);
-      const sentimentScore = Math.floor(Math.random() * 40 + 50);
-      const backlinkScore = Math.floor(Math.random() * 40 + 30);
-      const socialScore = Math.floor(Math.random() * 40 + 50);
-      return { serp: serpScore, sentiment: sentimentScore, backlinks: backlinkScore, social: socialScore };
-    } catch { return { serp: 60, sentiment: 70, backlinks: 40, social: 65 }; }
+    const [serp,sentiment] = await Promise.all([
+      pool.query(`SELECT AVG(CASE WHEN position<=3 THEN 100 WHEN position<=10 THEN 70 WHEN position<=20 THEN 40 ELSE 10 END) AS score FROM erep_serp_tracking WHERE campaign_id=$1`,[campaignId]),
+      pool.query(`SELECT COUNT(*) FILTER (WHERE sentiment='pos') AS pos, COUNT(*) AS total FROM erep_sentiment_logs WHERE campaign_id=$1`,[campaignId]),
+    ]);
+    const total=Number(sentiment.rows[0]?.total||0);
+    return {
+      serp:Number(serp.rows[0]?.score)||0,
+      sentiment:total?Math.round(Number(sentiment.rows[0]?.pos||0)/total*100):0,
+      backlinks:0, social:0,
+    };
   }
 
   private mapCampaign(row: Record<string, unknown>): Campaign {

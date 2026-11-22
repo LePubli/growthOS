@@ -83,21 +83,14 @@ router.patch("/:id", async (req, res) => {
 });
 
 
-// POST /signals/generate — génération mock (compatibilité ascendante)
+// Legacy demo generator: never persist invented commercial events.
 router.post("/generate", async (req, res) => {
-  try {
-    const tenantId = req.auth!.tenantId;
-    const signals = await signalService.generateForAllAccounts(tenantId);
-    res.status(201).json({ generated: signals.length, signals });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  res.status(501).json({ error: "Génération de démonstration désactivée. Utilisez la recherche RSS réelle." });
 });
 
 // POST /signals/generate-real — génération depuis sources réelles (RSS, SerpAPI, Crunchbase)
 const generateRealSchema = z.object({
-  sourceType: z.enum(["rss", "serpapi", "crunchbase", "mock"]).default("rss"),
+  sourceType: z.enum(["rss", "serpapi", "crunchbase"]).default("rss"),
   keywords: z.array(z.string()).optional().default([]),
   companies: z.array(z.string()).optional().default([]),
   maxResults: z.number().int().min(1).max(50).optional().default(15),
@@ -148,10 +141,8 @@ router.post("/generate-real", async (req, res) => {
       apiKey = dbKey?.apiKey;
     }
 
-    // Si mock demandé ou pas de clé pour source payante → forcer RSS
-    const effectiveSource = config.sourceType === "mock" ? "rss" : (
-      (config.sourceType !== "rss" && !apiKey) ? "rss" : config.sourceType
-    );
+    // No paid credential: explicitly use the verifiable RSS source.
+    const effectiveSource = config.sourceType !== "rss" && !apiKey ? "rss" : config.sourceType;
 
     const generatedAt = new Date();
 

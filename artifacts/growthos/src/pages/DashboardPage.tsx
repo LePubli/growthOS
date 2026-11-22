@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'wouter';
-import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity, Building, TrendingUp, Crown, Target, ShieldAlert, Star, TrendingDown, Minus, Calendar, CheckCircle } from 'lucide-react';
+import { Users, DollarSign, RefreshCw, Plus, ChevronRight, Zap, Mail, Phone, Trophy, FileText, Activity, Building, TrendingUp, Crown, Target, ShieldAlert, Star, TrendingDown, Minus, Calendar, CheckCircle, Sparkles } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/lib/api-client';
 import { OnboardingWizard } from '@/components/common/OnboardingWizard';
@@ -243,6 +243,7 @@ function AccountHealthWidget() {
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>({});
   const [loading, setLoading] = useState(false);
+  const [statsError, setStatsError] = useState(false);
   const [customizing, setCustomizing] = useState(false);
   const [activeWidgets, setActiveWidgets] = useState(['prospects','pipeline','won','conversion','signals','sequences']);
   const [greeting, setGreeting] = useState('Bonjour');
@@ -251,12 +252,13 @@ export default function DashboardPage() {
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
+    setStatsError(false);
     try {
       const d: any = await apiClient.get('/dashboard/stats');
       setStats(d.overview||{});
       setRecentProspects(d.recent_prospects||[]);
       setPipelineStages(d.pipeline_stages||[]);
-    } catch {} finally { setLoading(false); }
+    } catch { setStatsError(true); } finally { setLoading(false); }
   },[]);
 
   useEffect(()=>{
@@ -297,15 +299,15 @@ export default function DashboardPage() {
 
   return (
     <>
-    <div className="min-h-screen p-6" style={{background:'var(--body-bg)'}}>
+    <div className="min-h-screen p-4 sm:p-6" style={{background:'var(--body-bg)'}}>
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold" style={{color:'var(--text-primary)'}}>{greeting} 👋</h1>
           <p className="text-sm mt-0.5" style={{color:'var(--text-muted)'}}>{new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center flex-wrap gap-2">
           <div className="flex gap-1 p-1 rounded-xl" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
             <button onClick={()=>setCustomizing(c=>!c)}
               style={{padding:'6px 12px',borderRadius:8,fontSize:13,fontWeight:500,border:'none',cursor:'pointer',
@@ -323,6 +325,19 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {statsError && <div role="alert" className="mb-5 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">Les indicateurs n'ont pas pu être chargés. Aucune valeur affichée ne doit être interprétée comme une mesure à jour. <button onClick={fetchStats} className="ml-2 underline font-semibold">Réessayer</button></div>}
+
+      {!loading && !statsError && Number(o.total_prospects||0)===0 && <section className="mb-6 rounded-2xl bg-gradient-to-r from-slate-900 to-violet-900 text-white p-5 sm:p-7 shadow-sm">
+        <div className="inline-flex items-center gap-2 text-xs font-bold text-violet-200 mb-2"><Sparkles size={15}/> Démarrer avec GrowthOS</div>
+        <h2 className="text-xl sm:text-2xl font-bold">Votre première campagne commence par un vrai prospect.</h2>
+        <p className="text-sm text-slate-200 mt-2 max-w-2xl">Recherchez des entreprises, vérifiez leur site, puis préparez une approche personnalisée. Les envois automatiques restent désactivés pour votre sécurité.</p>
+        <div className="flex flex-col sm:flex-row flex-wrap gap-2.5 mt-5">
+          <Link href="/sourcing" className="rounded-xl bg-white text-slate-900 px-4 py-2.5 text-sm font-semibold text-center">1. Trouver des entreprises</Link>
+          <Link href="/seo-check" className="rounded-xl bg-white/10 border border-white/25 px-4 py-2.5 text-sm font-semibold text-white text-center">2. Analyser un site</Link>
+          <Link href="/admin/api-keys" className="rounded-xl bg-white/10 border border-white/25 px-4 py-2.5 text-sm font-semibold text-white text-center">3. Configurer l’IA</Link>
+        </div>
+      </section>}
 
       {/* Mode personnalisation */}
       {customizing && (
@@ -343,7 +358,7 @@ export default function DashboardPage() {
       )}
 
       {/* Widgets grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 mb-6">
         {activeWidgets.map(wid=>(
           <DashboardWidget key={wid} wid={wid} value={widgetValues[wid]||'—'} onRemove={(id:string)=>setActiveWidgets(a=>a.filter(x=>x!==id))}/>
         ))}
@@ -429,9 +444,10 @@ export default function DashboardPage() {
               {[
                 {l:'+ Nouveau prospect',href:'/prospects',icon:'👤'},
                 {l:'+ Créer une séquence',href:'/sequences/new',icon:'📧'},
-                {l:'+ Lancer un scraping',href:'/sourcing',icon:'🔍'},
+                {l:'Trouver des entreprises',href:'/sourcing',icon:'🔍'},
+                {l:'Analyser un site web',href:'/seo-check',icon:'🌐'},
                 {l:'Voir les signaux',href:'/signals',icon:'⚡',badge:o.unread_signals},
-                {l:'Installer un plugin',href:'/plugins',icon:'🧩'},
+                {l:'Configurer l’IA',href:'/admin/api-keys',icon:'🧠'},
               ].map((a,i)=>(
                 <Link key={i} href={a.href} className="flex items-center gap-3 p-2.5 rounded-xl hover:opacity-80 transition-all text-sm font-medium"
                   style={{background:'var(--body-bg)',color:'var(--color-primary)',textDecoration:'none'}}>
@@ -443,10 +459,9 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="rounded-2xl p-4" style={{background:'var(--card-bg)',border:'1px solid var(--card-border)'}}>
-            <h3 className="font-semibold text-sm mb-3" style={{color:'var(--text-primary)'}}>Système</h3>
-            {[{l:'API',v:'✅'},{l:'PostgreSQL',v:'✅'},{l:'Redis',v:'✅'},{l:'Plugins VM',v:'✅'}].map((s,i)=>(
-              <div key={i} className="flex justify-between text-xs py-1" style={{color:'var(--text-secondary)'}}><span>{s.l}</span><span>{s.v}</span></div>
-            ))}
+            <h3 className="font-semibold text-sm mb-3" style={{color:'var(--text-primary)'}}>État des services</h3>
+            <p className="text-xs leading-relaxed" style={{color:'var(--text-secondary)'}}>Aucun service n’est marqué opérationnel sans vérification. Consultez la santé technique ; elle ne certifie pas les fonctionnalités métier.</p>
+            <Link href="/admin/deep-audit" className="text-xs font-semibold mt-3 inline-block" style={{color:'var(--color-primary)'}}>Voir la santé technique →</Link>
           </div>
         </div>
 
