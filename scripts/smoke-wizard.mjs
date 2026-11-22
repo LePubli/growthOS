@@ -18,6 +18,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const root = resolve(fileURLToPath(import.meta.url), "../..");
 const processes = [];
+let apiErrorLog = "";
 const ephemeralDbDir = await mkdtemp(join(tmpdir(), "growthos-smoke-"));
 const setupToken = randomBytes(32).toString("hex");
 
@@ -63,6 +64,12 @@ function startProcess(command, args) {
   processes.push(child);
   let stderr = "";
   child.stderr.on("data", chunk => { stderr = (stderr + chunk).slice(-1200); });
+  if (args[0] === "artifacts/api-server/dist/index.mjs") {
+    child.stdout.on("data", chunk => {
+      const lines = String(chunk).split("\n").filter(line => /"level":50|Unhandled error/.test(line));
+      apiErrorLog = (apiErrorLog + lines.join("\n") + "\n").slice(-12000);
+    });
+  }
   child.on("exit", (code) => {
     if (code && code !== 0) console.error(`  ${command} stopped (${code}): ${stderr}`);
   });
@@ -238,6 +245,7 @@ try {
 } catch (error) {
   process.exitCode = 1;
   console.error("\nFAIL —", error.message, "\n");
+  if (apiErrorLog.trim()) console.error("Diagnostic API isolée (erreurs uniquement) :", apiErrorLog.slice(-3800));
 } finally {
   for (const child of processes.reverse()) {
     if (child.pid) { try { process.kill(-child.pid, "SIGTERM"); } catch { /* already stopped */ } }
