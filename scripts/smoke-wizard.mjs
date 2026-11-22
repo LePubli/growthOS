@@ -220,7 +220,21 @@ try {
   check(["running", "complete"].includes(running.body.status),
     "Statut de l'audit consultable sans relancer de scan");
 
-  console.log("\nPASS — scénarios d'installation, CRM, IA, audit asynchrone et sécurité validés\n");
+  let audited = running.body;
+  const auditDeadline = Date.now() + 30000;
+  while (audited.status === "running" && Date.now() < auditDeadline) {
+    await delay(300);
+    audited = (await request("GET", "/audit/deep", undefined, token)).body;
+  }
+  check(audited.status === "complete", "Audit profond terminé avec un rapport structuré");
+  check(audited.report.backend.routesDiscovered >= audited.report.backend.routesTested &&
+    audited.report.backend.routesTested >= 10,
+    "Inventaire de routes distingué des lectures HTTP réellement testées");
+  const prospectProbe = audited.report.backend.allRoutes.find(r => r.route === "/api/v1/prospects");
+  check(prospectProbe?.status === 200,
+    "Route CRM testée avec le véritable tenant administrateur, sans faux HTTP 500");
+
+  console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
 } catch (error) {
   process.exitCode = 1;
   console.error("\nFAIL —", error.message, "\n");

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth";
 import { requirePlatformAdmin } from "../../middlewares/platformAdmin";
 import { runDeepAudit, runAutoFix, type DeepAuditReport } from "../../lib/audit/deep-audit";
+import type { AuthPayload } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
 
 const router = Router();
@@ -12,14 +13,14 @@ let lastFailure: string | null = null;
 let startedAt = 0;
 let progress = { completed: 0, total: 0 };
 
-function startAudit(app: Parameters<typeof runDeepAudit>[0], port: number): void {
+function startAudit(app: Parameters<typeof runDeepAudit>[0], port: number, admin: AuthPayload): void {
   lastReport = null;
   lastFailure = null;
   startedAt = Date.now();
   progress = { completed: 0, total: 0 };
   // Do not hold the HTTP request open for the full route scan. The UI polls
   // this endpoint for status; only one scan can run at once.
-  auditPromise = runDeepAudit(app, port, (completed, total) => {
+  auditPromise = runDeepAudit(app, port, admin, (completed, total) => {
     progress = { completed, total };
   }).then(report => {
     lastReport = report;
@@ -41,7 +42,7 @@ router.get("/deep", requireAuth, requirePlatformAdmin, async (req, res) => {
   const app = req.app;
   const port = Number(process.env["PORT"] ?? 8080);
 
-  if (req.query["force"] === "true" && !auditPromise) startAudit(app, port);
+  if (req.query["force"] === "true" && !auditPromise) startAudit(app, port, req.auth!);
 
   if (auditPromise) {
     res.status(202).json({ status: "running", startedAt, progress });

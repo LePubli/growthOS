@@ -25,7 +25,9 @@ interface DeepAuditReport {
   timestamp: string;
   healthScore: number;
   backend: {
+    routesDiscovered: number;
     routesTested: number;
+    routesSkipped: number;
     routesOk: number;
     routes4xx: number;
     routes5xx: number;
@@ -161,7 +163,7 @@ export default function DeepAuditPage() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Audit Système Profond</h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0' }}>
-            Scanne réellement tous les routes HTTP, les tables DB et les plugins
+            Recense les routes, vérifie des lectures HTTP sans effet de bord, les tables et l'état des plugins
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -210,7 +212,7 @@ export default function DeepAuditPage() {
             <RefreshCw size={26} style={{ color: 'var(--color-primary)', animation: 'spin 1s linear infinite' }} />
           </div>
           <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Audit en cours…</p>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Appels HTTP à débit limité · Scan des 19 tables DB · Vérification des plugins</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Lectures HTTP limitées au tenant connecté · Vérification des 19 tables · État des plugins</p>
           {data?.status === 'running' && data.progress.total > 0 && (
             <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Routes vérifiées : {data.progress.completed} / {data.progress.total}</p>
           )}
@@ -224,12 +226,15 @@ export default function DeepAuditPage() {
             <HealthGauge score={report.healthScore} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
               {[
-                { l: 'Routes testées', v: report.backend.routesTested, color: 'var(--color-primary)', bg: '#EEF2FF', icon: <Globe size={13}/> },
+                { l: 'Routes recensées', v: report.backend.routesDiscovered, color: 'var(--color-primary)', bg: '#EEF2FF', icon: <Globe size={13}/> },
+                { l: 'Routes vérifiées', v: report.backend.routesTested, color: '#4F46E5', bg: '#EEF2FF', icon: <CheckCircle size={13}/> },
+                { l: 'Non testées', v: report.backend.routesSkipped, color: '#92400E', bg: '#FFFBEB', icon: <AlertTriangle size={13}/> },
                 { l: 'Routes OK', v: report.backend.routesOk, color: '#059669', bg: '#ECFDF5', icon: <CheckCircle size={13}/> },
+                { l: 'Réponses 4xx', v: report.backend.routes4xx, color: '#92400E', bg: '#FFFBEB', icon: <AlertTriangle size={13}/> },
                 { l: 'Erreurs 5xx', v: report.backend.routes5xx, color: report.backend.routes5xx > 0 ? '#DC2626' : '#6B7280', bg: report.backend.routes5xx > 0 ? '#FEF2F2' : '#F9FAFB', icon: <XCircle size={13}/> },
                 { l: 'Latence moy.', v: `${report.backend.avgLatencyMs}ms`, color: '#D97706', bg: '#FEF3C7', icon: <Clock size={13}/> },
-                { l: 'Tables OK', v: `${report.database.tablesOk}/${report.database.tablesOk + report.database.tablesMissing.length}`, color: '#059669', bg: '#ECFDF5', icon: <Database size={13}/> },
-                { l: 'Plugins actifs', v: report.plugins.active, color: '#4F46E5', bg: '#EEF2FF', icon: <Puzzle size={13}/> },
+                { l: 'Tables accessibles', v: `${report.database.tablesOk}/${report.database.tablesOk + report.database.tablesMissing.length}`, color: '#059669', bg: '#ECFDF5', icon: <Database size={13}/> },
+                { l: 'Plugins activés', v: report.plugins.active, color: '#4F46E5', bg: '#EEF2FF', icon: <Puzzle size={13}/> },
                 { l: 'Total lignes DB', v: report.database.totalRows.toLocaleString(), color: 'var(--text-secondary)', bg: 'var(--body-bg)', icon: <Database size={13}/> },
                 { l: 'Durée audit', v: `${report.durationMs}ms`, color: 'var(--text-secondary)', bg: 'var(--body-bg)', icon: <Clock size={13}/> },
               ].map((k, i) => (
@@ -244,6 +249,11 @@ export default function DeepAuditPage() {
             </div>
           </div>
 
+          <div style={{ marginBottom: 16, padding: '12px 16px', border: '1px solid #FDE68A', background: '#FFFBEB', borderRadius: 10, color: '#92400E', fontSize: 12 }}>
+            <strong>Portée de ce score :</strong> contrôles de lecture sans modification des données (60 %), présence des tables (30 %) et état d'activation des plugins (10 %).
+            Les {report.backend.routesSkipped} autres routes ne sont pas exécutées ici : ce score ne remplace pas des tests métier de bout en bout.
+          </div>
+
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>
             Audit du {new Date(report.timestamp).toLocaleString('fr-FR')} {data?.status === 'complete' && data.cached && '— (résultat mis en cache, cliquez "Lancer" pour relancer)'}
           </div>
@@ -255,7 +265,7 @@ export default function DeepAuditPage() {
             defaultOpen={report.backend.brokenRoutes.length > 0}>
             {report.backend.brokenRoutes.length === 0 ? (
               <div style={{ paddingTop: 14, display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontSize: 13 }}>
-                <CheckCircle size={16} />Toutes les routes répondent correctement
+                <CheckCircle size={16} />Aucune erreur 5xx sur les routes effectivement vérifiées
               </div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 14, fontSize: 12 }}>
@@ -283,7 +293,7 @@ export default function DeepAuditPage() {
           </CollapsibleSection>
 
           {/* DB tables */}
-          <CollapsibleSection title="État des tables DB" icon={<Database size={16}/>}
+          <CollapsibleSection title="État des tables DB (absentes ou illisibles)" icon={<Database size={16}/>}
             count={report.database.tablesMissing.length > 0 ? report.database.tablesMissing.length : report.database.tablesOk}
             countColor={report.database.tablesMissing.length > 0 ? '#DC2626' : '#059669'}
             defaultOpen={report.database.tablesMissing.length > 0}>

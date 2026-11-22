@@ -1,9 +1,9 @@
 import type { Application } from "express";
-import jwt from "jsonwebtoken";
 import { pool } from "@workspace/db";
 import { pluginManager } from "../plugin-runtime";
 import { listRoutes } from "../list-routes";
 import { logger } from "../logger";
+import { signAccessToken, type AuthPayload } from "../../middlewares/auth";
 
 export interface RouteAuditResult {
   plugin: string;
@@ -26,7 +26,9 @@ export interface DeepAuditReport {
   timestamp: string;
   healthScore: number;
   backend: {
+    routesDiscovered: number;
     routesTested: number;
+    routesSkipped: number;
     routesOk: number;
     routes4xx: number;
     routes5xx: number;
@@ -57,87 +59,43 @@ const KNOWN_TABLES = [
   "knowledge_articles","sourcing_jobs","notifications","uploaded_plugins",
 ];
 
-function makeTestToken(): string {
-  const secret = process.env["JWT_SECRET"];
-  if (!secret) throw new Error("JWT_SECRET not set");
-  return jwt.sign(
-    { userId: "audit-bot", email: "audit@growthos.internal", role: "admin", tenantId: "audit" },
-    secret,
-    { expiresIn: "5m" },
-  );
-}
-
-async function fetchSampleIds(): Promise<Record<string, string>> {
-  const mapping: Array<[string, string]> = [
-    ["prospects",         "prospectId"],
-    ["deals",             "dealId"],
-    ["signals",           "signalId"],
-    ["sequences",         "sequenceId"],
-    ["activities",        "activityId"],
-    ["knowledge_articles","articleId"],
-    ["meetings",          "meetingId"],
-    ["workflows",         "workflowId"],
-    ["templates",         "templateId"],
-    ["memory_documents",  "docId"],
-    ["webhooks",          "webhookId"],
-  ];
-  const result: Record<string, string> = {};
-  await Promise.all(mapping.map(async ([table, key]) => {
-    try {
-      const r = await pool.query(`SELECT id FROM ${table} LIMIT 1`);
-      if (r.rows[0]?.id) result[key] = r.rows[0].id as string;
-    } catch {}
-  }));
-  return result;
-}
-
-function resolveParamPath(path: string, ids: Record<string, string>): string {
-  const genericId = ids.prospectId ?? ids.dealId ?? ids.signalId ?? "00000000-0000-0000-0000-000000000001";
-  const paramMap: Record<string, string | undefined> = {
-    ":prospectId": ids.prospectId,
-    ":dealId":     ids.dealId,
-    ":signalId":   ids.signalId,
-    ":sequenceId": ids.sequenceId,
-    ":activityId": ids.activityId,
-    ":articleId":  ids.articleId,
-    ":meetingId":  ids.meetingId,
-    ":workflowId": ids.workflowId,
-    ":templateId": ids.templateId,
-    ":docId":      ids.docId,
-    ":webhookId":  ids.webhookId,
-    ":id":         genericId,
-    ":pluginId":   "crm-sync",
-    ":jobId":      "test-job-id",
-    ":slug":       "growthos-demo",
-  };
-  let resolved = path;
-  for (const [param, val] of Object.entries(paramMap)) {
-    if (val) resolved = resolved.replace(param, val);
-  }
-  // Any remaining :param → use generic ID
-  resolved = resolved.replace(/:[\w]+/g, genericId);
-  return resolved;
-}
+// Explicitly audited, read-only, local endpoints. Scanning every GET route is
+// unsafe: some endpoints stream indefinitely or trigger external services;
+// fake resource IDs also generate misleading 404/500 results.
+const SAFE_READ_PATHS = [
+  "/api/v1/setup/status",
+  "/api/v1/prospects",
+  "/api/v1/prospects/map",
+  "/api/v1/dashboard/stats",
+  "/api/v1/pipeline",
+  "/api/v1/sequences",
+  "/api/v1/signals",
+  "/api/v1/activities",
+  "/api/v1/workflows",
+  "/api/v1/templates",
+  "/api/v1/accounts",
+  "/api/v1/meetings",
+  "/api/v1/notifications",
+  "/api/v1/team",
+  "/api/v1/users/me",
+  "/api/v1/sourcing/jobs",
+  "/api/v1/plugins/status",
+  "/api/v1/plugins/active",
+] as const;
 
 async function auditRoutes(
   app: Application,
   baseUrl: string,
   token: string,
   onProgress?: (completed: number, total: number) => void,
-): Promise<RouteAuditResult[]> {
-  const SKIP_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
-  const SKIP_PREFIXES = ["/api/v1/auth", "/api/v1/audit"];
-
-  const allRoutes = listRoutes(app).filter(
-    r => !SKIP_METHODS.includes(r.method)
-      && !SKIP_PREFIXES.some(p => r.path.startsWith(p))
-  );
-
-  const ids = await fetchSampleIds();
+): Promise<{ results: RouteAuditResult[]; discovered: number; skipped: number }> {
+  const discovered = listRoutes(app).filter(r => r.method === "GET" && r.path.startsWith("/api/v1/"));
+  const paths = new Set<string>(SAFE_READ_PATHS);
+  const skipped = discovered.filter(r => !paths.has(r.path)).length;
 
   // A deep audit is a background job. Still limit both the request rate and
   // the per-route wait so the audit cannot monopolise a small VPS.
-  const routes = allRoutes.slice(0, 100);
+  const routes = SAFE_READ_PATHS;
   const results: RouteAuditResult[] = new Array(routes.length);
   let next = 0;
   let completed = 0;
@@ -145,19 +103,16 @@ async function auditRoutes(
   async function worker(): Promise<void> {
     while (next < routes.length) {
       const index = next++;
-      const route = routes[index];
-      if (!route) continue;
-      const resolvedPath = resolveParamPath(route.path, ids);
+      const path = routes[index];
+      if (!path) continue;
       const start = Date.now();
       let status = 0;
       let error: string | undefined;
       try {
-        const res = await fetch(`${baseUrl}${resolvedPath}`, {
-          method: route.method,
-          headers: route.auth
-            ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
-            : { "Content-Type": "application/json" },
-          signal: AbortSignal.timeout(2000),
+        const res = await fetch(`${baseUrl}${path}`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(3000),
         });
         status = res.status;
         if (status >= 500) {
@@ -174,19 +129,19 @@ async function auditRoutes(
         error = err instanceof Error ? err.message : "Network error";
       }
       results[index] = {
-        plugin: route.path.split("/")[3] ?? "core",
-        method: route.method,
-        route: route.path,
+        plugin: path.split("/")[3] ?? "core",
+        method: "GET",
+        route: path,
         status,
         latencyMs: Date.now() - start,
         error,
-        auth: route.auth,
+        auth: path !== "/api/v1/setup/status",
       };
       onProgress?.(++completed, routes.length);
     }
   }
   await Promise.all(Array.from({ length: Math.min(2, routes.length) }, () => worker()));
-  return results;
+  return { results, discovered: discovered.length, skipped };
 }
 
 async function auditDatabase(): Promise<TableAuditResult[]> {
@@ -199,9 +154,11 @@ async function auditDatabase(): Promise<TableAuditResult[]> {
       const msg = err instanceof Error ? err.message : "";
       results.push({
         table,
-        exists: !msg.includes("does not exist"),
+        // A table that cannot be queried is not a passing database check,
+        // even if it exists physically (permissions/schema/connection errors).
+        exists: false,
         rowCount: null,
-        error: msg.includes("does not exist") ? undefined : msg,
+        error: msg || "Table query failed",
       });
     }
   }
@@ -211,20 +168,23 @@ async function auditDatabase(): Promise<TableAuditResult[]> {
 export async function runDeepAudit(
   app: Application,
   port: number,
+  admin: AuthPayload,
   onProgress?: (completed: number, total: number) => void,
 ): Promise<DeepAuditReport> {
   const start = Date.now();
-  let token = "";
-  try { token = makeTestToken(); }
-  catch (err) { logger.warn({ err }, "No test token — auth routes may return 401"); }
+  // The caller is already authenticated and platform-admin allowlisted.
+  // Use their real tenant context, not a fabricated non-UUID tenant ID.
+  const { userId, tenantId, email, role } = admin;
+  const token = signAccessToken({ userId, tenantId, email, role });
 
-  const [routeResults, dbResults] = await Promise.all([
+  const [routeAudit, dbResults] = await Promise.all([
     auditRoutes(app, `http://localhost:${port}`, token, onProgress).catch(err => {
       logger.error({ err }, "Route audit failed");
-      return [] as RouteAuditResult[];
+      throw err;
     }),
     auditDatabase(),
   ]);
+  const routeResults = routeAudit.results;
 
   const routesOk    = routeResults.filter(r => r.status >= 200 && r.status < 400).length;
   const routes4xx   = routeResults.filter(r => r.status >= 400 && r.status < 500).length;
@@ -243,16 +203,19 @@ export async function runDeepAudit(
     uploadedCount = r.rows[0]?.cnt ?? 0;
   } catch {}
 
-  const routeScore  = routeResults.length > 0 ? (routesOk / routeResults.length) * 40 : 40;
+  // Score of *checked* operations; do not count unprobed endpoints as passed.
+  // Plugin readiness is an activation check, not a functional plugin test.
+  const routeScore  = routeResults.length > 0 ? (routesOk / routeResults.length) * 60 : 0;
   const dbScore     = KNOWN_TABLES.length > 0 ? (tablesOk / KNOWN_TABLES.length) * 30 : 30;
   const pluginScore = allPlugins.length > 0
-    ? (allPlugins.filter(r => r.state === "ACTIVE").length / allPlugins.length) * 30 : 30;
+    ? (allPlugins.filter(r => r.state === "ACTIVE").length / allPlugins.length) * 10 : 0;
 
   return {
     timestamp: new Date().toISOString(),
     healthScore: Math.round(routeScore + dbScore + pluginScore),
     backend: {
-      routesTested: routeResults.length, routesOk, routes4xx, routes5xx, avgLatencyMs,
+      routesDiscovered: routeAudit.discovered, routesTested: routeResults.length,
+      routesSkipped: routeAudit.skipped, routesOk, routes4xx, routes5xx, avgLatencyMs,
       brokenRoutes: routeResults.filter(r => r.status >= 500 || r.status === 0),
       allRoutes: routeResults,
     },
