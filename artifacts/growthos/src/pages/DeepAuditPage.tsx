@@ -49,6 +49,12 @@ interface DeepAuditReport {
   durationMs: number;
 }
 
+type AuditResponse =
+  | { status: 'idle' }
+  | { status: 'running'; startedAt: number; progress: { completed: number; total: number } }
+  | { status: 'failed'; error: string }
+  | { status: 'complete'; cached: boolean; report: DeepAuditReport };
+
 function HealthGauge({ score }: { score: number }) {
   const color = score >= 80 ? '#059669' : score >= 60 ? '#D97706' : '#DC2626';
   const label = score >= 80 ? 'Excellent' : score >= 60 ? 'Attention requise' : 'Problèmes détectés';
@@ -119,17 +125,18 @@ export default function DeepAuditPage() {
   const qc = useQueryClient();
   const [showAllRoutes, setShowAllRoutes] = useState(false);
 
-  const { data, isLoading, dataUpdatedAt } = useQuery({
+  const { data, isError, error } = useQuery({
     queryKey: ['deep-audit'],
-    queryFn: () => apiClient.get('/audit/deep') as Promise<{ cached: boolean; report: DeepAuditReport }>,
-    enabled: false,
+    queryFn: () => apiClient.get('/audit/deep') as Promise<AuditResponse>,
+    refetchInterval: query => query.state.data?.status === 'running' ? 2500 : false,
+    retry: false,
   });
 
   const runAuditMutation = useMutation({
-    mutationFn: () => apiClient.get('/audit/deep?force=true') as Promise<{ cached: boolean; report: DeepAuditReport }>,
+    mutationFn: () => apiClient.get('/audit/deep?force=true') as Promise<AuditResponse>,
     onSuccess: (d) => {
       qc.setQueryData(['deep-audit'], d);
-      toast.success(`Audit terminé — score : ${d.report.healthScore}/100 (${d.report.durationMs}ms)`);
+      if (d.status === 'running') toast.info('Audit lancé : la progression s’actualise automatiquement.');
     },
     onError: (err: any) => toast.error(`Audit échoué : ${err?.message ?? 'Erreur inconnue'}`),
   });
@@ -145,8 +152,8 @@ export default function DeepAuditPage() {
     onError: (err: any) => toast.error(`Auto-fix échoué : ${err?.message ?? 'Erreur inconnue'}`),
   });
 
-  const report = data?.report ?? runAuditMutation.data?.report;
-  const isRunning = runAuditMutation.isPending;
+  const report = data?.status === 'complete' ? data.report : undefined;
+  const isRunning = runAuditMutation.isPending || data?.status === 'running';
 
   return (
     <div style={{ minHeight: '100vh', padding: 24, background: 'var(--body-bg)' }}>
@@ -174,7 +181,19 @@ export default function DeepAuditPage() {
         </div>
       </div>
 
-      {!report && !isRunning && (
+      {data?.status === 'failed' && !isRunning && (
+        <div role="alert" style={{ color: '#DC2626', padding: '12px 18px', marginBottom: 18, background: '#FEF2F2', borderRadius: 10 }}>
+          Échec de l'audit : {data.error}. Consultez les logs du conteneur API avant de relancer.
+        </div>
+      )}
+
+      {isError && !isRunning && (
+        <div role="alert" style={{ color: '#DC2626', padding: '12px 18px', marginBottom: 18, background: '#FEF2F2', borderRadius: 10 }}>
+          Impossible de consulter l'audit : {error instanceof Error ? error.message : 'Erreur réseau'}.
+        </div>
+      )}
+
+      {!report && !isRunning && data?.status !== 'failed' && (
         <div style={{ textAlign: 'center', padding: '80px 0' }}>
           <ShieldCheck size={48} style={{ margin: '0 auto 16px', display: 'block', opacity: .2 }} />
           <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>Aucun rapport disponible</p>
@@ -191,7 +210,10 @@ export default function DeepAuditPage() {
             <RefreshCw size={26} style={{ color: 'var(--color-primary)', animation: 'spin 1s linear infinite' }} />
           </div>
           <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Audit en cours…</p>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Appels HTTP réels sur toutes les routes · Scan des {20} tables DB · Vérification des plugins</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Appels HTTP à débit limité · Scan des 19 tables DB · Vérification des plugins</p>
+          {data?.status === 'running' && data.progress.total > 0 && (
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Routes vérifiées : {data.progress.completed} / {data.progress.total}</p>
+          )}
         </div>
       )}
 
@@ -223,7 +245,7 @@ export default function DeepAuditPage() {
           </div>
 
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>
-            Audit du {new Date(report.timestamp).toLocaleString('fr-FR')} {data?.cached && '— (résultat mis en cache, cliquez "Lancer" pour relancer)'}
+            Audit du {new Date(report.timestamp).toLocaleString('fr-FR')} {data?.status === 'complete' && data.cached && '— (résultat mis en cache, cliquez "Lancer" pour relancer)'}
           </div>
 
           {/* Broken routes */}

@@ -13,42 +13,28 @@ export async function run(): Promise<SuiteResult> {
     assert.equal(r.status, 401, `Attendu 401, reçu ${r.status}`);
   });
 
-  // ── Deep audit — structure du rapport
-  await suite.test("GET /audit/deep → rapport structuré", async () => {
+  // ── A first visit must not start an expensive scan.
+  await suite.test("GET /audit/deep → statut sans bloquer", async () => {
     const r = await client.get("/audit/deep", ctx.adminToken);
-    assert.ok([200, 429].includes(r.status), `Status inattendu: ${r.status}`);
-    if (r.status === 200) {
-      const body = r.body as any;
-      assert.ok(typeof body.cached === "boolean", "cached doit être un booléen");
-      assert.ok(body.report, "report manquant");
-      const report = body.report as any;
-      assert.ok(report.routes || report.summary || report.checks || report.db || report.plugins,
-        `Rapport doit contenir au moins un champ de résultats: ${JSON.stringify(Object.keys(report))}`);
-    }
+    assert.equal(r.status, 200);
+    assert.ok(["idle", "complete", "failed"].includes((r.body as any).status));
   });
 
-  // ── Cache du deep audit — 2ème appel retourne cached=true
-  await suite.test("GET /audit/deep (2ème appel) → cached=true ou 429", async () => {
-    const r1 = await client.get("/audit/deep", ctx.adminToken);
-    assert.ok([200, 429].includes(r1.status));
-
-    if (r1.status === 200) {
-      const r2 = await client.get("/audit/deep", ctx.adminToken);
-      assert.ok([200, 429].includes(r2.status));
-      if (r2.status === 200) {
-        assert.ok((r2.body as any).cached === true, "Deuxième appel devrait retourner cached=true");
-      }
-    }
-  });
-
-  // ── Force refresh — ?force=true contourne le cache
-  await suite.test("GET /audit/deep?force=true → force re-exécution", async () => {
+  // ── Launch is asynchronous to avoid the browser's 30s Axios timeout.
+  await suite.test("GET /audit/deep?force=true → 202 + progression", async () => {
     const r = await client.get("/audit/deep?force=true", ctx.adminToken);
-    assert.ok([200, 429].includes(r.status), `Status inattendu: ${r.status}`);
-    if (r.status === 200) {
-      const body = r.body as any;
-      assert.ok(body.report, "report attendu avec force=true");
-    }
+    assert.equal(r.status, 202, `Attendu 202, reçu ${r.status}`);
+    const body = r.body as any;
+    assert.equal(body.status, "running");
+    assert.ok(typeof body.startedAt === "number");
+    assert.ok(typeof body.progress?.completed === "number");
+  });
+
+  // ── A second force call must join the same background scan, not start another.
+  await suite.test("GET /audit/deep?force=true pendant le scan → pas de doublon", async () => {
+    const r = await client.get("/audit/deep?force=true", ctx.adminToken);
+    assert.ok([200, 202].includes(r.status), `Status inattendu: ${r.status}`);
+    assert.ok(["running", "complete"].includes((r.body as any).status));
   });
 
   await ctx.cleanup();

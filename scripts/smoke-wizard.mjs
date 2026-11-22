@@ -211,7 +211,15 @@ try {
     to: "receiver@wizard.invalid", subject: "Test", html: "<p>Test</p>",
   }, token)).status === 409, "Aucun email externe envoyé par défaut");
 
-  console.log("\nPASS — scénarios d'installation, CRM, IA et sécurité validés\n");
+  const audit = await request("GET", "/audit/deep?force=true", undefined, token);
+  check(audit.status === 202 && audit.body.status === "running" &&
+    typeof audit.body.progress?.completed === "number",
+    "Audit profond lancé sans bloquer la requête HTTP");
+  const running = await request("GET", "/audit/deep", undefined, token);
+  check(["running", "complete"].includes(running.body.status),
+    "Statut de l'audit consultable sans relancer de scan");
+
+  console.log("\nPASS — scénarios d'installation, CRM, IA, audit asynchrone et sécurité validés\n");
 } catch (error) {
   process.exitCode = 1;
   console.error("\nFAIL —", error.message, "\n");

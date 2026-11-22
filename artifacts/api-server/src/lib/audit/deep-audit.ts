@@ -119,7 +119,12 @@ function resolveParamPath(path: string, ids: Record<string, string>): string {
   return resolved;
 }
 
-async function auditRoutes(app: Application, baseUrl: string, token: string): Promise<RouteAuditResult[]> {
+async function auditRoutes(
+  app: Application,
+  baseUrl: string,
+  token: string,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<RouteAuditResult[]> {
   const SKIP_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
   const SKIP_PREFIXES = ["/api/v1/auth", "/api/v1/audit"];
 
@@ -130,41 +135,57 @@ async function auditRoutes(app: Application, baseUrl: string, token: string): Pr
 
   const ids = await fetchSampleIds();
 
-  const results: RouteAuditResult[] = [];
-  for (const route of allRoutes.slice(0, 100)) {
-    const resolvedPath = resolveParamPath(route.path, ids);
-    const start = Date.now();
-    let status = 0;
-    let error: string | undefined;
-    try {
-      const res = await fetch(`${baseUrl}${resolvedPath}`, {
-        method: route.method,
-        headers: route.auth
-          ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
-          : { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(5000),
-      });
-      status = res.status;
-      if (status >= 500) {
-        try {
-          const b = await res.json() as any;
-          error = b?.error ?? b?.message ?? `HTTP ${status}`;
-        } catch { error = `HTTP ${status}`; }
+  // A deep audit is a background job. Still limit both the request rate and
+  // the per-route wait so the audit cannot monopolise a small VPS.
+  const routes = allRoutes.slice(0, 100);
+  const results: RouteAuditResult[] = new Array(routes.length);
+  let next = 0;
+  let completed = 0;
+  onProgress?.(0, routes.length);
+  async function worker(): Promise<void> {
+    while (next < routes.length) {
+      const index = next++;
+      const route = routes[index];
+      if (!route) continue;
+      const resolvedPath = resolveParamPath(route.path, ids);
+      const start = Date.now();
+      let status = 0;
+      let error: string | undefined;
+      try {
+        const res = await fetch(`${baseUrl}${resolvedPath}`, {
+          method: route.method,
+          headers: route.auth
+            ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+            : { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(2000),
+        });
+        status = res.status;
+        if (status >= 500) {
+          try {
+            const b = await res.json() as any;
+            error = b?.error ?? b?.message ?? `HTTP ${status}`;
+          } catch { error = `HTTP ${status}`; }
+        } else {
+          // Do not buffer arbitrary endpoint responses just for a status check.
+          await res.body?.cancel();
+        }
+      } catch (err) {
+        status = 0;
+        error = err instanceof Error ? err.message : "Network error";
       }
-    } catch (err) {
-      status = 0;
-      error = err instanceof Error ? err.message : "Network error";
+      results[index] = {
+        plugin: route.path.split("/")[3] ?? "core",
+        method: route.method,
+        route: route.path,
+        status,
+        latencyMs: Date.now() - start,
+        error,
+        auth: route.auth,
+      };
+      onProgress?.(++completed, routes.length);
     }
-    results.push({
-      plugin: route.path.split("/")[3] ?? "core",
-      method: route.method,
-      route: route.path,
-      status,
-      latencyMs: Date.now() - start,
-      error,
-      auth: route.auth,
-    });
   }
+  await Promise.all(Array.from({ length: Math.min(2, routes.length) }, () => worker()));
   return results;
 }
 
@@ -187,14 +208,18 @@ async function auditDatabase(): Promise<TableAuditResult[]> {
   return results;
 }
 
-export async function runDeepAudit(app: Application, port: number): Promise<DeepAuditReport> {
+export async function runDeepAudit(
+  app: Application,
+  port: number,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<DeepAuditReport> {
   const start = Date.now();
   let token = "";
   try { token = makeTestToken(); }
   catch (err) { logger.warn({ err }, "No test token — auth routes may return 401"); }
 
   const [routeResults, dbResults] = await Promise.all([
-    auditRoutes(app, `http://localhost:${port}`, token).catch(err => {
+    auditRoutes(app, `http://localhost:${port}`, token, onProgress).catch(err => {
       logger.error({ err }, "Route audit failed");
       return [] as RouteAuditResult[];
     }),
