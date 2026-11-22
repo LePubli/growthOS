@@ -11,6 +11,7 @@ interface RouteAuditResult {
   status: number;
   latencyMs: number;
   error?: string;
+  passed: boolean;
   auth: boolean;
 }
 
@@ -23,14 +24,20 @@ interface TableAuditResult {
 
 interface DeepAuditReport {
   timestamp: string;
-  healthScore: number;
+  healthScore: number | null;
+  assessment: 'partial' | 'complete';
   backend: {
     routesDiscovered: number;
     routesTested: number;
     routesSkipped: number;
+    coveragePct: number;
+    routesByMethod: Record<string, number>;
+    untestedRoutes: { method: string; route: string; reason: string }[];
+    moduleCoverage: { module: string; total: number; tested: number; errors: number }[];
     routesOk: number;
     routes4xx: number;
     routes5xx: number;
+    contractErrors: number;
     avgLatencyMs: number;
     brokenRoutes: RouteAuditResult[];
     allRoutes: RouteAuditResult[];
@@ -57,11 +64,12 @@ type AuditResponse =
   | { status: 'failed'; error: string }
   | { status: 'complete'; cached: boolean; report: DeepAuditReport };
 
-function HealthGauge({ score }: { score: number }) {
-  const color = score >= 80 ? '#059669' : score >= 60 ? '#D97706' : '#DC2626';
-  const label = score >= 80 ? 'Excellent' : score >= 60 ? 'Attention requise' : 'Problèmes détectés';
+function HealthGauge({ score }: { score: number | null }) {
+  const partial = score === null;
+  const color = partial ? '#D97706' : score >= 80 ? '#059669' : score >= 60 ? '#D97706' : '#DC2626';
+  const label = partial ? 'Non certifié' : score >= 80 ? 'Excellent' : score >= 60 ? 'Attention requise' : 'Problèmes détectés';
   const circumference = 2 * Math.PI * 52;
-  const offset = circumference - (score / 100) * circumference;
+  const offset = circumference - ((score ?? 0) / 100) * circumference;
 
   return (
     <div style={{ textAlign: 'center', padding: '8px 0' }}>
@@ -73,8 +81,8 @@ function HealthGauge({ score }: { score: number }) {
             strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease' }} />
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: 30, fontWeight: 900, color }}>{score}</span>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>/100</span>
+          <span style={{ fontSize: partial ? 22 : 30, fontWeight: 900, color }}>{partial ? '—' : score}</span>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>{partial ? 'audit partiel' : '/100'}</span>
         </div>
       </div>
       <div style={{ fontSize: 13, fontWeight: 700, color }}>{label}</div>
@@ -82,8 +90,8 @@ function HealthGauge({ score }: { score: number }) {
   );
 }
 
-function StatusBadge({ status }: { status: number }) {
-  const isOk    = status >= 200 && status < 400;
+function StatusBadge({ status, passed }: { status: number; passed?: boolean }) {
+  const isOk    = status >= 200 && status < 400 && passed !== false;
   const isAuth  = status === 401 || status === 403;
   const isErr   = status === 0 || status >= 404;
   const color   = isOk ? '#059669' : isAuth ? '#D97706' : '#DC2626';
@@ -126,6 +134,7 @@ function CollapsibleSection({ title, icon, count, countColor, children, defaultO
 export default function DeepAuditPage() {
   const qc = useQueryClient();
   const [showAllRoutes, setShowAllRoutes] = useState(false);
+  const [showAllUntested, setShowAllUntested] = useState(false);
 
   const { data, isError, error } = useQuery({
     queryKey: ['deep-audit'],
@@ -163,12 +172,14 @@ export default function DeepAuditPage() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Audit Système Profond</h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0' }}>
-            Recense les routes, vérifie des lectures HTTP sans effet de bord, les tables et l'état des plugins
+            Inventaire complet des routes et contrôles techniques limités aux lectures sûres (aucune action métier exécutée)
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
-            onClick={() => autoFixMutation.mutate()}
+            onClick={() => {
+              if (window.confirm('Attention : Auto-fix modifie la base de données et les états des plugins. Vérifiez la sauvegarde PostgreSQL avant de continuer. Confirmer ?')) autoFixMutation.mutate();
+            }}
             disabled={autoFixMutation.isPending || isRunning}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10, border: '1px solid #D97706', background: '#FEF3C7', color: '#D97706', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: autoFixMutation.isPending ? .6 : 1 }}>
             {autoFixMutation.isPending ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Wrench size={13} />}
@@ -212,7 +223,7 @@ export default function DeepAuditPage() {
             <RefreshCw size={26} style={{ color: 'var(--color-primary)', animation: 'spin 1s linear infinite' }} />
           </div>
           <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Audit en cours…</p>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Lectures HTTP limitées au tenant connecté · Vérification des 19 tables · État des plugins</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Lectures HTTP sans écriture, une par une · Tables SQL · Inventaire des plugins</p>
           {data?.status === 'running' && data.progress.total > 0 && (
             <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Routes vérifiées : {data.progress.completed} / {data.progress.total}</p>
           )}
@@ -229,13 +240,15 @@ export default function DeepAuditPage() {
                 { l: 'Routes recensées', v: report.backend.routesDiscovered, color: 'var(--color-primary)', bg: '#EEF2FF', icon: <Globe size={13}/> },
                 { l: 'Routes vérifiées', v: report.backend.routesTested, color: '#4F46E5', bg: '#EEF2FF', icon: <CheckCircle size={13}/> },
                 { l: 'Non testées', v: report.backend.routesSkipped, color: '#92400E', bg: '#FFFBEB', icon: <AlertTriangle size={13}/> },
-                { l: 'Routes OK', v: report.backend.routesOk, color: '#059669', bg: '#ECFDF5', icon: <CheckCircle size={13}/> },
+                { l: 'Couverture API', v: `${report.backend.coveragePct}%`, color: '#92400E', bg: '#FFFBEB', icon: <Globe size={13}/> },
+                { l: 'Lectures OK', v: report.backend.routesOk, color: '#059669', bg: '#ECFDF5', icon: <CheckCircle size={13}/> },
                 { l: 'Réponses 4xx', v: report.backend.routes4xx, color: '#92400E', bg: '#FFFBEB', icon: <AlertTriangle size={13}/> },
                 { l: 'Erreurs 5xx', v: report.backend.routes5xx, color: report.backend.routes5xx > 0 ? '#DC2626' : '#6B7280', bg: report.backend.routes5xx > 0 ? '#FEF2F2' : '#F9FAFB', icon: <XCircle size={13}/> },
+                { l: 'Contrats invalides', v: report.backend.contractErrors, color: report.backend.contractErrors > 0 ? '#DC2626' : '#6B7280', bg: report.backend.contractErrors > 0 ? '#FEF2F2' : '#F9FAFB', icon: <XCircle size={13}/> },
                 { l: 'Latence moy.', v: `${report.backend.avgLatencyMs}ms`, color: '#D97706', bg: '#FEF3C7', icon: <Clock size={13}/> },
-                { l: 'Tables accessibles', v: `${report.database.tablesOk}/${report.database.tablesOk + report.database.tablesMissing.length}`, color: '#059669', bg: '#ECFDF5', icon: <Database size={13}/> },
-                { l: 'Plugins activés', v: report.plugins.active, color: '#4F46E5', bg: '#EEF2FF', icon: <Puzzle size={13}/> },
-                { l: 'Total lignes DB', v: report.database.totalRows.toLocaleString(), color: 'var(--text-secondary)', bg: 'var(--body-bg)', icon: <Database size={13}/> },
+                { l: 'Tables clés accessibles', v: `${report.database.tablesOk}/${report.database.tablesOk + report.database.tablesMissing.length}`, color: '#059669', bg: '#ECFDF5', icon: <Database size={13}/> },
+                { l: 'Plugins activés (non exécutés)', v: report.plugins.active, color: '#4F46E5', bg: '#EEF2FF', icon: <Puzzle size={13}/> },
+                { l: 'Lignes (tables clés)', v: report.database.totalRows.toLocaleString(), color: 'var(--text-secondary)', bg: 'var(--body-bg)', icon: <Database size={13}/> },
                 { l: 'Durée audit', v: `${report.durationMs}ms`, color: 'var(--text-secondary)', bg: 'var(--body-bg)', icon: <Clock size={13}/> },
               ].map((k, i) => (
                 <div key={i} style={{ background: k.bg, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -249,23 +262,25 @@ export default function DeepAuditPage() {
             </div>
           </div>
 
-          <div style={{ marginBottom: 16, padding: '12px 16px', border: '1px solid #FDE68A', background: '#FFFBEB', borderRadius: 10, color: '#92400E', fontSize: 12 }}>
-            <strong>Portée de ce score :</strong> contrôles de lecture sans modification des données (60 %), présence des tables (30 %) et état d'activation des plugins (10 %).
-            Les {report.backend.routesSkipped} autres routes ne sont pas exécutées ici : ce score ne remplace pas des tests métier de bout en bout.
+          <div role="status" style={{ marginBottom: 16, padding: '12px 16px', border: '1px solid #FDE68A', background: '#FFFBEB', borderRadius: 10, color: '#92400E', fontSize: 12 }}>
+            <strong>Audit non certifié :</strong> {report.backend.routesTested} routes vérifiées sur {report.backend.routesDiscovered} ({report.backend.coveragePct}%).
+            Les {report.backend.routesSkipped} autres routes (dont les créations, modifications, suppressions, exports et lectures non qualifiées) n’ont pas été exécutées.
+            Des réponses HTTP 200 ne prouvent pas que les parcours utilisateurs, les agents IA, les emails ou les plugins fonctionnent de bout en bout.
+            <div style={{ marginTop: 6 }}>Inventaire par méthode : {Object.entries(report.backend.routesByMethod).map(([method, count]) => `${method} ${count}`).join(' · ')}.</div>
           </div>
 
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>
             Audit du {new Date(report.timestamp).toLocaleString('fr-FR')} {data?.status === 'complete' && data.cached && '— (résultat mis en cache, cliquez "Lancer" pour relancer)'}
           </div>
 
-          {/* Broken routes */}
-          <CollapsibleSection title="Routes en erreur (5xx / timeout)" icon={<XCircle size={16}/>}
+          {/* Broken routes / response contracts */}
+          <CollapsibleSection title="Échecs de contrôles (HTTP / contrat JSON / timeout)" icon={<XCircle size={16}/>}
             count={report.backend.brokenRoutes.length}
             countColor={report.backend.brokenRoutes.length > 0 ? '#DC2626' : '#059669'}
             defaultOpen={report.backend.brokenRoutes.length > 0}>
             {report.backend.brokenRoutes.length === 0 ? (
               <div style={{ paddingTop: 14, display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontSize: 13 }}>
-                <CheckCircle size={16} />Aucune erreur 5xx sur les routes effectivement vérifiées
+                <CheckCircle size={16} />Aucun échec sur les routes effectivement vérifiées
               </div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 14, fontSize: 12 }}>
@@ -282,7 +297,7 @@ export default function DeepAuditPage() {
                       <td style={{ padding: '8px 10px', color: 'var(--text-secondary)' }}>{r.plugin}</td>
                       <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#4F46E5' }}>{r.method}</td>
                       <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: 'var(--text-primary)' }}>{r.route}</td>
-                      <td style={{ padding: '8px 10px' }}><StatusBadge status={r.status} /></td>
+                      <td style={{ padding: '8px 10px' }}><StatusBadge status={r.status} passed={r.passed} /></td>
                       <td style={{ padding: '8px 10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{r.latencyMs}ms</td>
                       <td style={{ padding: '8px 10px', color: '#DC2626', maxWidth: 280, fontSize: 11 }}>{r.error ?? '—'}</td>
                     </tr>
@@ -290,6 +305,45 @@ export default function DeepAuditPage() {
                 </tbody>
               </table>
             )}
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Couverture par module (inventaire / lectures vérifiées)" icon={<Puzzle size={16}/>}
+            count={report.backend.moduleCoverage.filter(m => m.tested === 0).length} countColor="#D97706">
+            <div style={{ overflowX: 'auto', marginTop: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead><tr>{['Module', 'Routes recensées', 'Vérifiées', 'Erreurs constatées', 'État'].map(h => <th key={h} style={{ textAlign: 'left', padding: 8, color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
+                <tbody>{report.backend.moduleCoverage.map(m => (
+                  <tr key={m.module} style={{ borderTop: '1px solid var(--card-border)' }}>
+                    <td style={{ padding: 8, fontWeight: 600 }}>{m.module}</td>
+                    <td style={{ padding: 8 }}>{m.total}</td>
+                    <td style={{ padding: 8 }}>{m.tested}</td>
+                    <td style={{ padding: 8, color: m.errors ? '#DC2626' : 'var(--text-muted)' }}>{m.errors}</td>
+                    <td style={{ padding: 8, color: m.tested === 0 ? '#D97706' : '#6B7280' }}>{m.tested === 0 ? 'Non vérifié' : m.tested < m.total ? 'Partiel' : 'Lectures vérifiées'}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Routes non testées et raisons" icon={<AlertTriangle size={16}/>}
+            count={report.backend.routesSkipped} countColor="#D97706">
+            <div style={{ overflowX: 'auto', marginTop: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead><tr>{['Méthode', 'Route', 'Pourquoi non testée'].map(h => <th key={h} style={{ textAlign: 'left', padding: 8, color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
+                <tbody>{(showAllUntested ? report.backend.untestedRoutes : report.backend.untestedRoutes.slice(0, 40)).map((r, i) => (
+                  <tr key={`${r.method}:${r.route}:${i}`} style={{ borderTop: '1px solid var(--card-border)' }}>
+                    <td style={{ padding: 8, fontFamily: 'monospace' }}>{r.method}</td>
+                    <td style={{ padding: 8, fontFamily: 'monospace' }}>{r.route}</td>
+                    <td style={{ padding: 8, color: 'var(--text-muted)' }}>{r.reason}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              {report.backend.untestedRoutes.length > 40 && (
+                <button onClick={() => setShowAllUntested(!showAllUntested)} style={{ marginTop: 10, color: 'var(--color-primary)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  {showAllUntested ? 'Réduire la liste' : `Afficher toutes les ${report.backend.routesSkipped} routes`}
+                </button>
+              )}
+            </div>
           </CollapsibleSection>
 
           {/* DB tables */}
@@ -352,7 +406,7 @@ export default function DeepAuditPage() {
                         <td style={{ padding: '7px 10px', color: 'var(--text-muted)' }}>{r.plugin}</td>
                         <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontWeight: 700, fontSize: 11, color: '#4F46E5' }}>{r.method}</td>
                         <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-primary)' }}>{r.route}</td>
-                        <td style={{ padding: '7px 10px' }}><StatusBadge status={r.status} /></td>
+                        <td style={{ padding: '7px 10px' }}><StatusBadge status={r.status} passed={r.passed} /></td>
                         <td style={{ padding: '7px 10px', color: r.latencyMs > 1000 ? '#DC2626' : 'var(--text-muted)', fontFamily: 'monospace', fontSize: 11 }}>{r.latencyMs}ms</td>
                         <td style={{ padding: '7px 10px', fontSize: 11, color: r.auth ? '#4F46E5' : 'var(--text-muted)' }}>{r.auth ? '🔒' : '—'}</td>
                       </tr>

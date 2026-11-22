@@ -18,6 +18,20 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: wizard_ci_only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Read the preproduction branch
         uses: actions/checkout@v6
@@ -51,6 +65,8 @@ jobs:
         run: pnpm --filter @workspace/api-server build
 
       - name: Test first-run wizard and CRM without external email
+        env:
+          SMOKE_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
         run: node scripts/smoke-wizard.mjs
 
       - name: Test cloud AI connectors without real API calls

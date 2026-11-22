@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth";
 import { requireTenant } from "../../middlewares/tenantIsolation";
+import { registerV1Mount } from "../../lib/list-routes";
 import authRouter from "./auth";
 import prospectsRouter from "./prospects";
 import pipelineRouter from "./pipeline";
@@ -58,82 +59,87 @@ import setupRouter from "./setup";
 
 const router = Router();
 
+function mount(path: string, ...handlers: any[]): void {
+  router.use(path, ...handlers);
+  registerV1Mount(path, handlers);
+}
+
 // ── ROUTES PUBLIQUES (pas d'auth requise) ────────────────────────────────
-router.use("/auth",            authRouter);
-router.use("/auth",            authPublicRouter);
-router.use("/api-docs",        apiDocsRouter);
-router.use("/public",          publicApiRouter);
-router.use("/billing/webhook", billingWebhookRouter);
-router.use("/plans",           plansPublicRouter);
-router.use("/setup",           setupRouter);
+mount("/auth",            authRouter);
+mount("/auth",            authPublicRouter);
+mount("/api-docs",        apiDocsRouter);
+mount("/public",          publicApiRouter);
+mount("/billing/webhook", billingWebhookRouter);
+mount("/plans",           plansPublicRouter);
+mount("/setup",           setupRouter);
 
 // ── ROUTES PROTÉGÉES (requireAuth + requireTenant au niveau mount) ────────
-router.use("/prospects",          requireAuth, requireTenant, prospectsRouter);
-router.use("/pipeline",           requireAuth, requireTenant, pipelineRouter);
-router.use("/sequences",          requireAuth, requireTenant, sequencesRouter);
-router.use("/signals",            requireAuth, requireTenant, signalsRouter);
-router.use("/dashboard",          requireAuth, requireTenant, dashboardRouter);
-router.use("/activities",         requireAuth, requireTenant, activitiesRouter);
-router.use("/workflows",          requireAuth, requireTenant, workflowsRouter);
-router.use("/templates",          requireAuth, requireTenant, templatesRouter);
-router.use("/webhooks",           requireAuth, requireTenant, webhooksRouter);
-router.use("/accounts",           requireAuth, requireTenant, accountsRouter);
-router.use("/email",              requireAuth, requireTenant, emailRouter);
-router.use("/search",             requireAuth, requireTenant, searchRouter);
-router.use("/users",              requireAuth, requireTenant, usersRouter);
-router.use("/team",               requireAuth, requireTenant, teamRouter);
-router.use("/api-keys",           requireAuth, requireTenant, apiKeysRouter);
-router.use("/analytics",          requireAuth, requireTenant, analyticsRouter);
-router.use("/plugins",            requireAuth, requireTenant, pluginsRouter);
-router.use("/memory",             requireAuth, requireTenant, memoryRouter);
-router.use("/meetings",           requireAuth, requireTenant, meetingsRouter);
-router.use("/ai-sdr",             requireAuth, requireTenant, aiSdrRouter);
-router.use("/deal-coach",         requireAuth, requireTenant, dealCoachRouter);
-router.use("/revenue",            requireAuth, requireTenant, revenueRouter);
-router.use("/knowledge",          requireAuth, requireTenant, knowledgeRouter);
-router.use("/executive",          requireAuth, requireTenant, executiveRouter);
-router.use("/sourcing",           requireAuth, requireTenant, sourcingRouter);
-router.use("/notifications",      requireAuth, requireTenant, notificationsRouter);
-router.use("/admin",              requireAuth, requireTenant, adminRouter);
-router.use("/plugin-marketplace", requireAuth, requireTenant, pluginMarketplaceRouter);
-router.use("/audit",              requireAuth, requireTenant, auditRouter);
-router.use("/enrich",             requireAuth, requireTenant, enrichmentRouter);
-router.use("/ereputation",        requireAuth, requireTenant, ereputationRouter);
-router.use("/tasks",              requireAuth, requireTenant, tasksRouter);
-router.use("/reporting",          requireAuth, requireTenant, reportingRouter);
-router.use("/collaboration",      requireAuth, requireTenant, collaborationRouter);
-router.use("/compliance",         requireAuth, requireTenant, complianceRouter);
-router.use("/sso",                requireAuth, requireTenant, ssoRouter);
-router.use("/billing",            requireAuth, requireTenant, billingRouter);
-router.use("/integrations",       requireAuth, requireTenant, integrationsRouter);
+mount("/prospects",          requireAuth, requireTenant, prospectsRouter);
+mount("/pipeline",           requireAuth, requireTenant, pipelineRouter);
+mount("/sequences",          requireAuth, requireTenant, sequencesRouter);
+mount("/signals",            requireAuth, requireTenant, signalsRouter);
+mount("/dashboard",          requireAuth, requireTenant, dashboardRouter);
+mount("/activities",         requireAuth, requireTenant, activitiesRouter);
+mount("/workflows",          requireAuth, requireTenant, workflowsRouter);
+mount("/templates",          requireAuth, requireTenant, templatesRouter);
+mount("/webhooks",           requireAuth, requireTenant, webhooksRouter);
+mount("/accounts",           requireAuth, requireTenant, accountsRouter);
+mount("/email",              requireAuth, requireTenant, emailRouter);
+mount("/search",             requireAuth, requireTenant, searchRouter);
+mount("/users",              requireAuth, requireTenant, usersRouter);
+mount("/team",               requireAuth, requireTenant, teamRouter);
+mount("/api-keys",           requireAuth, requireTenant, apiKeysRouter);
+mount("/analytics",          requireAuth, requireTenant, analyticsRouter);
+mount("/plugins",            requireAuth, requireTenant, pluginsRouter);
+mount("/memory",             requireAuth, requireTenant, memoryRouter);
+mount("/meetings",           requireAuth, requireTenant, meetingsRouter);
+mount("/ai-sdr",             requireAuth, requireTenant, aiSdrRouter);
+mount("/deal-coach",         requireAuth, requireTenant, dealCoachRouter);
+mount("/revenue",            requireAuth, requireTenant, revenueRouter);
+mount("/knowledge",          requireAuth, requireTenant, knowledgeRouter);
+mount("/executive",          requireAuth, requireTenant, executiveRouter);
+mount("/sourcing",           requireAuth, requireTenant, sourcingRouter);
+mount("/notifications",      requireAuth, requireTenant, notificationsRouter);
+mount("/admin",              requireAuth, requireTenant, adminRouter);
+mount("/plugin-marketplace", requireAuth, requireTenant, pluginMarketplaceRouter);
+mount("/audit",              requireAuth, requireTenant, auditRouter);
+mount("/enrich",             requireAuth, requireTenant, enrichmentRouter);
+mount("/ereputation",        requireAuth, requireTenant, ereputationRouter);
+mount("/tasks",              requireAuth, requireTenant, tasksRouter);
+mount("/reporting",          requireAuth, requireTenant, reportingRouter);
+mount("/collaboration",      requireAuth, requireTenant, collaborationRouter);
+mount("/compliance",         requireAuth, requireTenant, complianceRouter);
+mount("/sso",                requireAuth, requireTenant, ssoRouter);
+mount("/billing",            requireAuth, requireTenant, billingRouter);
+mount("/integrations",       requireAuth, requireTenant, integrationsRouter);
 
 // ── PORTAIL CLIENT — E-Réputation ────────────────────────────────────────────
 // Auth is handled inside the router (requireAuth + requireRole)
 // No requireTenant here: client tokens are tenant-scoped via JWT
-router.use("/client/ereputation", clientEreputationRouter);
+mount("/client/ereputation", clientEreputationRouter);
 
 // ── Admin Users & Roles ───────────────────────────────────────────────────────
-router.use("/admin", adminUsersRouter);
+mount("/admin", adminUsersRouter);
 
 // ── Admin Plans & Subscriptions ───────────────────────────────────────────────
-router.use("/admin", adminPlansRouter);
+mount("/admin", adminPlansRouter);
 
 // ── Admin Audit Logs ──────────────────────────────────────────────────────────
-router.use("/admin", adminAuditRouter);
+mount("/admin", adminAuditRouter);
 
 // ── Admin Provider API Keys ───────────────────────────────────────────────────
-router.use("/admin", adminApiKeysRouter);
+mount("/admin", adminApiKeysRouter);
 
 // ── Admin Quota Monitoring ────────────────────────────────────────────────────
-router.use("/admin", adminQuotasRouter);
+mount("/admin", adminQuotasRouter);
 
 // ── Route Audit ───────────────────────────────────────────────────────────────
-router.use("/route-audit", requireAuth, routeAuditRouter);
+mount("/route-audit", requireAuth, routeAuditRouter);
 
 // ── Autopilot — Agents IA autonomes ──────────────────────────────────────────
-router.use("/autopilot", requireAuth, requireTenant, autopilotRouter);
+mount("/autopilot", requireAuth, requireTenant, autopilotRouter);
 
 // ── Admin — Signal Cron ───────────────────────────────────────────────────────
-router.use("/admin/cron", adminCronRouter);
+mount("/admin/cron", adminCronRouter);
 
 export default router;

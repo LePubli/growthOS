@@ -21,6 +21,10 @@ const processes = [];
 let apiErrorLog = "";
 const ephemeralDbDir = await mkdtemp(join(tmpdir(), "growthos-smoke-"));
 const setupToken = randomBytes(32).toString("hex");
+// CI runs against a disposable PostgreSQL 16 service, which supports the
+// parallel queries issued inside several dashboard routes. Local development
+// can retain PGlite for fast, low-dependency wizard smoke tests.
+const realPostgresUrl = process.env.SMOKE_POSTGRES_URL;
 
 async function availablePort() {
   const server = createServer();
@@ -36,7 +40,7 @@ const [dbPort, apiPort, companiesPort, ollamaPort] = await Promise.all([
 const base = `http://127.0.0.1:${apiPort}/api/v1`;
 const testEnv = {
   ...process.env,
-  DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${dbPort}/postgres`,
+  DATABASE_URL: realPostgresUrl ?? `postgresql://postgres:postgres@127.0.0.1:${dbPort}/postgres`,
   JWT_SECRET: randomBytes(48).toString("hex"),
   JWT_REFRESH_SECRET: randomBytes(48).toString("hex"),
   ENCRYPTION_KEY: randomBytes(32).toString("hex"),
@@ -121,8 +125,10 @@ try {
     new Promise(resolve => companies.listen(companiesPort, "127.0.0.1", resolve)),
     new Promise(resolve => ollama.listen(ollamaPort, "127.0.0.1", resolve)),
   ]);
-  startProcess("npx", ["--yes", "@electric-sql/pglite-socket", `--db=${ephemeralDbDir}`, `--port=${dbPort}`, "--host=127.0.0.1"]);
-  await delay(3000);
+  if (!realPostgresUrl) {
+    startProcess("npx", ["--yes", "@electric-sql/pglite-socket", `--db=${ephemeralDbDir}`, `--port=${dbPort}`, "--host=127.0.0.1"]);
+    await delay(3000);
+  }
   startProcess("node", ["artifacts/api-server/dist/index.mjs"]);
 
   const initial = await awaitApi();
@@ -234,11 +240,33 @@ try {
     audited = (await request("GET", "/audit/deep", undefined, token)).body;
   }
   check(audited.status === "complete", "Audit profond terminé avec un rapport structuré");
-  check(audited.report.backend.routesDiscovered >= audited.report.backend.routesTested &&
+  check(audited.report.backend.routesDiscovered >= 250 &&
     audited.report.backend.routesTested >= 10,
-    "Inventaire de routes distingué des lectures HTTP réellement testées");
+    "Inventaire de routes Express 5 complet, distinct des lectures réellement vérifiées");
+  check(audited.report.backend.routesTested + audited.report.backend.routesSkipped ===
+    audited.report.backend.routesDiscovered,
+    "Compteurs de couverture cohérents : vérifiées + non testées = recensées");
+  check(audited.report.assessment === "partial" && audited.report.healthScore === null &&
+    audited.report.backend.coveragePct < 100,
+    "Un audit partiel ne se présente jamais comme un faux 100/100");
+  check(audited.report.backend.routesByMethod.POST >= 80 &&
+    audited.report.backend.moduleCoverage.some(m => m.module === "prospects" && m.tested > 0) &&
+    audited.report.backend.untestedRoutes.some(r => r.method === "POST" && r.route === "/api/v1/prospects"),
+    "Inventaire par méthode et module, écritures explicitement non testées");
+  const verified = audited.report.backend;
+  console.log(`  Couverture réelle : ${verified.routesTested}/${verified.routesDiscovered} (${verified.coveragePct}%), ${verified.routesOk} contrôles OK`);
+  for (const route of verified.brokenRoutes) {
+    console.log(`  ⚠ ${route.method} ${route.route}: HTTP ${route.status} — ${route.error ?? "validation échouée"}`);
+  }
+  check(verified.routesTested >= 35, "Modules CRM, tâches, mémoire, autopilot, IA et revenus inclus dans les sondes");
+  if (realPostgresUrl) {
+    check(verified.routes5xx === 0 && verified.contractErrors === 0 && verified.routes4xx === 0,
+      "Aucun code d'erreur ou contrat de réponse invalide sur PostgreSQL 16");
+  } else if (verified.brokenRoutes.length > 0) {
+    console.log("  Note : le simulateur PGlite ne supporte pas toutes les lectures SQL concurrentes ; les erreurs sont vérifiées séparément dans la CI PostgreSQL 16.");
+  }
   const prospectProbe = audited.report.backend.allRoutes.find(r => r.route === "/api/v1/prospects");
-  check(prospectProbe?.status === 200,
+  check(prospectProbe?.status === 200 && prospectProbe.passed,
     `Route CRM avec tenant administrateur : HTTP ${prospectProbe?.status ?? 'absent'} (${prospectProbe?.error ?? 'aucun détail'})`);
 
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
