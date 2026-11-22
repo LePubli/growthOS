@@ -36,6 +36,11 @@ jobs:
       - name: Install exactly the locked dependencies
         run: pnpm install --frozen-lockfile
 
+      # The API references the shared db/api libraries as TypeScript projects.
+      # Build their .d.ts outputs before validating the API from a clean checkout.
+      - name: Compile shared TypeScript libraries
+        run: pnpm exec tsc --build
+
       - name: Check API TypeScript
         run: pnpm --filter @workspace/api-server typecheck
 
