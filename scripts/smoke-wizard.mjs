@@ -43,6 +43,7 @@ const testEnv = {
   COMPANY_DIRECTORY_API_URL: `http://127.0.0.1:${companiesPort}/search`,
   ENABLE_OUTBOUND_EMAIL: "false",
   ALLOW_PUBLIC_REGISTRATION: "false",
+  PLATFORM_ADMIN_EMAILS: "admin@wizard.invalid",
   NODE_ENV: "production",
   PORT: String(apiPort),
 };
