@@ -1,5 +1,5 @@
 import { pool } from "@workspace/db";
-import { signalService } from "../plugin-signal-intelligence/SignalService";
+import { signalService, type Signal } from "../plugin-signal-intelligence/SignalService";
 import { pluginEventBus } from "../plugin-runtime/event-bus";
 import { logger } from "../logger";
 
@@ -234,7 +234,7 @@ class DealCoachService {
     const memories = memRes.rows;
 
     // 4. Fetch signals
-    const signals = await signalService.getSignalsByAccount(company, tenantId).catch(() => []);
+    const signals: Signal[] = await signalService.getSignalsByAccount(company, tenantId).catch(() => []);
     const highImpactSignals = signals.filter(s => s.score >= 70).length;
 
     // 5. Compute params
