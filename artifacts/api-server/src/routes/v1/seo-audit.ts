@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { inspectWebsite } from "../../lib/seo/inspectWebsite";
+import { inspectWebsite, validatePublicWebsite } from "../../lib/seo/inspectWebsite";
 
 const router = Router();
 const quota = new Map<string,{start:number;count:number}>();
@@ -9,6 +9,10 @@ const schema = z.object({url:z.string().min(4).max(500)});
 router.post("/check", async (req,res)=>{
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({error:"URL invalide"}); return; }
+  // Invalid/local/private URL inputs are client errors. Only remote fetch
+  // failures are 422. Reject before consuming the tenant's hourly quota.
+  try { validatePublicWebsite(parsed.data.url); }
+  catch { res.status(400).json({error:"Adresse HTTPS publique invalide ou non autorisée"}); return; }
   const tenant = req.auth!.tenantId;
   const now = Date.now();
   const old = quota.get(tenant);
