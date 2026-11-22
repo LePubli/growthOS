@@ -212,6 +212,34 @@ try {
     "Résultats liés à leur job de sourcing");
   const crm = await request("GET", "/prospects", undefined, token);
   check(crm.status === 200 && crm.body.total === 2, "Entreprises présentes dans le CRM");
+  const csvRows = [
+    { firstName: "Alice", lastName: "Import", email: "alice.csv@example.com", status: "new" },
+    { firstName: "Alice", lastName: "Bis", email: "ALICE.CSV@example.com", status: "new" },
+    { firstName: "Bob", lastName: "Import", email: "bob.csv@example.com", status: "contacted" },
+  ];
+  const firstImport = await request("POST", "/prospects/bulk",
+    { prospects: csvRows, duplicateMode: "skip" }, token);
+  check(firstImport.status === 201 && firstImport.body.imported === 2 &&
+    firstImport.body.duplicates === 1 && firstImport.body.skipped === 1,
+    "Import CSV : doublon dans le fichier ignoré");
+  const repeatImport = await request("POST", "/prospects/bulk",
+    { prospects: [csvRows[0], csvRows[2]], duplicateMode: "skip" }, token);
+  check(repeatImport.status === 201 && repeatImport.body.imported === 0 &&
+    repeatImport.body.duplicates === 2 && repeatImport.body.skipped === 2,
+    "Import CSV : doublons déjà présents en base ignorés");
+  const updateImport = await request("POST", "/prospects/bulk", {
+    prospects: [{ ...csvRows[0], company: "Entreprise mise à jour" }],
+    duplicateMode: "update",
+  }, token);
+  const changedProspect = await request("GET", "/prospects?search=alice.csv%40example.com", undefined, token);
+  check(updateImport.status === 201 && updateImport.body.updated === 1 &&
+    updateImport.body.imported === 0 && changedProspect.body.data?.[0]?.company === "Entreprise mise à jour",
+    "Import CSV : mise à jour d'un doublon réellement persistée");
+  const invalidImport = await request("POST", "/prospects/bulk", {
+    prospects: [{ firstName: "Invalid", email: "not-an-email", status: "new" }],
+  }, token);
+  check(invalidImport.status === 400, "Import CSV : email invalide refusé sans insertion");
+
 
   const enrichmentSources = await request("GET", "/enrich/sources", undefined, token);
   check(enrichmentSources.status === 200 && enrichmentSources.body.some(s => s.id === "google_news" && s.implemented) &&
