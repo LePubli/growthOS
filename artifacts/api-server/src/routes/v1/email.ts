@@ -1,72 +1,35 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import { sequencesTable, prospectsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
-import { sendEmail, buildProspectingEmail } from "../../services/email";
+import { z } from "zod";
+import { requireRole } from "../../middlewares/auth";
+import { sendEmail } from "../../services/email";
 
 const router = Router();
+router.use(requireRole("admin"));
 
-// POST /email/send — send a one-off email to a prospect
-router.post("/send", async (req, res) => {
-  try {
-    const tenantId = (req as any).auth?.tenantId;
-    if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const { to, subject, html, prospectId } = req.body;
-    if (!to || !subject) { res.status(400).json({ error: "Missing to or subject" }); return; }
-
-    const result = await sendEmail({ to, subject, html: html || `<p>${subject}</p>` });
-    res.json(result);
-    return;
-  } catch (err) {
-    res.status(500).json({ error: "Send failed" });
-    return;
-  }
+const manualEmailSchema = z.object({
+  to: z.string().email(),
+  subject: z.string().trim().min(1).max(200),
+  html: z.string().trim().min(1).max(100000),
 });
 
-// POST /email/sequences/:id/launch — launch a sequence for a prospect
-router.post("/sequences/:id/launch", async (req, res) => {
-  try {
-    const tenantId = (req as any).auth?.tenantId;
-    if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const { prospectId, senderName } = req.body;
-    if (!prospectId) { res.status(400).json({ error: "Missing prospectId" }); return; }
-
-    const [prospect] = await db.select().from(prospectsTable)
-      .where(and(eq(prospectsTable.id, prospectId), eq(prospectsTable.tenantId, tenantId)));
-
-    if (!prospect || !prospect.email) {
-      res.status(404).json({ error: "Prospect not found or has no email" });
-      return;
-    }
-
-    const [sequence] = await db.select().from(sequencesTable)
-      .where(and(eq(sequencesTable.id, req.params.id), eq(sequencesTable.tenantId, tenantId)));
-
-    if (!sequence) { res.status(404).json({ error: "Sequence not found" }); return; }
-
-    // Send first step immediately
-    const html = buildProspectingEmail({
-      firstName: prospect.firstName || "là",
-      company: prospect.company || "",
-      senderName: senderName || "L'équipe GrowthOS",
-      bodyHtml: `<p>Je me permets de vous contacter concernant ${sequence.name}.</p>`,
-    });
-
-    const result = await sendEmail({
-      to: prospect.email,
-      subject: `${sequence.name} — étape 1`,
-      html,
-      tags: [{ name: "sequence", value: sequence.id }, { name: "prospect", value: prospect.id }],
-    });
-
-    res.json({ ...result, message: result.success ? "Séquence lancée avec succès" : "Email non envoyé (configurez Resend)" });
-    return;
-  } catch (err) {
-    res.status(500).json({ error: "Launch failed" });
+// Only intentionally enabled one-off mail; no fake delivery receipts.
+router.post("/send", async (req, res) => {
+  const parsed = manualEmailSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Destinataire, objet ou contenu invalide" });
     return;
   }
+  const result = await sendEmail({ tenantId: req.auth!.tenantId, ...parsed.data });
+  res.status(result.success ? 200 : 409).json(result);
+});
+
+// The earlier implementation sent only the first untracked email. It had no
+// opt-out, list suppression, pause-on-reply or scheduler. Prevent customers
+// from interpreting it as a working multi-step outreach sequence.
+router.post("/sequences/:id/launch", (_req, res) => {
+  res.status(409).json({
+    error: "Séquences d'envoi suspendues : il faut d'abord ajouter les désabonnements, la gestion des réponses et le planificateur.",
+  });
 });
 
 export default router;

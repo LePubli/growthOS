@@ -46,7 +46,7 @@ router.get("/webhooks/logs", requireAuth, async (req, res) => {
 });
 
 router.get("/webhooks/:id/logs", requireAuth, async (req, res) => {
-  const logs = await WebhookService.getLogs(req.auth!.tenantId, req.params.id, 50);
+  const logs = await WebhookService.getLogs(req.auth!.tenantId, String(req.params.id), 50);
   res.json(logs);
 });
 
@@ -80,7 +80,7 @@ router.patch("/webhooks/:id", requireAuth, async (req, res) => {
   const [updated] = await db
     .update(webhooksTable)
     .set({ ...parse.data, updatedAt: new Date() })
-    .where(and(eq(webhooksTable.id, req.params.id), eq(webhooksTable.tenantId, req.auth!.tenantId)))
+    .where(and(eq(webhooksTable.id, String(req.params.id)), eq(webhooksTable.tenantId, req.auth!.tenantId)))
     .returning();
   if (!updated) { res.status(404).json({ error: "Webhook introuvable" }); return; }
   res.json(updated);
@@ -91,13 +91,13 @@ router.post("/webhooks/:id/toggle", requireAuth, async (req, res) => {
   const [wh] = await db
     .select()
     .from(webhooksTable)
-    .where(and(eq(webhooksTable.id, req.params.id), eq(webhooksTable.tenantId, req.auth!.tenantId)))
+    .where(and(eq(webhooksTable.id, String(req.params.id)), eq(webhooksTable.tenantId, req.auth!.tenantId)))
     .limit(1);
   if (!wh) { res.status(404).json({ error: "Webhook introuvable" }); return; }
   const [updated] = await db
     .update(webhooksTable)
     .set({ status: wh.status === "active" ? "paused" : "active", updatedAt: new Date() })
-    .where(eq(webhooksTable.id, req.params.id))
+    .where(eq(webhooksTable.id, String(req.params.id)))
     .returning();
   res.json(updated);
 });
@@ -107,7 +107,7 @@ router.post("/webhooks/:id/test", requireAuth, async (req, res) => {
   const [wh] = await db
     .select()
     .from(webhooksTable)
-    .where(and(eq(webhooksTable.id, req.params.id), eq(webhooksTable.tenantId, req.auth!.tenantId)))
+    .where(and(eq(webhooksTable.id, String(req.params.id)), eq(webhooksTable.tenantId, req.auth!.tenantId)))
     .limit(1);
   if (!wh) { res.status(404).json({ error: "Webhook introuvable" }); return; }
   await WebhookService.triggerEvent(req.auth!.tenantId, "test.ping", {
@@ -121,7 +121,7 @@ router.post("/webhooks/:id/test", requireAuth, async (req, res) => {
 /* ── Supprimer un webhook ── */
 router.delete("/webhooks/:id", requireAuth, async (req, res) => {
   await db.delete(webhooksTable).where(
-    and(eq(webhooksTable.id, req.params.id), eq(webhooksTable.tenantId, req.auth!.tenantId)),
+    and(eq(webhooksTable.id, String(req.params.id)), eq(webhooksTable.tenantId, req.auth!.tenantId)),
   );
   res.json({ ok: true });
 });

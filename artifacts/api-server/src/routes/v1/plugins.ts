@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { requireAuth } from "../../middlewares/auth";
+import { requirePlatformAdmin } from "../../middlewares/platformAdmin";
 import { pluginManager } from "../../lib/plugin-runtime";
 import { logger } from "../../lib/logger";
 import { writeAuditLog, fetchAuditLogs } from "../../lib/plugin-runtime/audit";
@@ -10,8 +11,8 @@ const router = Router();
 
 // Helper to safely extract user info from request
 const getUserInfo = (req: Request) => ({
-  userId: req.auth?.userId ?? req.user?.userId ?? "system",
-  email: req.auth?.email ?? req.user?.email ?? "system@growthos.io",
+  userId: req.auth?.userId ?? "system",
+  email: req.auth?.email ?? "system@growthos.io",
 });
 
 /**
@@ -55,7 +56,7 @@ router.get("/audit", requireAuth, async (req, res) => {
  * POST /api/v1/plugins/register
  * Register a new plugin manifest at runtime.
  */
-router.post("/register", requireAuth, async (req, res) => {
+router.post("/register", requireAuth, requirePlatformAdmin, async (req, res) => {
   try {
     const { userId, email } = getUserInfo(req);
     const record = pluginManager.register(req.body);
@@ -92,13 +93,14 @@ router.post("/register", requireAuth, async (req, res) => {
  * POST /api/v1/plugins/:id/disable
  * Disable an active plugin.
  */
-router.post("/:id/disable", requireAuth, async (req, res) => {
-  const { id: pluginId } = req.params;
+router.post("/:id/disable", requireAuth, requirePlatformAdmin, async (req, res) => {
+  const pluginId = String(req.params.id);
   const { userId, email } = getUserInfo(req);
   const record = pluginManager.all().find((r) => r.manifest.id === pluginId);
 
   if (!record) {
-    return res.status(404).json({ error: `Plugin '${pluginId}' not found` });
+    res.status(404).json({ error: `Plugin '${pluginId}' not found` });
+    return;
   }
 
   try {
@@ -128,13 +130,14 @@ router.post("/:id/disable", requireAuth, async (req, res) => {
  * POST /api/v1/plugins/:id/enable
  * Re-enable a previously disabled plugin.
  */
-router.post("/:id/enable", requireAuth, async (req, res) => {
-  const { id: pluginId } = req.params;
+router.post("/:id/enable", requireAuth, requirePlatformAdmin, async (req, res) => {
+  const pluginId = String(req.params.id);
   const { userId, email } = getUserInfo(req);
   const record = pluginManager.all().find((r) => r.manifest.id === pluginId);
 
   if (!record) {
-    return res.status(404).json({ error: `Plugin '${pluginId}' not found` });
+    res.status(404).json({ error: `Plugin '${pluginId}' not found` });
+    return;
   }
 
   try {
@@ -182,17 +185,19 @@ router.get("/marketplace", requireAuth, (_req, res) => {
  * Install all plugins in a given pack by enabling any that are disabled.
  * Body: { packId: string }
  */
-router.post("/packs/install", requireAuth, async (req, res) => {
+router.post("/packs/install", requireAuth, requirePlatformAdmin, async (req, res) => {
   const { packId } = req.body as { packId?: string };
   const { userId, email } = getUserInfo(req);
 
   if (!packId || typeof packId !== "string") {
-    return res.status(400).json({ error: "packId is required" });
+    res.status(400).json({ error: "packId is required" });
+    return;
   }
 
   const pack = packManager.getPack(packId);
   if (!pack) {
-    return res.status(404).json({ error: `Pack "${packId}" not found` });
+    res.status(404).json({ error: `Pack "${packId}" not found` });
+    return;
   }
 
   try {

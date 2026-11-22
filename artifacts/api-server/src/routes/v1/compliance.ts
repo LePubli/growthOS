@@ -59,7 +59,8 @@ router.post("/delete-data", requireAuth, async (req, res) => {
   const { confirm } = req.body;
 
   if (confirm !== "DELETE_MY_DATA") {
-    return res.status(400).json({ error: "Confirmation requise : envoyez confirm='DELETE_MY_DATA'" });
+    res.status(400).json({ error: "Confirmation requise : envoyez confirm='DELETE_MY_DATA'" });
+    return;
   }
 
   await Promise.all([

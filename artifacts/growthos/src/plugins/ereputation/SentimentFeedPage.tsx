@@ -38,17 +38,19 @@ export default function SentimentFeedPage() {
   const [newText, setNewText] = useState('');
   const [newUrl, setNewUrl] = useState('');
 
-  const { data: campaigns = [] } = useQuery({
+  const { data: campaigns = [] } = useQuery<Campaign[]>({
     queryKey: ['erep-campaigns'],
     queryFn: () => apiClient.get('/ereputation/campaigns') as Promise<Campaign[]>,
-    onSuccess: (d) => { if (!selectedCampaign && d.length) setSelectedCampaign(d[0]!.id); },
   });
+  React.useEffect(() => {
+    if (!selectedCampaign && campaigns.length) setSelectedCampaign(campaigns[0]!.id);
+  }, [campaigns, selectedCampaign]);
 
-  const { data: logs = MOCK_LOGS, isLoading } = useQuery({
+  const { data: logs = [], isLoading } = useQuery<SentimentLog[]>({
     queryKey: ['erep-sentiment', selectedCampaign],
     queryFn: () => selectedCampaign
       ? apiClient.get(`/ereputation/campaigns/${selectedCampaign}/sentiment`) as Promise<SentimentLog[]>
-      : Promise.resolve(MOCK_LOGS),
+      : Promise.resolve([]),
   });
 
   const addMut = useMutation({
@@ -69,7 +71,7 @@ export default function SentimentFeedPage() {
     finally { setLoadingAI(null); }
   };
 
-  const displayLogs = (logs.length ? logs : MOCK_LOGS).filter(l => filter === 'all' || l.sentiment === filter);
+  const displayLogs = logs.filter(l => filter === 'all' || l.sentiment === filter);
 
   const elapsed = (dateStr: string) => {
     const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;

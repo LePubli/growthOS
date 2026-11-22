@@ -5,13 +5,14 @@
  */
 
 import { providerKeysService } from "../provider-keys/ProviderKeysService";
+import { pool } from "@workspace/db";
 import { logger } from "../logger";
 
 /* ─── Config providers ───────────────────────────────────────── */
 
 const OPENAI_COMPAT_PROVIDERS: Record<string, { baseUrl: string; defaultModel: string }> = {
   openai:   { baseUrl: "https://api.openai.com/v1",      defaultModel: "gpt-4o-mini" },
-  deepseek: { baseUrl: "https://api.deepseek.com/v1",    defaultModel: "deepseek-chat" },
+  deepseek: { baseUrl: "https://api.deepseek.com",       defaultModel: "deepseek-flash" },
   mistral:  { baseUrl: "https://api.mistral.ai/v1",      defaultModel: "mistral-small-latest" },
   gemini:   { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", defaultModel: "gemini-2.0-flash" },
 };
@@ -21,10 +22,25 @@ const DEFAULT_TIMEOUT_MS = 25_000;
 /* ─── Types ──────────────────────────────────────────────────── */
 
 export interface LLMOptions {
-  /** Provider à utiliser. Défaut : "ollama" */
+  /** Provider to use. When omitted, the tenant's explicitly selected cloud provider is used. */
   provider?: string;
   /** tenantId pour récupérer la clé en DB */
   tenantId?: string;
+}
+
+/** Ollama is kept available on demand but is never the implicit fallback. */
+export async function resolveDefaultAiProvider(tenantId?: string): Promise<string | null> {
+  if (!tenantId) return null;
+  try {
+    const { rows } = await pool.query<{ provider: string | null }>(
+      "SELECT settings->>'aiProvider' AS provider FROM tenants WHERE id = $1",
+      [tenantId],
+    );
+    const provider = rows[0]?.provider;
+    return provider && ["anthropic", "openai", "deepseek"].includes(provider) ? provider : null;
+  } catch {
+    return null;
+  }
 }
 
 /* ─── Helpers ────────────────────────────────────────────────── */
@@ -101,11 +117,11 @@ async function callAnthropic(prompt: string, apiKey: string): Promise<string | n
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${apiKey}`,
+        "anthropic-version": "2026-10-21",
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
+        model: "claude-haiku-5-5",
         max_tokens: 1500,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -129,8 +145,10 @@ class LLMService {
    * Retourne null si le provider est indisponible / clé manquante → le service appelant utilise son mock.
    */
   async generate(prompt: string, opts: LLMOptions = {}): Promise<string | null> {
-    const provider = opts.provider ?? "ollama";
+    const provider = opts.provider ?? await resolveDefaultAiProvider(opts.tenantId);
     const tenantId = opts.tenantId;
+
+    if (!provider || provider === "disabled") return null;
 
     logger.debug({ provider, tenantId: tenantId ? "***" : undefined }, "LLM generate");
 

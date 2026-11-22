@@ -84,10 +84,9 @@ router.get("/", async (req, res) => {
 
   const where = and(...conditions);
 
-  const [rows, [{ total }]] = await Promise.all([
-    db.select().from(prospectsTable).where(where).orderBy(desc(prospectsTable.createdAt)).limit(parseInt(limit)).offset(offset),
-    db.select({ total: count() }).from(prospectsTable).where(where),
-  ]);
+  const rows = await db.select().from(prospectsTable).where(where)
+    .orderBy(desc(prospectsTable.createdAt)).limit(parseInt(limit)).offset(offset);
+  const [{ total }] = await db.select({ total: count() }).from(prospectsTable).where(where);
 
   // When ?geo=1 is requested, also return a geoOnly list (prospects with coords, up to 500)
   if (geo === "1") {

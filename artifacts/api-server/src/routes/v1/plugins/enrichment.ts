@@ -29,7 +29,7 @@ router.post("/batch", requireAuth, async (req, res) => {
 
 /* POST /enrich/:prospectId — enrich a single prospect */
 router.post("/:prospectId", requireAuth, async (req, res) => {
-  const { prospectId } = req.params;
+  const prospectId = String(req.params.prospectId);
   const tenantId = req.auth!.tenantId;
   try {
     const result = await enrichProspect(prospectId, tenantId);
@@ -42,14 +42,14 @@ router.post("/:prospectId", requireAuth, async (req, res) => {
 
 /* GET /enrich/data/:prospectId — get enriched data */
 router.get("/data/:prospectId", requireAuth, async (req, res) => {
-  const { prospectId } = req.params;
+  const prospectId = String(req.params.prospectId);
   const data = await getEnrichmentData(prospectId);
   res.json(data);
 });
 
 /* GET /enrich/history/:prospectId — get enrichment history */
 router.get("/history/:prospectId", requireAuth, async (req, res) => {
-  const { prospectId } = req.params;
+  const prospectId = String(req.params.prospectId);
   const history = await getEnrichmentHistory(prospectId);
   res.json(history);
 });

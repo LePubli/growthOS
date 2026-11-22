@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
   Search, Plus, Play, Pause, CheckCircle, Clock, AlertCircle, Loader2,
@@ -8,6 +8,13 @@ import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
 
 const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; color: string; fields: { key:string; label:string; placeholder:string; type?:string }[] }> = {
+  entreprises: {
+    name: 'Annuaire des entreprises', icon: '🇫🇷', desc: 'Entreprises françaises — données officielles publiques', color: '#2563EB',
+    fields: [
+      { key: 'query', label: 'Activité / nom / localisation', placeholder: 'Ex : agence immobilière Lille' },
+      { key: 'limit', label: 'Nombre de résultats (1 à 25)', placeholder: '10', type: 'number' },
+    ],
+  },
   linkedin: {
     name:'LinkedIn Sales Navigator', icon:'💼', desc:'Décideurs B2B — titre, entreprise, localisation', color:'#0A66C2',
     fields:[
@@ -56,6 +63,7 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
     ],
   },
 };
+const SUPPORTED_TYPES = new Set(['entreprises']);
 
 const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:string}> = {
   completed:{ label:'Terminé',  color:'#065F46', bg:'#ECFDF5', dot:'#10B981' },
@@ -64,14 +72,6 @@ const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:stri
   error:    { label:'Erreur',   color:'#991B1B', bg:'#FEF2F2', dot:'#EF4444' },
   queued:   { label:'En attente',color:'#374151',bg:'#F3F4F6', dot:'#9CA3AF' },
 };
-
-const MOCK_JOBS: any[] = [
-  { id:'1', type:'linkedin', name:'Directeurs commerciaux Paris', status:'completed', count:127, duration:'2m 34s', createdAt:'il y a 1h',  params:{keywords:'Directeur Commercial',location:'Paris',limit:'150'} },
-  { id:'2', type:'google',   name:'Agences immobilières Bordeaux', status:'running',  count:45,  duration:'1m 12s', createdAt:'il y a 5 min',params:{query:'Agences immobilières',location:'Bordeaux',limit:'50'}, progress:62 },
-  { id:'3', type:'societe_info', name:'PME tech Île-de-France',  status:'paused',   count:0,   duration:'—',      createdAt:'il y a 2j',  params:{activity:'6201Z',location:'75',limit:'100'} },
-  { id:'4', type:'linkedin', name:'CEO Scale-up SaaS',          status:'error',    count:0,   duration:'—',      createdAt:'il y a 3j',  params:{keywords:'CEO',location:'France',limit:'200'}, error:'Rate limit LinkedIn atteint' },
-  { id:'5', type:'twitter',  name:'Signaux levées de fonds',     status:'completed', count:38,  duration:'45s',    createdAt:'il y a 1j',  params:{keywords:'#fundraising #levee',limit:'50'} },
-];
 
 function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:any)=>void }) {
   const [step, setStep] = useState<1|2>(1);
@@ -85,17 +85,14 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
   const launch = async () => {
     if (!name.trim()) { toast.error('Nom requis'); return; }
     setLaunching(true);
-    await new Promise(r=>setTimeout(r,800));
-    const job = {
-      id: Date.now().toString(), type, name,
-      status:'queued', count:0, duration:'—',
-      createdAt:'à l\'instant', params, progress:0,
-    };
-    try { await apiClient.post('/sourcing/jobs', { type, name, params }).catch(()=>null); } catch {}
-    onLaunch(job);
-    toast.success('Job de scraping lancé !');
-    setLaunching(false);
-    onClose();
+    try {
+      const job = await apiClient.post('/sourcing/jobs', { type, name, params });
+      onLaunch(job);
+      toast.success(`${job.count ?? 0} entreprise(s) importée(s) dans le CRM`);
+      onClose();
+    } catch (error: any) {
+      toast.error(error.message ?? 'Import impossible');
+    } finally { setLaunching(false); }
   };
 
   const selectedType = SCRAPER_TYPES[type];
@@ -124,11 +121,12 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
               <h3 className="font-semibold text-gray-800 mb-4">Choisissez une source</h3>
               <div className="grid grid-cols-2 gap-3 mb-5">
                 {Object.entries(SCRAPER_TYPES).map(([id,t])=>(
-                  <button key={id} onClick={()=>setType(id)}
-                    className={`text-left p-3.5 rounded-xl border-2 transition-all ${type===id?'border-teal-500 bg-teal-50':'border-gray-200 hover:border-gray-300'}`}>
+                  <button key={id} onClick={()=>setType(id)} disabled={!SUPPORTED_TYPES.has(id)}
+                    className={`text-left p-3.5 rounded-xl border-2 transition-all ${type===id?'border-teal-500 bg-teal-50':'border-gray-200 hover:border-gray-300'} ${SUPPORTED_TYPES.has(id) ? '' : 'opacity-40 cursor-not-allowed'}`}>
                     <div className="text-2xl mb-2">{t.icon}</div>
                     <div className="font-semibold text-sm text-gray-900 mb-0.5">{t.name}</div>
                     <div className="text-xs text-gray-400">{t.desc}</div>
+                    {!SUPPORTED_TYPES.has(id) && <div className="text-xs text-amber-700 mt-1">Intégration non disponible</div>}
                   </button>
                 ))}
               </div>
@@ -177,49 +175,39 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
 
 export default function SourcingPage() {
   const [, navigate] = useLocation();
-  const [jobs, setJobs] = useState(MOCK_JOBS);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [showNew, setShowNew] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
-  const progressRef = useRef<ReturnType<typeof setInterval>|null>(null);
-
   useEffect(()=>{
-    apiClient.get('/sourcing/jobs').then((d:any)=>{
-      const l = Array.isArray(d)?d:d?.data||[];
-      if(l.length>0) setJobs(l);
-    }).catch(()=>{});
+    let mounted = true;
+    const reload = () => apiClient.get('/sourcing/jobs').then((d:any)=>{
+      if (mounted) setJobs(Array.isArray(d) ? d : d?.data ?? []);
+    }).catch((error: any)=>{ if (mounted) toast.error(error.message ?? 'Sourcing indisponible'); });
+    reload();
+    const timer = setInterval(reload, 15000);
+    return ()=>{ mounted = false; clearInterval(timer); };
   },[]);
 
-  // Simulate progress for running jobs
-  useEffect(()=>{
-    progressRef.current = setInterval(()=>{
-      setJobs(js=>js.map(j=>{
-        if(j.status!=='running') return j;
-        const newProg = Math.min((j.progress||0)+2, 100);
-        if(newProg>=100) return {...j,status:'completed',progress:100,count:j.count+Math.floor(Math.random()*5)+1};
-        return {...j,progress:newProg,count:j.count+1};
-      }));
-    },2000);
-    return ()=>{ if(progressRef.current) clearInterval(progressRef.current); };
-  },[]);
-
-  const retryJob = (id:string, e:React.MouseEvent) => {
+  const retryJob = async (id:string, e:React.MouseEvent) => {
     e.stopPropagation();
-    setJobs(js=>js.map(j=>j.id===id?{...j,status:'queued',error:undefined,progress:0}:j));
-    setTimeout(()=>setJobs(js=>js.map(j=>j.id===id?{...j,status:'running',progress:0}:j)),1000);
-    toast.success('Job relancé');
+    const old = jobs.find(j=>j.id===id);
+    if (!old || !SUPPORTED_TYPES.has(old.type)) { toast.error('Source non disponible'); return; }
+    try {
+      const newJob = await apiClient.post('/sourcing/jobs', { type: old.type, name: old.name, params: old.params });
+      setJobs(js=>[newJob,...js]);
+      toast.success('Nouvelle recherche effectuée');
+    } catch (error: any) { toast.error(error.message ?? 'Échec de la recherche'); }
   };
 
-  const pauseJob = (id:string, e:React.MouseEvent) => {
-    e.stopPropagation();
-    setJobs(js=>js.map(j=>j.id===id?{...j,status:j.status==='running'?'paused':'running'}:j));
-  };
-
-  const deleteJob = (id:string, e:React.MouseEvent) => {
+  const deleteJob = async (id:string, e:React.MouseEvent) => {
     e.stopPropagation();
     if(!confirm('Supprimer ce job ?')) return;
-    setJobs(js=>js.filter(j=>j.id!==id));
-    toast.success('Job supprimé');
+    try {
+      await apiClient.delete(`/sourcing/jobs/${id}`);
+      setJobs(js=>js.filter(j=>j.id!==id));
+      toast.success('Job supprimé (les prospects déjà importés sont conservés)');
+    } catch (error: any) { toast.error(error.message ?? 'Suppression impossible'); }
   };
 
   const filtered = jobs.filter(j=>{
@@ -229,7 +217,7 @@ export default function SourcingPage() {
     return matchSearch && matchStatus;
   });
 
-  const totalCollected = jobs.filter(j=>j.status==='completed').reduce((s,j)=>s+j.count,0);
+  const totalCollected = jobs.filter(j=>j.status==='completed').reduce((s,j)=>s+Number(j.count || 0),0);
   const running = jobs.filter(j=>j.status==='running').length;
   const completed = jobs.filter(j=>j.status==='completed').length;
 
@@ -256,7 +244,7 @@ export default function SourcingPage() {
           {l:'Prospects collectés', v:totalCollected, icon:<Users size={16}/>, color:'text-blue-600 bg-blue-50'},
           {l:'Jobs terminés',       v:completed,       icon:<CheckCircle size={16}/>, color:'text-green-600 bg-green-50'},
           {l:'En cours',           v:running,         icon:<Loader2 size={16}/>, color:'text-purple-600 bg-purple-50'},
-          {l:'Sources dispo.',     v:Object.keys(SCRAPER_TYPES).length, icon:<Globe size={16}/>, color:'text-teal-600 bg-teal-50'},
+          {l:'Sources dispo.',     v:SUPPORTED_TYPES.size, icon:<Globe size={16}/>, color:'text-teal-600 bg-teal-50'},
         ].map((m,i)=>(
           <div key={i} className="rounded-2xl border p-4 flex items-center gap-3" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${m.color}`}>{m.icon}</div>
@@ -273,9 +261,9 @@ export default function SourcingPage() {
         <div className="text-xs font-semibold mb-3 uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Sources disponibles — cliquez pour lancer</div>
         <div className="flex flex-wrap gap-2">
           {Object.entries(SCRAPER_TYPES).map(([id,t])=>(
-            <button key={id} onClick={()=>setShowNew(true)}
+            <button key={id} onClick={()=>setShowNew(true)} disabled={!SUPPORTED_TYPES.has(id)}
               className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-all hover:shadow-sm"
-              style={{background:'var(--body-bg)',borderColor:'var(--card-border)',color:'var(--text-secondary)'}}>
+              style={{background:'var(--body-bg)',borderColor:'var(--card-border)',color:'var(--text-secondary)',opacity:SUPPORTED_TYPES.has(id)?1:.4,cursor:SUPPORTED_TYPES.has(id)?'pointer':'not-allowed'}} title={SUPPORTED_TYPES.has(id) ? t.name : 'Connecteur non disponible'}>
               <span>{t.icon}</span>{t.name.split(' ')[0]}
             </button>
           ))}
@@ -334,7 +322,7 @@ export default function SourcingPage() {
                         <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{background:sc.bg,color:sc.color}}>{sc.label}</span>
                       </div>
                     </div>
-                    <div className="text-xs mb-1" style={{color:'var(--text-muted)'}}>{src.name} · {job.createdAt}</div>
+                    <div className="text-xs mb-1" style={{color:'var(--text-muted)'}}>{src.name} · {job.createdAt ? new Date(job.createdAt).toLocaleString('fr-FR') : 'Date inconnue'}</div>
                     {job.error && <div className="text-xs text-red-500 mb-1">⚠ {job.error}</div>}
                     {/* Progress bar for running jobs */}
                     {isRunning && (
@@ -363,13 +351,7 @@ export default function SourcingPage() {
                           <Eye size={14} style={{color:'var(--text-muted)'}}/>
                         </button>
                       )}
-                      {(job.status==='running'||job.status==='paused') && (
-                        <button onClick={e=>pauseJob(job.id,e)}
-                          className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-                          {job.status==='running'?<Pause size={14} style={{color:'#D97706'}}/>:<Play size={14} style={{color:'#059669'}}/>}
-                        </button>
-                      )}
-                      {(job.status==='error'||job.status==='paused') && (
+                      {(job.status==='error'||job.status==='paused') && SUPPORTED_TYPES.has(job.type) && (
                         <button onClick={e=>retryJob(job.id,e)}
                           className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors" title="Relancer">
                           <RotateCcw size={14} style={{color:'#2563EB'}}/>

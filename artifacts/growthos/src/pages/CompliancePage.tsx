@@ -109,11 +109,11 @@ export default function CompliancePage() {
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                       <button onClick={() => consentMut.mutate({ consentType: c.type, granted: true })}
-                        style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: granted ? '#D1FAE5' : 'var(--card-bg)', color: granted ? '#059669' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: granted ? '1.5px solid #059669' : '1px solid var(--card-border)' as any }}>
+                        style={{ padding: '5px 12px', borderRadius: 7, background: granted ? '#D1FAE5' : 'var(--card-bg)', color: granted ? '#059669' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: granted ? '1.5px solid #059669' : '1px solid var(--card-border)' }}>
                         ✓ Accepter
                       </button>
                       <button onClick={() => consentMut.mutate({ consentType: c.type, granted: false })}
-                        style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: !granted && existing ? '#FEF2F2' : 'var(--card-bg)', color: !granted && existing ? '#DC2626' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: !granted && existing ? '1.5px solid #DC2626' : '1px solid var(--card-border)' as any }}>
+                        style={{ padding: '5px 12px', borderRadius: 7, background: !granted && existing ? '#FEF2F2' : 'var(--card-bg)', color: !granted && existing ? '#DC2626' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: !granted && existing ? '1.5px solid #DC2626' : '1px solid var(--card-border)' }}>
                         ✕ Refuser
                       </button>
                     </div>

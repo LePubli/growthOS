@@ -56,17 +56,19 @@ export default function SocialCalendarPage() {
   const [form, setForm] = useState({ platform: 'LinkedIn', tone: 'professionnel', content: '', scheduledAt: '' });
   const [view, setView] = useState<'list' | 'calendar'>('list');
 
-  const { data: campaigns = [] } = useQuery({
+  const { data: campaigns = [] } = useQuery<Campaign[]>({
     queryKey: ['erep-campaigns'],
     queryFn: () => apiClient.get('/ereputation/campaigns') as Promise<Campaign[]>,
-    onSuccess: (d) => { if (!selectedCampaign && d.length) setSelectedCampaign(d[0]!.id); },
   });
+  React.useEffect(() => {
+    if (!selectedCampaign && campaigns.length) setSelectedCampaign(campaigns[0]!.id);
+  }, [campaigns, selectedCampaign]);
 
-  const { data: posts = MOCK_POSTS } = useQuery({
+  const { data: posts = [] } = useQuery<Post[]>({
     queryKey: ['erep-posts', selectedCampaign],
     queryFn: () => selectedCampaign
       ? apiClient.get(`/ereputation/campaigns/${selectedCampaign}/posts`) as Promise<Post[]>
-      : Promise.resolve(MOCK_POSTS),
+      : Promise.resolve([]),
   });
 
   const createPost = useMutation({
@@ -98,7 +100,7 @@ export default function SocialCalendarPage() {
     finally { setGeneratingContent(false); }
   };
 
-  const displayPosts = posts.length ? posts : MOCK_POSTS;
+  const displayPosts = posts;
 
   const formatDate = (d: string | null) => d
     ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })

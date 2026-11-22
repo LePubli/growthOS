@@ -1,0 +1,71 @@
+# GrowthOS, DockPanel deployment (same-origin /api/v1 reverse proxy).
+# Only the frontend is bound to the host, and only on loopback until it is
+# protected and exposed through DockPanel's HTTPS reverse proxy.
+services:
+  growthos-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 0.50
+    pids_limit: 200
+    environment:
+      POSTGRES_DB: growthos
+      POSTGRES_USER: growthos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - growthos-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U growthos -d growthos"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  api-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.00
+    pids_limit: 200
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: postgresql://growthos:${POSTGRES_PASSWORD}@growthos-db:5432/growthos
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      SETUP_TOKEN: ${SETUP_TOKEN:?SETUP_TOKEN is required}
+      PLATFORM_ADMIN_EMAILS: ${PLATFORM_ADMIN_EMAILS:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      ALLOW_PUBLIC_REGISTRATION: "false"
+      ENABLE_OUTBOUND_EMAIL: "false"
+    expose:
+      - "3001"
+    depends_on:
+      growthos-db:
+        condition: service_healthy
+
+  growthos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BASE_PATH: /
+        VITE_API_URL: /api/v1
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.25
+    pids_limit: 100
+    environment:
+      VITE_API_URL: /api/v1
+    ports:
+      - "127.0.0.1:${GROWTHOS_HOST_PORT:-13000}:3000"
+    depends_on:
+      api-server:
+        condition: service_healthy
+
+volumes:
+  growthos-postgres-data:

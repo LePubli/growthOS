@@ -100,7 +100,7 @@ router.post("/mention", requireAuth, async (req, res) => {
 });
 
 router.patch("/mentions/:id/read", requireAuth, async (req, res) => {
-  await CollaborationService.markMentionRead(req.params.id, req.auth!.userId);
+  await CollaborationService.markMentionRead(String(req.params.id), req.auth!.userId);
   res.json({ ok: true });
 });
 

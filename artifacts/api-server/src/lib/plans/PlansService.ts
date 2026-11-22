@@ -22,7 +22,7 @@ export interface Subscription {
   tenantId: string;
   userId?: string;
   planId?: string;
-  plan?: Plan;
+  plan?: Plan | null;
   status: string;
   currentPeriodStart?: string;
   currentPeriodEnd?: string;

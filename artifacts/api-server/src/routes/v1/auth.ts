@@ -6,6 +6,7 @@ import { db } from "@workspace/db";
 import { usersTable, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { signAccessToken, signRefreshToken, JWT_REFRESH_SECRET, normalizeRole, type AuthPayload } from "../../middlewares/auth";
+import { throttleAuthentication, requireRegistrationEnabled } from "../../middlewares/authGate";
 
 const router = Router();
 
@@ -31,7 +32,7 @@ function sanitizeUser(user: any) {
   return safe;
 }
 
-router.post("/login", async (req, res) => {
+router.post("/login", throttleAuthentication, async (req, res) => {
   const parse = loginSchema.safeParse(req.body);
   if (!parse.success) {
     res.status(400).json({ error: "Données invalides", details: parse.error.issues });
@@ -69,7 +70,7 @@ router.post("/login", async (req, res) => {
   res.json({ accessToken, user: sanitizeUser(user), tenant });
 });
 
-router.post("/register", async (req, res) => {
+router.post("/register", requireRegistrationEnabled, throttleAuthentication, async (req, res) => {
   const parse = registerSchema.safeParse(req.body);
   if (!parse.success) {
     res.status(400).json({ error: "Données invalides", details: parse.error.issues });

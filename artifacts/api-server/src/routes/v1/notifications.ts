@@ -51,7 +51,7 @@ router.patch("/:id/read", requireAuth, async (req, res) => {
   const [updated] = await db.update(notificationsTable)
     .set({ read: true })
     .where(and(
-      eq(notificationsTable.id, req.params.id),
+      eq(notificationsTable.id, String(req.params.id)),
       eq(notificationsTable.tenantId, req.auth!.tenantId),
     ))
     .returning();
@@ -69,7 +69,7 @@ router.post("/mark-all-read", requireAuth, async (req, res) => {
 router.delete("/:id", requireAuth, async (req, res) => {
   await db.delete(notificationsTable).where(
     and(
-      eq(notificationsTable.id, req.params.id),
+      eq(notificationsTable.id, String(req.params.id)),
       eq(notificationsTable.tenantId, req.auth!.tenantId),
     )
   );

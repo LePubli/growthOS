@@ -19,7 +19,8 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
     traceId: req.traceId,
     method: req.method,
     path: req.path,
-    query: Object.keys(req.query).length ? req.query : undefined,
+    // Do not log query values: SSE auth tokens and integration credentials
+    // may be passed as query parameters by legacy clients.
   }, "→ request");
 
   res.on("finish", () => {
@@ -34,9 +35,8 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
       path: req.path,
       statusCode: res.statusCode,
       durationMs: durationMs?.toFixed(2),
-      ...(res.statusCode >= 400 && {
-        body: req.body && Object.keys(req.body).length ? req.body : undefined,
-      }),
+      // Never log request bodies. Failed login, bootstrap and provider-key
+      // requests frequently contain passwords and API secrets.
     }, `← response ${res.statusCode}`);
   });
 

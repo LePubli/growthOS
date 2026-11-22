@@ -32,10 +32,6 @@ function inferImpact(body: unknown): string {
   return "1 row affected";
 }
 
-function truncate(s: string, max = 160): string {
-  return s.length > max ? s.slice(0, max) + "…" : s;
-}
-
 export function actionLogger(req: Request, res: Response, next: NextFunction): void {
   const method = req.method;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
@@ -47,12 +43,11 @@ export function actionLogger(req: Request, res: Response, next: NextFunction): v
   (res as any).json = function (body: unknown) {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       const action  = inferAction(method, req.path);
-      const user    = (req as any).auth?.email ?? "anonymous";
+      const userId  = req.auth?.userId ?? "anonymous";
       const impact  = inferImpact(body);
-      const payload = truncate(JSON.stringify(req.body ?? {}));
       const routeKey = `${method} ${req.baseUrl}${req.path}`;
       console.log(
-        `[ACTION SUCCESS] Route: ${routeKey} | Action: ${action} | User: ${user} | DB Impact: ${impact} | Payload: ${payload}`,
+        `[ACTION SUCCESS] Route: ${routeKey} | Action: ${action} | UserId: ${userId} | DB Impact: ${impact}`,
       );
     }
     return origJson(body);

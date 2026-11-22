@@ -27,7 +27,19 @@ app.use(
     },
   }),
 );
-app.use(cors({ origin: true, credentials: true }));
+// Cross-origin requests are disabled by default in production. GrowthOS uses
+// the same-origin /api/v1 reverse proxy, so permissive CORS is not required.
+const corsOrigins = (process.env.CORS_ORIGINS ?? "")
+  .split(",")
+  .map(origin => origin.trim())
+  .filter(Boolean);
+app.disable("x-powered-by");
+app.use(cors({
+  origin: process.env.NODE_ENV === "production"
+    ? corsOrigins
+    : corsOrigins.length ? corsOrigins : true,
+  credentials: true,
+}));
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

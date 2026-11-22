@@ -16,8 +16,20 @@ declare global {
   }
 }
 
-export const JWT_SECRET = process.env.JWT_SECRET ?? "growthos-dev-secret-change-in-production";
-export const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? "growthos-refresh-secret-change-in-production";
+function loadJwtSecret(name: string, developmentFallback: string): string {
+  const secret = process.env[name];
+  if (process.env.NODE_ENV === "production" && (!secret || secret.length < 32)) {
+    throw new Error(`${name} must contain at least 32 characters in production`);
+  }
+  return secret || developmentFallback;
+}
+
+export const JWT_SECRET = loadJwtSecret("JWT_SECRET", "growthos-dev-secret-change-in-production");
+export const JWT_REFRESH_SECRET = loadJwtSecret("JWT_REFRESH_SECRET", "growthos-refresh-secret-change-in-production");
+
+if (process.env.NODE_ENV === "production" && JWT_SECRET === JWT_REFRESH_SECRET) {
+  throw new Error("JWT_SECRET and JWT_REFRESH_SECRET must be different");
+}
 
 export function signAccessToken(payload: AuthPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" });
@@ -29,10 +41,13 @@ export function signRefreshToken(payload: AuthPayload): string {
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
-  // Support Bearer header (standard) or ?token= query param (SSE / EventSource)
+  // URL tokens can leak via browser history and access logs. Keep this legacy
+  // transport only for the two GET EventSource endpoints which need it.
+  const isSseEndpoint = req.method === "GET" &&
+    /^\/api\/v1\/(notifications\/stream|client\/ereputation\/events)$/.test(req.path);
   const raw = header?.startsWith("Bearer ")
     ? header.slice(7)
-    : typeof req.query.token === "string" ? req.query.token : null;
+    : isSseEndpoint && typeof req.query.token === "string" ? req.query.token : null;
 
   if (!raw) {
     res.status(401).json({ error: "Token manquant" });
@@ -62,7 +77,7 @@ export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const role = normalizeRole(req.auth?.role);
     // Admins (et "owner" normalisé en admin) ont accès à tout
-    if (role === "admin" || roles.includes(role)) {
+    if (role === "platform_admin" || role === "admin" || roles.includes(role)) {
       next();
       return;
     }

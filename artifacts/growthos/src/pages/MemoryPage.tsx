@@ -184,7 +184,7 @@ export default function MemoryPage() {
 
   const { data, isLoading, isError } = useQuery<SearchResponse>({
     queryKey: ['memory', 'search', debouncedQ],
-    queryFn: () => apiClient.get('/memory/search', { q: debouncedQ, limit: 30 }),
+    queryFn: () => apiClient.get('/memory/search', { params: { q: debouncedQ, limit: 30 } }),
     placeholderData: (prev) => prev,
   });
 

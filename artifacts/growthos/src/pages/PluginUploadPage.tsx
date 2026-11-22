@@ -134,8 +134,8 @@ export default function PluginUploadPage() {
   }, []);
 
   const handleUpload = () => {
-    if (!selectedFile) return toast.error('Sélectionnez un fichier ZIP');
-    if (!uploadSlug.trim()) return toast.error('Entrez un slug pour le plugin');
+    if (!selectedFile) { toast.error('Sélectionnez un fichier ZIP'); return; }
+    if (!uploadSlug.trim()) { toast.error('Entrez un slug pour le plugin'); return; }
     uploadMutation.mutate({ file: selectedFile, slug: uploadSlug.trim() });
   };
 

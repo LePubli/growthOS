@@ -6,6 +6,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../../middlewares/auth";
+import { isPlatformAdmin, requirePlatformAdmin } from "../../middlewares/platformAdmin";
 import { plansService } from "../../lib/plans/PlansService";
 import { logger } from "../../lib/logger";
 import { pool } from "@workspace/db";
@@ -40,7 +41,7 @@ const createPlanSchema = z.object({
   stripePriceYearlyId: z.string().optional(),
 });
 
-router.post("/plans", async (req, res) => {
+router.post("/plans", requirePlatformAdmin, async (req, res) => {
   const parse = createPlanSchema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Données invalides", details: parse.error.issues }); return; }
   try {
@@ -67,11 +68,11 @@ const updatePlanSchema = z.object({
   stripePriceYearlyId: z.string().optional(),
 });
 
-router.patch("/plans/:id", async (req, res) => {
+router.patch("/plans/:id", requirePlatformAdmin, async (req, res) => {
   const parse = updatePlanSchema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: "Données invalides" }); return; }
   try {
-    const plan = await plansService.updatePlan(req.params.id, parse.data);
+    const plan = await plansService.updatePlan(String(req.params.id), parse.data);
     res.json(plan);
   } catch (err: any) {
     logger.error({ err }, "admin/plans PATCH error");
@@ -80,9 +81,9 @@ router.patch("/plans/:id", async (req, res) => {
 });
 
 // ── DELETE /admin/plans/:id — Soft delete ────────────────────────────────────
-router.delete("/plans/:id", async (req, res) => {
+router.delete("/plans/:id", requirePlatformAdmin, async (req, res) => {
   try {
-    await plansService.deletePlan(req.params.id);
+    await plansService.deletePlan(String(req.params.id));
     res.json({ ok: true });
   } catch (err: any) {
     res.status(err.message?.includes("introuvable") ? 404 : err.message?.includes("défaut") ? 403 : 500)
@@ -93,15 +94,19 @@ router.delete("/plans/:id", async (req, res) => {
 // ── GET /admin/subscriptions — Toutes les subscriptions ──────────────────────
 router.get("/subscriptions", async (req, res) => {
   try {
-    const subs = await plansService.getAllSubscriptions();
-    res.json(subs);
+    if (isPlatformAdmin(req)) {
+      res.json(await plansService.getAllSubscriptions());
+    } else {
+      const ownSubscription = await plansService.getUserPlan(req.auth!.tenantId);
+      res.json(ownSubscription ? [ownSubscription] : []);
+    }
   } catch (err) {
     res.status(500).json({ error: "Erreur interne" });
   }
 });
 
 // ── POST /admin/plans/change — Changer le plan d'un tenant ───────────────────
-router.post("/plans/change", async (req, res) => {
+router.post("/plans/change", requirePlatformAdmin, async (req, res) => {
   const { tenantId, planId } = req.body as { tenantId?: string; planId?: string };
   if (!tenantId || !planId) { res.status(400).json({ error: "tenantId et planId requis" }); return; }
   try {
@@ -115,6 +120,10 @@ router.post("/plans/change", async (req, res) => {
 
 // ── GET /admin/plans/usage/:tenantId — Usage d'un tenant ─────────────────────
 router.get("/plans/usage/:tenantId", async (req, res) => {
+  if (req.params.tenantId !== req.auth!.tenantId && !isPlatformAdmin(req)) {
+    res.status(403).json({ error: "Accès interdit à un autre compte" });
+    return;
+  }
   try {
     const { rows } = await pool.query(
       `SELECT resource, current_usage, limit_value, period_start
@@ -136,6 +145,7 @@ router.get("/plans/usage/:tenantId", async (req, res) => {
 // ── GET /admin/tenants — Liste des tenants pour changement de plan ────────────
 router.get("/tenants", async (req, res) => {
   try {
+    const platformAdmin = isPlatformAdmin(req);
     const { rows } = await pool.query(
       `SELECT t.id, t.name, t.slug, t.plan, t.status,
               s.id as sub_id, s.plan_id, s.status as sub_status,
@@ -143,7 +153,9 @@ router.get("/tenants", async (req, res) => {
        FROM tenants t
        LEFT JOIN subscriptions s ON s.tenant_id = t.id
        LEFT JOIN plans p ON p.id = s.plan_id
+       WHERE ($1::boolean OR t.id = $2)
        ORDER BY t.created_at DESC`,
+      [platformAdmin, req.auth!.tenantId],
     );
     res.json(rows.map(r => ({
       id: r.id, name: r.name, slug: r.slug, plan: r.plan,

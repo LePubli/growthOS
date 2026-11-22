@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import multer from "multer";
 import { requireAuth } from "../../middlewares/auth";
+import { requirePlatformAdmin } from "../../middlewares/platformAdmin";
 import { pluginUploaderService } from "../../lib/plugin-uploader/PluginUploaderService";
 import { logger } from "../../lib/logger";
 
@@ -8,8 +9,7 @@ const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 function getUserInfo(req: Request): { userId?: string; email?: string } {
-  const user = (req as any).user;
-  return { userId: user?.userId, email: user?.email };
+  return { userId: req.auth?.userId, email: req.auth?.email };
 }
 
 /**
@@ -70,12 +70,12 @@ router.get("/format-doc", requireAuth, (_req, res) => {
  * POST /api/v1/plugin-marketplace/upload
  * Upload a plugin ZIP. Field name: "file", query/body: slug.
  */
-router.post("/upload", requireAuth, upload.single("file"), async (req, res) => {
+router.post("/upload", requireAuth, requirePlatformAdmin, upload.single("file"), async (req, res) => {
   const { userId, email } = getUserInfo(req);
   const slug = (req.body?.slug ?? req.query["slug"] ?? "") as string;
 
-  if (!req.file) return res.status(400).json({ error: "No file uploaded (field: 'file')" });
-  if (!slug) return res.status(400).json({ error: "slug is required (body or query param)" });
+  if (!req.file) { res.status(400).json({ error: "No file uploaded (field: 'file')" }); return; }
+  if (!slug) { res.status(400).json({ error: "slug is required (body or query param)" }); return; }
 
   try {
     const result = await pluginUploaderService.uploadPlugin(req.file.buffer, slug);
@@ -91,8 +91,8 @@ router.post("/upload", requireAuth, upload.single("file"), async (req, res) => {
 /**
  * POST /api/v1/plugin-marketplace/install/:slug
  */
-router.post("/install/:slug", requireAuth, async (req, res) => {
-  const { slug } = req.params;
+router.post("/install/:slug", requireAuth, requirePlatformAdmin, async (req, res) => {
+  const slug = String(req.params.slug);
   const { userId, email } = getUserInfo(req);
   try {
     await pluginUploaderService.installPlugin(slug);
@@ -107,8 +107,8 @@ router.post("/install/:slug", requireAuth, async (req, res) => {
 /**
  * POST /api/v1/plugin-marketplace/activate/:slug
  */
-router.post("/activate/:slug", requireAuth, async (req, res) => {
-  const { slug } = req.params;
+router.post("/activate/:slug", requireAuth, requirePlatformAdmin, async (req, res) => {
+  const slug = String(req.params.slug);
   const { userId, email } = getUserInfo(req);
   try {
     await pluginUploaderService.activatePlugin(slug);
@@ -123,8 +123,8 @@ router.post("/activate/:slug", requireAuth, async (req, res) => {
 /**
  * POST /api/v1/plugin-marketplace/deactivate/:slug
  */
-router.post("/deactivate/:slug", requireAuth, async (req, res) => {
-  const { slug } = req.params;
+router.post("/deactivate/:slug", requireAuth, requirePlatformAdmin, async (req, res) => {
+  const slug = String(req.params.slug);
   const { userId, email } = getUserInfo(req);
   try {
     await pluginUploaderService.deactivatePlugin(slug);
@@ -139,8 +139,8 @@ router.post("/deactivate/:slug", requireAuth, async (req, res) => {
 /**
  * DELETE /api/v1/plugin-marketplace/:slug
  */
-router.delete("/:slug", requireAuth, async (req, res) => {
-  const { slug } = req.params;
+router.delete("/:slug", requireAuth, requirePlatformAdmin, async (req, res) => {
+  const slug = String(req.params.slug);
   const { userId, email } = getUserInfo(req);
   try {
     await pluginUploaderService.deletePlugin(slug);

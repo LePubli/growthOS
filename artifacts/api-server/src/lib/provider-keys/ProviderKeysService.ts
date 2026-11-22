@@ -1,7 +1,7 @@
 /**
  * ProviderKeysService — Gestion chiffrée des clés API providers IA
- * Chiffrement AES-256-CBC avec ENCRYPTION_KEY (32 octets).
- * Fallback transparent sur process.env si pas de clé en DB.
+ * AES-256-GCM with an explicit 32-byte ENCRYPTION_KEY in production.
+ * Legacy AES-CBC entries remain readable for migration purposes.
  */
 
 import crypto from "crypto";
@@ -10,48 +10,55 @@ import { logger } from "../logger";
 
 // ── Chiffrement ────────────────────────────────────────────────────────────────
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
-const ALGO = "aes-256-cbc";
+const ALGO = "aes-256-gcm";
 
 function deriveKey(): Buffer {
   if (ENCRYPTION_KEY) {
     const k = Buffer.from(ENCRYPTION_KEY, "hex");
     if (k.length === 32) return k;
   }
-  // Clé dérivée stable à partir du DATABASE_URL (fallback non-prod)
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("ENCRYPTION_KEY must be 64 hexadecimal characters in production");
+  }
+  // Development only — never rely on database credentials for key encryption.
   const seed = process.env.DATABASE_URL ?? "growthos-dev-key-fallback-32bytes";
   return crypto.createHash("sha256").update(seed).digest();
 }
 
 function encrypt(plaintext: string): string {
-  try {
-    const key = deriveKey();
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(ALGO, key, iv);
-    const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-    return `enc:${iv.toString("hex")}:${encrypted.toString("hex")}`;
-  } catch {
-    // Fallback base64 si erreur
-    return `b64:${Buffer.from(plaintext).toString("base64")}`;
-  }
+  const key = deriveKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(ALGO, key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return `enc2:${iv.toString("hex")}:${cipher.getAuthTag().toString("hex")}:${encrypted.toString("hex")}`;
 }
 
 function decrypt(stored: string): string {
-  try {
-    if (stored.startsWith("enc:")) {
-      const [, ivHex, encHex] = stored.split(":");
-      const key = deriveKey();
-      const iv = Buffer.from(ivHex, "hex");
-      const enc = Buffer.from(encHex, "hex");
-      const decipher = crypto.createDecipheriv(ALGO, key, iv);
-      return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
-    }
-    if (stored.startsWith("b64:")) {
-      return Buffer.from(stored.slice(4), "base64").toString("utf8");
-    }
-    return stored; // Legacy non-chiffré
-  } catch {
-    return stored;
+  if (stored.startsWith("enc2:")) {
+    const [, ivHex, tagHex, encryptedHex] = stored.split(":");
+    const decipher = crypto.createDecipheriv(ALGO, deriveKey(), Buffer.from(ivHex, "hex"));
+    decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+    return Buffer.concat([
+      decipher.update(Buffer.from(encryptedHex, "hex")), decipher.final(),
+    ]).toString("utf8");
   }
+  if (stored.startsWith("enc:")) {
+    const [, ivHex, encryptedHex] = stored.split(":");
+    const seed = process.env.DATABASE_URL ?? "growthos-dev-key-fallback-32bytes";
+    const candidates = [deriveKey(), crypto.createHash("sha256").update(seed).digest()];
+    for (const key of candidates) {
+      try {
+        const decipher = crypto.createDecipheriv("aes-256-cbc", key, Buffer.from(ivHex, "hex"));
+        return Buffer.concat([
+          decipher.update(Buffer.from(encryptedHex, "hex")), decipher.final(),
+        ]).toString("utf8");
+      } catch { /* try legacy database-derived key */ }
+    }
+    throw new Error("Unable to decrypt legacy API key; check ENCRYPTION_KEY");
+  }
+  // Existing plain/base64 keys can be read once and saved again with AES-GCM.
+  if (stored.startsWith("b64:")) return Buffer.from(stored.slice(4), "base64").toString("utf8");
+  return stored;
 }
 
 function maskKey(key: string): string {
@@ -73,7 +80,7 @@ export interface ProviderKey {
 }
 
 export const PROVIDERS = [
-  { id: "openai",     name: "OpenAI (GPT-4/3.5)",   icon: "🤖", description: "AI SDR, Deal Coach, génération de contenu" },
+  { id: "openai",     name: "OpenAI",                icon: "🤖", description: "AI SDR, Deal Coach, génération de contenu" },
   { id: "anthropic",  name: "Anthropic / Claude",    icon: "🧠", description: "Alternative à OpenAI, vision avancée" },
   { id: "gemini",     name: "Google Gemini",         icon: "✨", description: "IA Google, multimodal" },
   { id: "mistral",    name: "Mistral API",           icon: "🌪️", description: "IA européenne souveraine" },
@@ -203,6 +210,7 @@ export class ProviderKeysService {
     const envMap: Record<string, string> = {
       openai: "OPENAI_API_KEY",
       anthropic: "ANTHROPIC_API_KEY",
+      deepseek: "DEEPSEEK_API_KEY",
       gemini: "GEMINI_API_KEY",
       mistral: "MISTRAL_API_KEY",
       serpapi: "SERPAPI_KEY",
@@ -239,14 +247,15 @@ async function _testProvider(provider: string, apiKey: string, endpointUrl?: str
         return { ok: false, message: `OpenAI ❌ ${e.error?.message ?? r.statusText}` };
       }
       case "anthropic": {
-        const r = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-3-haiku-20240307", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
+        // Model listing validates the key without generating any paid tokens.
+        // A 400 response is NOT proof of valid credentials.
+        const r = await fetch("https://api.anthropic.com/v1/models", {
+          headers: { Authorization: `Bearer ${apiKey}`, "anthropic-version": "2026-10-21" },
           signal: ctrl.signal,
         });
-        if (r.ok || r.status === 400) return { ok: true, message: "Anthropic ✅ Clé valide" };
-        return { ok: false, message: `Anthropic ❌ HTTP ${r.status}` };
+        if (r.ok) return { ok: true, message: "Claude ✅ Clé valide" };
+        if (r.status === 401 || r.status === 403) return { ok: false, message: "Claude ❌ Clé refusée ou non autorisée" };
+        return { ok: false, message: `Claude ❌ HTTP ${r.status}` };
       }
       case "mistral": {
         const r = await fetch("https://api.mistral.ai/v1/models", {
@@ -256,7 +265,7 @@ async function _testProvider(provider: string, apiKey: string, endpointUrl?: str
         return { ok: false, message: `Mistral ❌ HTTP ${r.status}` };
       }
       case "deepseek": {
-        const r = await fetch("https://api.deepseek.com/v1/models", {
+        const r = await fetch("https://api.deepseek.com/models", {
           headers: { Authorization: `Bearer ${apiKey}` }, signal: ctrl.signal,
         });
         if (r.ok) return { ok: true, message: "DeepSeek ✅ Clé valide" };
@@ -299,7 +308,7 @@ async function _testProvider(provider: string, apiKey: string, endpointUrl?: str
         return { ok: false, message: `Clearbit ❌ HTTP ${r.status}` };
       }
       default:
-        return { ok: true, message: `${provider} — Test non disponible (clé sauvegardée)` };
+        return { ok: false, message: `${provider} — Aucun test de connexion disponible pour ce fournisseur` };
     }
   } finally {
     clearTimeout(timeout);

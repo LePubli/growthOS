@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -341,7 +341,18 @@ export default function DealCoachPage() {
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState('');
-  const [provider, setProvider] = useState('ollama');
+  const [provider, setProvider] = useState('disabled');
+
+  const { data: providerSettings } = useQuery<{ activeProvider: string; configuredProviders: string[] }>({
+    queryKey: ['ai-sdr-provider-settings'],
+    queryFn: () => apiClient.get('/ai-sdr/provider-settings'),
+  });
+
+  useEffect(() => {
+    if (providerSettings?.activeProvider && providerSettings.activeProvider !== 'disabled') {
+      setProvider(providerSettings.activeProvider);
+    }
+  }, [providerSettings?.activeProvider]);
 
   const { data: health } = useQuery<PipelineHealth>({
     queryKey: ['deal-coach-health'],
@@ -361,7 +372,8 @@ export default function DealCoachPage() {
   });
 
   const analyzeMutation = useMutation({
-    mutationFn: (id: string) => apiClient.post(`/deal-coach/deals/${id}/analyze`, { provider }),
+    mutationFn: (id: string) => apiClient.post(`/deal-coach/deals/${id}/analyze`,
+      provider === 'disabled' ? {} : { provider }),
     onMutate: (id) => setAnalyzingId(id),
     onSuccess: (result: any) => {
       toast.success(`Health Score: ${result.healthScore}/100 — ${result.riskFactors?.length ?? 0} risque(s) détecté(s)`);
@@ -409,7 +421,7 @@ export default function DealCoachPage() {
             { value: 'openai',    icon: '🤖', label: 'OpenAI'    },
             { value: 'mistral',   icon: '🌪️', label: 'Mistral'  },
             { value: 'anthropic', icon: '🧠', label: 'Anthropic' },
-          ].map(p => (
+          ].filter(p => providerSettings?.configuredProviders.includes(p.value)).map(p => (
             <button
               key={p.value}
               onClick={() => setProvider(p.value)}
@@ -424,6 +436,7 @@ export default function DealCoachPage() {
               <span>{p.icon}</span><span>{p.label}</span>
             </button>
           ))}
+          {!providerSettings?.configuredProviders.length && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Aucune IA active</span>}
         </div>
       </div>
 

@@ -12,7 +12,7 @@ router.use(actionLogger);
 const sequenceSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
-  status: z.enum(["draft", "active", "paused"]).optional().default("draft"),
+  status: z.enum(["draft", "paused"]).optional().default("draft"),
   steps: z.array(z.any()).optional().default([]),
 });
 
@@ -59,7 +59,11 @@ router.post("/:id/toggle", async (req, res) => {
 
   if (!seq) { res.status(404).json({ error: "Séquence introuvable" }); return; }
 
-  const newStatus = seq.status === "active" ? "paused" : "active";
+  if (seq.status !== "active") {
+    res.status(409).json({ error: "L'activation nécessite un moteur de relances et de désabonnement opérationnel" });
+    return;
+  }
+  const newStatus = "paused";
   const [updated] = await db.update(sequencesTable)
     .set({ status: newStatus, updatedAt: new Date() })
     .where(eq(sequencesTable.id, id))

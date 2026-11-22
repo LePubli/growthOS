@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Application } from "express";
 
 export interface RouteEntry {
   method: string;
@@ -63,9 +63,9 @@ function walkStack(
   }
 }
 
-export function listRoutes(app: Express): RouteEntry[] {
+export function listRoutes(app: Application): RouteEntry[] {
   const out: RouteEntry[] = [];
-  const rootStack: any[] = (app as any)._router?.stack ?? [];
+  const rootStack: any[] = (app as any).router?.stack ?? (app as any)._router?.stack ?? [];
   walkStack(rootStack, "", false, out);
   // Deduplicate (same method+path can appear twice in dev)
   const seen = new Set<string>();

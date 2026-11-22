@@ -126,7 +126,7 @@ export default function ClientCampaignsPage() {
 
                 {/* Stats + Keywords */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-                  <div style={{ display: 'flex', items: 'center', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     {c.activeAlerts > 0 ? (
                       <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#DC2626', fontWeight: 700 }}>
                         <AlertTriangle size={13} /> {c.activeAlerts} alerte{c.activeAlerts > 1 ? 's' : ''}

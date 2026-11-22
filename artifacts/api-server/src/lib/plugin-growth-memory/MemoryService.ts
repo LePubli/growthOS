@@ -86,7 +86,7 @@ class MemoryService {
 
   /** Keyword search over content (ILIKE). Vector similarity is a TODO once OpenAI is wired. */
   async search(query: string, tenantId: string, limit = 10): Promise<SearchResult[]> {
-    if (!query.trim()) return this.listRecent(tenantId, limit);
+    if (!query.trim()) return (await this.listRecent(tenantId, limit)).map(doc => ({ ...doc, score: 0 }));
 
     const result = await pool.query<MemoryDocument & { score: number }>(
       `SELECT

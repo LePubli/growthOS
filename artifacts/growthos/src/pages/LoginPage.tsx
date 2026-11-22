@@ -19,7 +19,8 @@ export default function LoginPage() {
       } else {
         await register(form);
       }
-      navigate('/dashboard');
+      const tenant = useAuthStore.getState().tenant;
+      navigate(tenant?.settings?.onboardingComplete === true ? '/dashboard' : '/onboarding');
     } catch (err: any) {
       toast.error(err.message || "Erreur d'authentification");
     } finally { setLoading(false); }

@@ -66,9 +66,10 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 
 /* ─── LLM central ────────────────────────────────────────── */
 
-import { llmService } from "../llm/LLMService";
+import { llmService, resolveDefaultAiProvider } from "../llm/LLMService";
 
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.2";
+const OLLAMA_BASE_URL = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
 
 /* ─── Context builder ────────────────────────────────────── */
 
@@ -257,8 +258,8 @@ Write a ${tone} cold outreach EMAIL in French to achieve the goal: "${ctx.goal}"
 Return a JSON object with keys: subject (string), body (string), tone (string).
 Return ONLY valid JSON, no markdown, no explanation.`;
 
-    const provider = ctx.provider ?? "ollama";
-    const raw = await llmService.generate(prompt, { provider, tenantId: ctx.tenantId });
+    const provider = ctx.provider ?? await resolveDefaultAiProvider(ctx.tenantId);
+    const raw = provider ? await llmService.generate(prompt, { provider, tenantId: ctx.tenantId }) : null;
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as { subject?: string; body?: string; tone?: string };
@@ -291,8 +292,8 @@ Write a SHORT ${tone} LinkedIn connection message in French (max 300 characters)
 Return a JSON object with key: message (string).
 Return ONLY valid JSON, no markdown.`;
 
-    const provider = ctx.provider ?? "ollama";
-    const raw = await llmService.generate(prompt, { provider, tenantId: ctx.tenantId });
+    const provider = ctx.provider ?? await resolveDefaultAiProvider(ctx.tenantId);
+    const raw = provider ? await llmService.generate(prompt, { provider, tenantId: ctx.tenantId }) : null;
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as { message?: string };
@@ -326,8 +327,8 @@ Return a JSON object with:
 - steps: array of {step, day, channel, subject?, body}
 Return ONLY valid JSON.`;
 
-    const provider = ctx.provider ?? "ollama";
-    const raw = await llmService.generate(prompt, { provider, tenantId: ctx.tenantId });
+    const provider = ctx.provider ?? await resolveDefaultAiProvider(ctx.tenantId);
+    const raw = provider ? await llmService.generate(prompt, { provider, tenantId: ctx.tenantId }) : null;
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as { name?: string; steps?: SequenceStep[] };
@@ -466,8 +467,8 @@ Return a JSON object with:
 - nextSteps: string[] (4 action items)
 Return ONLY valid JSON, no markdown.`;
 
-  const provider = ctx.provider ?? "ollama";
-  const raw = await llmService.generate(prompt, { provider, tenantId: ctx.tenantId });
+  const provider = ctx.provider ?? await resolveDefaultAiProvider(ctx.tenantId);
+  const raw = provider ? await llmService.generate(prompt, { provider, tenantId: ctx.tenantId }) : null;
   if (raw) {
     try {
       const p = JSON.parse(raw) as Partial<PlaybookDraft>;

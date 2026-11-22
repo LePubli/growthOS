@@ -40,8 +40,8 @@ router.get("/deals", requireAuth, async (req, res) => {
 // POST /deal-coach/deals/:id/analyze — trigger analysis
 router.post("/deals/:id/analyze", requireAuth, async (req, res) => {
   try {
-    const provider = (req.body as { provider?: string }).provider ?? "ollama";
-    const result = await dealCoachService.analyzeDeal(req.params.id, req.auth!.tenantId, provider);
+    const provider = (req.body as { provider?: string }).provider;
+    const result = await dealCoachService.analyzeDeal(String(req.params.id), req.auth!.tenantId, provider);
     res.json(result);
   } catch (err: any) {
     console.error(err);
@@ -56,7 +56,7 @@ router.post("/deals/:id/analyze", requireAuth, async (req, res) => {
 // GET /deal-coach/deals/:id/coach — get coach result for deal
 router.get("/deals/:id/coach", requireAuth, async (req, res) => {
   try {
-    const result = await dealCoachService.getDealCoach(req.params.id, req.auth!.tenantId);
+    const result = await dealCoachService.getDealCoach(String(req.params.id), req.auth!.tenantId);
     if (!result) { res.status(404).json({ error: "Deal introuvable" }); return; }
     res.json(result);
   } catch (err) {

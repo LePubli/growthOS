@@ -54,6 +54,7 @@ import authPublicRouter from "./auth-public";
 import plansPublicRouter from "./plans-public";
 import autopilotRouter from "./autopilot";
 import adminCronRouter from "./admin-cron";
+import setupRouter from "./setup";
 
 const router = Router();
 
@@ -64,6 +65,7 @@ router.use("/api-docs",        apiDocsRouter);
 router.use("/public",          publicApiRouter);
 router.use("/billing/webhook", billingWebhookRouter);
 router.use("/plans",           plansPublicRouter);
+router.use("/setup",           setupRouter);
 
 // ── ROUTES PROTÉGÉES (requireAuth + requireTenant au niveau mount) ────────
 router.use("/prospects",          requireAuth, requireTenant, prospectsRouter);

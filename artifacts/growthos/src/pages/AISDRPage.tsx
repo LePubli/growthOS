@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Bot, Sparkles, Mail, Linkedin, ListChecks, Copy, Send,
@@ -16,11 +16,12 @@ interface LinkedInDraft { message: string; characterCount: number; generatedBy: 
 interface SequenceStep  { step: number; day: number; channel: string; subject?: string; body: string }
 interface SequenceDraft { name: string; steps: SequenceStep[]; generatedBy: string; model?: string; contextUsed: { signals: number; memories: number; account: string } }
 interface Template      { id: string; name: string; goal: string; tone: Tone; description: string; emoji: string }
-interface OllamaStatus  { available: boolean; model: string; baseUrl: string }
+interface AiProviderSettings { activeProvider: string; configuredProviders: string[] }
 
 /* ─── Helpers ────────────────────────────────────────────── */
 function LLMBadge({ by, model }: { by: string; model?: string }) {
   const isOllama = by === 'ollama';
+  const label = by === 'mock' ? 'Brouillon modèle (IA indisponible)' : by === 'anthropic' ? 'Claude' : by === 'openai' ? 'OpenAI' : by === 'deepseek' ? 'DeepSeek' : by;
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700,
@@ -30,7 +31,7 @@ function LLMBadge({ by, model }: { by: string; model?: string }) {
       border: `1px solid ${isOllama ? '#BBF7D0' : '#DDD6FE'}`,
     }}>
       {isOllama ? <Cpu size={9} /> : <Sparkles size={9} />}
-      {isOllama ? `Ollama · ${model ?? 'llama3.2'}` : 'Mock LLM'}
+      {isOllama ? `Ollama · ${model ?? 'llama3.2'}` : label}
     </span>
   );
 }
@@ -96,7 +97,7 @@ const CHANNEL_CONFIG = {
 };
 
 /* ─── Provider config ────────────────────────────────────── */
-type Provider = 'ollama' | 'openai' | 'deepseek' | 'mistral' | 'anthropic' | 'gemini';
+type Provider = 'disabled' | 'ollama' | 'openai' | 'deepseek' | 'mistral' | 'anthropic' | 'gemini';
 
 const PROVIDERS_CONFIG: { value: Provider; label: string; icon: string; badge: string }[] = [
   { value: 'ollama',    label: 'Ollama',    icon: '🦙', badge: 'Local'    },
@@ -111,7 +112,7 @@ export default function AISDRPage() {
   const [account, setAccount]   = useState('');
   const [goal, setGoal]         = useState('');
   const [tone, setTone]         = useState<Tone>('friendly');
-  const [provider, setProvider] = useState<Provider>('ollama');
+  const [provider, setProvider] = useState<Provider>('disabled');
   const [activeTab, setActiveTab] = useState<Tab>('email');
   const [emailDraft, setEmailDraft]   = useState<EmailDraft | null>(null);
   const [linkedInDraft, setLinkedInDraft] = useState<LinkedInDraft | null>(null);
@@ -125,12 +126,17 @@ export default function AISDRPage() {
     queryFn: () => apiClient.get('/ai-sdr/templates'),
   });
 
-  /* Ollama status */
-  const { data: ollamaStatus } = useQuery<OllamaStatus>({
-    queryKey: ['ollama-status'],
-    queryFn: () => apiClient.get('/ai-sdr/status'),
-    refetchInterval: 30000,
+  /* Configured providers; Ollama is not probed unless explicitly selected. */
+  const { data: providerSettings } = useQuery<AiProviderSettings>({
+    queryKey: ['ai-sdr-provider-settings'],
+    queryFn: () => apiClient.get('/ai-sdr/provider-settings'),
   });
+
+  useEffect(() => {
+    if (providerSettings?.activeProvider && providerSettings.activeProvider !== 'disabled') {
+      setProvider(providerSettings.activeProvider as Provider);
+    }
+  }, [providerSettings?.activeProvider]);
 
   const applyTemplate = (tpl: Template) => {
     setGoal(tpl.goal);
@@ -138,8 +144,8 @@ export default function AISDRPage() {
   };
 
   const generateAll = async () => {
-    if (!account.trim() || !goal.trim()) {
-      toast.error('Veuillez renseigner un compte et un objectif');
+    if (!account.trim() || !goal.trim() || provider === 'disabled') {
+      toast.error('Renseignez un compte, un objectif et configurez un fournisseur IA');
       return;
     }
     setGenerating(true);
@@ -189,21 +195,21 @@ export default function AISDRPage() {
           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Drafts hyper-personnalisés en synthétisant Memory, Account Intelligence & Signals</p>
         </div>
 
-        {/* Ollama status indicator */}
-        {ollamaStatus && (
+        {/* The active cloud connector replaces the automatic Ollama health probe. */}
+        {providerSettings && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 10,
-            background: ollamaStatus.available ? '#F0FDF4' : '#F9FAFB',
-            border: `1px solid ${ollamaStatus.available ? '#BBF7D0' : 'var(--card-border)'}`,
+            background: provider !== 'disabled' ? '#F0FDF4' : '#F9FAFB',
+            border: `1px solid ${provider !== 'disabled' ? '#BBF7D0' : 'var(--card-border)'}`,
           }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: ollamaStatus.available ? '#059669' : '#9CA3AF', flexShrink: 0 }} />
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: provider !== 'disabled' ? '#059669' : '#9CA3AF', flexShrink: 0 }} />
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: ollamaStatus.available ? '#059669' : '#6B7280' }}>
-                {ollamaStatus.available ? 'Ollama connecté' : 'Ollama hors ligne'}
+              <div style={{ fontSize: 11, fontWeight: 700, color: provider !== 'disabled' ? '#059669' : '#6B7280' }}>
+                {provider !== 'disabled' ? `IA sélectionnée : ${provider === 'anthropic' ? 'Claude' : provider}` : 'Aucune IA active'}
               </div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{ollamaStatus.model}</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Appels uniquement lors d'une génération</div>
             </div>
-            <Cpu size={12} color={ollamaStatus.available ? '#059669' : '#9CA3AF'} />
+            <Cpu size={12} color={provider !== 'disabled' ? '#059669' : '#9CA3AF'} />
           </div>
         )}
       </div>
@@ -294,7 +300,7 @@ export default function AISDRPage() {
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Modèle IA</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {PROVIDERS_CONFIG.map(p => (
+                {PROVIDERS_CONFIG.filter(p => providerSettings?.configuredProviders.includes(p.value)).map(p => (
                   <button
                     key={p.value}
                     onClick={() => setProvider(p.value)}
@@ -311,15 +317,16 @@ export default function AISDRPage() {
                   </button>
                 ))}
               </div>
+              {!providerSettings?.configuredProviders.length && <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Aucune clé IA enregistrée. Configure Claude, OpenAI ou DeepSeek dans l'assistant d'installation.</p>}
             </div>
 
             <button
               onClick={generateAll}
-              disabled={generating || !account.trim() || !goal.trim()}
+              disabled={generating || !account.trim() || !goal.trim() || provider === 'disabled'}
               style={{
                 width: '100%', padding: '12px', borderRadius: 11, fontSize: 14, fontWeight: 800, cursor: generating ? 'not-allowed' : 'pointer',
                 border: 'none', background: 'linear-gradient(135deg,#4C1D95,#7C3AED)', color: '#fff',
-                opacity: (generating || !account.trim() || !goal.trim()) ? 0.6 : 1,
+                opacity: (generating || !account.trim() || !goal.trim() || provider === 'disabled') ? 0.6 : 1,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               }}
             >
@@ -327,11 +334,11 @@ export default function AISDRPage() {
               {generating ? 'Génération en cours…' : 'Générer les drafts'}
             </button>
 
-            {!ollamaStatus?.available && (
+            {provider === 'disabled' && (
               <div style={{ marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 6, padding: '8px 10px', borderRadius: 8, background: '#FFFBEB', border: '1px solid #FCD34D' }}>
                 <AlertCircle size={12} color="#D97706" style={{ flexShrink: 0, marginTop: 1 }} />
                 <p style={{ fontSize: 11, color: '#92400E', margin: 0 }}>
-                  Ollama hors ligne — mode Mock LLM actif. Lancez <code style={{ background: '#FEF3C7', padding: '0 3px', borderRadius: 3 }}>ollama serve</code> pour activer la génération IA locale.
+                  Configure une clé Claude, OpenAI ou DeepSeek et choisis ton fournisseur principal dans le wizard. Ollama reste facultatif et en veille.
                 </p>
               </div>
             )}

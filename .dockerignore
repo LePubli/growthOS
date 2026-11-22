@@ -1,0 +1,21 @@
+# Never send private credentials, the repository history or local build outputs
+# to the Docker builder (locally or on GitHub Actions).
+.git
+.github
+.env
+.env.*
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/.cache
+**/*.log
+*.patch
+*.pem
+*.key
+*.p12
+*.pfx
+.pnpm-store
+.turbo

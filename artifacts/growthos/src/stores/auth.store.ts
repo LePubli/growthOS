@@ -29,6 +29,7 @@ interface AuthState {
   logout: () => void;
   setUser: (user: User) => void;
   setTenant: (tenant: Tenant) => void;
+  initializeSession: (session: { accessToken: string; user: User; tenant: Tenant }) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -66,6 +67,18 @@ export const useAuthStore = create<AuthState>()(
 
       setUser: (user) => set({ user }),
       setTenant: (tenant) => set({ tenant }),
+      initializeSession: (session) => {
+        // API requests expect this tenant header, including the very first
+        // request after bootstrap (before the user has ever logged in).
+        sessionStorage.setItem('tenant_id', session.tenant.id);
+        sessionStorage.setItem('tenant_slug', session.tenant.slug);
+        set({
+          accessToken: session.accessToken,
+          user: session.user,
+          tenant: session.tenant,
+          isAuthenticated: true,
+        });
+      },
     }),
     {
       name: 'growthos-auth',

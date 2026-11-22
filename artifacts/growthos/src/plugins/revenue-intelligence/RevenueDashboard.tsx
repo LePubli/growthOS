@@ -106,7 +106,7 @@ function SectionHeader({ icon, title, subtitle }: { icon: React.ReactNode; title
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
       <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg,#0F172A,#1E3A5F)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        {React.cloneElement(icon as React.ReactElement, { size: 14, color: '#fff' })}
+        {React.cloneElement(icon as React.ReactElement<{ size?: number; color?: string }>, { size: 14, color: '#fff' })}
       </div>
       <div>
         <h2 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>{title}</h2>

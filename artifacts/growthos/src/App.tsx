@@ -1,4 +1,5 @@
 import { Switch, Route, Router as WouterRouter, useLocation, Redirect } from 'wouter';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/providers/theme-provider';
 import { QueryProvider } from '@/providers/query-provider';
@@ -6,94 +7,95 @@ import { useAuthStore } from '@/stores/auth.store';
 import { AppShell } from '@/components/layout/AppShell';
 
 import LoginPage from '@/pages/LoginPage';
-import DashboardPage from '@/pages/DashboardPage';
-import AnalyticsPage from '@/pages/AnalyticsPage';
-import ProspectsPage from '@/pages/ProspectsPage';
-import ProspectDetailPage from '@/pages/ProspectDetailPage';
-import PipelinePage from '@/pages/PipelinePage';
-import DealDetailPage from '@/pages/DealDetailPage';
-import SequencesPage from '@/pages/SequencesPage';
-import SequenceDetailPage from '@/pages/SequenceDetailPage';
-import SignalsPage from '@/pages/SignalsPage';
-import SignalDetailPage from '@/pages/SignalDetailPage';
-import SourcingPage from '@/pages/SourcingPage';
-import PluginsPage from '@/pages/PluginsPage';
-import WorkflowsPage from '@/pages/WorkflowsPage';
-import WorkflowDetailPage from '@/pages/WorkflowDetailPage';
-import ThemesPage from '@/pages/ThemesPage';
-import SettingsPage from '@/pages/SettingsPage';
-import ProfilePage from '@/pages/settings/ProfilePage';
-import TeamPage from '@/pages/settings/TeamPage';
-import ApiPage from '@/pages/settings/ApiPage';
-import BillingPage from '@/pages/settings/BillingPage';
-import IntegrationsPage from '@/pages/settings/IntegrationsPage';
-import IntegrationsHubPage from '@/pages/IntegrationsPage';
-import ActivitiesPage from '@/pages/ActivitiesPage';
-import TemplatesPage from '@/pages/TemplatesPage';
-import WebhooksPage from '@/pages/WebhooksPage';
-import InboundPage from '@/pages/InboundPage';
-import ABMPage from '@/pages/ABMPage';
-import AIAgentPage from '@/pages/AIAgentPage';
 import { GenericPage } from '@/pages/GenericPage';
-import MarketplacePage from '@/pages/MarketplacePage';
-import CRMMapPage from '@/pages/CRMMapPage';
-import MapPage from '@/pages/MapPage';
-import ContactsPage from '@/pages/ContactsPage';
-import ImportPage from '@/pages/ImportPage';
-import ContactIntelPage from '@/pages/ContactIntelPage';
-import CRMSyncPage from '@/pages/CRMSyncPage';
-import SourcingJobPage from '@/pages/SourcingJobPage';
-import PluginDetailPage from '@/pages/PluginDetailPage';
-import AccountsPage from '@/pages/AccountsPage';
-import MemoryPage from '@/pages/MemoryPage';
-import MeetingListPage from '@/pages/MeetingListPage';
-import SignalFeedPage from '@/pages/SignalFeedPage';
-import AISDRPage from '@/pages/AISDRPage';
-import DealCoachPage from '@/pages/DealCoachPage';
-import RevenueDashboard from '@/plugins/revenue-intelligence/RevenueDashboard';
-import KnowledgeBasePage from '@/plugins/knowledge-base/KnowledgeBasePage';
-import CommandCenterPage from '@/plugins/executive-command/CommandCenterPage';
-import MeetingDetailPage from '@/pages/MeetingDetailPage';
-import Account360Page from '@/pages/Account360Page';
-import TeamMetricsPage from '@/pages/TeamMetricsPage';
-import CalendarPage from '@/pages/CalendarPage';
-import ProposalsPage from '@/pages/ProposalsPage';
-import SharedDashboardsPage from '@/pages/SharedDashboardsPage';
-import RouteAuditPage from '@/pages/RouteAuditPage';
-import PluginUploadPage from '@/pages/PluginUploadPage';
-import DeepAuditPage from '@/pages/DeepAuditPage';
-import EnrichmentPage from '@/pages/EnrichmentPage';
-import ERepDashboardPage from '@/plugins/ereputation/ERepDashboardPage';
-import ERepCampaignsPage from '@/plugins/ereputation/CampaignsPage';
-import ERepSERPPage from '@/plugins/ereputation/SERPTrackingPage';
-import ERepSentimentPage from '@/plugins/ereputation/SentimentFeedPage';
-import ERepSocialPage from '@/plugins/ereputation/SocialCalendarPage';
-import ERepPBNPage from '@/plugins/ereputation/PBNManagerPage';
-import TasksPage from '@/pages/TasksPage';
 import OnboardingWizardPage from '@/pages/OnboardingWizardPage';
-import HelpCenterPage from '@/pages/HelpCenterPage';
-import ReferralPage from '@/pages/ReferralPage';
-import AuditTrailPage from '@/pages/AuditTrailPage';
-import CompliancePage from '@/pages/CompliancePage';
-import SSOConfigPage from '@/pages/settings/SSOConfigPage';
-import APIDocsPage from '@/pages/APIDocsPage';
-import ProductAnalyticsPage from '@/pages/ProductAnalyticsPage';
-import UsersPage from '@/pages/admin/UsersPage';
-import PlansPage from '@/pages/admin/PlansPage';
-import AuditPage from '@/pages/admin/AuditPage';
-import ApiKeysPage from '@/pages/admin/ApiKeysPage';
-import QuotaMonitoringPage from '@/pages/admin/QuotaMonitoringPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useSignalNotifications } from '@/hooks/useSignalNotifications';
 import { ClientShell } from '@/plugins/client-portal/ClientShell';
 import LandingPage from '@/pages/public/LandingPage';
-import PricingPage from '@/pages/public/PricingPage';
-import RegisterPage from '@/pages/public/RegisterPage';
-import AutopilotPage from '@/pages/settings/AutopilotPage';
-import ClientDashboardPage from '@/plugins/client-portal/ClientDashboardPage';
-import ClientCampaignsPage from '@/plugins/client-portal/ClientCampaignsPage';
-import ClientApprovalsPage from '@/plugins/client-portal/ClientApprovalsPage';
-import ClientReportsPage from '@/plugins/client-portal/ClientReportsPage';
+
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
+const ProspectsPage = lazy(() => import('@/pages/ProspectsPage'));
+const ProspectDetailPage = lazy(() => import('@/pages/ProspectDetailPage'));
+const PipelinePage = lazy(() => import('@/pages/PipelinePage'));
+const DealDetailPage = lazy(() => import('@/pages/DealDetailPage'));
+const SequencesPage = lazy(() => import('@/pages/SequencesPage'));
+const SequenceDetailPage = lazy(() => import('@/pages/SequenceDetailPage'));
+const SignalsPage = lazy(() => import('@/pages/SignalsPage'));
+const SignalDetailPage = lazy(() => import('@/pages/SignalDetailPage'));
+const SourcingPage = lazy(() => import('@/pages/SourcingPage'));
+const PluginsPage = lazy(() => import('@/pages/PluginsPage'));
+const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage'));
+const WorkflowDetailPage = lazy(() => import('@/pages/WorkflowDetailPage'));
+const ThemesPage = lazy(() => import('@/pages/ThemesPage'));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const ProfilePage = lazy(() => import('@/pages/settings/ProfilePage'));
+const TeamPage = lazy(() => import('@/pages/settings/TeamPage'));
+const ApiPage = lazy(() => import('@/pages/settings/ApiPage'));
+const BillingPage = lazy(() => import('@/pages/settings/BillingPage'));
+const IntegrationsPage = lazy(() => import('@/pages/settings/IntegrationsPage'));
+const IntegrationsHubPage = lazy(() => import('@/pages/IntegrationsPage'));
+const ActivitiesPage = lazy(() => import('@/pages/ActivitiesPage'));
+const TemplatesPage = lazy(() => import('@/pages/TemplatesPage'));
+const WebhooksPage = lazy(() => import('@/pages/WebhooksPage'));
+const InboundPage = lazy(() => import('@/pages/InboundPage'));
+const ABMPage = lazy(() => import('@/pages/ABMPage'));
+const AIAgentPage = lazy(() => import('@/pages/AIAgentPage'));
+const MarketplacePage = lazy(() => import('@/pages/MarketplacePage'));
+const CRMMapPage = lazy(() => import('@/pages/CRMMapPage'));
+const MapPage = lazy(() => import('@/pages/MapPage'));
+const ContactsPage = lazy(() => import('@/pages/ContactsPage'));
+const ImportPage = lazy(() => import('@/pages/ImportPage'));
+const ContactIntelPage = lazy(() => import('@/pages/ContactIntelPage'));
+const CRMSyncPage = lazy(() => import('@/pages/CRMSyncPage'));
+const SourcingJobPage = lazy(() => import('@/pages/SourcingJobPage'));
+const PluginDetailPage = lazy(() => import('@/pages/PluginDetailPage'));
+const AccountsPage = lazy(() => import('@/pages/AccountsPage'));
+const MemoryPage = lazy(() => import('@/pages/MemoryPage'));
+const MeetingListPage = lazy(() => import('@/pages/MeetingListPage'));
+const SignalFeedPage = lazy(() => import('@/pages/SignalFeedPage'));
+const AISDRPage = lazy(() => import('@/pages/AISDRPage'));
+const DealCoachPage = lazy(() => import('@/pages/DealCoachPage'));
+const RevenueDashboard = lazy(() => import('@/plugins/revenue-intelligence/RevenueDashboard'));
+const KnowledgeBasePage = lazy(() => import('@/plugins/knowledge-base/KnowledgeBasePage'));
+const CommandCenterPage = lazy(() => import('@/plugins/executive-command/CommandCenterPage'));
+const MeetingDetailPage = lazy(() => import('@/pages/MeetingDetailPage'));
+const Account360Page = lazy(() => import('@/pages/Account360Page'));
+const TeamMetricsPage = lazy(() => import('@/pages/TeamMetricsPage'));
+const CalendarPage = lazy(() => import('@/pages/CalendarPage'));
+const ProposalsPage = lazy(() => import('@/pages/ProposalsPage'));
+const SharedDashboardsPage = lazy(() => import('@/pages/SharedDashboardsPage'));
+const RouteAuditPage = lazy(() => import('@/pages/RouteAuditPage'));
+const PluginUploadPage = lazy(() => import('@/pages/PluginUploadPage'));
+const DeepAuditPage = lazy(() => import('@/pages/DeepAuditPage'));
+const EnrichmentPage = lazy(() => import('@/pages/EnrichmentPage'));
+const ERepDashboardPage = lazy(() => import('@/plugins/ereputation/ERepDashboardPage'));
+const ERepCampaignsPage = lazy(() => import('@/plugins/ereputation/CampaignsPage'));
+const ERepSERPPage = lazy(() => import('@/plugins/ereputation/SERPTrackingPage'));
+const ERepSentimentPage = lazy(() => import('@/plugins/ereputation/SentimentFeedPage'));
+const ERepSocialPage = lazy(() => import('@/plugins/ereputation/SocialCalendarPage'));
+const ERepPBNPage = lazy(() => import('@/plugins/ereputation/PBNManagerPage'));
+const TasksPage = lazy(() => import('@/pages/TasksPage'));
+const HelpCenterPage = lazy(() => import('@/pages/HelpCenterPage'));
+const ReferralPage = lazy(() => import('@/pages/ReferralPage'));
+const AuditTrailPage = lazy(() => import('@/pages/AuditTrailPage'));
+const CompliancePage = lazy(() => import('@/pages/CompliancePage'));
+const SSOConfigPage = lazy(() => import('@/pages/settings/SSOConfigPage'));
+const APIDocsPage = lazy(() => import('@/pages/APIDocsPage'));
+const ProductAnalyticsPage = lazy(() => import('@/pages/ProductAnalyticsPage'));
+const UsersPage = lazy(() => import('@/pages/admin/UsersPage'));
+const PlansPage = lazy(() => import('@/pages/admin/PlansPage'));
+const AuditPage = lazy(() => import('@/pages/admin/AuditPage'));
+const ApiKeysPage = lazy(() => import('@/pages/admin/ApiKeysPage'));
+const QuotaMonitoringPage = lazy(() => import('@/pages/admin/QuotaMonitoringPage'));
+const PricingPage = lazy(() => import('@/pages/public/PricingPage'));
+const RegisterPage = lazy(() => import('@/pages/public/RegisterPage'));
+const AutopilotPage = lazy(() => import('@/pages/settings/AutopilotPage'));
+const ClientDashboardPage = lazy(() => import('@/plugins/client-portal/ClientDashboardPage'));
+const ClientCampaignsPage = lazy(() => import('@/plugins/client-portal/ClientCampaignsPage'));
+const ClientApprovalsPage = lazy(() => import('@/plugins/client-portal/ClientApprovalsPage'));
+const ClientReportsPage = lazy(() => import('@/plugins/client-portal/ClientReportsPage'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -112,15 +114,35 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
+function HomeEntry({ authenticated }: { authenticated: boolean }) {
+  const [firstRun, setFirstRun] = useState(false);
+  useEffect(() => {
+    fetch('/api/v1/setup/status', { cache: 'no-store' })
+      .then(response => response.ok ? response.json() : null)
+      .then(status => { if (status?.needsBootstrap) setFirstRun(true); })
+      .catch(() => undefined);
+  }, []);
+  if (firstRun) return <Redirect to="/setup" />;
+  return authenticated ? <Redirect to="/dashboard" /> : <LandingPage />;
+}
+
 function AppRoutes() {
   useSignalNotifications();
   const { isAuthenticated } = useAuthStore();
 
   return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--body-bg)', color: 'var(--text-muted)' }}>
+        Chargement de GrowthOS…
+      </div>
+    }>
     <Switch>
       {/* ── Routes publiques (pas d'auth requise) ─────────────────────── */}
       <Route path="/">
-        {() => isAuthenticated ? <Redirect to="/dashboard" /> : <LandingPage />}
+        {() => <HomeEntry authenticated={isAuthenticated} />}
+      </Route>
+      <Route path="/setup">
+        {() => <OnboardingWizardPage />}
       </Route>
       <Route path="/pricing" component={PricingPage} />
       <Route path="/register" component={RegisterPage} />
@@ -330,7 +352,7 @@ function AppRoutes() {
         {() => <DashboardLayout><TasksPage /></DashboardLayout>}
       </Route>
       <Route path="/onboarding">
-        {() => <OnboardingWizardPage />}
+        {() => <RequireAuth><OnboardingWizardPage /></RequireAuth>}
       </Route>
       <Route path="/help">
         {() => <DashboardLayout><HelpCenterPage /></DashboardLayout>}
@@ -396,6 +418,7 @@ function AppRoutes() {
         )}
       </Route>
     </Switch>
+    </Suspense>
   );
 }
 

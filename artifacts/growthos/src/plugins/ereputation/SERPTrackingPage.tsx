@@ -7,12 +7,6 @@ import apiClient from '@/lib/api-client';
 interface Campaign { id: string; name: string; targetName: string; }
 interface SerpEntry { keyword: string; position: number | null; url: string | null; volume: number; date: string; }
 
-const MOCK_HISTORY = (keyword: string) =>
-  Array.from({ length: 10 }, (_, i) => ({
-    date: new Date(Date.now() - (9 - i) * 86400000 * 3).toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' }),
-    [keyword]: Math.max(1, Math.floor(Math.random() * 20 + 3)),
-  }));
-
 const PosDiff = ({ diff }: { diff: number }) => {
   if (diff === 0) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
   if (diff < 0) return <span className="flex items-center gap-0.5 text-green-600 font-medium"><TrendingUp size={12} />+{Math.abs(diff)}</span>;
@@ -26,8 +20,10 @@ export default function SERPTrackingPage() {
   const { data: campaigns = [] } = useQuery({
     queryKey: ['erep-campaigns'],
     queryFn: () => apiClient.get('/ereputation/campaigns') as Promise<Campaign[]>,
-    onSuccess: (data) => { if (!selectedCampaign && data.length) setSelectedCampaign(data[0]!.id); },
   });
+  React.useEffect(() => {
+    if (!selectedCampaign && campaigns.length) setSelectedCampaign(campaigns[0]!.id);
+  }, [campaigns, selectedCampaign]);
 
   const { data: serpData = [], isLoading } = useQuery({
     queryKey: ['erep-serp', selectedCampaign],
@@ -35,15 +31,10 @@ export default function SERPTrackingPage() {
     enabled: !!selectedCampaign,
   });
 
-  const mockData: SerpEntry[] = serpData.length ? serpData : [
-    { keyword: 'GrowthOS CRM', position: 3, url: 'https://growthos.io', volume: 1200, date: new Date().toISOString() },
-    { keyword: 'outil growth hacking', position: 8, url: 'https://growthos.io/growth', volume: 3400, date: new Date().toISOString() },
-    { keyword: 'logiciel prospection B2B', position: 15, url: 'https://growthos.io/b2b', volume: 5600, date: new Date().toISOString() },
-    { keyword: 'CRM intelligence artificielle', position: 24, url: 'https://growthos.io/ai', volume: 2100, date: new Date().toISOString() },
-    { keyword: 'Sales automation France', position: 11, url: 'https://growthos.io/sales', volume: 890, date: new Date().toISOString() },
-  ];
-
-  const historyData = selectedKeyword ? MOCK_HISTORY(selectedKeyword) : MOCK_HISTORY('Position avg').map(r => ({ ...r, 'Position avg': Object.values(r)[1] }));
+  const mockData: SerpEntry[] = serpData;
+  // No historical readings are available yet. An empty chart is more honest
+  // than displaying randomly generated search rankings.
+  const historyData: Array<{ date: string; [key: string]: string | number }> = [];
   const historyKey = selectedKeyword || 'Position avg';
 
   const posColor = (pos: number | null) => {

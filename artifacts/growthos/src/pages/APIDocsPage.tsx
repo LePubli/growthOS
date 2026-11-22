@@ -20,7 +20,7 @@ const TAG_ICONS: Record<string, string> = {
 };
 
 export default function APIDocsPage() {
-  const { token } = useAuthStore();
+  const { accessToken: token } = useAuthStore();
   const [openTags, setOpenTags] = useState<Set<string>>(new Set(['Prospects', 'Pipeline']));
   const [tryItPath, setTryItPath] = useState('');
   const [tryItMethod, setTryItMethod] = useState('GET');

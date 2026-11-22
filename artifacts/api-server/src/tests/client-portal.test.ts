@@ -15,7 +15,7 @@ export async function run(): Promise<SuiteResult> {
   const adminToken = ctx.adminToken;
 
   // ── Seed : campagne E-Réputation
-  let campaignId: string;
+  let campaignId: string | undefined;
   try {
     const { rows } = await pool.query(
       `INSERT INTO ereputation_campaigns (tenant_id, name, domain, status, reputation_score)

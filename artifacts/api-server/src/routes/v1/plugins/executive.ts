@@ -20,7 +20,8 @@ router.post("/assistant/ask", requireAuth, async (req, res) => {
   try {
     const { question } = req.body;
     if (!question || typeof question !== "string") {
-      return res.status(400).json({ error: "question is required" });
+      res.status(400).json({ error: "question is required" });
+      return;
     }
     const response = await executiveService.queryAssistant(question, req.auth!.tenantId);
     res.json(response);

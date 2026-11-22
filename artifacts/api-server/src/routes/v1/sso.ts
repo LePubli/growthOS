@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import { requireAuth } from "../../middlewares/auth";
+import { requireAuth, requireRole } from "../../middlewares/auth";
 
 const router = Router();
 
@@ -10,12 +10,13 @@ router.get("/config", requireAuth, async (req, res) => {
   res.json(result.rows);
 });
 
-router.post("/config", requireAuth, async (req, res) => {
+router.post("/config", requireAuth, requireRole("admin"), async (req, res) => {
   const tenantId = req.auth!.tenantId;
   const { provider, ssoUrl, entityId, certificate, isActive, attributeMapping } = req.body;
 
   if (!provider || !ssoUrl) {
-    return res.status(400).json({ error: "provider et ssoUrl sont requis" });
+    res.status(400).json({ error: "provider et ssoUrl sont requis" });
+    return;
   }
 
   const existing = await pool.query(`SELECT id FROM sso_configs WHERE tenant_id=$1 AND provider=$2`, [tenantId, provider]);
@@ -36,12 +37,12 @@ router.post("/config", requireAuth, async (req, res) => {
   res.status(201).json(result.rows[0]);
 });
 
-router.post("/config/:id/test", requireAuth, async (req, res) => {
+router.post("/config/:id/test", requireAuth, requireRole("admin"), async (req, res) => {
   const tenantId = req.auth!.tenantId;
   const { id } = req.params;
 
   const config = await pool.query(`SELECT * FROM sso_configs WHERE id=$1 AND tenant_id=$2`, [id, tenantId]);
-  if (config.rows.length === 0) return res.status(404).json({ error: "Configuration SSO introuvable" });
+  if (config.rows.length === 0) { res.status(404).json({ error: "Configuration SSO introuvable" }); return; }
 
   const cfg = config.rows[0];
   try {
@@ -52,7 +53,7 @@ router.post("/config/:id/test", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/config/:id", requireAuth, async (req, res) => {
+router.delete("/config/:id", requireAuth, requireRole("admin"), async (req, res) => {
   const tenantId = req.auth!.tenantId;
   await pool.query(`DELETE FROM sso_configs WHERE id=$1 AND tenant_id=$2`, [req.params.id, tenantId]);
   res.json({ success: true });

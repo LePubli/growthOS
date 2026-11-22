@@ -50,8 +50,9 @@ router.get("/dashboard", async (req, res) => {
       ).catch(() => ({ rows: [{ count: "0" }] as any[] })),
     ]);
 
-    const avgScore = campaigns.rows.length
-      ? Math.round(campaigns.rows.reduce((s, c) => s + (c.reputation_score ?? 50), 0) / campaigns.rows.length)
+    const scores = campaigns.rows.map(c => Number(c.reputation_score ?? 50));
+    const avgScore = scores.length
+      ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
       : 50;
 
     const activeAlerts = alerts.rows.filter(a => !a.is_resolved);

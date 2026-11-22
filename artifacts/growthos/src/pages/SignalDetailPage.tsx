@@ -125,14 +125,14 @@ export default function SignalDetailPage() {
               <div style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)', borderRadius:16, padding:20 }}>
                 <div style={{ fontSize:12, fontWeight:700, color:'var(--text-muted)', marginBottom:10, textTransform:'uppercase', letterSpacing:'0.06em' }}>Détails du signal</div>
                 <p style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.7, margin:0 }}>
-                  {signal.description || MOCK_SIGNAL.description}
+                  {signal.description || 'Aucune description vérifiée disponible.'}
                 </p>
                 <div style={{ marginTop:14, paddingTop:14, borderTop:'1px solid var(--card-border)', display:'flex', gap:20, flexWrap:'wrap' }}>
                   {[
                     { l:'Source', v:signal.source||'LinkedIn' },
                     { l:'Détecté', v:new Date(signal.createdAt).toLocaleDateString('fr-FR',{ day:'numeric', month:'long', year:'numeric' }) },
-                    { l:'Secteur', v:signal.sector||MOCK_SIGNAL.sector },
-                    { l:'Effectif', v:signal.employees||MOCK_SIGNAL.employees },
+                    { l:'Secteur', v:signal.sector||'Non renseigné' },
+                    { l:'Effectif', v:signal.employees||'Non renseigné' },
                   ].map(m=>(
                     <div key={m.l}>
                       <div style={{ fontSize:10, color:'var(--text-muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em' }}>{m.l}</div>
@@ -320,9 +320,9 @@ export default function SignalDetailPage() {
             {[
               { l:'Entreprise',  v:signal.company },
               { l:'Type signal', v:typeInfo.label },
-              { l:'Secteur',     v:signal.sector||MOCK_SIGNAL.sector },
-              { l:'Effectif',    v:signal.employees||MOCK_SIGNAL.employees },
-              { l:'CA estimé',   v:signal.revenue||MOCK_SIGNAL.revenue },
+              { l:'Secteur',     v:signal.sector||'Non renseigné' },
+              { l:'Effectif',    v:signal.employees||'Non renseigné' },
+              { l:'CA estimé',   v:signal.revenue||'Non renseigné' },
               { l:'Statut',      v:signal.isRead?'Lu':'Non lu' },
               { l:'Favori',      v:signal.isStarred?'⭐ Oui':'Non' },
             ].map(m=>(

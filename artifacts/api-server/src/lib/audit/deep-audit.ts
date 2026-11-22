@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Application } from "express";
 import jwt from "jsonwebtoken";
 import { pool } from "@workspace/db";
 import { pluginManager } from "../plugin-runtime";
@@ -119,7 +119,7 @@ function resolveParamPath(path: string, ids: Record<string, string>): string {
   return resolved;
 }
 
-async function auditRoutes(app: Express, baseUrl: string, token: string): Promise<RouteAuditResult[]> {
+async function auditRoutes(app: Application, baseUrl: string, token: string): Promise<RouteAuditResult[]> {
   const SKIP_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
   const SKIP_PREFIXES = ["/api/v1/auth", "/api/v1/audit"];
 
@@ -187,7 +187,7 @@ async function auditDatabase(): Promise<TableAuditResult[]> {
   return results;
 }
 
-export async function runDeepAudit(app: Express, port: number): Promise<DeepAuditReport> {
+export async function runDeepAudit(app: Application, port: number): Promise<DeepAuditReport> {
   const start = Date.now();
   let token = "";
   try { token = makeTestToken(); }

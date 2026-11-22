@@ -6,7 +6,7 @@ import { logger } from "../../lib/logger";
 const router = Router();
 
 router.post("/signal-cron/trigger", requireAuth, async (req, res) => {
-  if ((req.auth as any)?.role !== "admin") {
+  if (!(["admin", "platform_admin"].includes(req.auth?.role ?? ""))) {
     res.status(403).json({ error: "Accès refusé — rôle admin requis" });
     return;
   }

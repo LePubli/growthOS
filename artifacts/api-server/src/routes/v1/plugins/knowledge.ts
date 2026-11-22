@@ -47,8 +47,8 @@ router.get("/search", requireAuth, async (req, res) => {
 // GET /knowledge/:id — full article detail
 router.get("/:id", requireAuth, async (req, res) => {
   try {
-    const article = await knowledgeService.getById(req.params.id, req.auth!.tenantId);
-    if (!article) return res.status(404).json({ error: "Article not found" });
+    const article = await knowledgeService.getById(String(req.params.id), req.auth!.tenantId);
+    if (!article) { res.status(404).json({ error: "Article not found" }); return; }
     res.json(article);
   } catch (err) {
     console.error(err);
@@ -61,7 +61,8 @@ router.post("/", requireAuth, async (req, res) => {
   try {
     const { title, content, category, tags } = req.body;
     if (!title || !content || !category) {
-      return res.status(400).json({ error: "title, content, and category are required" });
+      res.status(400).json({ error: "title, content, and category are required" });
+      return;
     }
     const article = await knowledgeService.createArticle({
       title,
@@ -81,8 +82,8 @@ router.post("/", requireAuth, async (req, res) => {
 // PATCH /knowledge/:id — update article
 router.patch("/:id", requireAuth, async (req, res) => {
   try {
-    const article = await knowledgeService.updateArticle(req.params.id, req.auth!.tenantId, req.body);
-    if (!article) return res.status(404).json({ error: "Article not found" });
+    const article = await knowledgeService.updateArticle(String(req.params.id), req.auth!.tenantId, req.body);
+    if (!article) { res.status(404).json({ error: "Article not found" }); return; }
     res.json(article);
   } catch (err) {
     console.error(err);
@@ -93,8 +94,8 @@ router.patch("/:id", requireAuth, async (req, res) => {
 // DELETE /knowledge/:id — delete article
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
-    const deleted = await knowledgeService.deleteArticle(req.params.id, req.auth!.tenantId);
-    if (!deleted) return res.status(404).json({ error: "Article not found" });
+    const deleted = await knowledgeService.deleteArticle(String(req.params.id), req.auth!.tenantId);
+    if (!deleted) { res.status(404).json({ error: "Article not found" }); return; }
     res.json({ success: true });
   } catch (err) {
     console.error(err);

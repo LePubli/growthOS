@@ -2,6 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../../middlewares/auth";
 import { aiSDRService, generatePlaybook, PROMPT_TEMPLATES } from "../../../lib/plugin-ai-sdr/AISDRService";
+import { resolveDefaultAiProvider } from "../../../lib/llm/LLMService";
+import { providerKeysService } from "../../../lib/provider-keys/ProviderKeysService";
 
 const router = Router();
 
@@ -9,7 +11,22 @@ const DraftSchema = z.object({
   accountId: z.string().min(1, "accountId is required"),
   goal:      z.string().min(3, "goal must be at least 3 characters"),
   tone:      z.enum(["formal", "casual", "friendly"]).optional().default("friendly"),
-  provider:  z.enum(["ollama", "openai", "deepseek", "mistral", "anthropic", "gemini"]).optional().default("ollama"),
+  provider:  z.enum(["ollama", "openai", "deepseek", "mistral", "anthropic", "gemini"]).optional(),
+});
+
+// Return only the names of configured connectors; credentials stay server-side.
+router.get("/provider-settings", requireAuth, async (req, res) => {
+  try {
+    const activeProvider = await resolveDefaultAiProvider(req.auth!.tenantId);
+    const keys = await providerKeysService.getKeys(req.auth!.tenantId);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      activeProvider: activeProvider ?? "disabled",
+      configuredProviders: keys.filter(key => key.isActive).map(key => key.provider),
+    });
+  } catch {
+    res.status(500).json({ error: "Impossible de charger les fournisseurs IA" });
+  }
 });
 
 // GET /ai-sdr/status — check Ollama availability (Bug #2 fix: retour dégradé au lieu de crash)

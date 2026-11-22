@@ -342,9 +342,9 @@ export default function AuditPage() {
                           </pre>
                         </div>
                       )}
-                      {(log.oldValue || log.newValue) && (
+                      {Boolean(log.oldValue || log.newValue) && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                          {log.oldValue && (
+                          {Boolean(log.oldValue) && (
                             <div>
                               <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#DC2626' }}>AVANT</p>
                               <pre style={{ margin: 0, padding: '8px 10px', background: '#FEF2F2', borderRadius: 6, fontSize: 11, color: '#DC2626', overflow: 'auto', maxHeight: 120 }}>
@@ -352,7 +352,7 @@ export default function AuditPage() {
                               </pre>
                             </div>
                           )}
-                          {log.newValue && (
+                          {Boolean(log.newValue) && (
                             <div>
                               <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#059669' }}>APRÈS</p>
                               <pre style={{ margin: 0, padding: '8px 10px', background: '#F0FDF4', borderRadius: 6, fontSize: 11, color: '#059669', overflow: 'auto', maxHeight: 120 }}>

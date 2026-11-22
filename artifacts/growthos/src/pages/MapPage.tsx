@@ -161,8 +161,8 @@ export default function MapPage() {
   const [addrLoading, setAddrLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [showPolyline, setShowPolyline] = useState(true);
-  const geoTimer = useRef<ReturnType<typeof setTimeout>>();
-  const addrTimer = useRef<ReturnType<typeof setTimeout>>();
+  const geoTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const addrTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   /* Filtered prospects */
   const filtered = prospects.filter(p => {
@@ -211,7 +211,7 @@ export default function MapPage() {
 
   /* GPS locate */
   const locateMe = () => {
-    if (!navigator.geolocation) return toast.error('Géolocalisation non disponible');
+    if (!navigator.geolocation) { toast.error('Géolocalisation non disponible'); return; }
     navigator.geolocation.getCurrentPosition(
       pos => {
         setUserPos([pos.coords.latitude, pos.coords.longitude]);
@@ -225,7 +225,7 @@ export default function MapPage() {
 
   /* Navigation launchers */
   const openNav = (app: 'google' | 'waze' | 'apple') => {
-    if (tour.length === 0) return toast.error('Ajoutez au moins une étape à la tournée');
+    if (tour.length === 0) { toast.error('Ajoutez au moins une étape à la tournée'); return; }
     const last = tour[tour.length - 1];
     const waypoints = tour.slice(0, -1).map(s => `${s.lat},${s.lng}`).join('|');
     if (app === 'google') {

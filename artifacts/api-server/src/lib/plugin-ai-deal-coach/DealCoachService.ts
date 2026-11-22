@@ -205,7 +205,7 @@ function mockRecommendations(
 /* ─── Service ────────────────────────────────────────────── */
 
 class DealCoachService {
-  async analyzeDeal(dealId: string, tenantId: string, provider = "ollama"): Promise<CoachResult> {
+  async analyzeDeal(dealId: string, tenantId: string, provider?: string): Promise<CoachResult> {
     // 1. Fetch deal
     const dealRes = await pool.query<DealRow>(
       `SELECT * FROM deals WHERE id = $1 AND tenant_id = $2`,
@@ -267,7 +267,7 @@ class DealCoachService {
       company,
     });
 
-    // 8. Recommendations (try Ollama first)
+    // 8. Recommendations (use the tenant's configured cloud provider, if any)
     let aiRecommendations: string;
     const prompt = `Tu es un coach commercial expert. Analyse ce deal et génère 3 recommandations en français (format markdown avec titres en gras).
 Deal: "${deal.title}" - ${company} - ${deal.stage} - ${value}€
@@ -275,9 +275,9 @@ Risques: ${riskFactors.map(r => r.label).join(", ")}
 Signaux: ${signals.slice(0, 2).map(s => s.title).join(", ") || "Aucun"}
 Réponse: uniquement les 3 recommandations numérotées, concises et actionnables.`;
 
-    const ollamaRaw = await llmService.generate(prompt, { provider, tenantId });
+    const llmResult = await llmService.generate(prompt, { provider, tenantId });
     logger.info({ dealId, company, provider }, "LLM used for deal coaching");
-    aiRecommendations = ollamaRaw ?? mockRecommendations(company, riskFactors, signals, deal.stage);
+    aiRecommendations = llmResult ?? mockRecommendations(company, riskFactors, signals, deal.stage);
 
     // 9. Persist results
     await pool.query(

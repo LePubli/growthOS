@@ -11,6 +11,7 @@ import { usersTable, tenantsTable } from "@workspace/db";
 import { pool } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { signAccessToken, signRefreshToken, type AuthPayload } from "../../middlewares/auth";
+import { throttleAuthentication, requireRegistrationEnabled } from "../../middlewares/authGate";
 
 const router = Router();
 
@@ -33,7 +34,7 @@ function sanitizeUser(user: any) {
   return safe;
 }
 
-router.post("/register-public", async (req, res) => {
+router.post("/register-public", requireRegistrationEnabled, throttleAuthentication, async (req, res) => {
   const parse = registerPublicSchema.safeParse(req.body);
   if (!parse.success) {
     res.status(400).json({ error: "Données invalides", details: parse.error.issues });

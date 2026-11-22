@@ -25,7 +25,15 @@ runMigrations()
   .then(async () => {
     logger.info("Database migrations applied");
 
-    await Promise.all([runSourcingMigration(), runNotificationsMigration(), runProspectGeoMigration(), runEnrichmentMigration(), runEreputationMigration(), runTasksMigration(), runEnterpriseMigration()]);
+    // Run DDL in a stable order. Parallel schema migrations can race on
+    // shared tables and make the first Docker startup fail intermittently.
+    await runSourcingMigration();
+    await runNotificationsMigration();
+    await runProspectGeoMigration();
+    await runEnrichmentMigration();
+    await runEreputationMigration();
+    await runTasksMigration();
+    await runEnterpriseMigration();
     logger.info("All tables ready (sourcing, notifications, geo, enrichment, ereputation, tasks, enterprise)");
 
     await runSaaSMigration();
