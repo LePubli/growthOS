@@ -11,6 +11,7 @@ export const prospectsTable = pgTable("prospects", {
   email: text("email"),
   phone: text("phone"),
   company: text("company"),
+  siren: text("siren"),
   jobTitle: text("job_title"),
   website: text("website"),
   status: text("status").notNull().default("new"),

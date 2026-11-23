@@ -11,7 +11,8 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
   entreprises: {
     name: 'Annuaire des entreprises', icon: '🇫🇷', desc: 'Entreprises françaises — données officielles publiques', color: '#2563EB',
     fields: [
-      { key: 'query', label: 'Activité / nom / localisation', placeholder: 'Ex : agence immobilière Lille' },
+      { key: 'query', label: 'Activité ou nom d’entreprise (sans ville)', placeholder: 'Ex : plombier, boulangerie' },
+      { key: 'codePostal', label: 'Code postal exact *', placeholder: 'Ex : 59000' },
       { key: 'limit', label: 'Nombre de résultats (1 à 25)', placeholder: '10', type: 'number' },
     ],
   },
@@ -83,12 +84,18 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
   const setParam = (k:string, v:string) => setParams(p=>({...p,[k]:v}));
 
   const launch = async () => {
-    if (!name.trim()) { toast.error('Nom requis'); return; }
+    if (!type || !SUPPORTED_TYPES.has(type)) { toast.error('Sélectionnez une source disponible'); return; }
+    if (!params.query?.trim() || !/^\d{5}$/.test(params.codePostal || '')) {
+      toast.error('Renseignez une activité et un code postal exact à 5 chiffres');
+      return;
+    }
     setLaunching(true);
     try {
-      const job = await apiClient.post('/sourcing/jobs', { type, name, params });
+      const job = await apiClient.post('/sourcing/jobs', {
+        type, name: name.trim() || `${params.query.trim()} · ${params.codePostal}`, params,
+      });
       onLaunch(job);
-      toast.success(`${job.count ?? 0} entreprise(s) importée(s) dans le CRM`);
+      toast.success(`${job.count ?? 0} entreprise(s) trouvée(s). Sélectionnez celles à importer.`);
       onClose();
     } catch (error: any) {
       toast.error(error.message ?? 'Import impossible');
@@ -103,7 +110,7 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-green-50 flex items-center justify-center text-green-600"><Search size={16}/></div>
-            <h2 className="text-base font-bold text-gray-900">Nouveau scraping</h2>
+            <h2 className="text-base font-bold text-gray-900">Recherche d'entreprises</h2>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-xs text-gray-400">
@@ -143,10 +150,10 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
               </div>
               <div className="space-y-3 mb-5">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Nom du job *</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Nom de la recherche (facultatif)</label>
                   <input value={name} onChange={e=>setName(e.target.value)} autoFocus
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    placeholder="Ex: Directeurs IT Paris Q2"/>
+                    placeholder="Ex : Plombiers Lille centre"/>
                 </div>
                 {selectedType?.fields.map(f=>(
                   <div key={f.key}>
@@ -160,9 +167,9 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
               </div>
               <div className="flex gap-3">
                 <button onClick={()=>setStep(1)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">← Retour</button>
-                <button onClick={launch} disabled={!name.trim()||launching}
+                <button onClick={launch} disabled={launching || !params.query?.trim() || !/^\d{5}$/.test(params.codePostal || '')}
                   className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-                  {launching?<Loader2 size={14} className="animate-spin"/>:<Zap size={14}/>}Lancer le scraping
+                  {launching?<Loader2 size={14} className="animate-spin"/>:<Zap size={14}/>}Rechercher les entreprises
                 </button>
               </div>
             </>
@@ -206,7 +213,7 @@ export default function SourcingPage() {
     try {
       await apiClient.delete(`/sourcing/jobs/${id}`);
       setJobs(js=>js.filter(j=>j.id!==id));
-      toast.success('Job supprimé (les prospects déjà importés sont conservés)');
+      toast.success('Recherche supprimée (les prospects importés restent dans le CRM)');
     } catch (error: any) { toast.error(error.message ?? 'Suppression impossible'); }
   };
 
@@ -223,25 +230,25 @@ export default function SourcingPage() {
 
   return (
     <div className="min-h-screen p-6" style={{background:'var(--body-bg)'}}>
-      {showNew && <LaunchModal onClose={()=>setShowNew(false)} onLaunch={j=>setJobs(js=>[j,...js])}/>}
+      {showNew && <LaunchModal onClose={()=>setShowNew(false)} onLaunch={j=>{setJobs(js=>[j,...js]);navigate(`/sourcing/${j.id}`);}}/>}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold" style={{color:'var(--text-primary)'}}>Scraping & Sourcing</h1>
           <p className="text-sm" style={{color:'var(--text-muted)'}}>
-            {running>0?<span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse inline-block"/>{running} job{running>1?'s':''} en cours</span>:`${totalCollected} prospects collectés au total`}
+            {running>0?<span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse inline-block"/>{running} job{running>1?'s':''} en cours</span>:`${totalCollected} entreprises trouvées au total`}
           </p>
         </div>
         <button onClick={()=>setShowNew(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white" style={{background:'var(--color-primary)'}}>
-          <Plus size={14}/>Nouveau scraping
+          <Plus size={14}/>Nouvelle recherche
         </button>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          {l:'Prospects collectés', v:totalCollected, icon:<Users size={16}/>, color:'text-blue-600 bg-blue-50'},
+          {l:'Entreprises trouvées', v:totalCollected, icon:<Users size={16}/>, color:'text-blue-600 bg-blue-50'},
           {l:'Jobs terminés',       v:completed,       icon:<CheckCircle size={16}/>, color:'text-green-600 bg-green-50'},
           {l:'En cours',           v:running,         icon:<Loader2 size={16}/>, color:'text-purple-600 bg-purple-50'},
           {l:'Sources dispo.',     v:SUPPORTED_TYPES.size, icon:<Globe size={16}/>, color:'text-teal-600 bg-teal-50'},
@@ -295,7 +302,7 @@ export default function SourcingPage() {
           <Search size={40} className="mx-auto mb-3" style={{color:'var(--card-border)'}}/>
           <p className="text-sm mb-4" style={{color:'var(--text-muted)'}}>Aucun job trouvé</p>
           <button onClick={()=>setShowNew(true)} className="px-4 py-2 rounded-xl text-sm text-white" style={{background:'var(--color-primary)'}}>
-            + Lancer un scraping
+            + Lancer une recherche
           </button>
         </div>
       ) : (
@@ -339,7 +346,7 @@ export default function SourcingPage() {
                     {job.count>0&&(
                       <div className="text-right">
                         <div className="text-sm font-bold" style={{color:'var(--color-primary)'}}>{job.count}</div>
-                        <div className="text-xs" style={{color:'var(--text-muted)'}}>prospects</div>
+                        <div className="text-xs" style={{color:'var(--text-muted)'}}>résultats</div>
                       </div>
                     )}
 

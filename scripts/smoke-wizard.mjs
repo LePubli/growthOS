@@ -109,8 +109,10 @@ const companies = createServer((req, res) => {
   if (!req.url?.startsWith("/search?")) { res.writeHead(404).end(); return; }
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ results: [
-    { siren: "100000001", nom_complet: "Entreprise test A", siege: { adresse: "Lille, France" } },
-    { siren: "100000002", nom_complet: "Entreprise test B", siege: { adresse: "Roubaix, France" } },
+    { siren: "100000001", nom_complet: "Entreprise test A", siege: { adresse: "10 rue Nationale, 59000 Lille", code_postal: "59000", libelle_commune: "Lille" } },
+    { siren: "100000002", nom_complet: "Entreprise test B", siege: { adresse: "Paris, France", code_postal: "75001", libelle_commune: "Paris" },
+      matching_etablissements: [{ adresse: "20 rue du Molinel, 59000 Lille", code_postal: "59000", libelle_commune: "Lille" }] },
+    { siren: "100000003", nom_complet: "Entreprise hors zone", siege: { adresse: "Paris, France", code_postal: "75001", libelle_commune: "Paris" } },
   ] }));
 });
 const ollama = createServer((req, res) => {
@@ -203,15 +205,46 @@ try {
     type: "linkedin", name: "Connecteur indisponible", params: { query: "CEO" },
   }, token)).status === 400, "Faux connecteur LinkedIn désactivé");
   const source = await request("POST", "/sourcing/jobs", {
-    type: "entreprises", name: "Test Lille", params: { query: "agence Lille", limit: 2 },
+    type: "entreprises", name: "Test Lille", params: { query: "plombier", codePostal: "59000", limit: 5 },
   }, token);
   check(source.status === 201 && source.body.count === 2 && source.body.status === "completed",
-    "Annuaire officiel simulé : 2 entreprises importées");
+    "Annuaire officiel simulé : seulement 2 établissements locaux trouvés");
   const results = await request("GET", `/sourcing/jobs/${source.body.id}/results`, undefined, token);
-  check(results.status === 200 && results.body.total === 2,
-    "Résultats liés à leur job de sourcing");
+  check(results.status === 200 && results.body.total === 2 &&
+    results.body.data.every(r => r.codePostal === "59000" && !r.address.includes("Paris")),
+    "Géographie stricte : le siège parisien est remplacé par son établissement lillois");
+  const crmBeforeImport = await request("GET", "/prospects", undefined, token);
+  check(crmBeforeImport.status === 200 && crmBeforeImport.body.total === 0,
+    "Une recherche n'insère aucun prospect sans sélection");
+  const invalidSelection = await request("POST", `/sourcing/jobs/${source.body.id}/import`,
+    { sirens: ["999999999"] }, token);
+  check(invalidSelection.status === 400, "Impossible d'importer une entreprise absente de la recherche");
+  const selectedImport = await request("POST", `/sourcing/jobs/${source.body.id}/import`,
+    { sirens: ["100000001"] }, token);
+  check(selectedImport.status === 200 && selectedImport.body.imported === 1,
+    "Import explicite : une seule entreprise sélectionnée est ajoutée");
+  const repeatedSelection = await request("POST", `/sourcing/jobs/${source.body.id}/import`,
+    { sirens: ["100000001"] }, token);
+  check(repeatedSelection.status === 200 && repeatedSelection.body.imported === 0 &&
+    repeatedSelection.body.skipped === 1, "SIREN déjà importé : doublon ignoré");
+  const importSecond = await request("POST", `/sourcing/jobs/${source.body.id}/import`,
+    { sirens: ["100000002"] }, token);
+  check(importSecond.status === 200 && importSecond.body.imported === 1,
+    "La seconde entreprise est importée uniquement à la demande");
   const crm = await request("GET", "/prospects", undefined, token);
-  check(crm.status === 200 && crm.body.total === 2, "Entreprises présentes dans le CRM");
+  check(crm.status === 200 && crm.body.total === 2,
+    "Les deux entreprises choisies apparaissent dans le CRM");
+  const noMockActivity = await request("GET", `/activities?prospectId=${crm.body.data[0].id}`, undefined, token);
+  check(noMockActivity.status === 200 && noMockActivity.body.length === 0,
+    "Une fiche prospect importée démarre sans activités ni commentaires");
+  const realComment = await request("POST", "/activities", {
+    prospectId: crm.body.data[0].id, type: "comment",
+    title: "Commentaire", description: "Message réel de suivi", status: "done",
+  }, token);
+  const actualHistory = await request("GET", `/activities?prospectId=${crm.body.data[0].id}`, undefined, token);
+  check(realComment.status === 201 && actualHistory.body.length === 1 &&
+    actualHistory.body[0].description === "Message réel de suivi",
+    "Un commentaire enregistré est réellement relu depuis la base");
   const csvRows = [
     { firstName: "Alice", lastName: "Import", email: "alice.csv@example.com", status: "new" },
     { firstName: "Alice", lastName: "Bis", email: "ALICE.CSV@example.com", status: "new" },
@@ -296,7 +329,7 @@ try {
     "Ancienne configuration globale des clés désactivée");
   check((await request("POST", "/enrich/test-connection/hunter", {}, token)).status === 501,
     "Aucun faux test de connexion réussi");
-  check((await request("POST", "/enrich/batch", { prospectIds: [results.body.data[0].id] }, token)).status === 501,
+  check((await request("POST", "/enrich/batch", { prospectIds: [crm.body.data[0].id] }, token)).status === 501,
     "Enrichissement asynchrone sans file persistante désactivé");
   check((await request("POST", "/seo-audit/check", { url: "https://127.0.0.1/admin" }, token)).status === 400,
     "Inspection SEO : accès aux adresses internes refusé");

@@ -7,7 +7,7 @@ import { eq, and, desc, or } from "drizzle-orm";
 const router = Router();
 
 const activitySchema = z.object({
-  type: z.enum(["call", "email", "meeting", "note", "task"]).default("note"),
+  type: z.enum(["comment", "call", "email", "meeting", "note", "task"]).default("note"),
   title: z.string().min(1),
   description: z.string().optional(),
   status: z.enum(["planned", "done", "cancelled"]).default("done"),

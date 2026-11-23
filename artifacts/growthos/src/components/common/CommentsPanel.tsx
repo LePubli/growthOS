@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, MessageSquare, Loader2, Phone, Mail, Calendar, FileText, CheckCircle, AtSign } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth.store';
 
 export type ActivityType = 'comment' | 'call' | 'email' | 'meeting' | 'note' | 'status_change';
@@ -24,15 +25,8 @@ const TYPE_META: Record<ActivityType, { icon: React.ReactNode; color: string; bg
   status_change: { icon: <CheckCircle size={13} />,   color: '#059669', bg: '#ECFDF5', label: 'Changement' },
 };
 
-const MOCK_ACTIVITIES: Activity[] = [
-  { id: '1', type: 'call', content: 'Appel de 20 min — intéressé par le plan Pro. Rappel prévu la semaine prochaine.', author: 'Vous', authorInitial: 'V', createdAt: 'il y a 2h', mentions: [] },
-  { id: '2', type: 'email', content: 'Envoi de la proposition commerciale — devis 12 500€/an.', author: 'Vous', authorInitial: 'V', createdAt: 'il y a 1j', mentions: [] },
-  { id: '3', type: 'comment', content: 'À suivre en priorité cette semaine. Le budget est validé côté client.', author: 'Alice Moreau', authorInitial: 'A', createdAt: 'il y a 2j', mentions: [] },
-  { id: '4', type: 'meeting', content: 'Demo produit — 45 min. Très bon retour sur les fonctionnalités de scraping.', author: 'Vous', authorInitial: 'V', createdAt: 'il y a 3j', mentions: [] },
-];
-
 const QUICK_TYPES: { type: ActivityType; icon: React.ReactNode; label: string }[] = [
-  { type: 'comment', icon: <MessageSquare size={13} />, label: 'Note' },
+  { type: 'comment', icon: <MessageSquare size={13} />, label: 'Commentaire' },
   { type: 'call',    icon: <Phone size={13} />,         label: 'Appel' },
   { type: 'email',   icon: <Mail size={13} />,          label: 'Email' },
   { type: 'meeting', icon: <Calendar size={13} />,      label: 'RDV' },
@@ -45,50 +39,60 @@ interface Props {
 
 export function CommentsPanel({ entityType, entityId }: Props) {
   const { user } = useAuthStore();
-  const [activities, setActivities] = useState<Activity[]>(MOCK_ACTIVITIES);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [content, setContent] = useState('');
   const [type, setType] = useState<ActivityType>('comment');
   const [sending, setSending] = useState(false);
+  const [loadingError, setLoadingError] = useState(false);
   const [filterType, setFilterType] = useState<ActivityType | 'all'>('all');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    let active = true;
+    setActivities([]);
+    setLoadingError(false);
     const paramKey = entityType === 'prospect' ? 'prospectId' : 'dealId';
     apiClient.get('/activities', { params: { [paramKey]: entityId } })
-      .then((d: any) => {
-        const list = Array.isArray(d) ? d : d?.data || [];
-        if (list.length > 0) {
-          setActivities(list.map((a: any) => ({
-            id: a.id, type: a.type || 'comment', content: a.description || a.content || '',
-            author: a.userName || 'Vous', authorInitial: (a.userName || 'V').charAt(0).toUpperCase(),
-            createdAt: a.createdAt ? new Date(a.createdAt).toLocaleDateString('fr-FR') : '—',
-          })));
-        }
-      }).catch(() => {});
+      .then((data: any) => {
+        if (!active) return;
+        const list = Array.isArray(data) ? data : data?.data || [];
+        setActivities(list.map((entry: any) => ({
+          id: entry.id,
+          type: entry.type || 'comment',
+          content: entry.description || entry.title || '',
+          author: entry.userName || 'Équipe',
+          authorInitial: (entry.userName || 'É').charAt(0).toUpperCase(),
+          createdAt: entry.createdAt ? new Date(entry.createdAt).toLocaleString('fr-FR') : '—',
+        })));
+      })
+      .catch(() => { if (active) { setActivities([]); setLoadingError(true); } });
+    return () => { active = false; };
   }, [entityId, entityType]);
 
   const send = async () => {
-    if (!content.trim()) return;
+    if (!content.trim() || sending) return;
     setSending(true);
-    const newActivity: Activity = {
-      id: Date.now().toString(),
-      type,
-      content: content.trim(),
-      author: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Vous',
-      authorInitial: (user?.firstName || 'V').charAt(0).toUpperCase(),
-      createdAt: 'à l\'instant',
-    };
     try {
       const entityParam = entityType === 'prospect' ? { prospectId: entityId } : { dealId: entityId };
-      await apiClient.post('/activities', {
+      const saved = await apiClient.post<{ id: string; createdAt: string; type: ActivityType; description?: string }>('/activities', {
         type, title: TYPE_META[type].label, description: content.trim(),
         ...entityParam, status: 'done',
       });
-    } catch {}
-    setActivities(prev => [newActivity, ...prev]);
-    setContent('');
-    setSending(false);
-    setType('comment');
+      const author = user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Vous';
+      setActivities(previous => [{
+        id: saved.id, type: saved.type, content: saved.description || content.trim(),
+        author, authorInitial: author.charAt(0).toUpperCase(),
+        createdAt: new Date(saved.createdAt).toLocaleString('fr-FR'),
+      }, ...previous]);
+      setContent('');
+      setType('comment');
+      setLoadingError(false);
+      toast.success('Activité enregistrée');
+    } catch {
+      toast.error('Activité non enregistrée. Réessayez.');
+    } finally {
+      setSending(false);
+    }
   };
 
   const onKey = (e: React.KeyboardEvent) => {
@@ -126,7 +130,7 @@ export function CommentsPanel({ entityType, entityId }: Props) {
             style={{ width: '100%', padding: '12px 14px', border: 'none', background: 'transparent', resize: 'none', fontSize: 13, color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderTop: '1px solid var(--card-border)' }}>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>⌘+Entrée pour envoyer · @mention un collègue</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Ctrl/⌘+Entrée pour enregistrer</span>
             <button onClick={send} disabled={!content.trim() || sending}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: 'none', background: content.trim() ? TYPE_META[type].color : 'var(--card-border)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: content.trim() ? 'pointer' : 'not-allowed', transition: 'all 0.15s' }}>
               {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
@@ -149,6 +153,12 @@ export function CommentsPanel({ entityType, entityId }: Props) {
           </button>
         ))}
       </div>
+
+      {loadingError && (
+        <p role="alert" style={{ color:'#B91C1C', fontSize:12, marginBottom:12 }}>
+          Historique indisponible : les activités n'ont pas pu être chargées.
+        </p>
+      )}
 
       {/* Activity feed */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
