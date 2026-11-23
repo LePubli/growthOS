@@ -318,8 +318,8 @@ try {
   const localParams = {sources:["pagesjaunes","entreprises"],query:"plombier",
     regions:[],departements:[],codesPostaux:["59000"],limit:5};
   const localCandidate = {id:"pj_local_testing",company:"Plomberie Locale",
-    address:"12 rue de la Paix 59000 Lille",codePostal:"59000",city:"Lille",
-    phone:null,website:null,sourceUrl:"https://www.pagesjaunes.fr/pros/123",siret:null};
+    address:"12 rue de la Paix 59000 Lille Voir le plan",codePostal:"59000",city:"Lille Voir le plan",
+    phone:null,website:null,sourceUrl:"https://www.pagesjaunes.fr/pros/12345678",siret:null};
   const invalidLocal = await request("POST", "/sourcing/device/jobs", {
     name:"Rejet domaine frauduleux",params:localParams,
     candidates:[{...localCandidate,sourceUrl:"https://evilpagesjaunes.fr/pros/123"}],
@@ -335,6 +335,39 @@ try {
   check(localPreview.status === 200 && localPreview.body.total === 3 &&
     localPreview.body.data.some(row=>row.source === "pagesjaunes" && row.company === "Plomberie Locale"),
     "Connecteur appareil : résultats visibles avant import CRM");
+
+  const detailedCandidate = {sourceUrl:"https://www.pagesjaunes.fr/pros/12345678",
+    name:"Plomberie Locale",address:"12 rue de la Paix 59000 Lille",codePostal:"59000",city:"Lille",
+    phone:"0320123456",email:null,website:"https://example.org",
+    siret:null,siren:null,description:"Plomberie et dépannage de proximité",
+    openingHours:"Lundi au vendredi 9h-18h",services:"Dépannage, entretien",
+    legal:null,socials:{facebook:"https://www.facebook.com/exampleorg"},
+    rating:4.7,reviewCount:12,capturedAt:new Date().toISOString()};
+  const mismatchedDetailed = await request("POST", `/sourcing/device/jobs/${localJob.body.id}/enrich`, {
+    candidateId:localCandidate.id,profile:{...detailedCandidate,sourceUrl:"https://www.pagesjaunes.fr/pros/88888888"},
+  },token);
+  check(mismatchedDetailed.status===409,"Fiche détaillée étrangère rejetée avant import");
+  const updatedDetail = await request("POST", `/sourcing/device/jobs/${localJob.body.id}/enrich`, {
+    candidateId:localCandidate.id,profile:detailedCandidate,
+  },token);
+  check(updatedDetail.status===200 && updatedDetail.body.phone==="0320123456" &&
+    updatedDetail.body.sourceDetails.pagesjaunes.rating===4.7,"Fiche détaillée enregistrée dans la recherche sélectionnée");
+  const selectedDetailed = await request("POST", `/sourcing/jobs/${localJob.body.id}/import`, {
+    ids:[localCandidate.id],
+  },token);
+  check(selectedDetailed.status===200 && selectedDetailed.body.imported===1,
+    "Une fiche détaillée n'est importée dans le CRM qu'après confirmation");
+  const enrichedRows = await request("GET","/prospects?search=Plomberie%20Locale",undefined,token);
+  const enrichedProspect = enrichedRows.body.data?.find(p=>p.company==="Plomberie Locale");
+  check(enrichedProspect?.phone==="0320123456" &&
+    enrichedProspect?.sourceDetails?.pagesjaunes?.openingHours?.includes("9h-18h") && enrichedProspect.city === "Lille",
+    "Téléphone et horaires source conservés dans le CRM");
+  const revisited = await request("POST", `/sourcing/device/prospects/${enrichedProspect.id}/enrich`, {
+    profile:{...detailedCandidate,phone:"0320999999",description:"Fiche actualisée"},
+  },token);
+  check(revisited.status===200 && revisited.body.phone==="0320123456" &&
+    revisited.body.sourceDetails.pagesjaunes.description==="Fiche actualisée",
+    "Actualisation d'une fiche existante sans écraser un téléphone déjà renseigné");
 
   const pjSearch = await request("POST", "/sourcing/jobs", {
     type: "pagesjaunes", name: "Plombiers Lille via HTML", params: { query: "plombier", location: "Lille", limit: 10 },

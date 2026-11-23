@@ -152,6 +152,7 @@ ALTER TABLE prospects ADD COLUMN IF NOT EXISTS postal_code TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS city TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source_url TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source_details JSONB NOT NULL DEFAULT '{}'::jsonb;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_prospects_tenant_siren ON prospects(tenant_id, siren) WHERE siren IS NOT NULL;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS notes TEXT;

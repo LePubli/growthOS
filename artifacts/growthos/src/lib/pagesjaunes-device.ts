@@ -11,9 +11,19 @@ export type LocalCompany = {
   sourceUrl: string | null;
   siret: string | null;
 };
+export type LocalProfile = {
+  sourceUrl: string; name: string;
+  address: string | null; codePostal: string | null; city: string | null;
+  phone: string | null; email: string | null; website: string | null;
+  siret: string | null; siren: string | null;
+  description: string | null; openingHours: string | null; services: string | null; legal: string | null;
+  socials: {facebook?:string;instagram?:string;linkedin?:string};
+  rating: number | null; reviewCount: number | null; capturedAt: string;
+};
 type ExtensionResponse = {
   results: LocalCompany[];
   warnings: string[];
+  profile: LocalProfile | null;
 };
 const CHANNEL = 'growthos-pagesjaunes-device-v1';
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -28,7 +38,7 @@ export function localPagesJaunesLocations(filters: {
     departements.length ? departements.map(code => departmentNames[code] || code) :
     regions.map(code => regionNames[code] || code))];
 }
-function askExtension(action: 'ping'|'search', payload?: object, timeoutMs = 2000): Promise<ExtensionResponse> {
+function askExtension(action: 'ping'|'search'|'enrich', payload?: object, timeoutMs = 2000): Promise<ExtensionResponse> {
   return new Promise((resolve,reject) => {
     if (isMobile) { reject(new Error('Sur téléphone, une application Android dédiée sera nécessaire.')); return; }
     const requestId = crypto.randomUUID();
@@ -42,7 +52,7 @@ function askExtension(action: 'ping'|'search', payload?: object, timeoutMs = 200
       if (!m || m.channel !== CHANNEL || m.direction !== 'from-extension' || m.requestId !== requestId) return;
       window.clearTimeout(timeout); window.removeEventListener('message',listener);
       if (!m.ok) { reject(new Error(m.error || 'Extension indisponible')); return; }
-      resolve({results: Array.isArray(m.results) ? m.results : [], warnings: Array.isArray(m.warnings) ? m.warnings : []});
+      resolve({results: Array.isArray(m.results) ? m.results : [], warnings: Array.isArray(m.warnings) ? m.warnings : [], profile: m.profile || null});
     }
     window.addEventListener('message',listener);
     window.postMessage({channel:CHANNEL,direction:'to-extension',requestId,action,payload},window.location.origin);
@@ -52,4 +62,10 @@ export function pingLocalPagesJaunes() { return askExtension('ping'); }
 export function searchLocalPagesJaunes(payload: {query:string;locations:string[];limit:number}) {
   // 8 zones * (chargement 25s + pause 5s), plus marge pour la recherche.
   return askExtension('search',payload,Math.min(270000, payload.locations.length * 34000 + 15000));
+}
+
+export async function enrichLocalPagesJaunes(url: string): Promise<LocalProfile> {
+  const response = await askExtension('enrich', {url}, 60000);
+  if (!response.profile) throw new Error('La fiche PagesJaunes n’a pas pu être extraite');
+  return response.profile;
 }

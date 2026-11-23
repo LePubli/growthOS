@@ -9,6 +9,7 @@ import {
   Building, Database, BarChart2, Users, Newspaper, GitMerge, Copy,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { enrichLocalPagesJaunes } from '@/lib/pagesjaunes-device';
 import { toast } from 'sonner';
 import { CommentsPanel } from '@/components/common/CommentsPanel';
 import { AddressAutocomplete } from '@/components/common/AddressAutocomplete';
@@ -304,6 +305,7 @@ export default function ProspectDetailPage() {
   const [geocoding, setGeocoding] = useState(false);
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [enrichingPagesJaunes, setEnrichingPagesJaunes] = useState(false);
   const [lastEnrichedAt, setLastEnrichedAt] = useState<Date | null>(null);
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [convertLoading, setConvertLoading] = useState(false);
@@ -317,6 +319,22 @@ export default function ProspectDetailPage() {
       setForm(data);
     } catch { toast.error('Prospect introuvable'); navigate('/prospects'); }
     finally { setLoading(false); }
+  };
+
+  const enrichFromPagesJaunes = async () => {
+    if (!prospect?.sourceUrl) return;
+    setEnrichingPagesJaunes(true);
+    try {
+      toast.info('Ouverture de la fiche PagesJaunes dans votre navigateur…');
+      const profile = await enrichLocalPagesJaunes(prospect.sourceUrl);
+      const updated = await apiClient.post<any>(`/sourcing/device/prospects/${id}/enrich`,
+        {profile}, {timeoutMs: 60000});
+      setProspect(updated);
+      setForm(updated);
+      toast.success('Fiche PagesJaunes consultée : informations disponibles enregistrées.');
+    } catch (error: any) {
+      toast.error(error.message || 'Enrichissement PagesJaunes impossible', {duration:10000});
+    } finally {setEnrichingPagesJaunes(false);}
   };
 
   const fetchActivities = async () => {
@@ -496,6 +514,8 @@ export default function ProspectDetailPage() {
   const contactName = [prospect.firstName, prospect.lastName].filter(Boolean).join(' ');
   const fullName = contactName || prospect.company || 'Sans nom';
   const statusColor = STATUS_COLORS[prospect.status] || '#6B7280';
+  const pagesJaunesDetails = prospect.sourceDetails?.pagesjaunes || null;
+  const pagesJaunesProfile = /^https:\/\/(?:www\.)?pagesjaunes\.fr\/pros\/\d+\/?(?:\?.*)?$/.test(prospect.sourceUrl || '');
 
   return (
     <div className="min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
@@ -648,8 +668,36 @@ export default function ProspectDetailPage() {
           {prospect.source && <div className="rounded-xl border px-4 py-3 flex flex-wrap items-center gap-2 text-xs" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-muted)' }}>
             <span className="font-semibold">Source :</span>
             <span>{prospect.source === 'pagesjaunes' ? 'PagesJaunes.fr' : prospect.source === 'annuaire-entreprises' ? 'Annuaire des entreprises' : prospect.source}</span>
-            {prospect.sourceUrl && /^https:\/\/www\.pagesjaunes\.fr\//.test(prospect.sourceUrl) && <a href={prospect.sourceUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline">Voir la fiche source</a>}
+            {pagesJaunesProfile && <a href={prospect.sourceUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline">Voir la fiche source</a>}
+            {pagesJaunesProfile && <button onClick={enrichFromPagesJaunes} disabled={enrichingPagesJaunes}
+              className="ml-auto px-3 py-2 rounded-lg bg-teal-600 text-white font-semibold disabled:opacity-50 flex gap-1.5 items-center">
+              {enrichingPagesJaunes ? <Loader2 size={13} className="animate-spin"/> : <RefreshCw size={13}/>}
+              {enrichingPagesJaunes ? 'Lecture de la fiche…' : 'Compléter depuis PagesJaunes'}
+            </button>}
           </div>}
+          {pagesJaunesDetails && <section className="rounded-2xl border p-5 space-y-4" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
+            <div className="flex items-center gap-2">
+              <FileText size={16} className="text-teal-600"/>
+              <h2 className="text-sm font-bold" style={{color:'var(--text-primary)'}}>INFORMATIONS PAGESJAUNES</h2>
+            </div>
+            <p className="text-xs text-gray-500">Informations visibles sur la fiche source au {pagesJaunesDetails.capturedAt ? new Date(pagesJaunesDetails.capturedAt).toLocaleString('fr-FR') : 'dernier enrichissement'}. Les champs absents ne sont pas inventés.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              {[
+                {label:'Présentation',value:pagesJaunesDetails.description},
+                {label:'Horaires',value:pagesJaunesDetails.openingHours},
+                {label:'Services et prestations',value:pagesJaunesDetails.services},
+                {label:'Informations juridiques visibles',value:pagesJaunesDetails.legal},
+                {label:'Avis clients',value:pagesJaunesDetails.rating !== null && pagesJaunesDetails.rating !== undefined ? `${pagesJaunesDetails.rating}/5${pagesJaunesDetails.reviewCount != null ? ` · ${pagesJaunesDetails.reviewCount} avis` : ''}` : null},
+              ].filter(item=>item.value).map(item=><div key={item.label}>
+                <div className="text-xs text-gray-500 mb-1">{item.label}</div>
+                <p className="whitespace-pre-wrap text-sm" style={{color:'var(--text-primary)'}}>{item.value}</p>
+              </div>)}
+            </div>
+            {pagesJaunesDetails.socials && Object.keys(pagesJaunesDetails.socials).length > 0 && <div className="flex gap-3 flex-wrap">
+              {Object.entries(pagesJaunesDetails.socials as Record<string,string>).filter(([,url])=>/^https?:\/\//i.test(url)).map(([site,url])=>
+                <a key={site} href={url} target="_blank" rel="noreferrer" className="text-teal-700 underline text-sm">{site}</a>)}
+            </div>}
+          </section>}
           {/* Coordonnées */}
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>CONTACT ET COORDONNÉES</h2>

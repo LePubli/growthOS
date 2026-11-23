@@ -74,7 +74,9 @@ type SearchCandidate = {
   codePostal: string;
   city: string | null;
   phone?: string | null;
+  email?: string | null;
   website?: string | null;
+  sourceDetails?: Record<string, unknown> | null;
   sourceUrl?: string | null;
 };
 type SavedParams = {
@@ -341,6 +343,136 @@ router.post("/device/jobs", requireAuth, async (req, res) => {
   res.status(201).json(job);
 });
 
+
+const pagesJaunesProfileUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && ["pagesjaunes.fr", "www.pagesjaunes.fr"].includes(parsed.hostname)
+      && /^\/pros\/\d{4,20}\/?$/.test(parsed.pathname);
+  } catch { return false; }
+};
+const profileUrl = z.string().max(500).url().refine(pagesJaunesProfileUrl, "Fiche PagesJaunes attendue");
+const profileSchema = z.object({
+  sourceUrl: profileUrl,
+  name: z.string().trim().min(2).max(160),
+  address: z.string().trim().max(320).nullable(),
+  codePostal: z.string().regex(/^\d{5}$/).nullable(),
+  city: z.string().trim().max(120).nullable(),
+  phone: z.string().trim().max(40).nullable(),
+  email: z.string().email().max(250).nullable(),
+  website: z.string().url().max(500).refine(v => ["https:", "http:"].includes(new URL(v).protocol)).nullable(),
+  siret: z.string().regex(/^\d{14}$/).nullable(),
+  siren: z.string().regex(/^\d{9}$/).nullable(),
+  description: z.string().trim().max(1500).nullable(),
+  openingHours: z.string().trim().max(1500).nullable(),
+  services: z.string().trim().max(1400).nullable(),
+  legal: z.string().trim().max(1500).nullable(),
+  socials: z.object({
+    facebook: z.string().url().max(500).optional(),
+    instagram: z.string().url().max(500).optional(),
+    linkedin: z.string().url().max(500).optional(),
+  }).strict(),
+  rating: z.number().min(0).max(5).nullable(),
+  reviewCount: z.number().int().min(0).max(1000000).nullable(),
+  capturedAt: z.string().datetime().optional(),
+}).strict();
+
+router.post("/device/prospects/:id/enrich", requireAuth, async (req,res) => {
+  const parsed = profileSchema.safeParse(req.body?.profile);
+  if (!parsed.success) {res.status(400).json({error:"Détails PagesJaunes invalides",details:parsed.error.issues});return;}
+  const [prospect] = await db.select().from(prospectsTable).where(and(
+    eq(prospectsTable.id,String(req.params.id)),eq(prospectsTable.tenantId,req.auth!.tenantId)
+  )).limit(1);
+  if (!prospect) {res.status(404).json({error:"Prospect introuvable"});return;}
+  if (!prospect.sourceUrl || !pagesJaunesProfileUrl(prospect.sourceUrl)
+    || new URL(prospect.sourceUrl).pathname !== new URL(parsed.data.sourceUrl).pathname) {
+    res.status(409).json({error:"Cette fiche ne correspond pas à la source du prospect"});return;
+  }
+  const profile=parsed.data;
+  if (prospect.postalCode && profile.codePostal && prospect.postalCode !== profile.codePostal) {
+    res.status(409).json({error:"Le code postal de la fiche source ne correspond pas au prospect"});return;
+  }
+  const cleanCity = (v: string | null) => v?.replace(/\s*Voir (?:le plan|l'itinéraire).*$/i,"").trim() || null;
+  const cleanAddress = (v: string | null) => v?.replace(/\s*Voir (?:le plan|l'itinéraire).*$/i,"").trim() || null;
+  let siren = prospect.siren;
+  let siret = prospect.siret;
+  const nextSiren = profile.siren || profile.siret?.slice(0,9) || null;
+  if (!siren && nextSiren) {
+    const [other] = await db.select({id:prospectsTable.id}).from(prospectsTable).where(and(
+      eq(prospectsTable.tenantId,req.auth!.tenantId),eq(prospectsTable.siren,nextSiren)
+    )).limit(1);
+    if (!other || other.id === prospect.id) siren=nextSiren;
+  }
+  if (!siret && profile.siret) {
+    const [other] = await db.select({id:prospectsTable.id}).from(prospectsTable).where(and(
+      eq(prospectsTable.tenantId,req.auth!.tenantId),eq(prospectsTable.siret,profile.siret)
+    )).limit(1);
+    if (!other || other.id === prospect.id) siret=profile.siret;
+  }
+  const prior = (prospect.sourceDetails && typeof prospect.sourceDetails === "object"
+    && !Array.isArray(prospect.sourceDetails)) ? prospect.sourceDetails : {};
+  const [updated] = await db.update(prospectsTable).set({
+    phone: prospect.phone || profile.phone,
+    email: prospect.email || profile.email,
+    website: prospect.website || profile.website,
+    siren, siret,
+    city: cleanCity(prospect.city) || cleanCity(profile.city),
+    address: cleanAddress(prospect.address) || cleanAddress(profile.address),
+    postalCode: prospect.postalCode || profile.codePostal,
+    sourceDetails: {...prior,pagesjaunes:{...profile,capturedAt:new Date().toISOString()}},
+    updatedAt: new Date(),
+  }).where(and(eq(prospectsTable.id,prospect.id),eq(prospectsTable.tenantId,req.auth!.tenantId))).returning();
+  res.json(updated);
+});
+
+router.post("/device/jobs/:id/enrich", requireAuth, async(req,res) => {
+  const parsed=z.object({
+    candidateId:z.string().min(3).max(64),
+    profile:profileSchema,
+  }).strict().safeParse(req.body);
+  if(!parsed.success){res.status(400).json({error:"Fiche détaillée invalide",details:parsed.error.issues});return;}
+  const job=await getJob(String(req.params.id),req.auth!.tenantId);
+  if(!job){res.status(404).json({error:"Recherche introuvable"});return;}
+  const saved=savedParams(job);
+  if(job.status!=="completed" || !Array.isArray(saved.results) || !saved.sources?.includes("pagesjaunes")){
+    res.status(409).json({error:"Recherche PagesJaunes non enrichissable"});return;
+  }
+  const index=saved.results.findIndex(c=>(c.id || c.siren)===parsed.data.candidateId);
+  if(index<0){res.status(404).json({error:"Entreprise absente de cette recherche"});return;}
+  const original=saved.results[index];
+  const profile=parsed.data.profile;
+  if(!original.sourceUrl || !pagesJaunesProfileUrl(original.sourceUrl)
+    || new URL(original.sourceUrl).pathname!==new URL(profile.sourceUrl).pathname) {
+    res.status(409).json({error:"La fiche PagesJaunes ne correspond pas à cette entreprise"});return;
+  }
+  if(profile.codePostal && original.codePostal && profile.codePostal!==original.codePostal){
+    res.status(409).json({error:"Code postal incohérent avec la recherche"});return;
+  }
+  const normalizedName=(name:string)=>name.normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase().replace(/[^a-z0-9]/g,"");
+  if (normalizedName(profile.name)!==normalizedName(original.company)
+    && !normalizedName(profile.name).includes(normalizedName(original.company))
+    && !normalizedName(original.company).includes(normalizedName(profile.name))) {
+    res.status(409).json({error:"Le nom de la fiche source ne correspond pas au résultat"});return;
+  }
+  const updated:SearchCandidate={
+    ...original,
+    phone:original.phone||profile.phone,
+    email:original.email||profile.email,
+    website:original.website||profile.website,
+    siret:original.siret||profile.siret,
+    siren:original.siren||profile.siren||profile.siret?.slice(0,9)||"",
+    city:original.city?.replace(/\s*Voir.*$/i,"")||profile.city,
+    address:original.address?.replace(/\s*Voir (?:le plan|l'itinéraire).*$/i,"")||profile.address,
+    sourceDetails:{...(original.sourceDetails||{}),pagesjaunes:{...profile,capturedAt:new Date().toISOString()}},
+  };
+  const results=[...saved.results];
+  results[index]=updated;
+  await db.update(sourcingJobsTable).set({params:{...saved,results},updatedAt:new Date()})
+    .where(and(eq(sourcingJobsTable.id,job.id),eq(sourcingJobsTable.tenantId,req.auth!.tenantId)));
+  res.json(updated);
+});
+
 router.get("/sources/status", requireAuth, async (_req, res) => {
   const configured = process.env.PAGESJAUNES_BROWSER_URL?.trim();
   if (!configured) { res.json({ pagesjaunes: { mode: "direct", browserReady: false } }); return; }
@@ -526,7 +658,9 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
       postalCode: candidate.codePostal || null,
       city: candidate.city,
       phone: candidate.phone || null,
+      email: candidate.email || null,
       website: candidate.website || null,
+      sourceDetails: candidate.sourceDetails || {},
       source: candidate.sources?.map(item => item === "entreprises" ? "annuaire-entreprises" : item).join(",")
         || (candidate.source === "pagesjaunes" || job.type === "pagesjaunes" ? "pagesjaunes" : "annuaire-entreprises"),
       sourceUrl: candidate.sourceUrl || null,

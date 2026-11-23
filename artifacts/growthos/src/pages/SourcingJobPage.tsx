@@ -3,6 +3,7 @@ import { useLocation, useParams } from 'wouter';
 import { ArrowLeft, Building2, Download, ExternalLink, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
+import { enrichLocalPagesJaunes } from '@/lib/pagesjaunes-device';
 
 type SourcingJob = {
   id: string; type: string; name: string; status: string; count: number | null;
@@ -12,7 +13,8 @@ type SourcingJob = {
 };
 type Candidate = {
   id?: string; siren: string; source?: string; sources?: string[]; siret?: string | null; company: string | null; address: string | null;
-  phone?: string | null; website?: string | null; sourceUrl?: string | null;
+  phone?: string | null; email?: string | null; website?: string | null; sourceUrl?: string | null;
+  sourceDetails?: {pagesjaunes?:{description?:string;openingHours?:string;services?:string;rating?:number;reviewCount?:number}};
   codePostal: string; city: string | null; imported: boolean; prospectId: string | null;
 };
 
@@ -30,6 +32,8 @@ export default function SourcingJobPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [enrichingSelection,setEnrichingSelection] = useState(false);
+  const [enrichProgress,setEnrichProgress] = useState('');
   const [error, setError] = useState('');
 
   const reload = useCallback(async (silent = false) => {
@@ -84,11 +88,43 @@ export default function SourcingJobPage() {
     }
   }
 
+  async function enrichSelection() {
+    if(!id || !selected.length || enrichingSelection)return;
+    const targets=results.filter(item=>selected.includes(candidateKey(item)) && !item.imported && item.sourceUrl &&
+      /^https:\/\/(?:www\.)?pagesjaunes\.fr\/pros\/\d+/i.test(item.sourceUrl));
+    if(!targets.length){toast.error('Sélectionnez au moins une entreprise disposant d’une fiche PagesJaunes.');return;}
+    setEnrichingSelection(true);
+    let successful=0;
+    const errors:string[]=[];
+    try {
+      for(let i=0;i<targets.length;i++){
+        const item=targets[i];
+        setEnrichProgress(`${i+1}/${targets.length} : ${item.company || 'Entreprise'}`);
+        try{
+          const profile=await enrichLocalPagesJaunes(item.sourceUrl!);
+          await apiClient.post(`/sourcing/device/jobs/${id}/enrich`,
+            {candidateId:candidateKey(item),profile},{timeoutMs:60000});
+          successful++;
+        }catch(cause){
+          errors.push(`${item.company}: ${cause instanceof Error?cause.message:'Erreur de lecture'}`);
+        }
+        if(i<targets.length-1)await new Promise(resolve=>setTimeout(resolve,5000));
+      }
+      await reload();
+      if(successful)toast.success(`${successful} fiche(s) PagesJaunes complétée(s). Vérifiez les données avant import.`);
+      if(errors.length)toast.warning(errors.slice(0,2).join(' · '),{duration:12000});
+    } finally {
+      setEnrichingSelection(false);
+      setEnrichProgress('');
+    }
+  }
+
   function exportCsv() {
     if (!results.length) return;
     const lines = [
-      ['Sources', 'SIREN', 'SIRET', 'Entreprise', 'Adresse', 'Code postal', 'Ville', 'Téléphone', 'Site web', 'Fiche source', 'Déjà importée'],
-      ...results.map(p => [(p.sources || [p.source]).filter(Boolean).join(', '), p.siren, p.siret, p.company, p.address, p.codePostal, p.city, p.phone, p.website, p.sourceUrl, p.imported ? 'Oui' : 'Non']),
+      ['Sources', 'SIREN', 'SIRET', 'Entreprise', 'Adresse', 'Code postal', 'Ville', 'Téléphone', 'Email', 'Site web', 'Fiche source', 'Présentation', 'Horaires', 'Prestations', 'Note', 'Avis', 'Déjà importée'],
+      ...results.map(p => [(p.sources || [p.source]).filter(Boolean).join(', '), p.siren, p.siret, p.company, p.address, p.codePostal, p.city, p.phone, p.email, p.website, p.sourceUrl,
+        p.sourceDetails?.pagesjaunes?.description, p.sourceDetails?.pagesjaunes?.openingHours,p.sourceDetails?.pagesjaunes?.services,p.sourceDetails?.pagesjaunes?.rating,p.sourceDetails?.pagesjaunes?.reviewCount,p.imported ? 'Oui' : 'Non']),
     ];
     const csv = '\uFEFF' + lines.map(line => line.map(csvCell).join(';')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -167,10 +203,17 @@ export default function SourcingJobPage() {
           <section style={{ border: '1px solid var(--card-border)', background: 'var(--card-bg)', borderRadius: 16, overflow: 'hidden' }}>
             <div style={{ padding: 16, display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
               <h2 style={{ fontWeight: 700, fontSize: 16, margin: 0, color: 'var(--text-primary)' }}>Sélection des entreprises ({selected.length})</h2>
-              <button onClick={importSelection} disabled={!selected.length || importing || job.status !== 'completed'}
+              <div className="flex gap-2 flex-wrap items-center">
+              {(job.params.sources || []).includes('pagesjaunes') && <button onClick={enrichSelection}
+                disabled={!selected.length || enrichingSelection || importing || job.status !== 'completed'}
+                className="px-3 py-2 rounded-xl text-sm border border-teal-500 text-teal-700 disabled:opacity-50"
+                title="Lit les fiches PagesJaunes des entreprises sélectionnées depuis votre extension Chrome">
+                {enrichingSelection ? `Lecture ${enrichProgress}` : 'Compléter les fiches sélectionnées'}
+              </button>}
+              <button onClick={importSelection} disabled={!selected.length || importing || enrichingSelection || job.status !== 'completed'}
                 style={{ background: 'var(--color-primary)', color: '#fff', opacity: selected.length && !importing && job.status === 'completed' ? 1 : .5, padding: '9px 14px', border: 0, borderRadius: 10, cursor: selected.length ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
                 {importing ? 'Import en cours…' : job.status !== 'completed' ? 'Import disponible après la recherche' : `Importer ${selected.length} entreprise(s) dans le CRM`}
-              </button>
+              </button></div>
             </div>
             {results.length === 0 ? (
               <p style={{ padding: 25, color: 'var(--text-muted)', fontSize: 13 }}>
@@ -204,7 +247,10 @@ export default function SourcingJobPage() {
                       <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.codePostal || '—'}</td>
                       <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.siren || '—'}</td>
                        <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.siret || '—'}</td>
-                       <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.phone || '—'}</td>
+                       <td style={{ padding: 12, color: 'var(--text-muted)' }}>
+                    {candidate.phone || '—'}
+                    {candidate.sourceDetails?.pagesjaunes && <div className="text-xs text-green-700 mt-1">Fiche détaillée consultée</div>}
+                  </td>
                        <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.sourceUrl ? <a href={candidate.sourceUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline">Fiche source</a> : candidate.website ? <a href={candidate.website} target="_blank" rel="noreferrer" className="text-teal-700 underline">Site</a> : '—'}</td>
                       <td style={{ padding: 12 }}>
                         {candidate.imported ? (
