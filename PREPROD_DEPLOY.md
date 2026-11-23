@@ -1,15 +1,11 @@
 # GrowthOS — déploiement isolé sur le VPS de production
 
-**État : préparation uniquement. Ne rien lancer sur le VPS avant la fin du
-build GitHub et la vérification des images.** Les applications Mejliss TV,
-TriMaint, Miel & Compagnie et DockPanel ne doivent être ni arrêtées, ni
-modifiées ni redémarrées.
+**Cette page décrit l'installation initiale. Pour mettre à jour la stack DockPanel déjà en service sans ressaisir de SHA, voir [Déploiement continu](docs/DEPLOIEMENT-CONTINU-DOCKPANEL.md).** Les applications Mejliss TV, TriMaint, Miel & Compagnie et DockPanel ne doivent être ni arrêtées, ni modifiées ni redémarrées.
 
 ## 1. Images construites sur GitHub, jamais sur le VPS
 
 Le dépôt dispose de `.github/workflows/growthos-preprod-images.yml`.
-Le workflow se lance uniquement sur la branche `growthos-preprod` (ou par
-déclenchement manuel quand GitHub l'autorise). Il construit deux images :
+Le workflow se lance sur `growthos-preprod` et `fix/growthos-functional-redesign` (ou manuellement). Il construit deux images :
 
 - `ghcr.io/lepubli/growthos-api:<SHA_DU_COMMIT>`
 - `ghcr.io/lepubli/growthos-web:<SHA_DU_COMMIT>`
@@ -18,7 +14,7 @@ Vérifier que **le job de validation et les deux jobs Docker sont verts** dans
 GitHub → Actions → « GrowthOS preproduction images ». Le job de validation
 vérifie TypeScript, le wizard, le CRM et les sondes IA hors ligne avant toute
 publication d'image. Noter le SHA complet (40 caractères) du
-commit construit. Les deux images doivent avoir **le même SHA**.
+commit construit. Les deux images doivent avoir **le même SHA**. La branche de livraison publie également les tags fixes `ghcr.io/lepubli/growthos-api:preprod` et `ghcr.io/lepubli/growthos-web:preprod`, uniquement après validation réussie.
 
 Si les packages GHCR sont privés (cas fréquent au premier build), il faudra
 authentifier Docker sur le VPS avec un jeton GitHub personnel limité à
@@ -67,7 +63,7 @@ différents. Définir :
 
 ```dotenv
 GROWTHOS_IMAGE_PREFIX=ghcr.io/lepubli
-GROWTHOS_IMAGE_TAG=SHA_COMPLET_DES_DEUX_IMAGES
+GROWTHOS_IMAGE_TAG=preprod
 GROWTHOS_HOST_PORT=13000
 ```
 

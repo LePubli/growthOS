@@ -115,7 +115,13 @@ jobs:
           file: ./${{ matrix.dockerfile }}
           platforms: linux/amd64
           push: true
-          tags: ${{ env.IMAGE_PREFIX }}/growthos-${{ matrix.component }}:${{ github.sha }}
+          # Keep immutable revisions for rollback. Only the selected release branch
+          # updates the moving preprod tag after all validation checks pass.
+          # Switch release branch later with repository variable:
+          # GROWTHOS_PREPROD_SOURCE_BRANCH=growthos-preprod
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/growthos-${{ matrix.component }}:${{ github.sha }}
+            ${{ github.ref_name == (vars.GROWTHOS_PREPROD_SOURCE_BRANCH || 'fix/growthos-functional-redesign') && format('{0}/growthos-{1}:preprod', env.IMAGE_PREFIX, matrix.component) || '' }}
           build-args: |
             BASE_PATH=/
             VITE_API_URL=/api/v1

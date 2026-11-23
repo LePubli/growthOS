@@ -22,7 +22,8 @@ services:
       retries: 12
 
   api-server:
-    image: ${GROWTHOS_IMAGE_PREFIX:-ghcr.io/lepubli}/growthos-api:${GROWTHOS_IMAGE_TAG:?Set the exact GitHub commit SHA}
+    image: ${GROWTHOS_IMAGE_PREFIX:-ghcr.io/lepubli}/growthos-api:${GROWTHOS_IMAGE_TAG:-preprod}
+    pull_policy: always
     restart: unless-stopped
     mem_limit: 1g
     cpus: 1.00
@@ -48,7 +49,8 @@ services:
         condition: service_healthy
 
   growthos:
-    image: ${GROWTHOS_IMAGE_PREFIX:-ghcr.io/lepubli}/growthos-web:${GROWTHOS_IMAGE_TAG:?Set the exact GitHub commit SHA}
+    image: ${GROWTHOS_IMAGE_PREFIX:-ghcr.io/lepubli}/growthos-web:${GROWTHOS_IMAGE_TAG:-preprod}
+    pull_policy: always
     restart: unless-stopped
     mem_limit: 256m
     cpus: 0.25
