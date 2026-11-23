@@ -48,7 +48,7 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
   },
   pagesjaunes: {
     name: 'PagesJaunes.fr', icon: '📒',
-    desc: 'Professionnels locaux — direct ou navigateur/proxy distant (expérimental)', color: '#EAB308',
+    desc: 'Professionnels locaux — recherche HTML sans API (expérimental)', color: '#EAB308',
     fields: [
       { key: 'query', label: 'Activité / métier', placeholder: 'Ex : artisans, restaurants' },
       { key: 'location', label: 'Ville ou département', placeholder: 'Ex : Lille, 59' },
@@ -158,7 +158,7 @@ function LaunchModal({ onClose, onLaunch, initialSource }: { onClose:()=>void; o
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-gray-500 mb-4">PagesJaunes.fr : vous pouvez ajouter une clé ScrapingBee dans « Clés API Providers » pour utiliser une passerelle avec navigateur et proxys distants (crédits payants). Sans clé, accès direct uniquement.</p>
+              <p className="text-xs text-gray-500 mb-4">PagesJaunes.fr : connecteur expérimental réservé aux utilisateurs disposant de l’autorisation nécessaire. Une recherche HTTP limitée, sans contournement des blocages.</p>
               <div className="flex gap-3">
                 <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
                 <button onClick={()=>setStep(2)} disabled={!sources.length} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Suivant →</button>
@@ -185,7 +185,7 @@ function LaunchModal({ onClose, onLaunch, initialSource }: { onClose:()=>void; o
                   <label className="block text-xs font-medium text-gray-500 mb-1">Résultats maximum par source (1 à 25)</label>
                   <input type="number" min={1} max={25} value={params.limit || '10'} onChange={e => setParam('limit', e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
                 </div>
-                {sources.includes('pagesjaunes') && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">PagesJaunes est interrogé par zone. Sans clé ScrapingBee, l'accès direct au site peut être refusé (HTTP 403). Avec la passerelle, chaque page coûte jusqu'à 25 crédits. Une erreur n'annule pas les résultats de l'annuaire.</p>}
+                {sources.includes('pagesjaunes') && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">PagesJaunes est interrogé pour chaque zone jusqu'au nombre de résultats demandé. Si son serveur refuse l'accès, l'erreur apparaîtra sur cette source, sans annuler les résultats de l'annuaire.</p>}
                 {<div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 space-y-3">
                   <div>
                     <h4 className="text-sm font-semibold text-gray-800">Zone de prospection *</h4>
@@ -349,9 +349,7 @@ export default function SourcingPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map(job=>{
-            const sc = job.type === 'multi' && job.status === 'completed' && job.error
-              ? { label: 'Terminé avec erreurs', color: '#92400E', bg: '#FFFBEB', dot: '#F59E0B' }
-              : STATUS_CONFIG[job.status] || STATUS_CONFIG.paused;
+            const sc = STATUS_CONFIG[job.status]||STATUS_CONFIG.paused;
             const src = job.type === 'multi'
               ? { icon: '🔎', name: (job.params?.sources || []).map((id: string) => SCRAPER_TYPES[id]?.name || id).join(' + ') || 'Recherche multisource' }
               : SCRAPER_TYPES[job.type] || SCRAPER_TYPES.custom;
