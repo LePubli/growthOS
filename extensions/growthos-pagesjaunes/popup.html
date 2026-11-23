@@ -12,6 +12,7 @@
     <div><h1>GrowthOS <small>Connecteur</small></h1><p>Recherche locale et collecte contrôlée</p></div>
     <a id="growthos" href="https://agile.le-publicitaire.fr/sourcing" target="_blank" rel="noopener noreferrer" title="Ouvrir GrowthOS">↗</a>
   </header>
+  <div id="notice" role="status" aria-live="polite" hidden></div>
   <main>
     <div class="hero"><span class="dot"></span> Extension prête <span id="currentTab">· Vérification de l’onglet…</span></div>
     <section aria-label="Choisir la source">
@@ -36,9 +37,11 @@
     <section>
       <h2>3. Collecter</h2>
       <button type="button" class="primary teal" id="capture">⤓ Capturer les fiches visibles</button>
-      <p class="hint">Cette action lit uniquement l’onglet affiché. Elle ne fait pas défiler, ne contourne pas les contrôles d’accès et ne lance pas de recherches automatiques.</p>
+      <p class="hint">Cette action lit uniquement l’onglet affiché. Les fiches sans adresse complète restent « À vérifier » ; aucun code postal n'est déduit de ta recherche.</p>
+      <div class="draft-title"><strong>Fiches à vérifier <span class="count amber" id="draftCount">0</span></strong><span>Adresse manquante</span></div>
+      <div id="drafts" class="draft-list"><p class="empty">Aucun brouillon</p></div>
       <details id="manualPanel">
-        <summary>+ Ajouter une fiche vérifiée manuellement</summary>
+        <summary>+ Compléter ou ajouter une fiche vérifiée</summary>
         <form id="manualForm">
           <label for="company">Entreprise *</label><input id="company" required maxlength="160"/>
           <label for="address">Adresse complète (avec CP) *</label><input id="address" placeholder="8 rue Exemple 59100 Roubaix" required maxlength="320"/>
@@ -47,7 +50,7 @@
           <label for="phone">Téléphone (facultatif)</label><input id="phone" placeholder="Numéro affiché et vérifié" maxlength="40"/>
           <label for="website">Site web (facultatif)</label><input id="website" type="url" placeholder="https://…"/>
           <label for="sourceUrl">Lien de la fiche source *</label><input id="sourceUrl" type="url" required placeholder="https://…"/>
-          <button class="secondary" type="submit">Ajouter à la sélection</button>
+          <button class="secondary" type="submit">Valider et ajouter à la sélection</button>
         </form>
       </details>
     </section>
@@ -58,7 +61,6 @@
       <a class="primary growthos" href="https://agile.le-publicitaire.fr/sourcing" target="_blank" rel="noopener noreferrer">Continuer dans GrowthOS →</a>
     </section>
   </main>
-  <div id="notice" role="status" aria-live="polite" hidden></div>
   <script src="popup.js"></script>
 </body>
 </html>

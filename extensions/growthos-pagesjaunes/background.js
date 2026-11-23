@@ -375,6 +375,7 @@ async function enrichProfile(payload) {
 
 const CAPTURE_SOURCES = ['google_maps','google_search','bing','linkedin'];
 const QUEUE_KEY = 'growthos_verified_captures_v1';
+const DRAFTS_KEY = 'growthos_unverified_drafts_v1';
 const AGE_LIMIT = 24 * 60 * 60 * 1000;
 function hostMatches(source,url) {
   try {
@@ -395,6 +396,37 @@ async function readQueue(){
     && typeof item.capturedAt==='number' && Date.now()-item.capturedAt>=0 && Date.now()-item.capturedAt<AGE_LIMIT).slice(-100);
 }
 async function storeQueue(queue){await chrome.storage.local.set({[QUEUE_KEY]:queue.slice(-100)});}
+async function readDrafts(){
+  const saved=(await chrome.storage.local.get(DRAFTS_KEY))[DRAFTS_KEY];
+  return (Array.isArray(saved)?saved:[]).filter(item=>
+    item && ['google_maps','google_search','bing'].includes(item.source) &&
+    typeof item.capturedAt==='number' && Date.now()-item.capturedAt>=0 &&
+    Date.now()-item.capturedAt<AGE_LIMIT).slice(-75);
+}
+async function storeDrafts(items){await chrome.storage.local.set({[DRAFTS_KEY]:items.slice(-75)});}
+async function addDrafts(rawDrafts, verified=[]){
+  const drafts=await readDrafts();let draftAdded=0,draftIgnored=0;
+  for(const raw of rawDrafts.slice(0,25)){
+    const source=String(raw?.source||'');
+    const company=String(raw?.company||'').trim().slice(0,160);
+    const sourceUrl=String(raw?.sourceUrl||'');
+    if(!['google_maps','google_search','bing'].includes(source) || company.length<2 ||
+      !hostMatches(source,sourceUrl))continue;
+    const key=[source,company.toLocaleLowerCase('fr'),sourceUrl].join('|');
+    const existing=drafts.some(d=>[d.source,d.company.toLocaleLowerCase('fr'),d.sourceUrl].join('|')===key)
+      || verified.some(v=>v.source===source && v.company.toLocaleLowerCase('fr')===company.toLocaleLowerCase('fr'));
+    if(existing){draftIgnored++;continue;}
+    const safeWebsite=(()=>{try{const u=new URL(String(raw.website||''));return /^https?:$/.test(u.protocol)?u.href.slice(0,500):null;}catch{return null;}})();
+    drafts.push({id:'draft_'+crypto.randomUUID().replace(/-/g,'').slice(0,32),source,company,
+      address:String(raw.address||'').trim().slice(0,320)||null,
+      city:String(raw.city||'').trim().slice(0,120)||null,
+      phone:String(raw.phone||'').trim().slice(0,40)||null,
+      website:safeWebsite,sourceUrl,capturedAt:Date.now()});
+    draftAdded++;
+  }
+  await storeDrafts(drafts);
+  return {draftAdded,draftIgnored};
+}
 function validCaptured(item,manual=false){
   if(!item || !CAPTURE_SOURCES.includes(item.source))throw new Error('Source non prise en charge');
   const company=String(item.company||'').trim().slice(0,160);
@@ -427,13 +459,28 @@ async function addToQueue(items, manual=false){
 async function popupAction(message){
   const action=message.action;
   if(action==='list-captures')return {ok:true,results:await readQueue(),warnings:[]};
+  if(action==='list-drafts')return {ok:true,drafts:await readDrafts()};
+  if(action==='remove-draft'){
+    const drafts=(await readDrafts()).filter(d=>d.id!==String(message.payload?.id||''));
+    await storeDrafts(drafts);return {ok:true,drafts};
+  }
   if(action==='remove-capture'){
     const id=String(message.payload?.id||'');
     const queue=(await readQueue()).filter(q=>q.id!==id);
     await storeQueue(queue);return {ok:true,results:queue};
   }
-  if(action==='clear-captures'){await storeQueue([]);return {ok:true,results:[]};}
-  if(action==='manual-add')return addToQueue([message.payload],true);
+  if(action==='clear-captures'){
+    await Promise.all([storeQueue([]),storeDrafts([])]);
+    return {ok:true,results:[],drafts:[]};
+  }
+  if(action==='manual-add'){
+    const saved=await addToQueue([message.payload],true);
+    const draftId=String(message.payload?.draftId||'');
+    if(draftId && (saved.added||saved.ignored)){
+      await storeDrafts((await readDrafts()).filter(d=>d.id!==draftId));
+    }
+    return saved;
+  }
   if(action==='open-source'){
     const {source,query,area}=message.payload||{};
     if(!CAPTURE_SOURCES.includes(source) && source!=='pagesjaunes')throw new Error('Source inconnue');
@@ -455,9 +502,10 @@ async function popupAction(message){
     const injected=await chrome.scripting.executeScript({target:{tabId:tab.id},files:['capture.js']});
     const result=injected?.[0]?.result;
     if(!result || result.error)throw new Error(result?.error||'Page illisible');
-    if(!result.results?.length)return {ok:true,results:await readQueue(),added:0,warning:result.warning};
-    const stored=await addToQueue(result.results);
-    return {...stored,warning:result.warning};
+    const stored=result.results?.length ? await addToQueue(result.results)
+      : {ok:true,results:await readQueue(),added:0,ignored:0};
+    const drafts=await addDrafts(result.drafts||[],stored.results||[]);
+    return {...stored,...drafts,warning:result.warning};
   }
   throw new Error('Action non autorisée');
 }

@@ -13,32 +13,43 @@
     try { const u = new URL(value, location.href); return /^https?:$/.test(u.protocol) ? u.href.slice(0, 500) : null; }
     catch { return null; }
   };
-  const candidates = [];
-  const read = (node, preferredName, preferredAddress, preferredWebsite, preferredPhone, preferredUrl) => {
+  const candidates = [], drafts = [];
+  const read = (node, preferredName, preferredAddress, preferredWebsite, preferredPhone, preferredUrl, allowDraft = false) => {
     if (!node || !visible(node)) return;
     const lines = (node.innerText || '').split(/\n+/).map(clean).filter(Boolean).slice(0, 80);
-    const name = clean(preferredName || node.querySelector('h1,h2,h3,[role="heading"],.fontHeadlineSmall')?.innerText).slice(0, 160);
-    if (name.length < 2 || /^(?:résultats|images|avis|horaires|voir plus|web|publicité)$/i.test(name)) return;
+    // Les résultats locaux Google exposent souvent un nom dans .OSrXXb ou .dbg0pd,
+    // sans h3 ni adresse : le capturer en brouillon plutôt que le jeter.
+    const name = clean(preferredName || node.querySelector('.OSrXXb,.dbg0pd,.fontHeadlineSmall,h1,h2,h3,[role="heading"]')?.innerText
+      || lines[0]).slice(0, 160);
+    if (name.length < 2 || !/[a-zÀ-ÿ]{3}/i.test(name) || /^(?:résultats|images|avis|horaires|voir plus|web|publicité|site web|itinéraire)$/i.test(name)) return;
     const labelled = [...node.querySelectorAll('[aria-label]')].filter(visible)
       .map(el => clean(el.getAttribute('aria-label'))).find(v => /^(?:adresse|address)\s*:/i.test(v) && /\b\d{5}\b/.test(v));
     const address = clean(preferredAddress || (labelled && labelled.replace(/^(?:adresse|address)\s*:\s*/i,''))
       || lines.find(line => /\b\d{5}\b/.test(line) && /\b(?:rue|avenue|av\.?|boulevard|bd\.?|place|route|chemin|all[eé]e|impasse|quai|square)\b/i.test(line))).slice(0, 320);
     const codePostal = address.match(/\b\d{5}\b/)?.[0];
-    // Les résultats génériques ne sont jamais transformés en fiche CRM sans vraie adresse.
-    if (!codePostal || address.length < 7) return;
-    const city = clean(address.split(codePostal)[1] || '').replace(/\s*(?:Voir|Itinéraire|Directions).*$/i,'').slice(0,120) || null;
+    const city = codePostal
+      ? clean(address.split(codePostal)[1] || '').replace(/\s*(?:Voir|Itinéraire|Directions).*$/i,'').slice(0,120) || null
+      : clean(lines.find(line => /(?:^|[·•])\s*[A-ZÀ-ÿ][a-zà-ÿ-]{2,}(?:[- ][A-ZÀ-ÿ][a-zà-ÿ-]{2,})?\s*$/.test(line))?.split(/[·•]/).pop()).slice(0,120) || null;
     const phoneRaw = clean(preferredPhone || node.querySelector('a[href^="tel:"]')?.getAttribute('href')?.slice(4)
       || lines.find(line => /^(?:t[eé]l[eé]phone|phone)\s*:/i.test(line))?.replace(/^[^:]+:\s*/,''));
-    const phone = /^(?:\+33|0)[\d\s.()-]{8,20}$/.test(phoneRaw) ? phoneRaw.slice(0,40) : null;
+    const phoneMatch = (phoneRaw || lines.join(' ')).match(/(?:\+33\s?(?:\(0\))?\s?|0)[1-9](?:[ .-]?\d{2}){4}\b/);
+    const phone = phoneMatch?.[0]?.slice(0,40) || null;
     const websiteLink = [...node.querySelectorAll('a[href]')].find(a => visible(a)
       && /^(?:site web|website|site internet)$/i.test(clean(a.innerText || a.getAttribute('aria-label'))));
     const websiteCandidate = safeUrl(preferredWebsite || websiteLink?.href);
     const external = websiteCandidate && !/(^|\.)(?:google\.(?:com|fr)|bing\.com)$/.test(new URL(websiteCandidate).hostname)
       ? websiteCandidate : null;
     const sourceUrl = safeUrl(preferredUrl || location.href);
-    const item = {source, company:name, address,codePostal,city,phone,website:external,sourceUrl,siret:null};
+    const item = {source, company:name, address,codePostal:codePostal||null,city,phone,website:external,sourceUrl,siret:null};
     const key = [name,address].map(s=>s.toLocaleLowerCase('fr')).join('|');
-    if (!candidates.some(c => [c.company,c.address].map(s=>s.toLocaleLowerCase('fr')).join('|')===key)) candidates.push(item);
+    // Jamais d'import CRM sans adresse + CP réels affichés sur la fiche.
+    if (codePostal && address.length >= 7) {
+      if (!candidates.some(c => [c.company,c.address].map(s=>s.toLocaleLowerCase('fr')).join('|')===key)) candidates.push(item);
+    } else if (allowDraft && (phone || city || /(?:itin[eé]raire|directions|site web)/i.test(lines.join(' ')))) {
+      if (!drafts.some(c => c.company.toLocaleLowerCase('fr') === name.toLocaleLowerCase('fr'))) {
+        drafts.push({...item,address:address||null,codePostal:null});
+      }
+    }
   };
   // JSON-LD quand la page publie explicitement un établissement local (pas de données devinées).
   for (const script of [...document.querySelectorAll('script[type="application/ld+json"]')].slice(0,25)) {
@@ -58,8 +69,9 @@
   }
   const selectors = source==='google_maps'
     ? ['[role="article"]','.Nv2PK','[data-item-id="address"]','div[role="main"]']
-    : source==='google_search' ? ['#rhs','.kp-wholepage','[data-attrid*="address"]']
-    : ['#b_context','.b_entityTP','.b_ans'];
+    : source==='google_search' ? ['#rhs','.kp-wholepage','[data-attrid*="address"]',
+      '.VkpGBb','.rllt__details','[data-cid]','.cXedhc']
+    : ['#b_context','.b_entityTP','.b_ans','.b_vList li'];
   const nodes = [...new Set(selectors.flatMap(selector=>[...document.querySelectorAll(selector)]))].filter(visible).slice(0,80);
   for (const node of nodes) {
     const panel = node.closest('[role="article"],.kp-wholepage,.b_entityTP') || node;
@@ -68,9 +80,33 @@
       const anchor=panel.querySelector('a[href*="/maps/place/"]');
       sourceLink=safeUrl(anchor?.href)||location.href;
     }
-    read(panel,null,null,null,null,sourceLink);
-    if(candidates.length>=25)break;
+    // #rhs et #b_context sont des conteneurs : ne conserver un brouillon
+    // que si le bloc ressemble à une fiche locale, pas à un résultat web générique.
+    const text=(panel.innerText||'').slice(0,1300);
+    const localCard = source==='google_maps' || /(?:itin[eé]raire|directions|site web)/i.test(text);
+    read(panel,null,null,null,null,sourceLink,localCard && text.length<1300);
+    if(candidates.length+drafts.length>=50)break;
   }
-  return {source,results:candidates.slice(0,25),scanned:nodes.length,
-    warning:candidates.length ? null : 'Aucune fiche avec nom et adresse postale complète sur cette page. Ouvrez une fiche d’établissement ou utilisez la saisie manuelle.'};
+  // Sur les SERP Google, chaque résultat local porte un bouton « Itinéraire ».
+  // Rechercher son petit conteneur parent capte les cartes quand Google renomme
+  // ses classes CSS. Pas de défilement ni de clic automatique.
+  if(source==='google_search' && candidates.length+drafts.length<25){
+    const root=document.querySelector('#search')||document.body;
+    const controls=[...root.querySelectorAll('a,button,[role="button"]')].filter(visible)
+      .filter(el=>/^(?:itin[eé]raire|directions)\b/i.test(clean(el.innerText||el.textContent).slice(0,40))).slice(0,30);
+    for(const control of controls){
+      let parent=control.parentElement;
+      for(let depth=0;parent && depth<7;depth++,parent=parent.parentElement){
+        const text=clean(parent.innerText||'');
+        if(text.length<70)continue;
+        if(text.length>1000)break;
+        if((text.match(/itin[eé]raire/gi)||[]).length>1)break;
+        if(!/(?:\b(?:plombier|[a-zà-ÿ]+erie|restaurant|entreprise|[a-zà-ÿ]+eur)\b|(?:\+33|0)[1-9](?:[ .-]?\d{2}){4})/i.test(text))continue;
+        read(parent,null,null,null,null,null,true);
+        break;
+      }
+    }
+  }
+  return {source,results:candidates.slice(0,25),drafts:drafts.slice(0,25),scanned:nodes.length,
+    warning:candidates.length||drafts.length ? null : 'Aucune fiche locale identifiable sur cette page. Ouvrez le détail d’un établissement puis réessayez.'};
 })();
