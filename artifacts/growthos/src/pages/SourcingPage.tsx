@@ -84,9 +84,9 @@ const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:stri
   queued:   { label:'En attente',color:'#374151',bg:'#F3F4F6', dot:'#9CA3AF' },
 };
 
-function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:any)=>void }) {
+function LaunchModal({ onClose, onLaunch, initialSource }: { onClose:()=>void; onLaunch:(job:any)=>void; initialSource:string }) {
   const [step, setStep] = useState<1|2>(1);
-  const [sources, setSources] = useState<string[]>(['entreprises']);
+  const [sources, setSources] = useState<string[]>([initialSource]);
   const [name, setName] = useState('');
   const [params, setParams] = useState<Record<string,string>>({});
   const [launching, setLaunching] = useState(false);
@@ -222,6 +222,8 @@ export default function SourcingPage() {
   const [, navigate] = useLocation();
   const [jobs, setJobs] = useState<any[]>([]);
   const [showNew, setShowNew] = useState(false);
+  const [initialSource, setInitialSource] = useState('entreprises');
+  const openSearch = (source = 'entreprises') => { setInitialSource(source); setShowNew(true); };
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   useEffect(()=>{
@@ -237,7 +239,7 @@ export default function SourcingPage() {
   const retryJob = async (id:string, e:React.MouseEvent) => {
     e.stopPropagation();
     const old = jobs.find(j=>j.id===id);
-    if (!old || !SUPPORTED_TYPES.has(old.type)) { toast.error('Source non disponible'); return; }
+    if (!old || !(SUPPORTED_TYPES.has(old.type) || old.type === 'multi')) { toast.error('Source non disponible'); return; }
     try {
       const newJob = await apiClient.post('/sourcing/jobs', { type: old.type, name: old.name, params: old.params });
       setJobs(js=>[newJob,...js]);
@@ -257,7 +259,8 @@ export default function SourcingPage() {
 
   const filtered = jobs.filter(j=>{
     const q = search.toLowerCase();
-    const matchSearch = !q || `${j.name} ${SCRAPER_TYPES[j.type]?.name||''}`.toLowerCase().includes(q);
+    const names = (j.params?.sources || [j.type]).map((source:string) => SCRAPER_TYPES[source]?.name || source).join(' ');
+    const matchSearch = !q || `${j.name} ${names}`.toLowerCase().includes(q);
     const matchStatus = statusFilter==='all' || j.status===statusFilter;
     return matchSearch && matchStatus;
   });
@@ -268,7 +271,7 @@ export default function SourcingPage() {
 
   return (
     <div className="min-h-screen p-6" style={{background:'var(--body-bg)'}}>
-      {showNew && <LaunchModal onClose={()=>setShowNew(false)} onLaunch={j=>{setJobs(js=>[j,...js]);navigate(`/sourcing/${j.id}`);}}/>}
+      {showNew && <LaunchModal initialSource={initialSource} onClose={()=>setShowNew(false)} onLaunch={j=>{setJobs(js=>[j,...js]);navigate(`/sourcing/${j.id}`);}}/>}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -278,7 +281,7 @@ export default function SourcingPage() {
             {running>0?<span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse inline-block"/>{running} job{running>1?'s':''} en cours</span>:`${totalCollected} entreprises trouvées au total`}
           </p>
         </div>
-        <button onClick={()=>setShowNew(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white" style={{background:'var(--color-primary)'}}>
+        <button onClick={()=>openSearch()} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white" style={{background:'var(--color-primary)'}}>
           <Plus size={14}/>Nouvelle recherche
         </button>
       </div>
@@ -306,7 +309,7 @@ export default function SourcingPage() {
         <div className="text-xs font-semibold mb-3 uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Sources disponibles — cliquez pour lancer</div>
         <div className="flex flex-wrap gap-2">
           {Object.entries(SCRAPER_TYPES).map(([id,t])=>(
-            <button key={id} onClick={()=>setShowNew(true)} disabled={!SUPPORTED_TYPES.has(id)}
+            <button key={id} onClick={()=>openSearch(id)} disabled={!SUPPORTED_TYPES.has(id)}
               className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-all hover:shadow-sm"
               style={{background:'var(--body-bg)',borderColor:'var(--card-border)',color:'var(--text-secondary)',opacity:SUPPORTED_TYPES.has(id)?1:.4,cursor:SUPPORTED_TYPES.has(id)?'pointer':'not-allowed'}} title={SUPPORTED_TYPES.has(id) ? t.name : 'Connecteur non disponible'}>
               <span>{t.icon}</span>{t.name.split(' ')[0]}
@@ -339,7 +342,7 @@ export default function SourcingPage() {
         <div className="rounded-2xl border py-16 text-center" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
           <Search size={40} className="mx-auto mb-3" style={{color:'var(--card-border)'}}/>
           <p className="text-sm mb-4" style={{color:'var(--text-muted)'}}>Aucun job trouvé</p>
-          <button onClick={()=>setShowNew(true)} className="px-4 py-2 rounded-xl text-sm text-white" style={{background:'var(--color-primary)'}}>
+          <button onClick={()=>openSearch()} className="px-4 py-2 rounded-xl text-sm text-white" style={{background:'var(--color-primary)'}}>
             + Lancer une recherche
           </button>
         </div>
@@ -347,7 +350,9 @@ export default function SourcingPage() {
         <div className="space-y-3">
           {filtered.map(job=>{
             const sc = STATUS_CONFIG[job.status]||STATUS_CONFIG.paused;
-            const src = SCRAPER_TYPES[job.type]||SCRAPER_TYPES.custom;
+            const src = job.type === 'multi'
+              ? { icon: '🔎', name: (job.params?.sources || []).map((id: string) => SCRAPER_TYPES[id]?.name || id).join(' + ') || 'Recherche multisource' }
+              : SCRAPER_TYPES[job.type] || SCRAPER_TYPES.custom;
             const isRunning = job.status==='running';
             return (
               <div key={job.id}
@@ -396,7 +401,7 @@ export default function SourcingPage() {
                           <Eye size={14} style={{color:'var(--text-muted)'}}/>
                         </button>
                       )}
-                      {(job.status==='error'||job.status==='paused') && SUPPORTED_TYPES.has(job.type) && (
+                      {(job.status==='error'||job.status==='paused') && (SUPPORTED_TYPES.has(job.type)||job.type==='multi') && (
                         <button onClick={e=>retryJob(job.id,e)}
                           className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors" title="Relancer">
                           <RotateCcw size={14} style={{color:'#2563EB'}}/>

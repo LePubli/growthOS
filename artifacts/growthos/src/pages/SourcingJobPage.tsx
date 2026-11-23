@@ -167,9 +167,9 @@ export default function SourcingJobPage() {
           <section style={{ border: '1px solid var(--card-border)', background: 'var(--card-bg)', borderRadius: 16, overflow: 'hidden' }}>
             <div style={{ padding: 16, display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
               <h2 style={{ fontWeight: 700, fontSize: 16, margin: 0, color: 'var(--text-primary)' }}>Sélection des entreprises ({selected.length})</h2>
-              <button onClick={importSelection} disabled={!selected.length || importing}
-                style={{ background: 'var(--color-primary)', color: '#fff', opacity: selected.length && !importing ? 1 : .5, padding: '9px 14px', border: 0, borderRadius: 10, cursor: selected.length ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
-                {importing ? 'Import en cours…' : `Importer ${selected.length} entreprise(s) dans le CRM`}
+              <button onClick={importSelection} disabled={!selected.length || importing || job.status !== 'completed'}
+                style={{ background: 'var(--color-primary)', color: '#fff', opacity: selected.length && !importing && job.status === 'completed' ? 1 : .5, padding: '9px 14px', border: 0, borderRadius: 10, cursor: selected.length ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
+                {importing ? 'Import en cours…' : job.status !== 'completed' ? 'Import disponible après la recherche' : `Importer ${selected.length} entreprise(s) dans le CRM`}
               </button>
             </div>
             {results.length === 0 ? (
