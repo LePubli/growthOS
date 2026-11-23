@@ -120,6 +120,9 @@ async function awaitApi(timeoutMs = 90000) {
 
 const companies = createServer((req, res) => {
   if (!req.url?.startsWith("/search?")) { res.writeHead(404).end(); return; }
+  if (new URL(req.url, 'http://localhost').searchParams.get("q") === "official-down") {
+    res.writeHead(503).end(); return;
+  }
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ results: [
     { siren: "100000001", nom_complet: "Entreprise test A", siege: { siret: "10000000100012", adresse: "10 rue Nationale, 59000 Lille", code_postal: "59000", libelle_commune: "Lille" } },
@@ -320,6 +323,11 @@ try {
   const localCandidate = {id:"pj_local_testing",company:"Plomberie Locale",
     address:"12 rue de la Paix 59000 Lille Voir le plan",codePostal:"59000",city:"Lille Voir le plan",
     phone:null,website:null,sourceUrl:"https://www.pagesjaunes.fr/pros/12345678",siret:null};
+  const localMatched = {
+    ...localCandidate, id:"pj_local_same_legal", company:"Entreprise test A",
+    address:"10 r Nationale 59000 Lille Voir le plan",
+    sourceUrl:"https://www.pagesjaunes.fr/pros/12345679",
+  };
   const invalidLocal = await request("POST", "/sourcing/device/jobs", {
     name:"Rejet domaine frauduleux",params:localParams,
     candidates:[{...localCandidate,sourceUrl:"https://evilpagesjaunes.fr/pros/123"}],
@@ -327,7 +335,7 @@ try {
   check(invalidLocal.status === 400,"Connecteur appareil : domaine tiers rejeté");
   const localJob = await request("POST", "/sourcing/device/jobs", {
     name:"Recherche Chrome locale",params:localParams,
-    candidates:[localCandidate,localCandidate,{...localCandidate,id:"pj_local_far",company:"Hors zone",address:"Paris 75001",codePostal:"75001"}],
+    candidates:[localCandidate,localCandidate,localMatched,{...localCandidate,id:"pj_local_far",company:"Hors zone",address:"Paris 75001",codePostal:"75001"}],
   },token);
   check(localJob.status === 201 && localJob.body.status === "completed" && localJob.body.count === 3,
     "Connecteur appareil : fusion Annuaire + PagesJaunes sans doublon ni entreprise hors zone");
@@ -335,6 +343,31 @@ try {
   check(localPreview.status === 200 && localPreview.body.total === 3 &&
     localPreview.body.data.some(row=>row.source === "pagesjaunes" && row.company === "Plomberie Locale"),
     "Connecteur appareil : résultats visibles avant import CRM");
+  const mergedLegal = localPreview.body.data.find(row => row.company === "Entreprise test A");
+  check(mergedLegal?.id === localMatched.id && mergedLegal.siren === "100000001" &&
+    mergedLegal.siret === "10000000100012" &&
+    mergedLegal.sourceUrl === localMatched.sourceUrl &&
+    mergedLegal.sources.includes("pagesjaunes") && mergedLegal.sources.includes("entreprises") &&
+    localPreview.body.data.filter(row => row.company === "Entreprise test A").length === 1,
+    "Même société sans SIREN PagesJaunes : fusion vérifiée par nom, rue et code postal et identifiants officiels conservés");
+
+  const conflictingIdentity = await request("POST", "/sourcing/device/jobs", {
+    name:"Numéros contradictoires", params:localParams,
+    candidates:[{...localMatched,id:"pj_local_conflict",siret:"90000000900010"}],
+  }, token);
+  check(conflictingIdentity.status === 201 && conflictingIdentity.body.count === 3,
+    "Deux SIREN contradictoires ne sont jamais fusionnés sur le seul nom et la seule adresse");
+
+  const unavailableOfficial = await request("POST", "/sourcing/device/jobs", {
+    name:"Annuaire temporairement indisponible",
+    params:{...localParams,query:"official-down"},candidates:[localCandidate],
+  },token);
+  check(unavailableOfficial.status === 201 && unavailableOfficial.body.status === "completed" &&
+    unavailableOfficial.body.count === 1 &&
+    unavailableOfficial.body.params.sourceStatuses.pagesjaunes.status === "completed" &&
+    unavailableOfficial.body.params.sourceStatuses.entreprises.status === "error" &&
+    unavailableOfficial.body.error.includes("503"),
+    "Une erreur de l'Annuaire ne supprime pas les résultats PagesJaunes collectés sur l'appareil");
 
   const detailedCandidate = {sourceUrl:"https://www.pagesjaunes.fr/pros/12345678",
     name:"Plomberie Locale",address:"12 rue de la Paix 59000 Lille",codePostal:"59000",city:"Lille",

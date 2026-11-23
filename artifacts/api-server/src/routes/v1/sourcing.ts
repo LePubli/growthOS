@@ -163,6 +163,53 @@ async function getJob(id: string, tenantId: string) {
 type MultiParams = Extract<z.infer<typeof jobSchema>, { type: "multi" }>["params"];
 type SourceName = MultiParams["sources"][number];
 
+// Rapprochement conservateur entre sources : SIREN/SIRET vérifiés ou
+// nom + rue + code postal identiques après normalisation typographique.
+// Deux SIREN contradictoires ne doivent jamais être réunis par adresse.
+function normalizedIdentity(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function normalizedStreet(candidate: SearchCandidate): string | null {
+  if (!candidate.address || !/^\d{5}$/.test(candidate.codePostal)) return null;
+  const beforePostal = candidate.address
+    .replace(/\s*Voir (?:le plan|l'itinéraire).*$/i, "")
+    .split(candidate.codePostal)[0]
+    .replace(/\b(?:r|r\.)\b/gi, "rue")
+    .replace(/\b(?:av|av\.)\b/gi, "avenue")
+    .replace(/\b(?:bd|bd\.)\b/gi, "boulevard")
+    .replace(/\b(?:pl|pl\.)\b/gi, "place")
+    .replace(/\b(?:rte|rte\.)\b/gi, "route");
+  const street = normalizedIdentity(beforePostal);
+  return street.length >= 5 ? street : null;
+}
+function isSameCompany(a: SearchCandidate, b: SearchCandidate): boolean {
+  const aSiren = /^\d{9}$/.test(a.siren) ? a.siren : null;
+  const bSiren = /^\d{9}$/.test(b.siren) ? b.siren : null;
+  if (aSiren && bSiren && aSiren !== bSiren) return false;
+  if (a.siret && b.siret && a.siret !== b.siret) return false;
+  if (aSiren && bSiren && aSiren === bSiren) return true;
+  if (a.siret && b.siret && a.siret === b.siret) return true;
+  const aStreet = normalizedStreet(a);
+  const bStreet = normalizedStreet(b);
+  return Boolean(aStreet && bStreet && aStreet === bStreet
+    && a.codePostal === b.codePostal
+    && normalizedIdentity(a.company) === normalizedIdentity(b.company));
+}
+function mergeCompany(target: SearchCandidate, other: SearchCandidate): void {
+  target.sources = [...new Set([
+    ...(target.sources || (target.source ? [target.source] : [])),
+    ...(other.sources || (other.source ? [other.source] : [])),
+  ])];
+  target.siren ||= other.siren;
+  target.siret ||= other.siret;
+  target.phone ||= other.phone;
+  target.email ||= other.email;
+  target.website ||= other.website;
+  target.sourceUrl ||= other.sourceUrl;
+  target.id ||= other.id;
+  target.sourceDetails = { ...(other.sourceDetails || {}), ...(target.sourceDetails || {}) };
+}
 function candidateKey(c: SearchCandidate): string {
   const normalize = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -205,13 +252,9 @@ async function runMultiSearch(jobId: string, tenantId: string, params: MultiPara
 
   function add(candidate: SearchCandidate, source: SourceName) {
     const key = candidateKey(candidate);
-    const previous = merged.get(key);
+    const previous = merged.get(key) || [...merged.values()].find(current => isSameCompany(current, candidate));
     if (previous) {
-      previous.sources = [...new Set([...(previous.sources || []), source])];
-      previous.phone ||= candidate.phone;
-      previous.website ||= candidate.website;
-      previous.sourceUrl ||= candidate.sourceUrl;
-      previous.siret ||= candidate.siret;
+      mergeCompany(previous, { ...candidate, source, sources: [source] });
     } else {
       merged.set(key, { ...candidate, source, sources: [source] });
     }
@@ -304,7 +347,7 @@ router.post("/device/jobs", requireAuth, async (req, res) => {
       source: "pagesjaunes", sources: ["pagesjaunes"],
     };
     const key = candidateKey(candidate);
-    if (seen.has(key)) continue;
+    if ([...seen.values()].some(previous => isSameCompany(previous, candidate))) continue;
     seen.set(key, candidate);
     localResults.push(candidate);
     if (localResults.length >= params.limit) break;
@@ -319,11 +362,9 @@ router.post("/device/jobs", requireAuth, async (req, res) => {
       sourceStatuses.entreprises = { status: "completed", count: official.length };
       for (const record of official) {
         const key = candidateKey(record);
-        if (seen.has(key)) {
-          const prior = seen.get(key)!;
-          prior.sources = [...new Set([...(prior.sources || []), "entreprises"])];
-          prior.siren ||= record.siren;
-          prior.siret ||= record.siret;
+        const prior = seen.get(key) || [...seen.values()].find(candidate => isSameCompany(candidate, record));
+        if (prior) {
+          mergeCompany(prior, { ...record, source: "entreprises", sources: ["entreprises"] });
         } else {
           seen.set(key, { ...record, source: "entreprises", sources: ["entreprises"] });
         }
