@@ -438,10 +438,10 @@ async function enrichDeviceDrafts(drafts: DeviceDraft[], params: GeoFilters,
     }
     const localMatches=[...seen.values()].filter(candidate=>
       candidate.address && draftCityMatches(draft,candidate) && businessNamesMatch(candidate.company,draft.company) &&
-      (!draft.phone || !candidate.phone || normalizedPhone(candidate.phone)===normalizedPhone(draft.phone)));
-    // Le nom + un établissement unique déjà géolocalisé constituent une preuve.
-    // Si les deux fiches affichent un téléphone, il doit être identique.
-    if(localMatches.length===1){attachVerifiedDraft(localMatches[0],draft,'verified-local-profile');matched++;continue;}
+      draft.phone && candidate.phone && normalizedPhone(candidate.phone)===normalizedPhone(draft.phone));
+    // Sans adresse Google, même nom + ville n'est pas une preuve d'identité.
+    // Le rapprochement local exige aussi un numéro de téléphone identique.
+    if(localMatches.length===1){attachVerifiedDraft(localMatches[0],draft,'verified-local-phone-and-name');matched++;continue;}
     if(localMatches.length>1){
       pendingItems.push({id:draft.id,company:draft.company,source:draft.source,reason:'Plusieurs établissements locaux portent ce nom'});continue;
     }
@@ -455,7 +455,7 @@ async function enrichDeviceDrafts(drafts: DeviceDraft[], params: GeoFilters,
     }
     const batch=toLookup.slice(i,i+2);
     const found=await Promise.all(batch.map(async draft=>{
-      try {return {draft,candidates:await searchFrenchCompanies({...params,query:draft.company,limit:15},5000)};}
+      try {return {draft,candidates:await searchFrenchCompanies({...params,query:draft.company,limit:25},5000)};}
       catch(error){return {draft,candidates:[] as SearchCandidate[],error:error instanceof Error?error.message:'Annuaire indisponible'};}
     }));
     for(const item of found){
@@ -466,9 +466,9 @@ async function enrichDeviceDrafts(drafts: DeviceDraft[], params: GeoFilters,
       const exact=item.candidates.filter(candidate=>businessNamesMatch(candidate.company,draft.company)
         && draftCityMatches(draft,candidate));
       // Les homonymes sont laissés à vérifier, sans supposer un CP depuis la recherche.
-      if(exact.length!==1 || !exact[0].address){
+      if(exact.length!==1 || !exact[0].address || item.candidates.length>=25){
         pendingItems.push({id:draft.id,company:draft.company,source:draft.source,
-          reason:exact.length>1?'Plusieurs correspondances officielles':'Aucune adresse officielle unique vérifiée'});continue;
+          reason:exact.length>1||item.candidates.length>=25?'Correspondances officielles potentiellement multiples':'Aucune adresse officielle unique vérifiée'});continue;
       }
       const verified=exact[0];
       const prior=[...seen.values()].find(candidate=>isSameCompany(candidate,verified));

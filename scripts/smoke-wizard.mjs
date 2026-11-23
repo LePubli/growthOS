@@ -333,6 +333,15 @@ try {
   const localCandidate = {id:"pj_local_testing",company:"Plomberie Locale",
     address:"12 rue de la Paix 59000 Lille Voir le plan",codePostal:"59000",city:"Lille Voir le plan",
     phone:null,website:null,sourceUrl:"https://www.pagesjaunes.fr/pros/12345678",siret:null};
+  const sameNameNoPhone=await request('POST','/sourcing/device/jobs',{
+    name:'Homonyme sans numéro',params:{...localParams,sources:['pagesjaunes','google_search']},
+    candidates:[localCandidate],drafts:[{id:'draft_same_name_no_phone',source:'google_search',
+      company:'Plomberie Locale',address:null,city:'Lille',phone:null,website:null,
+      sourceUrl:'https://www.google.com/search?q=Plomberie+Locale',capturedAt:Date.now()}],
+  },token);
+  check(sameNameNoPhone.status===201 && sameNameNoPhone.body.count===1 &&
+    sameNameNoPhone.body.params.draftEnrichment.matched===0,
+    'Un nom et une ville identiques ne fusionnent pas deux fiches sans téléphone commun');
   const localMatched = {
     ...localCandidate, id:"pj_local_same_legal", company:"Entreprise test A",
     address:"10 r Nationale 59000 Lille Voir le plan",
