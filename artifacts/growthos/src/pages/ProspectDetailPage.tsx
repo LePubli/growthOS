@@ -4,7 +4,7 @@ import {
   ArrowLeft, Edit2, Save, X, Star, Mail, Phone, Globe, Building2,
   Briefcase, Loader2, Plus, Trash2, CheckCircle, AlertCircle,
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
-  Archive, RotateCcw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
+  Archive, RotateCcw, RefreshCw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
   ExternalLink, Navigation, Zap, BadgeCheck, ChevronDown, ChevronUp,
   Building, Database, BarChart2, Users, Newspaper, GitMerge, Copy,
 } from 'lucide-react';
