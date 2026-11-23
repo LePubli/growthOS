@@ -48,7 +48,7 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
   },
   pagesjaunes: {
     name: 'PagesJaunes.fr', icon: '📒',
-    desc: 'Professionnels locaux — accès partenaire Solocal requis', color: '#EAB308',
+    desc: 'Professionnels locaux — recherche HTML sans API (expérimental)', color: '#EAB308',
     fields: [
       { key: 'query', label: 'Activité / métier', placeholder: 'Ex : artisans, restaurants' },
       { key: 'location', label: 'Ville ou département', placeholder: 'Ex : Lille, 59' },
@@ -74,7 +74,7 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
     ],
   },
 };
-const SUPPORTED_TYPES = new Set(['entreprises']);
+const SUPPORTED_TYPES = new Set(['entreprises', 'pagesjaunes']);
 
 const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:string}> = {
   completed:{ label:'Terminé',  color:'#065F46', bg:'#ECFDF5', dot:'#10B981' },
@@ -99,18 +99,23 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
     && codesPostaux.length <= 25 && codesPostaux.every(code => /^\d{5}$/.test(code));
 
   const setParam = (k:string, v:string) => setParams(p=>({...p,[k]:v}));
+  const searchReady = type === 'pagesjaunes'
+    ? (params.query?.trim().length ?? 0) >= 2 && (params.location?.trim().length ?? 0) >= 2
+    : Boolean(params.query?.trim() && zonesValid);
 
   const launch = async () => {
     if (!type || !SUPPORTED_TYPES.has(type)) { toast.error('Sélectionnez une source disponible'); return; }
-    if (!params.query?.trim() || !zonesValid) {
-      toast.error('Saisissez une activité et au moins une zone. Les codes postaux doivent avoir 5 chiffres.');
+    if (!searchReady) {
+      toast.error(type === 'pagesjaunes' ? 'Renseignez un métier et une localité' : 'Saisissez une activité et au moins une zone valide.');
       return;
     }
     setLaunching(true);
     try {
       const job = await apiClient.post('/sourcing/jobs', {
-        type, name: name.trim() || `${params.query.trim()} · ${regions.length} région(s), ${departements.length} département(s), ${codesPostaux.length} CP`,
-        params: { query: params.query.trim(), limit: params.limit || '10', regions, departements, codesPostaux },
+        type, name: name.trim() || (type === 'pagesjaunes' ? `${params.query.trim()} · ${params.location.trim()}` : `${params.query.trim()} · ${regions.length} région(s), ${departements.length} département(s), ${codesPostaux.length} CP`),
+        params: type === 'pagesjaunes'
+          ? { query: params.query.trim(), location: params.location.trim(), limit: params.limit || '10' }
+          : { query: params.query.trim(), limit: params.limit || '10', regions, departements, codesPostaux },
       });
       onLaunch(job);
       toast.success(`${job.count ?? 0} entreprise(s) trouvée(s). Sélectionnez celles à importer.`);
@@ -155,7 +160,7 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-gray-500 mb-4">PagesJaunes.fr : l’extraction automatisée pour la prospection est interdite par ses conditions d’utilisation. <a className="text-teal-700 underline" href="https://developer.pagesjaunes.fr/" target="_blank" rel="noopener noreferrer">Demander un accès partenaire</a>.</p>
+              <p className="text-xs text-gray-500 mb-4">PagesJaunes.fr : connecteur expérimental réservé aux utilisateurs disposant de l’autorisation nécessaire. Une recherche HTTP limitée, sans contournement des blocages.</p>
               <div className="flex gap-3">
                 <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
                 <button onClick={()=>setStep(2)} disabled={!type} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Suivant →</button>
@@ -183,6 +188,7 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
                       placeholder={f.placeholder}/>
                   </div>
                 ))}
+                {type === 'pagesjaunes' && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">Recherche limitée à la première page (25 entreprises maximum). L'adresse, le téléphone et le site web sont récupérés uniquement s'ils sont visibles dans le résultat. Si le site bloque l'accès, GrowthOS s'arrête et affiche l'erreur.</p>}
                 {type === 'entreprises' && <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 space-y-3">
                   <div>
                     <h4 className="text-sm font-semibold text-gray-800">Zone de prospection *</h4>
@@ -202,7 +208,7 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
               </div>
               <div className="flex gap-3">
                 <button onClick={()=>setStep(1)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">← Retour</button>
-                <button onClick={launch} disabled={launching || !params.query?.trim() || !zonesValid}
+                <button onClick={launch} disabled={launching || !searchReady}
                   className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
                   {launching?<Loader2 size={14} className="animate-spin"/>:<Zap size={14}/>}Rechercher les entreprises
                 </button>

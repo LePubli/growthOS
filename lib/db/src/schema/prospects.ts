@@ -16,6 +16,8 @@ export const prospectsTable = pgTable("prospects", {
   postalCode: text("postal_code"),
   city: text("city"),
   linkedinUrl: text("linkedin_url"),
+  source: text("source"),
+  sourceUrl: text("source_url"),
   jobTitle: text("job_title"),
   website: text("website"),
   status: text("status").notNull().default("new"),

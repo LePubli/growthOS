@@ -7,10 +7,11 @@ import apiClient from '@/lib/api-client';
 type SourcingJob = {
   id: string; type: string; name: string; status: string; count: number | null;
   error: string | null; duration: string | null; createdAt: string;
-  params: { query?: string; codePostal?: string; regions?: string[]; departements?: string[]; codesPostaux?: string[]; limit?: number };
+  params: { query?: string; location?: string; codePostal?: string; regions?: string[]; departements?: string[]; codesPostaux?: string[]; limit?: number };
 };
 type Candidate = {
-  siren: string; siret?: string | null; company: string | null; address: string | null;
+  id?: string; siren: string; siret?: string | null; company: string | null; address: string | null;
+  phone?: string | null; website?: string | null; sourceUrl?: string | null;
   codePostal: string; city: string | null; imported: boolean; prospectId: string | null;
 };
 
@@ -41,7 +42,7 @@ export default function SourcingJobPage() {
       setJob(jobInfo);
       setResults(resultInfo.data || []);
       setSelected(previous => previous.filter(siren => resultInfo.data?.some(
-        candidate => candidate.siren === siren && !candidate.imported,
+        candidate => (candidate.id || candidate.siren) === siren && !candidate.imported,
       )));
       setError('');
     } catch (err) {
@@ -53,11 +54,12 @@ export default function SourcingJobPage() {
 
   useEffect(() => { void reload(); }, [reload]);
 
+  const candidateKey = (candidate: Candidate) => candidate.id || candidate.siren;
   const available = results.filter(candidate => !candidate.imported);
-  const allSelected = available.length > 0 && available.every(candidate => selected.includes(candidate.siren));
+  const allSelected = available.length > 0 && available.every(candidate => selected.includes(candidateKey(candidate)));
 
   function toggleAll() {
-    setSelected(allSelected ? [] : available.map(candidate => candidate.siren));
+    setSelected(allSelected ? [] : available.map(candidateKey));
   }
 
   async function importSelection() {
@@ -65,7 +67,7 @@ export default function SourcingJobPage() {
     setImporting(true);
     try {
       const result = await apiClient.post<{ imported: number; skipped: number }>(
-        `/sourcing/jobs/${id}/import`, { sirens: selected },
+        `/sourcing/jobs/${id}/import`, { ids: selected },
       );
       toast.success(`${result.imported} entreprise(s) ajoutée(s) au CRM${result.skipped ? ` · ${result.skipped} doublon(s) ignoré(s)` : ''}`);
       await reload();
@@ -79,8 +81,8 @@ export default function SourcingJobPage() {
   function exportCsv() {
     if (!results.length) return;
     const lines = [
-      ['SIREN', 'SIRET', 'Entreprise', 'Adresse', 'Code postal', 'Ville', 'Déjà importée'],
-      ...results.map(p => [p.siren, p.siret, p.company, p.address, p.codePostal, p.city, p.imported ? 'Oui' : 'Non']),
+      ['SIREN', 'SIRET', 'Entreprise', 'Adresse', 'Code postal', 'Ville', 'Téléphone', 'Site web', 'Fiche source', 'Déjà importée'],
+      ...results.map(p => [p.siren, p.siret, p.company, p.address, p.codePostal, p.city, p.phone, p.website, p.sourceUrl, p.imported ? 'Oui' : 'Non']),
     ];
     const csv = '\uFEFF' + lines.map(line => line.map(csvCell).join(';')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -105,7 +107,7 @@ export default function SourcingJobPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'center', flexWrap: 'wrap', marginBottom: 22 }}>
             <div>
               <h1 style={{ fontWeight: 800, fontSize: 24, color: 'var(--text-primary)', margin: '0 0 7px' }}>{job.name}</h1>
-              <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 13 }}>Annuaire des entreprises · {new Date(job.createdAt).toLocaleString('fr-FR')}</p>
+              <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 13 }}>{job.type === 'pagesjaunes' ? 'PagesJaunes.fr · extraction HTML' : 'Annuaire des entreprises'} · {new Date(job.createdAt).toLocaleString('fr-FR')}</p>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={reload} style={{ border: '1px solid var(--card-border)', color: 'var(--text-primary)', background: 'var(--card-bg)', padding: '10px 14px', borderRadius: 10, display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}><RefreshCw size={15}/> Actualiser</button>
@@ -124,6 +126,7 @@ export default function SourcingJobPage() {
               job.params?.departements?.length ? `Départements ${job.params.departements.join(', ')}` : '',
               job.params?.codesPostaux?.length ? `CP ${job.params.codesPostaux.join(', ')}` : '',
               job.params?.codePostal ? `CP ${job.params.codePostal}` : '',
+              job.params?.location ? job.params.location : '',
             ].filter(Boolean).join(' · ') || 'Non précisée'}</p>
             <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 12 }}>
               Les entreprises ci-dessous ne sont pas importées automatiquement. Cochez celles qui vous intéressent.
@@ -142,7 +145,7 @@ export default function SourcingJobPage() {
             </div>
             {results.length === 0 ? (
               <p style={{ padding: 25, color: 'var(--text-muted)', fontSize: 13 }}>
-                Aucun établissement vérifié dans la zone sélectionnée. Essayez une activité plus large ou modifiez les filtres.
+                Aucun résultat exploitable. Essayez une activité plus large ou une autre zone. Pour PagesJaunes, la structure HTML peut également avoir changé.
               </p>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -152,24 +155,27 @@ export default function SourcingJobPage() {
                       <th style={{ textAlign: 'left', padding: 12 }}>
                         <input aria-label="Sélectionner toutes les entreprises non importées" type="checkbox" checked={allSelected} disabled={!available.length} onChange={toggleAll} />
                       </th>
-                      {['Entreprise', 'Adresse locale', 'Code postal', 'SIREN', 'SIRET', 'CRM'].map(label =>
+                      {['Entreprise', 'Adresse locale', 'Code postal', 'SIREN', 'SIRET', 'Téléphone', 'Site', 'CRM'].map(label =>
                         <th key={label} style={{ textAlign: 'left', padding: 12 }}>{label}</th>)}
                     </tr>
                   </thead>
                   <tbody>{results.map(candidate => (
-                    <tr key={candidate.siren} style={{ borderTop: '1px solid var(--card-border)' }}>
+                    <tr key={candidateKey(candidate)} style={{ borderTop: '1px solid var(--card-border)' }}>
                       <td style={{ padding: 12 }}>
                         <input type="checkbox" aria-label={`Sélectionner ${candidate.company || candidate.siren}`}
-                          disabled={candidate.imported} checked={candidate.imported || selected.includes(candidate.siren)}
-                          onChange={() => setSelected(previous => previous.includes(candidate.siren)
-                            ? previous.filter(id => id !== candidate.siren) : [...previous, candidate.siren])} />
+                          disabled={candidate.imported} checked={candidate.imported || selected.includes(candidateKey(candidate))}
+                          onChange={() => setSelected(previous => previous.includes(candidateKey(candidate))
+                            ? previous.filter(id => id !== candidateKey(candidate)) : [...previous, candidateKey(candidate)])} />
                       </td>
                       <td style={{ padding: 12, color: 'var(--text-primary)', fontWeight: 650 }}>
                         <Building2 size={14} style={{ display: 'inline', marginRight: 7 }}/>{candidate.company || 'Inconnue'}
                       </td>
                       <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.address || 'Non renseignée'}</td>
                       <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.codePostal || '—'}</td>
-                      <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.siren}</td>
+                      <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.siren || '—'}</td>
+                       <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.siret || '—'}</td>
+                       <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.phone || '—'}</td>
+                       <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.sourceUrl ? <a href={candidate.sourceUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline">Fiche source</a> : candidate.website ? <a href={candidate.website} target="_blank" rel="noreferrer" className="text-teal-700 underline">Site</a> : '—'}</td>
                       <td style={{ padding: 12 }}>
                         {candidate.imported ? (
                           <button onClick={() => candidate.prospectId && navigate(`/prospects/${candidate.prospectId}`)}

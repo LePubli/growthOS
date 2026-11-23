@@ -6,21 +6,33 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
 import { DEPARTMENT_TO_REGION, departmentFromPostalCode } from "../../lib/france-geo";
+import { searchPagesJaunes } from "../../lib/pagesjaunes-scraper";
 
 const router = Router();
 
-const jobSchema = z.object({
-  type: z.literal("entreprises"),
-  name: z.string().trim().min(1).max(120),
-  params: z.object({
-    query: z.string().trim().min(3).max(120),
-    regions: z.array(z.string().regex(/^\d{2}$/)).max(18).default([]),
-    departements: z.array(z.string().regex(/^(?:\d{2}|2A|2B|97\d)$/)).max(101).default([]),
-    codesPostaux: z.array(z.string().regex(/^\d{5}$/)).max(25).default([]),
-    limit: z.coerce.number().int().min(1).max(25).optional().default(10),
-  }).refine(p => p.regions.length + p.departements.length + p.codesPostaux.length > 0,
-    "Choisissez au moins une région, un département ou un code postal"),
-});
+const jobSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("entreprises"),
+    name: z.string().trim().min(1).max(120),
+    params: z.object({
+      query: z.string().trim().min(3).max(120),
+      regions: z.array(z.string().regex(/^\d{2}$/)).max(18).default([]),
+      departements: z.array(z.string().regex(/^(?:\d{2}|2A|2B|97\d)$/)).max(101).default([]),
+      codesPostaux: z.array(z.string().regex(/^\d{5}$/)).max(25).default([]),
+      limit: z.coerce.number().int().min(1).max(25).optional().default(10),
+    }).refine(p => p.regions.length + p.departements.length + p.codesPostaux.length > 0,
+      "Choisissez au moins une région, un département ou un code postal"),
+  }),
+  z.object({
+    type: z.literal("pagesjaunes"),
+    name: z.string().trim().min(1).max(120),
+    params: z.object({
+      query: z.string().trim().min(2).max(120),
+      location: z.string().trim().min(2).max(120),
+      limit: z.coerce.number().int().min(1).max(25).optional().default(10),
+    }),
+  }),
+]);
 
 type DirectoryAddress = {
   adresse?: string;
@@ -38,15 +50,20 @@ type CompanyRecord = {
   matching_etablissements?: DirectoryAddress[];
 };
 type SearchCandidate = {
+  id?: string; // Identifiant de source, utile sans SIREN
   siren: string;
   siret: string | null;
   company: string;
   address: string | null;
   codePostal: string;
   city: string | null;
+  phone?: string | null;
+  website?: string | null;
+  sourceUrl?: string | null;
 };
 type SavedParams = {
   query?: string;
+  location?: string;
   codePostal?: string; // anciennes recherches
   regions?: string[];
   departements?: string[];
@@ -145,7 +162,9 @@ router.post("/jobs", requireAuth, async (req, res) => {
   }).returning();
   const started = Date.now();
   try {
-    const results = await searchFrenchCompanies(parsed.data.params);
+    const results = parsed.data.type === "pagesjaunes"
+      ? await searchPagesJaunes(parsed.data.params)
+      : await searchFrenchCompanies(parsed.data.params);
     const [finished] = await db.update(sourcingJobsTable).set({
       status: "completed", count: results.length, progress: 100,
       params: { ...parsed.data.params, results },
@@ -155,7 +174,7 @@ router.post("/jobs", requireAuth, async (req, res) => {
     res.status(201).json(finished);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Recherche indisponible";
-    logger.warn({ jobId: job.id, message }, "Official company directory failed");
+    logger.warn({ jobId: job.id, message, source: parsed.data.type }, "Sourcing provider failed");
     await db.update(sourcingJobsTable).set({
       status: "error", error: message, updatedAt: new Date(),
     }).where(eq(sourcingJobsTable.id, job.id));
@@ -183,6 +202,16 @@ router.get("/jobs/:id/results", requireAuth, async (req, res) => {
       eq(prospectsTable.tenantId, req.auth!.tenantId), inArray(prospectsTable.siren, sirens),
     )) : [];
     const bySiren = new Map(existing.map(p => [p.siren, p.id]));
+    const sirets = [...new Set(candidates.map(p => p.siret).filter((v): v is string => Boolean(v && /^\d{14}$/.test(v))))];
+    const urls = [...new Set(candidates.map(p => p.sourceUrl).filter((v): v is string => Boolean(v)))];
+    const [bySiretRows, byUrlRows] = await Promise.all([
+      sirets.length ? db.select({ id: prospectsTable.id, siret: prospectsTable.siret }).from(prospectsTable)
+        .where(and(eq(prospectsTable.tenantId, req.auth!.tenantId), inArray(prospectsTable.siret, sirets))) : Promise.resolve([]),
+      urls.length ? db.select({ id: prospectsTable.id, sourceUrl: prospectsTable.sourceUrl }).from(prospectsTable)
+        .where(and(eq(prospectsTable.tenantId, req.auth!.tenantId), inArray(prospectsTable.sourceUrl, urls))) : Promise.resolve([]),
+    ]);
+    const bySiret = new Map(bySiretRows.map(p => [p.siret, p.id]));
+    const byUrl = new Map(byUrlRows.map(p => [p.sourceUrl, p.id]));
     const companies = [...new Set(candidates.map(candidate => candidate.company))];
     const legacy = companies.length ? await db.select({
       id: prospectsTable.id, company: prospectsTable.company, address: prospectsTable.address,
@@ -193,8 +222,10 @@ router.get("/jobs/:id/results", requireAuth, async (req, res) => {
     const byLegacy = new Map(legacy.map(p => [`${p.company}|${p.address}`, p.id]));
     const data = candidates.map(candidate => {
       const prospectId = bySiren.get(candidate.siren)
+        || (candidate.siret ? bySiret.get(candidate.siret) : undefined)
+        || (candidate.sourceUrl ? byUrl.get(candidate.sourceUrl) : undefined)
         || (candidate.address ? byLegacy.get(`${candidate.company}|${candidate.address}`) : undefined) || null;
-      return { ...candidate, imported: Boolean(prospectId), prospectId };
+      return { ...candidate, id: candidate.id || candidate.siren, imported: Boolean(prospectId), prospectId };
     });
     res.json({ data, total: data.length, imported: data.filter(p => p.imported).length });
     return;
@@ -215,11 +246,11 @@ router.get("/jobs/:id/results", requireAuth, async (req, res) => {
 });
 
 router.post("/jobs/:id/import", requireAuth, async (req, res) => {
-  const parsed = z.object({ sirens: z.array(z.string().regex(/^\d{9}$/)).min(1).max(25) }).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Sélection invalide" });
-    return;
-  }
+  const parsed = z.object({
+    sirens: z.array(z.string().regex(/^\d{9}$/)).min(1).max(25).optional(),
+    ids: z.array(z.string().min(3).max(64)).min(1).max(25).optional(),
+  }).refine(input => Boolean(input.sirens?.length || input.ids?.length)).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Sélection invalide" }); return; }
   const job = await getJob(String(req.params.id), req.auth!.tenantId);
   if (!job) { res.status(404).json({ error: "Recherche introuvable" }); return; }
   const candidates = savedParams(job).results;
@@ -227,8 +258,9 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
     res.status(409).json({ error: "Cette recherche n'est pas importable. Relancez une recherche." });
     return;
   }
-  const requested = [...new Set(parsed.data.sirens)];
-  const eligible = candidates.filter(candidate => requested.includes(candidate.siren));
+  const requested = [...new Set(parsed.data.ids ?? parsed.data.sirens ?? [])];
+  const key = (candidate: SearchCandidate) => candidate.id || candidate.siren;
+  const eligible = candidates.filter(candidate => requested.includes(key(candidate)));
   if (eligible.length !== requested.length) {
     res.status(400).json({ error: "Une entreprise sélectionnée ne fait pas partie de cette recherche" });
     return;
@@ -237,13 +269,24 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
   let imported = 0;
   let skipped = 0;
   for (const candidate of eligible) {
-    const [bySiren] = await db.select({ id: prospectsTable.id }).from(prospectsTable).where(and(
-      eq(prospectsTable.tenantId, req.auth!.tenantId), eq(prospectsTable.siren, candidate.siren),
-    )).limit(1);
-    if (bySiren) { skipped++; continue; }
-
-    // Older automatically imported entries did not store SIREN. Avoid copying
-    // their exact company + address into the CRM a second time.
+    if (/^\d{9}$/.test(candidate.siren)) {
+      const [bySiren] = await db.select({ id: prospectsTable.id }).from(prospectsTable).where(and(
+        eq(prospectsTable.tenantId, req.auth!.tenantId), eq(prospectsTable.siren, candidate.siren),
+      )).limit(1);
+      if (bySiren) { skipped++; continue; }
+    }
+    if (candidate.siret && /^\d{14}$/.test(candidate.siret)) {
+      const [bySiret] = await db.select({ id: prospectsTable.id }).from(prospectsTable).where(and(
+        eq(prospectsTable.tenantId, req.auth!.tenantId), eq(prospectsTable.siret, candidate.siret),
+      )).limit(1);
+      if (bySiret) { skipped++; continue; }
+    }
+    if (candidate.sourceUrl) {
+      const [byUrl] = await db.select({ id: prospectsTable.id }).from(prospectsTable).where(and(
+        eq(prospectsTable.tenantId, req.auth!.tenantId), eq(prospectsTable.sourceUrl, candidate.sourceUrl),
+      )).limit(1);
+      if (byUrl) { skipped++; continue; }
+    }
     const [legacy] = candidate.address ? await db.select({ id: prospectsTable.id }).from(prospectsTable).where(and(
       eq(prospectsTable.tenantId, req.auth!.tenantId),
       eq(prospectsTable.company, candidate.company),
@@ -251,12 +294,20 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
     )).limit(1) : [];
     if (legacy) { skipped++; continue; }
 
-    const inserted = await db.insert(prospectsTable).values({
-      siren: candidate.siren, siret: candidate.siret, company: candidate.company,
-      address: candidate.address, postalCode: candidate.codePostal, city: candidate.city,
+    const [insertedRow] = await db.insert(prospectsTable).values({
+      siren: /^\d{9}$/.test(candidate.siren) ? candidate.siren : null,
+      siret: candidate.siret || null,
+      company: candidate.company,
+      address: candidate.address,
+      postalCode: candidate.codePostal || null,
+      city: candidate.city,
+      phone: candidate.phone || null,
+      website: candidate.website || null,
+      source: job.type === "pagesjaunes" ? "pagesjaunes" : "annuaire-entreprises",
+      sourceUrl: candidate.sourceUrl || null,
       status: "new", tenantId: req.auth!.tenantId, createdBy: req.auth!.userId,
     }).onConflictDoNothing().returning({ id: prospectsTable.id });
-    if (inserted.length) imported++; else skipped++;
+    if (insertedRow) imported++; else skipped++;
   }
   res.json({ imported, skipped, selected: requested.length });
 });

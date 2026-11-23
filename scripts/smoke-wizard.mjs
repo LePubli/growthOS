@@ -34,8 +34,8 @@ async function availablePort() {
   return port;
 }
 
-const [dbPort, apiPort, companiesPort, ollamaPort] = await Promise.all([
-  availablePort(), availablePort(), availablePort(), availablePort(),
+const [dbPort, apiPort, companiesPort, ollamaPort, pagesJaunesPort] = await Promise.all([
+  availablePort(), availablePort(), availablePort(), availablePort(), availablePort(),
 ]);
 const base = `http://127.0.0.1:${apiPort}/api/v1`;
 const testEnv = {
@@ -46,6 +46,8 @@ const testEnv = {
   ENCRYPTION_KEY: randomBytes(32).toString("hex"),
   SETUP_TOKEN: setupToken,
   COMPANY_DIRECTORY_API_URL: `http://127.0.0.1:${companiesPort}/search`,
+  GROWTHOS_SMOKE_TEST: "true",
+  PAGESJAUNES_TEST_ORIGIN: `http://127.0.0.1:${pagesJaunesPort}`,
   ENABLE_OUTBOUND_EMAIL: "false",
   ALLOW_PUBLIC_REGISTRATION: "false",
   PLATFORM_ADMIN_EMAILS: "admin@wizard.invalid",
@@ -116,6 +118,14 @@ const companies = createServer((req, res) => {
     { siren: "100000004", nom_complet: "Entreprise Roubaix", siege: { siret: "10000000400018", adresse: "4 rue de Roubaix, 59100 Roubaix", code_postal: "59100", libelle_commune: "Roubaix" } },
   ] }));
 });
+const pagesJaunes = createServer((req, res) => {
+  if (!req.url?.startsWith("/annuaire/chercherlespros?")) { res.writeHead(404).end(); return; }
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.end(`<html><section id="listResults"><ul class="bi-list">
+    <li class="bi bi-generic" id="epj-123"><div class="bi-content"><a class="bi-denomination" href="/pros/123"><h3>Plomberie Lille</h3></a><div class="bi-address"><a>12 rue Nationale 59000 Lille</a></div><a href="tel:0320123456">Appeler</a></div></li>
+    <li class="bi bi-generic" id="epj-456"><div class="bi-content"><a class="bi-denomination" href="/pros/456"><h3>Electricité Nord</h3></a><div class="bi-address"><a>5 avenue Faidherbe 59000 Lille</a></div></div></li>
+  </ul></section></html>`);
+});
 const ollama = createServer((req, res) => {
   if (req.url !== "/api/tags") { res.writeHead(404).end(); return; }
   res.setHeader("Content-Type", "application/json");
@@ -127,6 +137,7 @@ try {
   await Promise.all([
     new Promise(resolve => companies.listen(companiesPort, "127.0.0.1", resolve)),
     new Promise(resolve => ollama.listen(ollamaPort, "127.0.0.1", resolve)),
+    new Promise(resolve => pagesJaunes.listen(pagesJaunesPort, "127.0.0.1", resolve)),
   ]);
   if (!realPostgresUrl) {
     startProcess("npx", ["--yes", "@electric-sql/pglite-socket", `--db=${ephemeralDbDir}`, `--port=${dbPort}`, "--host=127.0.0.1"]);
@@ -264,6 +275,27 @@ try {
   const noMockActivity = await request("GET", `/activities?prospectId=${crm.body.data[0].id}`, undefined, token);
   check(noMockActivity.status === 200 && noMockActivity.body.length === 0,
     "Une fiche prospect importée démarre sans activités ni commentaires");
+  const pjSearch = await request("POST", "/sourcing/jobs", {
+    type: "pagesjaunes", name: "Plombiers Lille via HTML", params: { query: "plombier", location: "Lille", limit: 10 },
+  }, token);
+  check(pjSearch.status === 201 && pjSearch.body.count === 2,
+    "PagesJaunes HTML : deux fiches détectées sur une page simulée");
+  const pjResults = await request("GET", `/sourcing/jobs/${pjSearch.body.id}/results`, undefined, token);
+  check(pjResults.status === 200 && pjResults.body.data.length === 2 &&
+    pjResults.body.data[0].id.startsWith("pj_") && pjResults.body.data[0].phone === "0320123456",
+    "PagesJaunes : résultat vérifiable, téléphone réellement présent et identifiant source");
+  const pjImport = await request("POST", `/sourcing/jobs/${pjSearch.body.id}/import`,
+    { ids: [pjResults.body.data[0].id] }, token);
+  check(pjImport.status === 200 && pjImport.body.imported === 1,
+    "PagesJaunes : choix explicite, une seule fiche importée sans SIREN inventé");
+  const pjRepeat = await request("POST", `/sourcing/jobs/${pjSearch.body.id}/import`,
+    { ids: [pjResults.body.data[0].id] }, token);
+  check(pjRepeat.status === 200 && pjRepeat.body.imported === 0 && pjRepeat.body.skipped === 1,
+    "PagesJaunes : un deuxième import est reconnu comme doublon");
+  const pjCrm = await request("GET", "/prospects?search=Plomberie", undefined, token);
+  check(pjCrm.body.data?.length === 1 && pjCrm.body.data[0].source === "pagesjaunes" &&
+    pjCrm.body.data[0].siren === null && pjCrm.body.data[0].sourceUrl.endsWith("/pros/123"),
+    "CRM : provenance conservée et aucun identifiant légal fictif");
   const realComment = await request("POST", "/activities", {
     prospectId: crm.body.data[0].id, type: "comment",
     title: "Commentaire", description: "Message réel de suivi", status: "done",
@@ -435,6 +467,7 @@ try {
   await Promise.all([
     new Promise(resolve => companies.close(resolve)),
     new Promise(resolve => ollama.close(resolve)),
+    new Promise(resolve => pagesJaunes.close(resolve)),
   ]);
   await rm(ephemeralDbDir, { recursive: true, force: true });
 }

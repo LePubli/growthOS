@@ -645,6 +645,11 @@ export default function ProspectDetailPage() {
             {!editing && (!prospect.siren || !prospect.siret) && <p className="text-xs text-amber-700 mt-4 bg-amber-50 rounded-lg p-2.5">Identifiant absent de cette fiche. GrowthOS ne l’invente pas : vous pouvez le renseigner après vérification.</p>}
           </section>
 
+          {prospect.source && <div className="rounded-xl border px-4 py-3 flex flex-wrap items-center gap-2 text-xs" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-muted)' }}>
+            <span className="font-semibold">Source :</span>
+            <span>{prospect.source === 'pagesjaunes' ? 'PagesJaunes.fr' : prospect.source === 'annuaire-entreprises' ? 'Annuaire des entreprises' : prospect.source}</span>
+            {prospect.sourceUrl && /^https:\/\/www\.pagesjaunes\.fr\//.test(prospect.sourceUrl) && <a href={prospect.sourceUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline">Voir la fiche source</a>}
+          </div>}
           {/* Coordonnées */}
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>CONTACT ET COORDONNÉES</h2>
