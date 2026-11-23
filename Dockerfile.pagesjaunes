@@ -1,0 +1,10 @@
+# Build entirely on GitHub. Chromium only runs in this dedicated container,
+# never inside the API or web containers of GrowthOS.
+FROM mcr.microsoft.com/playwright:v1.64.1-noble
+WORKDIR /opt/growthos-pagesjaunes
+RUN npm install --no-audit --no-fund --omit=dev --ignore-scripts --save-exact playwright-core@1.64.1
+COPY workers/pagesjaunes-browser/server.mjs ./server.mjs
+ENV NODE_ENV=production PORT=3199 HOME=/tmp XDG_CACHE_HOME=/tmp/.cache
+USER pwuser
+EXPOSE 3199
+CMD ["node", "server.mjs"]

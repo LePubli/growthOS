@@ -48,7 +48,7 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
   },
   pagesjaunes: {
     name: 'PagesJaunes.fr', icon: '📒',
-    desc: 'Professionnels locaux — recherche HTML sans API (expérimental)', color: '#EAB308',
+    desc: 'Professionnels locaux — navigateur Chromium local (expérimental)', color: '#EAB308',
     fields: [
       { key: 'query', label: 'Activité / métier', placeholder: 'Ex : artisans, restaurants' },
       { key: 'location', label: 'Ville ou département', placeholder: 'Ex : Lille, 59' },
@@ -84,7 +84,7 @@ const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:stri
   queued:   { label:'En attente',color:'#374151',bg:'#F3F4F6', dot:'#9CA3AF' },
 };
 
-function LaunchModal({ onClose, onLaunch, initialSource }: { onClose:()=>void; onLaunch:(job:any)=>void; initialSource:string }) {
+function LaunchModal({ onClose, onLaunch, initialSource, browserStatus }: { onClose:()=>void; onLaunch:(job:any)=>void; initialSource:string; browserStatus: 'direct' | 'ready' | 'offline' }) {
   const [step, setStep] = useState<1|2>(1);
   const [sources, setSources] = useState<string[]>([initialSource]);
   const [name, setName] = useState('');
@@ -158,7 +158,7 @@ function LaunchModal({ onClose, onLaunch, initialSource }: { onClose:()=>void; o
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-gray-500 mb-4">PagesJaunes.fr : connecteur expérimental réservé aux utilisateurs disposant de l’autorisation nécessaire. Une recherche HTTP limitée, sans contournement des blocages.</p>
+              <p className="text-xs text-gray-500 mb-4">{browserStatus === 'ready' ? '🟢 Navigateur Chromium privé connecté.' : browserStatus === 'offline' ? '🔴 Navigateur privé configuré mais inaccessible : vérifier son conteneur dans DockerPanel.' : '🟡 Navigation directe uniquement : activez le conteneur Chromium dans DockerPanel.'} Aucun abonnement externe n’est requis.</p>
               <div className="flex gap-3">
                 <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
                 <button onClick={()=>setStep(2)} disabled={!sources.length} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Suivant →</button>
@@ -185,7 +185,7 @@ function LaunchModal({ onClose, onLaunch, initialSource }: { onClose:()=>void; o
                   <label className="block text-xs font-medium text-gray-500 mb-1">Résultats maximum par source (1 à 25)</label>
                   <input type="number" min={1} max={25} value={params.limit || '10'} onChange={e => setParam('limit', e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
                 </div>
-                {sources.includes('pagesjaunes') && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">PagesJaunes est interrogé pour chaque zone jusqu'au nombre de résultats demandé. Si son serveur refuse l'accès, l'erreur apparaîtra sur cette source, sans annuler les résultats de l'annuaire.</p>}
+                {sources.includes('pagesjaunes') && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">PagesJaunes est interrogé par zone. Le navigateur privé fonctionne sans service cloud, mais un filtrage de l'IP du VPS ou un CAPTCHA peut toujours empêcher la collecte.</p>}
                 {<div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 space-y-3">
                   <div>
                     <h4 className="text-sm font-semibold text-gray-800">Zone de prospection *</h4>
@@ -222,10 +222,17 @@ export default function SourcingPage() {
   const [, navigate] = useLocation();
   const [jobs, setJobs] = useState<any[]>([]);
   const [showNew, setShowNew] = useState(false);
+  const [browserStatus, setBrowserStatus] = useState<'direct' | 'ready' | 'offline'>('direct');
   const [initialSource, setInitialSource] = useState('entreprises');
   const openSearch = (source = 'entreprises') => { setInitialSource(source); setShowNew(true); };
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
+  useEffect(() => {
+    void apiClient.get<{ pagesjaunes?: { mode: string; browserReady: boolean } }>('/sourcing/sources/status')
+      .then(data => setBrowserStatus(data.pagesjaunes?.mode === 'browser'
+        ? (data.pagesjaunes.browserReady ? 'ready' : 'offline') : 'direct'))
+      .catch(() => setBrowserStatus('direct'));
+  }, []);
   useEffect(()=>{
     let mounted = true;
     const reload = () => apiClient.get('/sourcing/jobs').then((d:any)=>{
@@ -271,7 +278,7 @@ export default function SourcingPage() {
 
   return (
     <div className="min-h-screen p-6" style={{background:'var(--body-bg)'}}>
-      {showNew && <LaunchModal initialSource={initialSource} onClose={()=>setShowNew(false)} onLaunch={j=>{setJobs(js=>[j,...js]);navigate(`/sourcing/${j.id}`);}}/>}
+      {showNew && <LaunchModal initialSource={initialSource} browserStatus={browserStatus} onClose={()=>setShowNew(false)} onLaunch={j=>{setJobs(js=>[j,...js]);navigate(`/sourcing/${j.id}`);}}/>}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -349,7 +356,9 @@ export default function SourcingPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map(job=>{
-            const sc = STATUS_CONFIG[job.status]||STATUS_CONFIG.paused;
+            const sc = job.type === 'multi' && job.status === 'completed' && job.error
+              ? { label: 'Partiellement terminé', color: '#92400E', bg: '#FFFBEB', dot: '#F59E0B' }
+              : STATUS_CONFIG[job.status] || STATUS_CONFIG.paused;
             const src = job.type === 'multi'
               ? { icon: '🔎', name: (job.params?.sources || []).map((id: string) => SCRAPER_TYPES[id]?.name || id).join(' + ') || 'Recherche multisource' }
               : SCRAPER_TYPES[job.type] || SCRAPER_TYPES.custom;

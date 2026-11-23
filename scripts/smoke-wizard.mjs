@@ -34,8 +34,8 @@ async function availablePort() {
   return port;
 }
 
-const [dbPort, apiPort, companiesPort, ollamaPort, pagesJaunesPort] = await Promise.all([
-  availablePort(), availablePort(), availablePort(), availablePort(), availablePort(),
+const [dbPort, apiPort, companiesPort, ollamaPort, pagesJaunesPort, browserPort] = await Promise.all([
+  availablePort(), availablePort(), availablePort(), availablePort(), availablePort(), availablePort(),
 ]);
 const base = `http://127.0.0.1:${apiPort}/api/v1`;
 const testEnv = {
@@ -48,6 +48,7 @@ const testEnv = {
   COMPANY_DIRECTORY_API_URL: `http://127.0.0.1:${companiesPort}/search`,
   GROWTHOS_SMOKE_TEST: "true",
   PAGESJAUNES_TEST_ORIGIN: `http://127.0.0.1:${pagesJaunesPort}`,
+  PAGESJAUNES_BROWSER_URL: `http://127.0.0.1:${browserPort}`,
   ENABLE_OUTBOUND_EMAIL: "false",
   ALLOW_PUBLIC_REGISTRATION: "false",
   PLATFORM_ADMIN_EMAILS: "admin@wizard.invalid",
@@ -137,6 +138,27 @@ const pagesJaunes = createServer((req, res) => {
     <li class="bi bi-generic" id="epj-456"><div class="bi-content"><a class="bi-denomination" href="/pros/456"><h3>Electricité Nord</h3></a><div class="bi-address"><a>5 avenue Faidherbe 59000 Lille</a></div></div></li>
   </ul></section></html>`);
 });
+let browserCalls = 0;
+const browserStub = createServer(async (req, res) => {
+  if (req.method === "GET" && req.url === "/healthz") { res.writeHead(200).end("OK"); return; }
+  if (req.method !== "POST" || req.url !== "/extract") { res.writeHead(404).end(); return; }
+  let raw = "";
+  for await (const chunk of req) raw += chunk;
+  const params = JSON.parse(raw);
+  if (typeof params.query !== "string" || typeof params.location !== "string" ||
+      "url" in params) { res.writeHead(400).end(); return; }
+  browserCalls++;
+  if (params.query === "blocked") {
+    res.writeHead(403, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "PagesJaunes a renvoyé HTTP 403 au navigateur" }));
+    return;
+  }
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.end(`<ul class="bi-list">
+    <li class="bi"><a class="bi-denomination" href="/pros/123"><h3>Plomberie Lille</h3></a><div class="bi-address">12 rue Nationale 59000 Lille</div><a href="tel:0320123456">Appeler</a></li>
+    <li class="bi"><a class="bi-denomination" href="/pros/456"><h3>Electricité Nord</h3></a><div class="bi-address">5 avenue Faidherbe 59000 Lille</div></li>
+  </ul>`);
+});
 const ollama = createServer((req, res) => {
   if (req.url !== "/api/tags") { res.writeHead(404).end(); return; }
   res.setHeader("Content-Type", "application/json");
@@ -149,6 +171,7 @@ try {
     new Promise(resolve => companies.listen(companiesPort, "127.0.0.1", resolve)),
     new Promise(resolve => ollama.listen(ollamaPort, "127.0.0.1", resolve)),
     new Promise(resolve => pagesJaunes.listen(pagesJaunesPort, "127.0.0.1", resolve)),
+    new Promise(resolve => browserStub.listen(browserPort, "127.0.0.1", resolve)),
   ]);
   if (!realPostgresUrl) {
     startProcess("npx", ["--yes", "@electric-sql/pglite-socket", `--db=${ephemeralDbDir}`, `--port=${dbPort}`, "--host=127.0.0.1"]);
@@ -165,6 +188,10 @@ try {
   const admin = await request("POST", "/setup/bootstrap", setup);
   check(admin.status === 201 && !!admin.body.accessToken, "Premier administrateur créé");
   const token = admin.body.accessToken;
+  const browserStatus = await request("GET", "/sourcing/sources/status", undefined, token);
+  check(browserStatus.status === 200 && browserStatus.body.pagesjaunes.mode === "browser" &&
+    browserStatus.body.pagesjaunes.browserReady === true,
+    "L’interface peut vérifier que le navigateur local est connecté");
   check((await request("POST", "/setup/bootstrap", setup)).status === 409,
     "Seconde initialisation refusée");
   check((await request("GET", "/setup/configuration")).status === 401,
@@ -334,6 +361,19 @@ try {
     partialDone.params.sourceStatuses.pagesjaunes.status === "error" &&
     partialDone.params.sourceStatuses.pagesjaunes.error.includes("403"),
     "Un refus PagesJaunes HTTP 403 n'efface pas les résultats de l'annuaire");
+  check(browserCalls >= 3,
+    "La recherche PagesJaunes passe par le navigateur autonome sur le réseau Docker");
+  const browserSearch = await request("POST", "/sourcing/jobs", {
+    type: "multi", name: "Navigateur maison", params: {
+      sources: ["entreprises", "pagesjaunes"], query: "browser-ok",
+      regions: [], departements: [], codesPostaux: ["59000"], limit: 5,
+    },
+  }, token);
+  const browserDone = await awaitSourcingJob(browserSearch.body.id, token);
+  check(browserSearch.status === 202 && browserDone.status === "completed" &&
+    browserDone.params.sourceStatuses.pagesjaunes.status === "completed" &&
+    browserDone.count >= 3,
+    "Le navigateur privé renvoie des entreprises sans service cloud externe");
   const realComment = await request("POST", "/activities", {
     prospectId: crm.body.data[0].id, type: "comment",
     title: "Commentaire", description: "Message réel de suivi", status: "done",
@@ -506,6 +546,7 @@ try {
     new Promise(resolve => companies.close(resolve)),
     new Promise(resolve => ollama.close(resolve)),
     new Promise(resolve => pagesJaunes.close(resolve)),
+    new Promise(resolve => browserStub.close(resolve)),
   ]);
   await rm(ephemeralDbDir, { recursive: true, force: true });
 }

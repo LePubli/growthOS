@@ -257,6 +257,18 @@ async function runMultiSearch(jobId: string, tenantId: string, params: MultiPara
   }
 }
 
+router.get("/sources/status", requireAuth, async (_req, res) => {
+  const configured = process.env.PAGESJAUNES_BROWSER_URL?.trim();
+  if (!configured) { res.json({ pagesjaunes: { mode: "direct", browserReady: false } }); return; }
+  try {
+    const url = new URL("/healthz", configured);
+    const response = await fetch(url, { signal: AbortSignal.timeout(2500), redirect: "error" });
+    res.json({ pagesjaunes: { mode: "browser", browserReady: response.ok } });
+  } catch {
+    res.json({ pagesjaunes: { mode: "browser", browserReady: false } });
+  }
+});
+
 router.get("/jobs", requireAuth, async (req, res) => {
   const jobs = await db.select().from(sourcingJobsTable)
     .where(eq(sourcingJobsTable.tenantId, req.auth!.tenantId))

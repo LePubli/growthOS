@@ -104,17 +104,44 @@ export async function searchPagesJaunes(params: { query: string; location: strin
     url.searchParams.set("quoiqui", params.query);
     url.searchParams.set("ou", params.location);
     url.searchParams.set("univers", "pagesjaunes");
-    const response = await fetch(url, {
-      headers: {
-        "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "fr-FR,fr;q=0.9",
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      },
-      redirect: "error",
-      signal: AbortSignal.timeout(12000),
-    });
+    // Option 100 % maison : un Chromium isolé sur le réseau privé Docker.
+    // Sans worker configuré, la collecte HTTP historique reste utilisable.
+    const workerBase = process.env.PAGESJAUNES_BROWSER_URL?.trim();
+    let response: Response;
+    if (workerBase) {
+      const worker = new URL("/extract", workerBase);
+      if (!["http:", "https:"].includes(worker.protocol)) {
+        throw new Error("PAGESJAUNES_BROWSER_URL doit être une URL HTTP interne");
+      }
+      response = await fetch(worker, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(process.env.PAGESJAUNES_WORKER_TOKEN
+            ? { "X-Worker-Token": process.env.PAGESJAUNES_WORKER_TOKEN } : {}),
+        },
+        body: JSON.stringify({ query: params.query, location: params.location }),
+        redirect: "error",
+        signal: AbortSignal.timeout(45000),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error("Navigateur PagesJaunes HTTP " + response.status + " : " +
+          (typeof data.error === "string" ? data.error.slice(0, 180) : "Échec de la navigation"));
+      }
+    } else {
+      response = await fetch(url, {
+        headers: {
+          "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "fr-FR,fr;q=0.9",
+          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        },
+        redirect: "error",
+        signal: AbortSignal.timeout(12000),
+      });
+    }
     if (response.status === 403 || response.status === 429) {
-      throw new Error("PagesJaunes HTTP " + response.status + " : accès refusé par le site. Demandez à PagesJaunes d'autoriser l'adresse IP du VPS ; aucune tentative de contournement.");
+      throw new Error("PagesJaunes HTTP " + response.status + " : accès direct refusé. Activez le navigateur Chromium autonome pour une recherche dans une vraie page.");
     }
     if (!response.ok) throw new Error("PagesJaunes : HTTP " + response.status);
     if (!(response.headers.get("content-type") || "").includes("text/html")) {
