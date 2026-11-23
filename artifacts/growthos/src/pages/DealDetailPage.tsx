@@ -357,7 +357,7 @@ export default function DealDetailPage() {
                             title="Ouvrir la fiche prospect liée">{f.v} ↗</button>
                         ) : (
                           <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)' }}>{f.v}</div>
-                        )
+                        )}
                       </div>
                     ))}
                   </div>
