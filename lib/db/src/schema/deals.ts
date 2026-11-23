@@ -14,6 +14,8 @@ export const dealsTable = pgTable("deals", {
   probability: integer("probability").default(20),
   closeDate: text("close_date"),
   prospect: text("prospect"),
+  notes: text("notes"),
+  priority: text("priority").notNull().default("medium"),
   prospectId: uuid("prospect_id").references(() => prospectsTable.id, { onDelete: "set null" }),
   tenantId: uuid("tenant_id").references(() => tenantsTable.id, { onDelete: "cascade" }).notNull(),
   createdBy: uuid("created_by").references(() => usersTable.id, { onDelete: "set null" }),

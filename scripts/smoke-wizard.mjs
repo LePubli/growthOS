@@ -240,6 +240,53 @@ try {
   }, token);
   check(invalidImport.status === 400, "Import CSV : email invalide refusé sans insertion");
 
+  // Le pipeline contient des opportunités commerciales liées au CRM,
+  // pas automatiquement tous les prospects dont le statut est "qualified".
+  const importedId = changedProspect.body.data?.[0]?.id;
+  check(Boolean(importedId), "Un prospect importé possède un identifiant CRM");
+  const qualifiedProspect = await request("PATCH", `/prospects/${importedId}`, { status: "qualified" }, token);
+  check(qualifiedProspect.status === 200 && qualifiedProspect.body.status === "qualified",
+    "Qualification du prospect conservée");
+  const pipelineBefore = await request("GET", "/pipeline", undefined, token);
+  check(pipelineBefore.status === 200 && pipelineBefore.body.length === 0,
+    "Le pipeline est vide tant qu'aucun deal n'a été créé");
+
+  const linkedDeal = await request("POST", "/pipeline", {
+    prospectId: importedId, title: "Refonte site + SEO", value: 1800,
+    stage: "qualified", probability: 40, priority: "high",
+    notes: "Prospect issu de l'import CSV",
+  }, token);
+  check(linkedDeal.status === 201 && linkedDeal.body.prospectId === importedId &&
+    linkedDeal.body.company === "Entreprise mise à jour" &&
+    linkedDeal.body.prospect === "Alice Import" &&
+    linkedDeal.body.priority === "high" && linkedDeal.body.notes === "Prospect issu de l'import CSV",
+    "Création d'un deal : lien CRM, contact, entreprise, priorité et notes persistés");
+  const linkedList = await request("GET", `/pipeline?prospectId=${importedId}`, undefined, token);
+  check(linkedList.status === 200 && linkedList.body.length === 1 &&
+    linkedList.body[0].id === linkedDeal.body.id,
+    "La fiche prospect retrouve uniquement ses deals liés");
+  const updatedDeal = await request("PATCH", `/pipeline/${linkedDeal.body.id}`, {
+    stage: "proposal", priority: "low", notes: "Devis envoyé",
+  }, token);
+  check(updatedDeal.status === 200 && updatedDeal.body.prospectId === importedId &&
+    updatedDeal.body.stage === "proposal" && updatedDeal.body.priority === "low" &&
+    updatedDeal.body.notes === "Devis envoyé",
+    "Mise à jour d'un deal sans perte du lien prospect");
+  const missingProspectDeal = await request("POST", "/pipeline", {
+    prospectId: "00000000-0000-4000-8000-000000000001",
+    title: "Prospect inexistant", value: 100,
+  }, token);
+  check(missingProspectDeal.status === 404, "Un deal ne peut pas être lié à un prospect inexistant");
+
+  const convertedDeal = await request("POST", "/pipeline/from-prospect", {
+    prospectId: importedId, title: "Audit SEO", value: 300, priority: "medium",
+  }, token);
+  const convertedProspect = await request("GET", `/prospects/${importedId}`, undefined, token);
+  check(convertedDeal.status === 201 && convertedDeal.body.prospectId === importedId &&
+    convertedProspect.body.status === "converted",
+    "Conversion depuis la fiche prospect : deal lié et statut converti");
+
+
 
   const enrichmentSources = await request("GET", "/enrich/sources", undefined, token);
   check(enrichmentSources.status === 200 && enrichmentSources.body.some(s => s.id === "google_news" && s.implemented) &&

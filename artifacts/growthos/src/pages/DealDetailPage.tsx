@@ -6,6 +6,7 @@ import {
   Paperclip, MessageSquare, Zap, Target, ChevronDown,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { ProspectPicker } from '@/components/pipeline/ProspectPicker';
 import { toast } from 'sonner';
 import { CommentsPanel } from '@/components/common/CommentsPanel';
 
@@ -119,7 +120,7 @@ export default function DealDetailPage() {
       const updated = await apiClient.patch(`/pipeline/${params.id}`,{
         title:form.title, company:form.company, value:Number(form.value),
         stage:form.stage, probability:Number(form.probability), closeDate:form.closeDate,
-        prospect:form.prospect, notes:form.notes,
+        prospectId:form.prospectId || null, priority:form.priority, notes:form.notes,
       });
       setDeal(updated); setEditing(false); toast.success('Deal mis à jour');
     } catch { toast.error('Erreur'); }
@@ -128,8 +129,13 @@ export default function DealDetailPage() {
 
   const deleteDeal = async () => {
     if (!confirm('Supprimer ce deal ?')) return;
-    await apiClient.delete(`/pipeline/${params.id}`).catch(()=>{});
-    toast.success('Deal supprimé'); navigate('/pipeline');
+    try {
+      await apiClient.delete(`/pipeline/${params.id}`);
+      toast.success('Deal supprimé');
+      navigate('/pipeline');
+    } catch {
+      toast.error('Impossible de supprimer le deal');
+    }
   };
 
   const sf = (k:string,v:string) => setForm((f:any)=>({...f,[k]:v}));
@@ -301,7 +307,6 @@ export default function DealDetailPage() {
                   {[
                     { k:'title',       l:'Titre',          col:'1/-1' },
                     { k:'company',     l:'Entreprise',     col:'' },
-                    { k:'prospect',    l:'Contact',        col:'' },
                     { k:'value',       l:'Valeur (€)',     col:'',  type:'number' },
                     { k:'probability', l:'Probabilité (%)',col:'',  type:'number' },
                     { k:'closeDate',   l:'Date closing',   col:'',  type:'date' },
@@ -312,6 +317,23 @@ export default function DealDetailPage() {
                         style={{ width:'100%', padding:'8px 12px', border:'1px solid var(--card-border)', borderRadius:10, fontSize:13, background:'var(--body-bg)', color:'var(--text-primary)', outline:'none', boxSizing:'border-box' }}/>
                     </div>
                   ))}
+                  <div style={{ gridColumn:'1/-1' }}>
+                    <label style={{ display:'block', fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:4 }}>Prospect associé</label>
+                    <ProspectPicker value={form.prospectId || null} initialLabel={form.prospect || ''} onChange={(id, prospect) => setForm((previous:any) => ({
+                      ...previous,
+                      prospectId: id,
+                      prospect: prospect ? [prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || prospect.company : '',
+                      company: prospect?.company || previous.company,
+                    }))} disabled={saving} />
+                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:5 }}>Sélectionnez un contact du CRM. Les anciennes valeurs libres peuvent être remplacées.</div>
+                  </div>
+                  <div style={{ gridColumn:'1/-1' }}>
+                    <label style={{ display:'block', fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:4 }}>Priorité</label>
+                    <select value={form.priority || 'medium'} onChange={event => sf('priority',event.target.value)}
+                      style={{ width:'100%', padding:'8px 12px', border:'1px solid var(--card-border)', borderRadius:10, fontSize:13, background:'var(--body-bg)', color:'var(--text-primary)' }}>
+                      <option value="high">Haute</option><option value="medium">Moyenne</option><option value="low">Basse</option>
+                    </select>
+                  </div>
                   <div style={{ gridColumn:'1/-1' }}>
                     <label style={{ display:'block', fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:4 }}>Notes</label>
                     <textarea value={form.notes||''} onChange={e=>sf('notes',e.target.value)} rows={5}
@@ -329,7 +351,13 @@ export default function DealDetailPage() {
                     ].map(f=>(
                       <div key={f.l} style={{ padding:'10px 14px', borderRadius:10, background:'var(--body-bg)', border:'1px solid var(--card-border)' }}>
                         <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:3 }}>{f.l}</div>
-                        <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)' }}>{f.v}</div>
+                        {f.l === 'Contact' && deal.prospectId ? (
+                          <button onClick={() => navigate(`/prospects/${deal.prospectId}`)}
+                            style={{ fontSize:13, fontWeight:600, color:'var(--color-primary)', background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'left' }}
+                            title="Ouvrir la fiche prospect liée">{f.v} ↗</button>
+                        ) : (
+                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)' }}>{f.v}</div>
+                        )
                       </div>
                     ))}
                   </div>

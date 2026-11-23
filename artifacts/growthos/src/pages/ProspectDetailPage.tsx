@@ -62,10 +62,11 @@ const STATUS_OPTIONS = [
   { value: 'new', label: 'Nouveau' }, { value: 'contacted', label: 'Contacté' },
   { value: 'qualified', label: 'Qualifié' }, { value: 'negotiation', label: 'Négociation' },
   { value: 'won', label: 'Gagné' }, { value: 'lost', label: 'Perdu' },
+  { value: 'converted', label: 'Converti en deal' },
 ];
 const STATUS_COLORS: Record<string, string> = {
   new: '#6B7280', contacted: '#2563EB', qualified: '#7C3AED',
-  negotiation: '#D97706', won: '#059669', lost: '#EF4444',
+  negotiation: '#D97706', won: '#059669', lost: '#EF4444', converted: '#059669',
 };
 
 const ACTIVITY_TYPES = [
@@ -390,6 +391,7 @@ export default function ProspectDetailPage() {
   const [lastEnrichedAt, setLastEnrichedAt] = useState<Date | null>(null);
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [convertLoading, setConvertLoading] = useState(false);
+  const [linkedDeals, setLinkedDeals] = useState<{ id: string; title: string; stage: string }[]>([]);
   const [convertForm, setConvertForm] = useState({ title: '', value: '0', stage: 'lead', closeDate: '' });
 
   const fetchProspect = async () => {
@@ -436,7 +438,16 @@ export default function ProspectDetailPage() {
     ? (Date.now() - lastEnrichedAt.getTime()) < 7 * 24 * 60 * 60 * 1000
     : false;
 
-  useEffect(() => { fetchProspect(); fetchActivities(); fetchEnrichmentHistory(); }, [id]);
+  const fetchLinkedDeals = async () => {
+    try {
+      const linked = await apiClient.get<{ id: string; title: string; stage: string }[]>('/pipeline', { params: { prospectId: id } });
+      setLinkedDeals(Array.isArray(linked) ? linked : []);
+    } catch {
+      setLinkedDeals([]);
+    }
+  };
+
+  useEffect(() => { fetchProspect(); fetchActivities(); fetchEnrichmentHistory(); fetchLinkedDeals(); }, [id]);
 
   const save = async () => {
     setSaving(true);
@@ -520,6 +531,7 @@ export default function ProspectDetailPage() {
         closeDate: convertForm.closeDate || undefined,
       }) as any;
       setProspect((p: any) => ({ ...p, status: 'converted' }));
+      setLinkedDeals(previous => [{ id: deal.id, title: deal.title, stage: deal.stage }, ...previous]);
       setShowConvertModal(false);
       toast.success('Prospect converti en deal ✓');
       navigate(`/pipeline/${deal.id}`);
@@ -646,12 +658,12 @@ export default function ProspectDetailPage() {
             style={{ color: prospect.status === 'archived' ? '#059669' : 'var(--text-muted)' }}>
             {prospect.status === 'archived' ? <RotateCcw size={18} /> : <Archive size={18} />}
           </button>
-          {prospect.status !== 'converted' && (prospect.score >= 50 || ['qualified', 'negotiation'].includes(prospect.status)) && (
-            <button onClick={openConvertModal}
+          {(
+            <button onClick={() => linkedDeals.length > 0 ? navigate(`/pipeline/${linkedDeals[0].id}`) : openConvertModal()}
               className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors"
               style={{ background:'#EEF2FF',color:'#6366F1',border:'1px solid #C7D2FE' }}
-              title="Convertir ce prospect en deal pipeline">
-              <GitMerge size={14}/>Convertir
+              title={linkedDeals.length > 0 ? 'Voir le deal lié à ce prospect' : 'Créer un deal lié à ce prospect'}>
+              <GitMerge size={14}/>{linkedDeals.length > 0 ? 'Voir le deal' : 'Créer un deal'}
             </button>
           )}
           {editing ? (
@@ -995,10 +1007,10 @@ export default function ProspectDetailPage() {
                 style={{ background: 'var(--body-bg)', borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}>
                 <Plus size={14} style={{ color: '#7C3AED' }} />Ajouter une activité
               </button>
-              <button onClick={() => navigate('/pipeline')}
+              <button onClick={() => linkedDeals.length > 0 ? navigate(`/pipeline/${linkedDeals[0].id}`) : openConvertModal()}
                 className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm border transition-all hover:border-teal-300"
                 style={{ background: 'var(--body-bg)', borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}>
-                <MessageSquare size={14} style={{ color: '#D97706' }} />Créer un deal
+                <MessageSquare size={14} style={{ color: '#D97706' }} />{linkedDeals.length > 0 ? 'Voir le deal lié' : 'Créer un deal lié'}
               </button>
 
               {isRecentlyEnriched ? (

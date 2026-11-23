@@ -6,6 +6,7 @@ import {
   ArrowUpRight, Loader2,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { ProspectPicker, type ProspectOption } from '@/components/pipeline/ProspectPicker';
 import { toast } from 'sonner';
 
 /* ─────────────── types & data ─────────────── */
@@ -22,6 +23,7 @@ const STAGES = [
 interface Deal {
   id: string; title: string; company: string; value: number;
   stage: string; probability: number; closeDate: string; prospect: string;
+  prospectId?: string | null;
   notes?: string; priority?: 'high' | 'medium' | 'low';
 }
 
@@ -51,75 +53,117 @@ function computeHealthScore(deal: Deal): { score: number; color: string; label: 
 /* ─────────────── new deal modal ─────────────── */
 
 function NewDealModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:Deal)=>void }) {
-  const [form, setForm] = useState({ title:'', company:'', value:'', stage:'lead', probability:'20', closeDate:'', prospect:'', priority:'medium' });
+  const [form, setForm] = useState({
+    title: '', value: '', stage: 'lead', probability: '20', closeDate: '', priority: 'medium', notes: '',
+  });
+  const [prospectId, setProspectId] = useState<string | null>(null);
+  const [selectedProspect, setSelectedProspect] = useState<ProspectOption | null>(null);
   const [saving, setSaving] = useState(false);
-  const set = (k:string,v:string) => setForm(f=>({...f,[k]:v}));
+  const set = (key: keyof typeof form, value: string) => setForm(previous => ({ ...previous, [key]: value }));
+
   const save = async () => {
-    if (!form.title || !form.company) { toast.error('Titre et entreprise requis'); return; }
+    if (!prospectId) { toast.error('Sélectionnez un prospect existant'); return; }
+    if (!form.title.trim()) { toast.error('Le titre est obligatoire'); return; }
+    const value = form.value.trim() ? Number(form.value) : 0;
+    const probability = Number(form.probability);
+    if (!Number.isFinite(value) || value < 0 || !Number.isFinite(probability) || probability < 0 || probability > 100) {
+      toast.error('Vérifiez la valeur et la probabilité (0 à 100 %)');
+      return;
+    }
     setSaving(true);
     try {
-      const deal = await apiClient.post('/pipeline', {
-        title: form.title,
-        company: form.company,
-        prospect: form.prospect || undefined,
-        value: Number(form.value) || 0,
+      const deal = await apiClient.post<Deal>('/pipeline', {
+        prospectId,
+        title: form.title.trim(),
+        value,
         stage: form.stage,
-        probability: Number(form.probability) || 20,
+        probability,
         closeDate: form.closeDate || undefined,
         priority: form.priority,
-      }) as any;
-      onSave(deal as Deal);
+        notes: form.notes.trim() || undefined,
+      });
+      onSave(deal);
       onClose();
-      toast.success('Deal créé ✓');
-    } catch (e: any) {
-      toast.error(e?.error || 'Erreur lors de la création');
+      toast.success('Deal créé et lié au prospect ✓');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erreur lors de la création');
     } finally {
       setSaving(false);
     }
   };
+
+  const fieldStyle = { width: '100%', padding: '9px 12px', border: '1px solid var(--card-border)', borderRadius: 10, fontSize: 13, background: 'var(--body-bg)', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' as const };
+  const labelStyle = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 };
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:50, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={onClose}>
-      <div style={{ background:'var(--card-bg)', borderRadius:20, padding:24, width:'100%', maxWidth:500, boxShadow:'0 20px 60px rgba(0,0,0,.2)' }} onClick={e=>e.stopPropagation()}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-          <h2 style={{ fontSize:17, fontWeight:700, color:'var(--text-primary)', margin:0 }}>Nouveau deal</h2>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', display:'flex' }}><X size={18}/></button>
-        </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-          {[
-            { k:'title',    l:'Titre *',         col:'1/-1' },
-            { k:'company',  l:'Entreprise *',    col:'' },
-            { k:'prospect', l:'Contact',         col:'' },
-            { k:'value',    l:'Valeur (€)',      col:'' },
-            { k:'probability',l:'Probabilité %', col:'' },
-            { k:'closeDate',l:'Date closing',    col:'',   type:'date' },
-          ].map(f => (
-            <div key={f.k} style={{ gridColumn:f.col||undefined }}>
-              <label style={{ display:'block', fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:4 }}>{f.l}</label>
-              <input type={f.type||'text'} value={(form as any)[f.k]} onChange={e=>set(f.k,e.target.value)}
-                style={{ width:'100%', padding:'8px 12px', border:'1px solid var(--card-border)', borderRadius:10, fontSize:13, background:'var(--body-bg)', color:'var(--text-primary)', outline:'none', boxSizing:'border-box' }} />
-            </div>
-          ))}
-        </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }} onClick={onClose}>
+      <div style={{ background: 'var(--card-bg)', borderRadius: 20, padding: 24, width: '100%', maxWidth: 540, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }} onClick={event => event.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>
-            <label style={{ display:'block', fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:4 }}>Étape</label>
-            <select value={form.stage} onChange={e=>set('stage',e.target.value)} style={{ width:'100%', padding:'8px 12px', border:'1px solid var(--card-border)', borderRadius:10, fontSize:13, background:'var(--body-bg)', color:'var(--text-primary)', outline:'none' }}>
-              {STAGES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Créer une opportunité</h2>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>Chaque deal doit être lié à un prospect du CRM.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fermer" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18}/></button>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle}>Prospect associé *</label>
+          <ProspectPicker
+            value={prospectId}
+            onChange={(id, prospect) => {
+              setProspectId(id);
+              setSelectedProspect(prospect);
+              if (prospect) {
+                const company = prospect.company || [prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || 'Prospect';
+                setForm(previous => ({
+                  ...previous,
+                  title: previous.title.trim() ? previous.title : `Site internet et SEO — ${company}`,
+                  stage: ['qualified', 'negotiation'].includes(prospect.status || '') ? prospect.status! : previous.stage,
+                }));
+              }
+            }}
+            disabled={saving}
+          />
+          {selectedProspect && <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>Entreprise : {selectedProspect.company || 'Non renseignée'} · <a href={`/prospects/${selectedProspect.id}`} style={{ color: 'var(--color-primary)' }}>Voir sa fiche</a></p>}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12, marginBottom: 12 }}>
+          <div style={{ gridColumn: '1/-1' }}>
+            <label style={labelStyle}>Titre de l'opportunité *</label>
+            <input style={fieldStyle} value={form.title} onChange={event => set('title', event.target.value)} placeholder="Ex. Création de site et référencement" />
+          </div>
+          <div>
+            <label style={labelStyle}>Montant estimé (€)</label>
+            <input style={fieldStyle} type="number" min="0" step="0.01" value={form.value} onChange={event => set('value', event.target.value)} placeholder="0" />
+          </div>
+          <div>
+            <label style={labelStyle}>Probabilité (%)</label>
+            <input style={fieldStyle} type="number" min="0" max="100" value={form.probability} onChange={event => set('probability', event.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Étape</label>
+            <select style={fieldStyle} value={form.stage} onChange={event => set('stage', event.target.value)}>
+              {STAGES.map(stage => <option key={stage.id} value={stage.id}>{stage.label}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display:'block', fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:4 }}>Priorité</label>
-            <select value={form.priority} onChange={e=>set('priority',e.target.value)} style={{ width:'100%', padding:'8px 12px', border:'1px solid var(--card-border)', borderRadius:10, fontSize:13, background:'var(--body-bg)', color:'var(--text-primary)', outline:'none' }}>
-              <option value="high">🔴 Haute</option>
-              <option value="medium">🟡 Moyenne</option>
-              <option value="low">⚪ Basse</option>
+            <label style={labelStyle}>Priorité</label>
+            <select style={fieldStyle} value={form.priority} onChange={event => set('priority', event.target.value)}>
+              <option value="high">Haute</option><option value="medium">Moyenne</option><option value="low">Basse</option>
             </select>
           </div>
+          <div style={{ gridColumn: '1/-1' }}>
+            <label style={labelStyle}>Date de clôture prévue</label>
+            <input style={fieldStyle} type="date" value={form.closeDate} onChange={event => set('closeDate', event.target.value)} />
+          </div>
+          <div style={{ gridColumn: '1/-1' }}>
+            <label style={labelStyle}>Notes</label>
+            <textarea style={{ ...fieldStyle, resize: 'vertical' }} rows={2} value={form.notes} onChange={event => set('notes', event.target.value)} placeholder="Besoin identifié, prochaine action…" />
+          </div>
         </div>
-        <div style={{ display:'flex', gap:10 }}>
-          <button onClick={onClose} style={{ flex:1, padding:11, borderRadius:12, border:'1px solid var(--card-border)', background:'transparent', color:'var(--text-secondary)', fontSize:14, cursor:'pointer' }}>Annuler</button>
-          <button onClick={save} disabled={saving} style={{ flex:2, padding:11, borderRadius:12, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:14, fontWeight:700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-            {saving ? '⏳ Création…' : 'Créer le deal'}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="button" onClick={onClose} style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid var(--card-border)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}>Annuler</button>
+          <button type="button" onClick={save} disabled={saving || !prospectId || !form.title.trim()} style={{ flex: 2, padding: 11, borderRadius: 12, border: 'none', background: 'var(--color-primary)', color: '#fff', fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving || !prospectId || !form.title.trim() ? .6 : 1 }}>
+            {saving ? 'Création…' : 'Créer le deal lié'}
           </button>
         </div>
       </div>
@@ -199,6 +243,7 @@ function KanbanCard({ deal, stage, onDragStart, onClick, onQuickAction }: {
 export default function PipelinePage() {
   const [, navigate] = useLocation();
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [loadError, setLoadError] = useState(false);
   const [view, setView] = useState<'kanban'|'list'|'forecast'>('kanban');
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
@@ -210,7 +255,15 @@ export default function PipelinePage() {
   const draggingId = useRef<string|null>(null);
 
   useEffect(() => {
-    apiClient.get('/pipeline').then((d:any)=>{ const l=Array.isArray(d)?d:d?.data||[]; setDeals(l); }).catch(()=>{});
+    apiClient.get('/pipeline')
+      .then((response: any) => {
+        setDeals(Array.isArray(response) ? response : response?.data || []);
+        setLoadError(false);
+      })
+      .catch(() => {
+        setLoadError(true);
+        toast.error('Impossible de charger le pipeline');
+      });
     const onNouveau = () => setShowModal(true);
     window.addEventListener('growthos:nouveau', onNouveau);
     return () => window.removeEventListener('growthos:nouveau', onNouveau);
@@ -220,15 +273,26 @@ export default function PipelinePage() {
   const onDrop = (e:React.DragEvent, stageId:string) => {
     e.preventDefault();
     const id = draggingId.current; if (!id) return;
-    setDeals(ds=>ds.map(d=>d.id===id?{...d,stage:stageId}:d));
-    apiClient.patch(`/pipeline/${id}`,{stage:stageId}).catch(()=>{});
-    toast.success(`Deal déplacé vers "${STAGES.find(s=>s.id===stageId)?.label}"`);
+    const previousStage = deals.find(deal => deal.id === id)?.stage;
+    if (!previousStage || previousStage === stageId) {
+      draggingId.current = null;
+      setDragOver(null);
+      return;
+    }
+    setDeals(ds => ds.map(deal => deal.id === id ? { ...deal, stage: stageId } : deal));
+    apiClient.patch(`/pipeline/${id}`, { stage: stageId })
+      .then(() => toast.success(`Deal déplacé vers "${STAGES.find(stage => stage.id === stageId)?.label}"`))
+      .catch(() => {
+        setDeals(ds => ds.map(deal => deal.id === id ? { ...deal, stage: previousStage } : deal));
+        toast.error('Déplacement non enregistré, étape restaurée');
+      });
     draggingId.current=null; setDragOver(null);
   };
 
-  const quickAction = (action:string, deal:Deal) => {
-    if (action==='email') toast.success(`Email en cours pour ${deal.company}`);
-    if (action==='call') toast.success(`Appel en cours pour ${deal.company}`);
+  const quickAction = (_action:string, deal:Deal) => {
+    toast.info(deal.prospectId
+      ? 'Ouvrez la fiche prospect pour retrouver ses coordonnées et le contacter.'
+      : 'Associez ce deal à un prospect avant de le contacter.');
   };
 
   const filtered = deals.filter(d => {
@@ -327,6 +391,23 @@ export default function PipelinePage() {
           </div>
           <button onClick={()=>{setStageFilter('all');setPriorityFilter('all');setMinValue(0);setShowFilters(false);}} style={{ marginLeft:'auto', padding:'6px 12px', borderRadius:9, border:'none', background:'var(--body-bg)', color:'var(--text-muted)', fontSize:12, cursor:'pointer' }}>
             Réinitialiser
+          </button>
+        </div>
+      )}
+
+      {loadError && (
+        <div role="alert" style={{ padding: 14, borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', marginBottom: 16 }}>
+          Le pipeline n'a pas pu être chargé. Actualisez la page pour réessayer.
+        </div>
+      )}
+      {!loadError && deals.length === 0 && (
+        <div style={{ padding: 22, borderRadius: 14, border: '1px dashed var(--card-border)', background: 'var(--card-bg)', marginBottom: 16 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 8px' }}>Aucun deal pour le moment</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '0 0 14px' }}>
+            Un prospect « Qualifié » n'est pas automatiquement un deal : sélectionnez ce prospect et précisez votre opportunité commerciale.
+          </p>
+          <button onClick={() => setShowModal(true)} style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 14px', cursor: 'pointer', fontWeight: 600 }}>
+            <Plus size={14} style={{ display: 'inline', marginRight: 6 }}/>Créer un deal lié à un prospect
           </button>
         </div>
       )}
