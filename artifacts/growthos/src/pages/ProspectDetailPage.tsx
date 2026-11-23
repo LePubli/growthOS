@@ -516,6 +516,21 @@ export default function ProspectDetailPage() {
   const statusColor = STATUS_COLORS[prospect.status] || '#6B7280';
   const pagesJaunesDetails = prospect.sourceDetails?.pagesjaunes || null;
   const pagesJaunesProfile = /^https:\/\/(?:www\.)?pagesjaunes\.fr\/pros\/\d+\/?(?:\?.*)?$/.test(prospect.sourceUrl || '');
+  const pjHours = String(pagesJaunesDetails?.openingHours || '').split('\n')
+    .map((line: string) => line.trim()).filter((line: string) =>
+      /^(Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche)\s*:/i.test(line) && line.length < 100);
+  const pjReviews = Array.isArray(pagesJaunesDetails?.reviews) ?
+    pagesJaunesDetails.reviews.filter((review: any) => typeof review?.text === 'string' && review.text.length <= 800).slice(0,5) : [];
+  const pjDescription = typeof pagesJaunesDetails?.description === 'string'
+    && pagesJaunesDetails.description.length < 700
+    && !/informations pratiques.*horaires|professionnels, appelez|avis négatifs.*avis positifs/i.test(pagesJaunesDetails.description)
+    ? pagesJaunesDetails.description : null;
+  const pjServices = typeof pagesJaunesDetails?.services === 'string'
+    && pagesJaunesDetails.services.length < 1050
+    && !/avis négatifs.*avis positifs|informations pratiques.*horaires/i.test(pagesJaunesDetails.services)
+    ? pagesJaunesDetails.services : null;
+  const pjWebsite = prospect.website || pagesJaunesDetails?.website;
+  const pjWebsiteValid = typeof pjWebsite === 'string' && /^https?:\/\//i.test(pjWebsite);
 
   return (
     <div className="min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
@@ -675,28 +690,81 @@ export default function ProspectDetailPage() {
               {enrichingPagesJaunes ? 'Lecture de la fiche…' : 'Compléter depuis PagesJaunes'}
             </button>}
           </div>}
-          {pagesJaunesDetails && <section className="rounded-2xl border p-5 space-y-4" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
-            <div className="flex items-center gap-2">
-              <FileText size={16} className="text-teal-600"/>
-              <h2 className="text-sm font-bold" style={{color:'var(--text-primary)'}}>INFORMATIONS PAGESJAUNES</h2>
+          {pagesJaunesDetails && <section className="rounded-2xl border p-4 sm:p-5 space-y-4" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <FileText size={16} className="text-teal-600"/>
+                <h2 className="text-sm font-bold" style={{color:'var(--text-primary)'}}>DONNÉES PAGESJAUNES</h2>
+              </div>
+              <span className="text-xs text-gray-500">
+                Relevé : {pagesJaunesDetails.capturedAt ? new Date(pagesJaunesDetails.capturedAt).toLocaleString('fr-FR') : 'date inconnue'}
+              </span>
             </div>
-            <p className="text-xs text-gray-500">Informations visibles sur la fiche source au {pagesJaunesDetails.capturedAt ? new Date(pagesJaunesDetails.capturedAt).toLocaleString('fr-FR') : 'dernier enrichissement'}. Les champs absents ne sont pas inventés.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              {[
-                {label:'Présentation',value:pagesJaunesDetails.description},
-                {label:'Horaires',value:pagesJaunesDetails.openingHours},
-                {label:'Services et prestations',value:pagesJaunesDetails.services},
-                {label:'Informations juridiques visibles',value:pagesJaunesDetails.legal},
-                {label:'Avis clients',value:pagesJaunesDetails.rating !== null && pagesJaunesDetails.rating !== undefined ? `${pagesJaunesDetails.rating}/5${pagesJaunesDetails.reviewCount != null ? ` · ${pagesJaunesDetails.reviewCount} avis` : ''}` : null},
-              ].filter(item=>item.value).map(item=><div key={item.label}>
-                <div className="text-xs text-gray-500 mb-1">{item.label}</div>
-                <p className="whitespace-pre-wrap text-sm" style={{color:'var(--text-primary)'}}>{item.value}</p>
-              </div>)}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-xl border p-4 space-y-3" style={{borderColor:'var(--card-border)'}}>
+                <div className="flex items-center gap-2 font-semibold text-sm" style={{color:'var(--text-primary)'}}>
+                  <Building2 size={15} className="text-teal-600"/> Coordonnées et INSEE
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><div className="text-xs text-gray-500">SIREN</div><div className="font-medium" style={{color:'var(--text-primary)'}}>{prospect.siren || pagesJaunesDetails.siren || 'Non indiqué'}</div></div>
+                  <div><div className="text-xs text-gray-500">SIRET</div><div className="font-medium" style={{color:'var(--text-primary)'}}>{prospect.siret || pagesJaunesDetails.siret || 'Non indiqué'}</div></div>
+                </div>
+                {pjWebsiteValid && <a href={pjWebsite} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 break-all text-sm text-teal-700 hover:underline">
+                  <Globe size={15} className="shrink-0"/> {new URL(pjWebsite).hostname.replace(/^www\./,'')} <ExternalLink size={13} className="shrink-0"/>
+                </a>}
+                {!pjWebsiteValid && <p className="text-xs text-gray-500">Site web non identifié sur la fiche source.</p>}
+                {pagesJaunesDetails.socials && <div className="flex gap-3 flex-wrap">
+                  {Object.entries(pagesJaunesDetails.socials as Record<string,string>)
+                    .filter(([,url]) => /^https?:\/\//i.test(url))
+                    .map(([site,url]) => <a key={site} href={url} rel="noopener noreferrer" target="_blank"
+                      className="text-sm text-teal-700 underline">{site}</a>)}
+                </div>}
+              </div>
+              <div className="rounded-xl border p-4 space-y-3" style={{borderColor:'var(--card-border)'}}>
+                <div className="flex items-center gap-2 font-semibold text-sm" style={{color:'var(--text-primary)'}}>
+                  <Clock size={15} className="text-teal-600"/> Horaires d'ouverture
+                </div>
+                {pjHours.length > 0 ? <div className="space-y-1.5">
+                  {pjHours.map((line: string) => {
+                    const parts = line.split(/\s*:\s*/);
+                    return <div key={parts[0]} className="flex justify-between gap-3 text-xs sm:text-sm py-1 border-b last:border-0"
+                      style={{borderColor:'var(--card-border)'}}>
+                      <span className="text-gray-500">{parts[0]}</span>
+                      <span className="font-medium text-right" style={{color:'var(--text-primary)'}}>{parts.slice(1).join(' : ')}</span>
+                    </div>;
+                  })}
+                </div> : <p className="text-sm text-gray-500">Horaires non disponibles ou à relever de nouveau.</p>}
+              </div>
+              <div className="rounded-xl border p-4 space-y-3" style={{borderColor:'var(--card-border)'}}>
+                <div className="flex items-center gap-2 font-semibold text-sm" style={{color:'var(--text-primary)'}}>
+                  <Star size={15} className="text-amber-500"/> Avis clients
+                </div>
+                {pagesJaunesDetails.rating != null ? <div className="flex items-end gap-2">
+                  <span className="font-bold text-2xl" style={{color:'var(--text-primary)'}}>{pagesJaunesDetails.rating}/5</span>
+                  <span className="text-sm text-gray-500 pb-1">{pagesJaunesDetails.reviewCount != null ? '(' + pagesJaunesDetails.reviewCount + ' avis)' : 'Note affichée'}</span>
+                </div> : <p className="text-sm text-gray-500">Aucune note relevée.</p>}
+                {pjReviews.length ? <div className="space-y-3">
+                  {pjReviews.map((review: any, index: number) => <div key={index} className="border-t pt-2" style={{borderColor:'var(--card-border)'}}>
+                    <div className="flex gap-2 justify-between text-xs text-gray-500">
+                      <span className="font-medium">{review.author || 'Auteur non précisé'}</span>
+                      <span>{review.date || ''}</span>
+                    </div>
+                    <p className="mt-1 text-sm whitespace-pre-wrap break-words" style={{color:'var(--text-primary)'}}>{review.text}</p>
+                  </div>)}
+                </div> : <p className="text-xs text-gray-500">Le texte des avis n'est affiché que s'il a pu être lu distinctement.</p>}
+              </div>
+              {(pjDescription || pjServices) && <div className="rounded-xl border p-4 space-y-3" style={{borderColor:'var(--card-border)'}}>
+                <div className="font-semibold text-sm" style={{color:'var(--text-primary)'}}>Activité et présentation</div>
+                {pjDescription && <p className="text-sm break-words" style={{color:'var(--text-primary)'}}>{pjDescription}</p>}
+                {pjServices && <div><div className="text-xs text-gray-500 mb-1">Prestations</div>
+                  <p className="text-sm break-words" style={{color:'var(--text-primary)'}}>{pjServices}</p>
+                </div>}
+              </div>}
             </div>
-            {pagesJaunesDetails.socials && Object.keys(pagesJaunesDetails.socials).length > 0 && <div className="flex gap-3 flex-wrap">
-              {Object.entries(pagesJaunesDetails.socials as Record<string,string>).filter(([,url])=>/^https?:\/\//i.test(url)).map(([site,url])=>
-                <a key={site} href={url} target="_blank" rel="noreferrer" className="text-teal-700 underline text-sm">{site}</a>)}
-            </div>}
+            <p className="text-xs text-gray-500">
+              SIREN/SIRET non renseignés tant qu'une identification INSEE fiable n'est pas visible. Les champs absents ne sont pas inventés.
+            </p>
           </section>}
           {/* Coordonnées */}
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>

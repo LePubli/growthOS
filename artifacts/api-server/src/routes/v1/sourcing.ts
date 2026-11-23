@@ -374,6 +374,11 @@ const profileSchema = z.object({
   }).strict(),
   rating: z.number().min(0).max(5).nullable(),
   reviewCount: z.number().int().min(0).max(1000000).nullable(),
+  reviews: z.array(z.object({
+    author: z.string().trim().max(100).nullable(),
+    date: z.string().trim().max(40).nullable(),
+    text: z.string().trim().min(20).max(800),
+  }).strict()).max(12).optional().default([]),
   capturedAt: z.string().datetime().optional(),
 }).strict();
 
@@ -414,7 +419,8 @@ router.post("/device/prospects/:id/enrich", requireAuth, async (req,res) => {
   const [updated] = await db.update(prospectsTable).set({
     phone: prospect.phone || profile.phone,
     email: prospect.email || profile.email,
-    website: prospect.website || profile.website,
+    website: (!prospect.website || /^https?:\/\/(?:[^/]+\.)?pagesjaunes\.fr\//i.test(prospect.website))
+      ? (profile.website || prospect.website) : prospect.website,
     siren, siret,
     city: cleanCity(prospect.city) || cleanCity(profile.city),
     address: cleanAddress(prospect.address) || cleanAddress(profile.address),
@@ -459,7 +465,8 @@ router.post("/device/jobs/:id/enrich", requireAuth, async(req,res) => {
     ...original,
     phone:original.phone||profile.phone,
     email:original.email||profile.email,
-    website:original.website||profile.website,
+    website:(!original.website || /^https?:\/\/(?:[^/]+\.)?pagesjaunes\.fr\//i.test(original.website))
+      ? (profile.website||original.website) : original.website,
     siret:original.siret||profile.siret,
     siren:original.siren||profile.siren||profile.siret?.slice(0,9)||"",
     city:original.city?.replace(/\s*Voir.*$/i,"")||profile.city,

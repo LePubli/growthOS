@@ -342,7 +342,10 @@ try {
     siret:null,siren:null,description:"Plomberie et dépannage de proximité",
     openingHours:"Lundi au vendredi 9h-18h",services:"Dépannage, entretien",
     legal:null,socials:{facebook:"https://www.facebook.com/exampleorg"},
-    rating:4.7,reviewCount:12,capturedAt:new Date().toISOString()};
+    rating:4.7,reviewCount:12,reviews:[{
+      author:"Avis de test",date:"2026-11-20",
+      text:"Intervention soignée et prestation réalisée dans les délais annoncés.",
+    }],capturedAt:new Date().toISOString()};
   const mismatchedDetailed = await request("POST", `/sourcing/device/jobs/${localJob.body.id}/enrich`, {
     candidateId:localCandidate.id,profile:{...detailedCandidate,sourceUrl:"https://www.pagesjaunes.fr/pros/88888888"},
   },token);
@@ -351,7 +354,9 @@ try {
     candidateId:localCandidate.id,profile:detailedCandidate,
   },token);
   check(updatedDetail.status===200 && updatedDetail.body.phone==="0320123456" &&
-    updatedDetail.body.sourceDetails.pagesjaunes.rating===4.7,"Fiche détaillée enregistrée dans la recherche sélectionnée");
+    updatedDetail.body.sourceDetails.pagesjaunes.rating===4.7 &&
+    updatedDetail.body.sourceDetails.pagesjaunes.reviews.length===1,
+    "Note et avis structurés enregistrés avant sélection");
   const selectedDetailed = await request("POST", `/sourcing/jobs/${localJob.body.id}/import`, {
     ids:[localCandidate.id],
   },token);
@@ -366,7 +371,8 @@ try {
     profile:{...detailedCandidate,phone:"0320999999",description:"Fiche actualisée"},
   },token);
   check(revisited.status===200 && revisited.body.phone==="0320123456" &&
-    revisited.body.sourceDetails.pagesjaunes.description==="Fiche actualisée",
+    revisited.body.sourceDetails.pagesjaunes.description==="Fiche actualisée" &&
+    revisited.body.sourceDetails.pagesjaunes.reviews.length===1,
     "Actualisation d'une fiche existante sans écraser un téléphone déjà renseigné");
 
   const pjSearch = await request("POST", "/sourcing/jobs", {

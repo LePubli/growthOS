@@ -123,127 +123,231 @@ function isProfileUrl(raw) {
 // Executed only in a PagesJaunes profile tab. It interacts with visible UI, then
 // returns bounded, verifiable fields. No fabricated email/SIREN/telephone.
 async function readBusinessProfile() {
-  const clean = v => String(v || '').replace(/\s+/g,' ').trim();
-  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-  const main = document.querySelector('main, [role="main"]') || document.body;
-  const safeUrl = (raw, base=location.href) => {
-    try { const u = new URL(raw,base); return ['https:','http:'].includes(u.protocol) ? u.href : null; }
-    catch { return null; }
-  };
-  // Expand only relevant information affordances, not advertising or review buttons.
-  const revealTerms = [/voir plus de coordonnées/i,/^sur l’établissement$/i,/^sur l'entreprise$/i,
-    /informations financières et juridiques/i,/voir les horaires/i];
-  for (const term of revealTerms) {
-    const controls=[...main.querySelectorAll('button,[role=button],summary')];
-    const control=controls.find(el=>term.test(clean(el.innerText || el.textContent).slice(0,95)));
-    if (control) { try {control.click(); await wait(450);} catch {} }
-  }
-  // A phone number is recorded only when a real tel: link becomes visible.
-  const revealPhone=[...main.querySelectorAll('button,[role=button],a')].find(el=>
-    /afficher le n[°o]|afficher le numéro/i.test(clean(el.innerText || el.textContent).slice(0,80)));
-  if (revealPhone) { try {revealPhone.click();await wait(850);} catch {} }
-  const names=[...main.querySelectorAll('h1')].map(e=>clean(e.innerText || e.textContent)).filter(Boolean);
-  const name=names[0] || null;
-  const ld=[];
-  for (const el of document.querySelectorAll('script[type="application/ld+json"]')) {
+  // Toutes les données proviennent de la fiche affichée dans CE navigateur.
+  // Chaque onglet est lu séparément : jamais le texte d'une page entière comme "horaires".
+  const clean = v => String(v || '').replace(/\s+/g, ' ').trim();
+  const waitLocal = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const root = () => document.querySelector('main, [role="main"]') || document.body;
+  const safeUrl = raw => {
     try {
-      const value=JSON.parse(el.textContent || '');
-      const visit=(obj,depth=0)=>{
-        if(depth>4 || !obj || typeof obj !== 'object')return;
-        if(Array.isArray(obj))return obj.forEach(x=>visit(x,depth+1));
-        const types=[].concat(obj['@type'] || []);
-        if(types.some(t=>/LocalBusiness|Restaurant|Organization|Store/i.test(String(t)))) ld.push(obj);
-        if(obj['@graph']) visit(obj['@graph'],depth+1);
+      const u = new URL(raw, location.href);
+      return ['https:', 'http:'].includes(u.protocol) ? u.href : null;
+    } catch { return null; }
+  };
+  const isPagesJaunes = host => host === 'pagesjaunes.fr' || host.endsWith('.pagesjaunes.fr');
+  const normalize = v => clean(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]/g,'');
+  const name = clean(root().querySelector('h1')?.innerText || root().querySelector('h1')?.textContent);
+  const jsonBusinesses = [];
+  for (const tag of document.querySelectorAll('script[type="application/ld+json"]')) {
+    try {
+      const walk = (value, depth=0) => {
+        if (!value || typeof value !== 'object' || depth > 5) return;
+        if (Array.isArray(value)) { value.forEach(v => walk(v, depth+1)); return; }
+        if ([].concat(value['@type'] || []).some(t => /LocalBusiness|Restaurant|Organization|Store|Plumber/i.test(String(t)))) jsonBusinesses.push(value);
+        if (value['@graph']) walk(value['@graph'], depth+1);
       };
-      visit(value);
+      walk(JSON.parse(tag.textContent || ''));
     } catch {}
   }
-  const normalized=v=>clean(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  const business=ld.find(v=>name && (normalized(v.name).includes(normalized(name)) || normalized(name).includes(normalized(v.name))))
-    || ld.find(v=>!name && typeof v.name === 'string');
-  const contactRoots = [...main.querySelectorAll('section,[class*="contact"],[id*="contact"]')];
-  const contact = contactRoots.find(el=>/contacter|coordonnées|sites et réseaux sociaux/i.test(clean(el.innerText).slice(0,280))) || main;
-  const links=[...contact.querySelectorAll('a[href]')];
-  const urlByLabel = (regexp) => {
-    for(const a of links){
-      if(!regexp.test(clean(a.innerText || a.textContent)))continue;
-      const url=safeUrl(a.getAttribute('href'));
-      if(url) return url;
+  const business = jsonBusinesses.find(b => name && normalize(b.name) === normalize(name))
+    || jsonBusinesses.find(b => name && (normalize(b.name).includes(normalize(name)) || normalize(name).includes(normalize(b.name))))
+    || jsonBusinesses[0];
+  const contactLinks = new Map();
+  function collectLinks() {
+    for (const anchor of root().querySelectorAll('a[href]')) {
+      const label = clean(anchor.innerText || anchor.textContent);
+      const raw = anchor.getAttribute('href') || '';
+      const url = safeUrl(raw);
+      if ((url && label) || /^tel:|^mailto:/i.test(raw)) contactLinks.set(label + '|' + raw, {label,raw,url});
+    }
+  }
+  collectLinks();
+  const snapshots = {};
+  const selectedPanel = control => {
+    const id = control?.getAttribute('aria-controls');
+    const pane = id && document.getElementById(id);
+    if (pane && !pane.hasAttribute('hidden')) return pane;
+    const live = [...root().querySelectorAll('[role="tabpanel"]')].find(el =>
+      !el.hasAttribute('hidden') && el.getAttribute('aria-hidden') !== 'true');
+    return live || root();
+  };
+  async function selectTab(label) {
+    const controls = [...root().querySelectorAll('[role="tab"], button, a, [role="button"]')];
+    const control = controls.find(el =>
+      el.getClientRects().length > 0 &&
+      label.test(clean(el.innerText || el.textContent).slice(0,60)) &&
+      clean(el.innerText || el.textContent).length < 65);
+    if (control) {
+      try { control.click(); await waitLocal(600); } catch {}
+    }
+    const pane = selectedPanel(control);
+    snapshots[label.source] = (pane.innerText || '').slice(0,16000);
+    collectLinks();
+    return pane;
+  }
+  async function clickReveal(pattern) {
+    const el = [...root().querySelectorAll('button, summary, [role="button"]')].find(c =>
+      c.getClientRects().length > 0 &&
+      pattern.test(clean(c.innerText || c.textContent).slice(0,100)) &&
+      clean(c.innerText || c.textContent).length < 110);
+    if (el) { try {el.click(); await waitLocal(450);} catch {} }
+  }
+  await clickReveal(/voir plus de coordonnées/i);
+  await clickReveal(/afficher le (?:n°|numéro|nº)/i);
+  collectLinks();
+  const presentation = await selectTab(/^Présentation$/i);
+  const presentationText = (presentation.innerText || '').slice(0,16000);
+  const introHeading = [...presentation.querySelectorAll('h2,h3,h4')].find(el =>
+    /^plus d.infos sur|^à propos(?: de)?/i.test(clean(el.innerText || el.textContent)));
+  const introArea = introHeading?.closest('section,article') || introHeading?.parentElement?.parentElement;
+  const presentationParagraphs = introArea ? [...introArea.querySelectorAll('p')].map(el => clean(el.innerText)) : [];
+  const presentationServices = [...presentation.querySelectorAll('ul, ol')].filter(el =>
+    /prestation|activit[eé]s|sp[eé]cialit[eé]s/i.test(clean(el.previousElementSibling?.innerText || '').slice(0,90)))
+    .flatMap(el => [...el.querySelectorAll('li')].map(li => clean(li.innerText)));
+  await clickReveal(/voir plus de coordonnées/i);
+  await clickReveal(/afficher le (?:n°|numéro|nº)/i);
+  collectLinks();
+  const hoursPane = await selectTab(/^Horaires$/i);
+  const hoursText = (hoursPane.innerText || '').slice(0,12000);
+  const reviewPane = await selectTab(/^Avis$/i);
+  const reviewsText = (reviewPane.innerText || '').slice(0,12000);
+  const reviewNodes = [...reviewPane.querySelectorAll('[itemprop="review"], [itemtype*="schema.org/Review"], article[class*="avis"], article[class*="review"]')];
+  const reviews = [];
+  for (const element of reviewNodes.slice(0,12)) {
+    const text = clean(element.querySelector('[itemprop="reviewBody"], blockquote, [class*="commentaire"], [class*="comment"], p')?.innerText || '');
+    // Ne pas classer des textes marketing ou menus comme avis clients.
+    if (text.length < 20 || text.length > 800 || /professionnels, appelez|pagesjaunes vous aide/i.test(text)) continue;
+    const author = clean(element.querySelector('[itemprop="author"], [class*="author"], [class*="auteur"]')?.innerText).slice(0,100) || null;
+    const date = clean(element.querySelector('time, [itemprop="datePublished"]')?.getAttribute('datetime')
+      || element.querySelector('time, [itemprop="datePublished"]')?.innerText).slice(0,40) || null;
+    if (!reviews.some(r => r.text === text)) reviews.push({author,date,text});
+  }
+  await selectTab(/^Contact$/i);
+  await clickReveal(/afficher le (?:n°|numéro|nº)/i);
+  await clickReveal(/voir plus de coordonnées/i);
+  collectLinks();
+  await selectTab(/^INSEE$/i);
+  await clickReveal(/^sur l[’']établissement$/i);
+  await clickReveal(/^sur l[’']entreprise$/i);
+  await clickReveal(/informations financières et juridiques/i);
+  const inseeText = (root().innerText || '').slice(0,18000);
+  collectLinks();
+
+  const collected = [...contactLinks.values()];
+  let website = null;
+  for (const link of collected) {
+    if (!link.url) continue;
+    const target = new URL(link.url);
+    const host = target.hostname.replace(/^www\./,'');
+    const labelHost = link.label.replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/.*$/,'').toLowerCase();
+    // PagesJaunes peut utiliser un lien de redirection interne alors que le domaine
+    // réel est écrit en clair dans l'onglet Contact.
+    if (isPagesJaunes(host) && /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i.test(labelHost)
+        && !isPagesJaunes(labelHost)) {
+      website = 'https://' + labelHost; break;
+    }
+    if (isPagesJaunes(host) || /^(?:www\.)?(?:facebook|instagram|linkedin|google|youtube|twitter|x)\.com$/.test(host)) continue;
+    const labelMatches = labelHost === host;
+    if (labelMatches || /^(?:site web|site internet|visiter le site)$/i.test(link.label)) {
+      website = link.url.slice(0,500); break;
+    }
+  }
+  if (!website && typeof business?.url === 'string') {
+    const candidate = safeUrl(business.url);
+    if (candidate && !isPagesJaunes(new URL(candidate).hostname)) website = candidate.slice(0,500);
+  }
+  const socials = {};
+  for (const link of collected) {
+    if (!link.url) continue;
+    const host = new URL(link.url).hostname.replace(/^www\./,'');
+    if (host === 'facebook.com' || host.endsWith('.facebook.com')) socials.facebook ||= link.url;
+    if (host === 'instagram.com' || host.endsWith('.instagram.com')) socials.instagram ||= link.url;
+    if (host === 'linkedin.com' || host.endsWith('.linkedin.com')) socials.linkedin ||= link.url;
+  }
+  const tel = collected.filter(l => l.raw.startsWith('tel:')).map(l => clean(decodeURIComponent(l.raw.slice(4))));
+  const phone = [...tel, clean(business?.telephone)].find(p => /^(?:\+33|0)[\d\s().-]{8,20}$/.test(p)) || null;
+  const email = collected.filter(l => l.raw.startsWith('mailto:'))
+    .map(l => clean(l.raw.slice(7).split('?')[0]))
+    .find(v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) || null;
+
+  let address = null, codePostal = null, city = null;
+  const addr = business?.address;
+  if (addr && typeof addr === 'object' && addr.streetAddress && /^\d{5}$/.test(String(addr.postalCode || ''))) {
+    codePostal = String(addr.postalCode);
+    city = clean(addr.addressLocality).replace(/\bVoir le plan\b.*/i,'').slice(0,120) || null;
+    address = clean(addr.streetAddress + ' ' + codePostal + ' ' + (city || '')).slice(0,320);
+  }
+  if (!address) {
+    const line = [...root().querySelectorAll('address, [class*="adresse"], [class*="address"]')]
+      .map(e => clean(e.innerText || e.textContent))
+      .find(v => /\b\d{5}\b/.test(v) && v.length < 250);
+    if (line) {
+      address = line.replace(/\s*Voir (?:le plan|l'itinéraire).*$/i,'').slice(0,320);
+      codePostal = address.match(/\b\d{5}\b/)?.[0] || null;
+      city = codePostal ? clean(address.split(codePostal)[1]).replace(/\s*Voir.*$/i,'').slice(0,120) || null : null;
+    }
+  }
+  // Détecte un vrai numéro placé après son libellé INSEE, jamais un nombre trouvé au hasard.
+  const legalText = inseeText + '\n' + presentationText;
+  const identifier = (label, length) => {
+    const r = new RegExp('\\b(?:num[eé]ro\\s+(?:de\\s+)?|n[°º]\\s*)?' + label +
+      '\\b\\s*[:\\-]?\\s*((?:\\d[ .\\u00a0-]?){' + length + '})','gi');
+    for (const match of legalText.matchAll(r)) {
+      const digits = match[1].replace(/\D/g,'');
+      if (digits.length === length) return digits;
     }
     return null;
   };
-  const socialLinks={};
-  for(const a of links){
-    const url=safeUrl(a.getAttribute('href')); if(!url)continue;
-    const host=new URL(url).hostname.replace(/^www\./,'');
-    if(host==='facebook.com' || host.endsWith('.facebook.com')) socialLinks.facebook ||= url;
-    else if(host==='instagram.com' || host.endsWith('.instagram.com')) socialLinks.instagram ||= url;
-    else if(host==='linkedin.com' || host.endsWith('.linkedin.com')) socialLinks.linkedin ||= url;
-  }
-  const phoneCandidates=[
-    ...[...main.querySelectorAll('a[href^="tel:"]')].map(a=>clean(a.getAttribute('href')?.slice(4))),
-    clean(business?.telephone),
-  ].filter(Boolean);
-  const phone=phoneCandidates.find(p=>/^(?:\+33|0)[\d\s().-]{8,20}$/.test(p)) || null;
-  const email=[...main.querySelectorAll('a[href^="mailto:"]')]
-    .map(a=>clean(a.getAttribute('href')?.slice(7)).split('?')[0])
-    .find(v=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) || null;
-  let website=urlByLabel(/^(?:site internet|site web|visiter le site)$/i);
-  if(!website){
-    const explicit = links.find(a => {
-      const label=clean(a.innerText || a.textContent);
-      const url=safeUrl(a.getAttribute('href'));
-      if(!url)return false;
-      const host=new URL(url).hostname.replace(/^www\./,'');
-      return /^(?:www\.)?[a-z0-9.-]+\.[a-z]{2,}$/i.test(label)
-        && !/(^|\.)(pagesjaunes\.fr|facebook\.com|instagram\.com|linkedin\.com)$/.test(host);
-    });
-    if(explicit)website=safeUrl(explicit.getAttribute('href'));
-  }
-  if(!website && business?.url) {
-    const candidate=safeUrl(business.url);
-    if(candidate && !new URL(candidate).hostname.endsWith('pagesjaunes.fr')) website=candidate;
-  }
-  if(website && new URL(website).hostname.endsWith('pagesjaunes.fr'))website=null;
-  let address=null, city=null, codePostal=null;
-  const ad=business?.address;
-  if(ad && typeof ad==='object' && ad.streetAddress && /^\d{5}$/.test(String(ad.postalCode || ''))) {
-    codePostal=String(ad.postalCode);
-    city=clean(ad.addressLocality).replace(/\bVoir le plan\b.*/i,'').slice(0,120) || null;
-    address=clean(ad.streetAddress+' '+codePostal+' '+(city||'')).slice(0,320);
-  }
-  if(!address){
-    const line=[...main.querySelectorAll('address,[class*="adresse"],[class*="address"]')]
-      .map(e=>clean(e.innerText || e.textContent)).find(v=>/\b\d{5}\b/.test(v) && v.length<320);
-    if(line){
-      address=line.replace(/\s*Voir (?:le plan|l'itinéraire).*$/i,'').trim();
-      codePostal=address.match(/\b\d{5}\b/)?.[0]||null;
-      city=codePostal ? clean(address.split(codePostal)[1]).replace(/\s*Voir.*$/i,'').slice(0,120)||null:null;
+  const siret = identifier('SIRET',14);
+  const siren = identifier('SIREN',9) || siret?.slice(0,9) || null;
+  const legalLines = legalText.split('\n').map(clean).filter(v =>
+    /^(?:SIRET|SIREN|Code APE|NAF|Forme juridique|Date de création|Capital social)\b/i.test(v) && v.length < 180);
+  const legal = [...new Set(legalLines)].slice(0,7).join('\n').slice(0,1000) || null;
+
+  // Horaires: seulement les sept jours + plages horaires identifiables.
+  const days = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+  const opening = [];
+  const hoursScope = hoursText.slice(Math.max(0, hoursText.search(/informations pratiques|horaires d'ouverture|^horaires$/im)));
+  for (const day of days) {
+    const found = [...hoursScope.matchAll(new RegExp('\\b' + day + '\\b','gi'))];
+    let record = null;
+    for (const match of found) {
+      const after = hoursScope.slice(match.index + day.length, match.index + day.length + 95);
+      const nextDay = after.search(/\b(?:Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche)\b/i);
+      const short = nextDay >= 0 ? after.slice(0,nextDay) : after;
+      const ranges = [...short.matchAll(/(\d{1,2})\s*(?:h|:)\s*(\d{2})\s*(?:-|–|à|au)\s*(\d{1,2})\s*(?:h|:)\s*(\d{2})/gi)]
+        .slice(0,2).map(m => m[1].padStart(2,'0') + 'h' + m[2] + '–' + m[3].padStart(2,'0') + 'h' + m[4]);
+      if (ranges.length) {record = day + ' : ' + ranges.join(' / '); break;}
+      if (/^\s*:?\s*ferm[eé]\b/i.test(short)) {record = day + ' : Fermé'; break;}
     }
+    if (record) opening.push(record);
   }
-  const section=(label)=>{
-    const heading=[...main.querySelectorAll('h2,h3,h4,[role="heading"]')]
-      .find(h=>label.test(clean(h.innerText || h.textContent)));
-    if(!heading) return null;
-    const parent=heading.closest('section,article,[class*="block"],[class*="section"]') || heading.parentElement?.parentElement;
-    return clean(parent?.innerText || '').slice(0,3000)||null;
-  };
-  const description=section(/présentation|à propos|plus d'infos/i)?.slice(0,1500)||null;
-  const openingHours=section(/^horaires|informations pratiques/i)?.slice(0,1500)||null;
-  const services=section(/prestations|services|spécialités/i)?.slice(0,1400)||null;
-  const legal=section(/informations financières et juridiques|identification/i)?.slice(0,1500)||null;
-  const siteText=legal || '';
-  const siret=siteText.match(/\bSIRET\s*:?\s*(\d{14})\b/i)?.[1] || null;
-  const siren=siteText.match(/\bSIREN\s*:?\s*(\d{9})\b/i)?.[1] || siret?.slice(0,9) || null;
-  const ratingVal=Number(String(business?.aggregateRating?.ratingValue||'').replace(',','.'));
-  const rating=Number.isFinite(ratingVal) && ratingVal>=0 && ratingVal<=5?ratingVal:null;
-  const ratingCount=Number(business?.aggregateRating?.reviewCount || business?.aggregateRating?.ratingCount);
+  const openingHours = opening.length ? opening.join('\n') : null;
+
+  // Présentation: un paragraphe identifié, pas les onglets, publicités ni la liste d'avis.
+  let description = null;
+  const paragraphs = presentationParagraphs
+    .filter(t => t.length >= 35 && t.length <= 650 &&
+      !/professionnels, appelez|pagesjaunes vous aide|avis négatifs|horaires|^ce(tte)? entreprise/i.test(t));
+  if (paragraphs.length) description = paragraphs[0].slice(0,600);
+  const services = presentationServices
+    .filter(v => v && v.length < 90).slice(0,15).join(' · ').slice(0,1000) || null;
+
+  const ratingSource = [clean(reviewsText).slice(0,1600), clean(presentationText).slice(0,1200)].join(' ');
+  const visibleRating = ratingSource.match(/\b([0-5](?:[,.]\d)?)\s*(?:★|⭐){3,5}\s*\(?\s*(\d{1,6})\s*avis\b/i)
+    || ratingSource.match(/\b([0-5](?:[,.]\d)?)\s*(?:sur\s*5|\/\s*5)\s*\(?\s*(\d{1,6})\s*avis\b/i);
+  const numericRating = Number(String(business?.aggregateRating?.ratingValue || visibleRating?.[1] || '').replace(',','.'));
+  const rating = Number.isFinite(numericRating) && numericRating > 0 && numericRating <= 5 ? numericRating : null;
+  const jsonCount = Number(business?.aggregateRating?.reviewCount || business?.aggregateRating?.ratingCount);
+  const visibleCount = Number(visibleRating?.[2]);
+  const reviewCount = Number.isInteger(jsonCount) && jsonCount > 0 ? jsonCount
+    : Number.isInteger(visibleCount) && visibleCount > 0 ? visibleCount : null;
+
   return {
-    sourceUrl:location.href,name,address,codePostal,city,phone,email,website,siret,siren,
-    description,openingHours,services,legal,
-    socials:socialLinks,
-    rating,reviewCount:Number.isInteger(ratingCount)&&ratingCount>=0?ratingCount:null,
-    capturedAt:new Date().toISOString(),
+    sourceUrl: location.href, name, address, codePostal, city, phone, email, website, siren, siret,
+    description, openingHours, services, legal, socials, rating, reviewCount, reviews,
+    capturedAt: new Date().toISOString(),
   };
 }
 async function enrichProfile(payload) {
