@@ -106,7 +106,7 @@ function matchingGeo(establishment: DirectoryAddress, params: GeoFilters): boole
     && (!params.regions.length || Boolean(region && params.regions.includes(region)));
 }
 
-async function searchFrenchCompanies(params: GeoFilters): Promise<SearchCandidate[]> {
+async function searchFrenchCompanies(params: GeoFilters, timeoutMs = 15000): Promise<SearchCandidate[]> {
   // Requête exclusivement dirigée vers l'annuaire public, jamais vers une URL utilisateur.
   const url = new URL(process.env.COMPANY_DIRECTORY_API_URL ?? "https://recherche-entreprises.api.gouv.fr/search");
   url.searchParams.set("q", params.query);
@@ -118,7 +118,7 @@ async function searchFrenchCompanies(params: GeoFilters): Promise<SearchCandidat
 
   const response = await fetch(url, {
     headers: { "Accept": "application/json", "User-Agent": "GrowthOS/1.0 (public company directory)" },
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error(`Annuaire des entreprises : HTTP ${response.status}`);
   const body = await response.json() as { results?: CompanyRecord[] };
@@ -406,6 +406,11 @@ const normalizedPhone = (value: string | null | undefined) => {
   const digits=String(value||'').replace(/\D/g,'');
   return digits.startsWith('33') && digits.length===11 ? '0'+digits.slice(2) : digits;
 };
+function draftCityMatches(draft: DeviceDraft, candidate: SearchCandidate): boolean {
+  // Une fiche Google géolocalisée à Paris ne peut pas être rapprochée d'un
+  // établissement lillois simplement parce que leur enseigne est identique.
+  return !draft.city || !candidate.city || normalizedIdentity(draft.city)===normalizedIdentity(candidate.city);
+}
 function attachVerifiedDraft(target: SearchCandidate, draft: DeviceDraft, method: string): void {
   const sourceDetails={
     [draft.source]: {sourceUrl:draft.sourceUrl,collectionMode:'browser-visible',
@@ -432,7 +437,7 @@ async function enrichDeviceDrafts(drafts: DeviceDraft[], params: GeoFilters,
       pendingItems.push({id:draft.id,company:draft.company,source:draft.source,reason:'Nom trop générique pour une identification fiable'});continue;
     }
     const localMatches=[...seen.values()].filter(candidate=>
-      candidate.address && businessNamesMatch(candidate.company,draft.company) &&
+      candidate.address && draftCityMatches(draft,candidate) && businessNamesMatch(candidate.company,draft.company) &&
       (!draft.phone || !candidate.phone || normalizedPhone(candidate.phone)===normalizedPhone(draft.phone)));
     // Le nom + un établissement unique déjà géolocalisé constituent une preuve.
     // Si les deux fiches affichent un téléphone, il doit être identique.
@@ -444,13 +449,13 @@ async function enrichDeviceDrafts(drafts: DeviceDraft[], params: GeoFilters,
   }
   const started=Date.now();
   for(let i=0;i<toLookup.length;i+=2){
-    if(Date.now()-started>45000){
+    if(Date.now()-started>25000){
       for(const draft of toLookup.slice(i))pendingItems.push({id:draft.id,company:draft.company,source:draft.source,reason:'Limite de temps atteinte ; relancez l’enrichissement'});
       break;
     }
     const batch=toLookup.slice(i,i+2);
     const found=await Promise.all(batch.map(async draft=>{
-      try {return {draft,candidates:await searchFrenchCompanies({...params,query:draft.company,limit:15})};}
+      try {return {draft,candidates:await searchFrenchCompanies({...params,query:draft.company,limit:15},5000)};}
       catch(error){return {draft,candidates:[] as SearchCandidate[],error:error instanceof Error?error.message:'Annuaire indisponible'};}
     }));
     for(const item of found){
@@ -458,7 +463,8 @@ async function enrichDeviceDrafts(drafts: DeviceDraft[], params: GeoFilters,
       if('error' in item){
         pendingItems.push({id:draft.id,company:draft.company,source:draft.source,reason:`Annuaire indisponible : ${item.error}`});continue;
       }
-      const exact=item.candidates.filter(candidate=>businessNamesMatch(candidate.company,draft.company));
+      const exact=item.candidates.filter(candidate=>businessNamesMatch(candidate.company,draft.company)
+        && draftCityMatches(draft,candidate));
       // Les homonymes sont laissés à vérifier, sans supposer un CP depuis la recherche.
       if(exact.length!==1 || !exact[0].address){
         pendingItems.push({id:draft.id,company:draft.company,source:draft.source,

@@ -398,6 +398,13 @@ try {
     candidates:[],drafts:[{...googleDraft,sourceUrl:'https://google.com.evil.example/fiche'}],
   },token);
   check(forgedDraft.status===400,'Le serveur refuse les brouillons dont la source ne correspond pas au domaine');
+  const wrongCityDraft=await request('POST','/sourcing/device/jobs',{
+    name:'Brouillon hors ville',params:{...localParams,sources:['google_search']},candidates:[],
+    drafts:[{...googleDraft,id:'draft_wrong_city',city:'Paris'}],
+  },token);
+  check(wrongCityDraft.status===201 && wrongCityDraft.body.count===0 &&
+    wrongCityDraft.body.params.draftEnrichment.pending===1,
+    'Une entreprise de Paris ne peut pas être rapprochée d’une homonyme de Lille');
   const multiDevice=await request('POST','/sourcing/device/jobs',{
     name:'Multisource Chrome local',params:allSourcesParams,
     candidates:[localCandidate,mapRecord,bingRecord,searchRecord,linkedRecord],
