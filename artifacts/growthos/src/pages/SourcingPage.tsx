@@ -91,6 +91,7 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
   const [name, setName] = useState('');
   const [params, setParams] = useState<Record<string,string>>({});
   const [launching, setLaunching] = useState(false);
+  const [launchStage, setLaunchStage] = useState<'collect'|'save'|'api'|null>(null);
   const [regions, setRegions] = useState<string[]>([]);
   const [departements, setDepartements] = useState<string[]>([]);
   const [codesPostauxInput, setCodesPostauxInput] = useState('');
@@ -109,6 +110,8 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
       return;
     }
     setLaunching(true);
+    let currentStage: 'collect'|'save'|'api' = sources.includes('pagesjaunes') && deviceConnected ? 'collect' : 'api';
+    setLaunchStage(currentStage);
     try {
       const jobName = name.trim() || `${params.query.trim()} · ${sources.length} source(s)`;
       const criteria = {sources, query:params.query.trim(), limit:params.limit || '10',regions,departements,codesPostaux};
@@ -125,7 +128,10 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
         const local = await searchLocalPagesJaunes({query:criteria.query,locations,limit:Number(criteria.limit)});
         if (local.warnings.length) toast.warning(local.warnings.slice(0,2).join(' · '));
         if (!local.results.length && local.warnings.length) throw new Error(local.warnings[0]);
-        job = await apiClient.post('/sourcing/device/jobs', {name:jobName,params:criteria,candidates:local.results});
+        currentStage = 'save';
+        setLaunchStage(currentStage);
+        job = await apiClient.post('/sourcing/device/jobs',
+          {name:jobName,params:criteria,candidates:local.results}, {timeoutMs: 90000});
         toast.success('Recherche locale terminée. Choisissez les entreprises à importer.');
       } else {
         job = await apiClient.post('/sourcing/jobs', {type:'multi',name:jobName,params:criteria});
@@ -134,8 +140,11 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
       onLaunch(job);
       onClose();
     } catch (error: any) {
-      toast.error(error.message ?? 'Import impossible');
-    } finally { setLaunching(false); }
+      const phase = currentStage === 'collect' ? 'Navigation PagesJaunes sur cet appareil'
+        : currentStage === 'save' ? 'Enregistrement des résultats dans GrowthOS'
+        : 'Recherche sur le serveur';
+      toast.error(`${phase} : ${error.message ?? 'Échec inattendu'}`, {duration: 10000});
+    } finally { setLaunching(false); setLaunchStage(null); }
   };
 
   const toggleSource = (id: string) => setSources(previous => previous.includes(id)
@@ -224,7 +233,10 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
                 <button onClick={()=>setStep(1)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">← Retour</button>
                 <button onClick={launch} disabled={launching || !searchReady}
                   className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-                  {launching?<Loader2 size={14} className="animate-spin"/>:<Zap size={14}/>}Rechercher les entreprises
+                  {launching?<Loader2 size={14} className="animate-spin"/>:<Zap size={14}/>}
+                  {launching ? launchStage === 'collect' ? 'Collecte locale…'
+                    : launchStage === 'save' ? 'Enregistrement…' : 'Recherche en cours…'
+                    : 'Rechercher les entreprises'}
                 </button>
               </div>
             </>
@@ -238,6 +250,7 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
 export default function SourcingPage() {
   const [, navigate] = useLocation();
   const [jobs, setJobs] = useState<any[]>([]);
+  const [jobListError,setJobListError] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [browserStatus, setBrowserStatus] = useState<'direct' | 'ready' | 'offline'>('direct');
   const [initialSource, setInitialSource] = useState('entreprises');
@@ -271,8 +284,8 @@ export default function SourcingPage() {
   useEffect(()=>{
     let mounted = true;
     const reload = () => apiClient.get('/sourcing/jobs').then((d:any)=>{
-      if (mounted) setJobs(Array.isArray(d) ? d : d?.data ?? []);
-    }).catch((error: any)=>{ if (mounted) toast.error(error.message ?? 'Sourcing indisponible'); });
+      if (mounted) {setJobs(Array.isArray(d) ? d : d?.data ?? []); setJobListError(false);}
+    }).catch(()=>{ if (mounted) setJobListError(true); });
     reload();
     const timer = setInterval(reload, 15000);
     return ()=>{ mounted = false; clearInterval(timer); };
@@ -327,6 +340,10 @@ export default function SourcingPage() {
           <Plus size={14}/>Nouvelle recherche
         </button>
       </div>
+
+      {jobListError && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs px-3 py-2 mb-4">
+        La liste des recherches n’a pas répondu au serveur. Les recherches depuis cet appareil restent accessibles : réessayez l’actualisation plus tard.
+      </div>}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">

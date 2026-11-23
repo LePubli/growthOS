@@ -84,8 +84,8 @@ class ApiClient {
     return this.axios.get(url, { params: options?.params }) as unknown as T;
   }
 
-  async post<T = any>(url: string, data?: any): Promise<T> {
-    return this.axios.post(url, data) as unknown as T;
+  async post<T = any>(url: string, data?: any, options?: { timeoutMs?: number }): Promise<T> {
+    return this.axios.post(url, data, options?.timeoutMs ? { timeout: options.timeoutMs } : undefined) as unknown as T;
   }
 
   async put<T = any>(url: string, data?: any): Promise<T> {
