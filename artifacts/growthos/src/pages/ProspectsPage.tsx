@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
-  Search, Plus, Star, Mail, Phone, Upload, FileText,
+  Search, Plus, Star, Mail, Phone, Upload,
   Download, RefreshCw, ChevronRight, Building2, Loader2,
   CheckCircle, AlertCircle, X, Trash2, Tag, ArchiveX, CheckSquare, Square, MapPin, MapPinOff, GitMerge,
 } from 'lucide-react';
@@ -91,123 +91,6 @@ function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void })
   );
 }
 
-function ImportCSVModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void }) {
-  const [file, setFile] = useState<File|null>(null);
-  const [preview, setPreview] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
-  const [count, setCount] = useState(0);
-  const [error, setError] = useState<string|null>(null);
-  const ref = useRef<HTMLInputElement>(null);
-
-  const CSV_TEMPLATE = `firstName,lastName,email,phone,company,jobTitle,website,address,status
-Marie,Dupont,m.dupont@acme.fr,+33612345678,Acme Corp,Directrice Marketing,https://acme.fr,"12 Rue de la Paix, Paris",new
-Thomas,Martin,t.martin@techvision.io,,TechVision,CTO,https://techvision.io,"5 Place de la République, Lyon",new`;
-
-  const downloadTemplate = () => {
-    const blob = new Blob([CSV_TEMPLATE],{type:'text/csv'});
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'prospects_template.csv'; a.click();
-  };
-
-  const parseCSV = (text:string) => {
-    const lines = text.trim().split('\n');
-    const headers = lines[0].split(',').map(h=>h.trim());
-    return lines.slice(1).map(line=>{
-      const vals = line.split(',');
-      return headers.reduce((obj,h,i)=>({...obj,[h]:vals[i]?.trim()||''}),{} as any);
-    }).filter((r:any)=>r.firstName||r.email||r.company);
-  };
-
-  const handleFile = (f:File) => {
-    setFile(f); setError(null);
-    const reader = new FileReader();
-    reader.onload = e => {
-      try { const rows = parseCSV(e.target?.result as string); setPreview(rows.slice(0,3)); setCount(rows.length); }
-      catch { setError('Fichier CSV invalide'); }
-    };
-    reader.readAsText(f);
-  };
-
-  const importData = async () => {
-    if (!file) return;
-    setLoading(true); setError(null);
-    try {
-      const text = await file.text();
-      const prospects = parseCSV(text);
-      await apiClient.post('/prospects/bulk', { prospects });
-      setDone(true);
-      setTimeout(()=>{onSave();onClose();},2000);
-    } catch(e:any) { setError(e.message || 'Erreur lors de l\'import'); }
-    finally { setLoading(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-gray-900">Importer depuis CSV</h2>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-400"/></button>
-        </div>
-        {done ? (
-          <div className="text-center py-8">
-            <CheckCircle className="w-16 h-16 text-teal-600 mx-auto mb-3"/>
-            <p className="text-xl font-bold text-gray-900">Import réussi !</p>
-            <p className="text-gray-400 mt-1">{count} prospects importés</p>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-gray-500">Importez vos prospects depuis un fichier CSV.</p>
-              <button onClick={downloadTemplate} className="flex items-center gap-1.5 text-xs text-teal-600 hover:text-teal-700">
-                <Download className="w-3.5 h-3.5"/>Télécharger le modèle
-              </button>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs font-mono text-gray-500">
-              <span className="font-sans text-gray-700 font-medium text-xs block mb-1">Colonnes attendues :</span>
-              firstName, lastName, email, phone, company, jobTitle, website, status
-            </div>
-            <div onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f);}} onDragOver={e=>e.preventDefault()}
-              onClick={()=>ref.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all mb-4 ${file?'border-teal-400 bg-teal-50':'border-gray-200 hover:border-teal-300 hover:bg-gray-50'}`}>
-              <input ref={ref} type="file" accept=".csv,.tsv,.txt" className="hidden" onChange={e=>e.target.files?.[0]&&handleFile(e.target.files[0])}/>
-              {file ? (
-                <div className="flex items-center justify-center gap-3">
-                  <FileText className="w-8 h-8 text-teal-600"/>
-                  <div className="text-left">
-                    <div className="font-medium text-gray-900">{file.name}</div>
-                    <div className="text-sm text-gray-400">{count} prospect{count>1?'s':''} détecté{count>1?'s':''}</div>
-                  </div>
-                </div>
-              ) : (
-                <><Upload className="w-10 h-10 text-gray-300 mx-auto mb-3"/><p className="text-sm font-medium text-gray-600">Glissez votre .csv ici</p><p className="text-xs text-gray-400 mt-1">ou cliquez pour sélectionner</p></>
-              )}
-            </div>
-            {preview.length>0 && (
-              <div className="mb-4">
-                <p className="text-xs font-medium text-gray-500 mb-2">Aperçu ({count} lignes) :</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-50"><tr>{['Prénom','Nom','Email','Entreprise'].map(h=><th key={h} className="text-left px-2 py-1 text-gray-500">{h}</th>)}</tr></thead>
-                    <tbody>{preview.map((r,i)=><tr key={i} className="border-t border-gray-100"><td className="px-2 py-1">{r.firstName}</td><td className="px-2 py-1">{r.lastName}</td><td className="px-2 py-1 text-teal-600">{r.email}</td><td className="px-2 py-1">{r.company}</td></tr>)}</tbody>
-                  </table>
-                  {count>3&&<p className="text-xs text-gray-400 mt-1">... et {count-3} autres</p>}
-                </div>
-              </div>
-            )}
-            {error && <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2 mb-3"><AlertCircle className="w-4 h-4"/>{error}</div>}
-            <div className="flex gap-3">
-              <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
-              <button onClick={importData} disabled={!file||loading} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-                {loading?<Loader2 className="w-4 h-4 animate-spin"/>:<Upload className="w-4 h-4"/>}Importer
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function BulkStatusModal({ count, onClose, onConfirm }: { count: number; onClose: () => void; onConfirm: (s: string) => void }) {
   const [status, setStatus] = useState('contacted');
   return (
@@ -234,7 +117,6 @@ export default function ProspectsPage() {
   const [noGeo, setNoGeo] = useState(false);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [showImport, setShowImport] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -252,8 +134,8 @@ export default function ProspectsPage() {
       const result = await apiClient.get('/prospects', { params });
       const data = Array.isArray(result) ? result : (result as any).data || [];
       setProspects(data);
-      setTotal((result as any).meta?.total || 0);
-    } catch { setProspects([]); } finally { setLoading(false); }
+      setTotal(Number((result as any).total ?? (result as any).meta?.total ?? data.length));
+    } catch { setProspects([]); setTotal(0); } finally { setLoading(false); }
   };
 
   useEffect(()=>{
@@ -376,7 +258,6 @@ export default function ProspectsPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       {showCreate && <CreateModal onClose={()=>setShowCreate(false)} onSave={()=>{fetchProspects();toast.success('Prospect créé ✓');}}/>}
-      {showImport && <ImportCSVModal onClose={()=>setShowImport(false)} onSave={()=>{fetchProspects();toast.success('Import réussi ✓');}}/>}
       {showBulkStatus && <BulkStatusModal count={selected.size} onClose={()=>setShowBulkStatus(false)} onConfirm={bulkChangeStatus}/>}
 
       {/* Header */}
@@ -389,7 +270,7 @@ export default function ProspectsPage() {
           <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300 hover:text-teal-600">
             <Download className="w-4 h-4"/>Exporter CSV
           </button>
-          <button onClick={()=>setShowImport(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300 hover:text-teal-600">
+          <button onClick={()=>navigate('/import')} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300 hover:text-teal-600">
             <Upload className="w-4 h-4"/>Importer CSV
           </button>
           <button onClick={fetchProspects} disabled={loading} className="p-2 bg-white border border-gray-200 rounded-xl text-gray-500 hover:border-teal-300">
@@ -509,7 +390,7 @@ export default function ProspectsPage() {
                 <p className="text-gray-400">Aucun prospect</p>
                 <div className="flex gap-3 justify-center mt-3">
                   <button onClick={()=>setShowCreate(true)} className="px-4 py-2 bg-teal-600 text-white rounded-xl text-sm">+ Créer</button>
-                  <button onClick={()=>setShowImport(true)} className="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl text-sm">Importer CSV</button>
+                  <button onClick={()=>navigate('/import')} className="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl text-sm">Importer CSV</button>
                 </div>
               </td></tr>
             )}
