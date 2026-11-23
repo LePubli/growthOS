@@ -229,9 +229,12 @@ async function readBusinessProfile() {
   collectLinks();
   await selectTab(/^INSEE$/i);
   await clickReveal(/^sur l[’']établissement$/i);
+  const establishmentText = (root().innerText || '').slice(0,10000);
   await clickReveal(/^sur l[’']entreprise$/i);
+  const companyText = (root().innerText || '').slice(0,10000);
   await clickReveal(/informations financières et juridiques/i);
-  const inseeText = (root().innerText || '').slice(0,18000);
+  const inseeText = establishmentText + '\n' + companyText + '\n' +
+    (root().innerText || '').slice(0,10000);
   collectLinks();
 
   const collected = [...contactLinks.values()];
