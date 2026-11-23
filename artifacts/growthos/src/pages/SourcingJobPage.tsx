@@ -7,10 +7,10 @@ import apiClient from '@/lib/api-client';
 type SourcingJob = {
   id: string; type: string; name: string; status: string; count: number | null;
   error: string | null; duration: string | null; createdAt: string;
-  params: { query?: string; codePostal?: string; limit?: number };
+  params: { query?: string; codePostal?: string; regions?: string[]; departements?: string[]; codesPostaux?: string[]; limit?: number };
 };
 type Candidate = {
-  siren: string; company: string | null; address: string | null;
+  siren: string; siret?: string | null; company: string | null; address: string | null;
   codePostal: string; city: string | null; imported: boolean; prospectId: string | null;
 };
 
@@ -79,8 +79,8 @@ export default function SourcingJobPage() {
   function exportCsv() {
     if (!results.length) return;
     const lines = [
-      ['SIREN', 'Entreprise', 'Adresse', 'Code postal', 'Ville', 'Déjà importée'],
-      ...results.map(p => [p.siren, p.company, p.address, p.codePostal, p.city, p.imported ? 'Oui' : 'Non']),
+      ['SIREN', 'SIRET', 'Entreprise', 'Adresse', 'Code postal', 'Ville', 'Déjà importée'],
+      ...results.map(p => [p.siren, p.siret, p.company, p.address, p.codePostal, p.city, p.imported ? 'Oui' : 'Non']),
     ];
     const csv = '\uFEFF' + lines.map(line => line.map(csvCell).join(';')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -119,7 +119,12 @@ export default function SourcingJobPage() {
               <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>· {results.filter(item => item.imported).length} déjà dans le CRM</span>
               <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>· {job.duration || '—'}</span>
             </div>
-            <p style={{ color: 'var(--text-secondary)', margin: '0 0 8px', fontSize: 13 }}>Recherche : {job.params?.query || '—'} · Code postal : {job.params?.codePostal || 'Ancienne recherche sans filtre'}</p>
+            <p style={{ color: 'var(--text-secondary)', margin: '0 0 8px', fontSize: 13 }}>Recherche : {job.params?.query || '—'} · Zone : {[
+              job.params?.regions?.length ? `Régions ${job.params.regions.join(', ')}` : '',
+              job.params?.departements?.length ? `Départements ${job.params.departements.join(', ')}` : '',
+              job.params?.codesPostaux?.length ? `CP ${job.params.codesPostaux.join(', ')}` : '',
+              job.params?.codePostal ? `CP ${job.params.codePostal}` : '',
+            ].filter(Boolean).join(' · ') || 'Non précisée'}</p>
             <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 12 }}>
               Les entreprises ci-dessous ne sont pas importées automatiquement. Cochez celles qui vous intéressent.
               L'annuaire officiel ne garantit ni email, ni téléphone, ni site web : aucune coordonnée n'est inventée.
@@ -137,7 +142,7 @@ export default function SourcingJobPage() {
             </div>
             {results.length === 0 ? (
               <p style={{ padding: 25, color: 'var(--text-muted)', fontSize: 13 }}>
-                Aucun établissement ne correspond exactement à ce code postal. Essayez un métier plus large ou un autre code postal.
+                Aucun établissement vérifié dans la zone sélectionnée. Essayez une activité plus large ou modifiez les filtres.
               </p>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -147,7 +152,7 @@ export default function SourcingJobPage() {
                       <th style={{ textAlign: 'left', padding: 12 }}>
                         <input aria-label="Sélectionner toutes les entreprises non importées" type="checkbox" checked={allSelected} disabled={!available.length} onChange={toggleAll} />
                       </th>
-                      {['Entreprise', 'Adresse locale', 'Code postal', 'SIREN', 'CRM'].map(label =>
+                      {['Entreprise', 'Adresse locale', 'Code postal', 'SIREN', 'SIRET', 'CRM'].map(label =>
                         <th key={label} style={{ textAlign: 'left', padding: 12 }}>{label}</th>)}
                     </tr>
                   </thead>

@@ -6,7 +6,7 @@ import {
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
   Archive, RotateCcw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
   ExternalLink, Navigation, Zap, BadgeCheck, ChevronDown, ChevronUp,
-  Building, Database, BarChart2, Users, Newspaper, GitMerge,
+  Building, Database, BarChart2, Users, Newspaper, GitMerge, Copy,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
@@ -148,90 +148,6 @@ function AddActivityModal({ prospectId, onClose, onSaved }: { prospectId: string
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ─── Panneau Notes ──────────────────────────────────────── */
-function NotesPanel({ prospectId }: { prospectId: string }) {
-  const [notes, setNotes] = useState<any[]>([]);
-  const [text, setText] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const load = async () => {
-    try {
-      const data = await apiClient.get('/activities', { params: { prospectId, type: 'note' } }) as any[];
-      setNotes(Array.isArray(data) ? data : []);
-    } catch {}
-  };
-
-  useEffect(() => { load(); }, [prospectId]);
-
-  const addNote = async () => {
-    if (!text.trim()) return;
-    setSaving(true);
-    try {
-      await apiClient.post('/activities', { type: 'note', title: text.trim(), prospectId, status: 'done' });
-      setText('');
-      await load();
-      toast.success('Note ajoutée');
-    } catch { toast.error('Erreur'); }
-    finally { setSaving(false); }
-  };
-
-  const deleteNote = async (id: string) => {
-    await apiClient.delete(`/activities/${id}`).catch(() => {});
-    setNotes(n => n.filter(x => x.id !== id));
-  };
-
-  return (
-    <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-      <h2 className="font-semibold mb-3 text-sm flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
-        <FileText size={12} />NOTES ({notes.length})
-      </h2>
-
-      {/* Quick add */}
-      <div className="flex gap-2 mb-4">
-        <textarea
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) addNote(); }}
-          rows={2}
-          placeholder="Ajouter une note… (Ctrl+Entrée pour valider)"
-          className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
-        />
-        <button
-          onClick={addNote}
-          disabled={!text.trim() || saving}
-          className="flex-shrink-0 px-4 py-2 rounded-xl text-white text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
-          style={{ background: 'var(--color-primary)' }}
-        >
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-          Ajouter
-        </button>
-      </div>
-
-      {/* Notes list */}
-      {notes.length === 0 ? (
-        <p className="text-sm text-center py-3" style={{ color: 'var(--text-muted)' }}>Aucune note. Ajoutez la première ci-dessus.</p>
-      ) : (
-        <div className="space-y-2">
-          {notes.map(note => (
-            <div key={note.id} className="flex gap-3 p-3 rounded-xl group" style={{ background: 'var(--body-bg)' }}>
-              <FileText size={13} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{note.title}</p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  {new Date(note.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                </p>
-              </div>
-              <button onClick={() => deleteNote(note.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600 flex-shrink-0">
-                <Trash2 size={12} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -554,14 +470,16 @@ export default function ProspectDetailPage() {
 
   // AI Scoring: compute a breakdown from available fields
   const computeScoring = (p: any) => {
+    // Informations présentes, sans prétendre à un modèle IA.
     const criteria = [
-      { label: 'Email renseigné', weight: 20, met: !!p.email },
-      { label: 'Téléphone renseigné', weight: 15, met: !!p.phone },
       { label: 'Entreprise identifiée', weight: 15, met: !!p.company },
-      { label: 'Poste / rôle décisionnel', weight: 15, met: !!p.jobTitle },
-      { label: 'En cours de négociation', weight: 20, met: ['negotiation', 'qualified'].includes(p.status) },
-      { label: 'Adresse géolocalisée', weight: 10, met: !!p.address && !!p.lat },
-      { label: 'Mis en favori', weight: 5, met: !!p.isStarred },
+      { label: 'SIREN renseigné', weight: 15, met: !!p.siren },
+      { label: 'SIRET renseigné', weight: 10, met: !!p.siret },
+      { label: 'Adresse renseignée', weight: 10, met: !!p.address },
+      { label: 'Code postal renseigné', weight: 10, met: !!p.postalCode },
+      { label: 'Email renseigné', weight: 15, met: !!p.email },
+      { label: 'Téléphone renseigné', weight: 10, met: !!p.phone },
+      { label: 'Site web renseigné', weight: 15, met: !!p.website },
     ];
     const computedScore = criteria.reduce((s, c) => s + (c.met ? c.weight : 0), 0);
     return { criteria, computedScore };
@@ -575,11 +493,12 @@ export default function ProspectDetailPage() {
   if (!prospect) return null;
 
   const initials = ((prospect.firstName || prospect.company || '?')[0]).toUpperCase();
-  const fullName = [prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || prospect.company || 'Sans nom';
+  const contactName = [prospect.firstName, prospect.lastName].filter(Boolean).join(' ');
+  const fullName = contactName || prospect.company || 'Sans nom';
   const statusColor = STATUS_COLORS[prospect.status] || '#6B7280';
 
   return (
-    <div className="min-h-screen p-6" style={{ background: 'var(--body-bg)' }}>
+    <div className="min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
       {showAddActivity && (
         <AddActivityModal prospectId={id} onClose={() => setShowAddActivity(false)} onSaved={fetchActivities} />
       )}
@@ -631,25 +550,26 @@ export default function ProspectDetailPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex flex-wrap items-center gap-3 mb-6">
         <button onClick={() => navigate('/prospects')} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
           <ArrowLeft size={20} style={{ color: 'var(--text-muted)' }} />
         </button>
-        <div className="flex items-center gap-3 flex-1">
+        <div className="flex items-center gap-3 flex-1 min-w-[220px]">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-bold"
             style={{ background: 'var(--color-primary)' }}>{initials}</div>
           <div>
             <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{fullName}</h1>
             <div className="flex items-center gap-2">
-              <span className="text-sm" style={{ color: 'var(--text-muted)' }}>{prospect.jobTitle || '—'}</span>
-              {prospect.company && <span className="text-sm" style={{ color: 'var(--text-muted)' }}>· {prospect.company}</span>}
+              {contactName && prospect.jobTitle && <span className="text-sm text-gray-500">{prospect.jobTitle} ·</span>}
+              {contactName && prospect.company && <span className="text-sm text-gray-500">{prospect.company}</span>}
+              {!contactName && <span className="text-sm text-gray-500">Entreprise prospectée</span>}
               <span className="text-xs px-2 py-0.5 rounded-full text-white font-medium" style={{ background: statusColor }}>
                 {STATUS_OPTIONS.find(s => s.value === prospect.status)?.label}
               </span>
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={toggleStar} className={`p-2 rounded-xl ${prospect.isStarred ? 'bg-amber-50' : 'hover:bg-gray-100'}`}>
             <Star size={18} className={prospect.isStarred ? 'fill-amber-400 text-amber-400' : 'text-gray-400'} />
           </button>
@@ -681,22 +601,63 @@ export default function ProspectDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left — Info */}
-        <div className="col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4">
+          {/* Informations légales structurées, accessibles sans enrichissement */}
+          <section className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+            <div className="flex flex-wrap gap-3 justify-between items-center mb-4">
+              <h2 className="font-semibold text-base flex items-center gap-2" style={{ color: 'var(--text-primary)' }}><Building2 size={17} className="text-teal-600"/>Identité de l’entreprise</h2>
+              {prospect.siren && <a href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${prospect.siren}`} target="_blank" rel="noreferrer" className="text-xs inline-flex items-center gap-1 text-teal-700 hover:underline"><ExternalLink size={12}/>Annuaire officiel</a>}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {editing ? (
+                <>
+                  {[
+                    { key: 'company', label: 'Raison sociale', maxLength: 160 },
+                    { key: 'siren', label: 'SIREN (9 chiffres)', maxLength: 9 },
+                    { key: 'siret', label: 'SIRET de l’établissement (14 chiffres)', maxLength: 14 },
+                    { key: 'postalCode', label: 'Code postal (5 chiffres)', maxLength: 5 },
+                    { key: 'city', label: 'Ville', maxLength: 120 },
+                  ].map(field => <div key={field.key}>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">{field.label}</label>
+                    <input maxLength={field.maxLength} value={form[field.key] ?? ''} onChange={e => sf(field.key, e.target.value)} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+                  </div>)}
+                </>
+              ) : (
+                <>
+                  {[
+                    { key: 'company', label: 'Raison sociale', value: prospect.company },
+                    { key: 'siren', label: 'SIREN', value: prospect.siren },
+                    { key: 'siret', label: 'SIRET de l’établissement', value: prospect.siret },
+                    { key: 'postalCode', label: 'Code postal', value: prospect.postalCode },
+                    { key: 'city', label: 'Ville', value: prospect.city },
+                  ].map(field => <div key={field.key} className="min-w-0">
+                    <div className="text-xs mb-1 text-gray-500">{field.label}</div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-semibold break-all ${field.value ? 'text-gray-900' : 'text-gray-400'}`}>{field.value || 'Non renseigné'}</span>
+                      {field.value && (field.key === 'siren' || field.key === 'siret') && <button type="button" onClick={() => { void navigator.clipboard.writeText(field.value); toast.success(`${field.label} copié`); }} aria-label={`Copier ${field.label}`} className="text-gray-400 hover:text-teal-700"><Copy size={13}/></button>}
+                    </div>
+                  </div>)}
+                </>
+              )}
+            </div>
+            {!editing && (!prospect.siren || !prospect.siret) && <p className="text-xs text-amber-700 mt-4 bg-amber-50 rounded-lg p-2.5">Identifiant absent de cette fiche. GrowthOS ne l’invente pas : vous pouvez le renseigner après vérification.</p>}
+          </section>
+
           {/* Coordonnées */}
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>COORDONNÉES</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>CONTACT ET COORDONNÉES</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {editing ? (
                 <>
                   {[
                     { k: 'firstName', l: 'Prénom' }, { k: 'lastName', l: 'Nom' },
                     { k: 'email', l: 'Email' }, { k: 'phone', l: 'Téléphone' },
-                    { k: 'company', l: 'Entreprise' }, { k: 'jobTitle', l: 'Poste' },
+                    { k: 'jobTitle', l: 'Poste' },
                     { k: 'website', l: 'Site web' }, { k: 'linkedinUrl', l: 'LinkedIn' },
                   ].map(f => (
-                    <div key={f.k} className={f.k === 'website' || f.k === 'linkedinUrl' ? 'col-span-2' : ''}>
+                    <div key={f.k} className={f.k === 'website' || f.k === 'linkedinUrl' ? 'sm:col-span-2' : ''}>
                       <label className="block text-xs font-medium text-gray-500 mb-1">{f.l}</label>
                       <input value={form[f.k] || ''} onChange={e => sf(f.k, e.target.value)}
                         className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
@@ -704,7 +665,7 @@ export default function ProspectDetailPage() {
                   ))}
 
                   {/* Address with Nominatim autocomplete — full width */}
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <AddressAutocomplete
                       value={form.address || ''}
                       label="Adresse"
@@ -739,7 +700,7 @@ export default function ProspectDetailPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Score</label>
-                    <input type="number" min={0} max={100} value={form.score || 0} onChange={e => sf('score', e.target.value)}
+                    <input type="number" min={0} max={100} value={form.score ?? 0} onChange={e => sf('score', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                   </div>
                 </>
@@ -748,7 +709,6 @@ export default function ProspectDetailPage() {
                   {[
                     { l: 'Email', v: prospect.email, icon: <Mail size={14} />, href: prospect.email ? `mailto:${prospect.email}` : undefined },
                     { l: 'Téléphone', v: prospect.phone, icon: <Phone size={14} />, href: prospect.phone ? `tel:${prospect.phone}` : undefined },
-                    { l: 'Entreprise', v: prospect.company, icon: <Building2 size={14} /> },
                     { l: 'Poste', v: prospect.jobTitle, icon: <Briefcase size={14} /> },
                     { l: 'Site web', v: prospect.website, icon: <Globe size={14} />, href: prospect.website },
                     { l: 'LinkedIn', v: prospect.linkedinUrl, icon: <Globe size={14} />, href: prospect.linkedinUrl },
@@ -765,7 +725,7 @@ export default function ProspectDetailPage() {
                   ))}
 
                   {/* Address + geo badge — spans full width */}
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
                       <MapPin size={14} />Adresse
                       {prospect.lat && (
@@ -864,9 +824,6 @@ export default function ProspectDetailPage() {
           {/* Données enrichies */}
           <EnrichedDataPanel prospectId={prospect.id} />
 
-          {/* Notes panel — quick notes via activities API */}
-          <NotesPanel prospectId={prospect.id} />
-
           {/* Activités */}
           <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex items-center justify-between mb-4">
@@ -904,6 +861,10 @@ export default function ProspectDetailPage() {
               </div>
             )}
           </div>
+          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+            <h2 className="font-semibold text-sm mb-3" style={{ color: 'var(--text-muted)' }}>COMMENTAIRES D’ÉQUIPE</h2>
+            <CommentsPanel entityType="prospect" entityId={prospect.id} />
+          </div>
         </div>
 
         {/* Right — Métadonnées */}
@@ -936,18 +897,18 @@ export default function ProspectDetailPage() {
             </div>
           </div>
 
-          {/* AI Scoring Panel */}
+          {/* Indicateur de complétude explicite, pas un score IA */}
           {(() => {
             const { criteria, computedScore } = computeScoring(prospect);
-            const score = prospect.score || computedScore;
+            const score = computedScore;
             const color = score >= 70 ? '#059669' : score >= 40 ? '#D97706' : '#DC2626';
-            const label = score >= 70 ? 'Chaud 🔥' : score >= 40 ? 'Tiède' : 'Froid';
+            const label = score >= 70 ? 'Bien renseignée' : score >= 40 ? 'À compléter' : 'Incomplète';
             const TrendIcon = score >= 70 ? TrendingUp : score >= 40 ? Minus : TrendingDown;
             return (
               <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
                 <div className="flex items-center gap-2 mb-4">
-                  <Brain size={14} style={{ color: 'var(--color-primary)' }} />
-                  <h2 className="font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>SCORING IA</h2>
+                  <FileText size={14} style={{ color: 'var(--color-primary)' }} />
+                  <h2 className="font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>COMPLÉTUDE DE LA FICHE</h2>
                 </div>
                 {/* Score ring */}
                 <div className="flex items-center gap-4 mb-4">
@@ -966,7 +927,7 @@ export default function ProspectDetailPage() {
                     <div style={{ fontSize: 16, fontWeight: 800, color }} className="flex items-center gap-1.5">
                       <TrendIcon size={16} />{label}
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Score de qualification</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Champs renseignés · pas un score IA</div>
                   </div>
                 </div>
                 {/* Criteria */}
@@ -1039,13 +1000,6 @@ export default function ProspectDetailPage() {
                 </button>
               )}
             </div>
-          </div>
-        </div>
-
-        {/* Collaboration & Activité */}
-        <div className="px-6 pb-6">
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <CommentsPanel entityType="prospect" entityId={prospect.id} />
           </div>
         </div>
       </div>

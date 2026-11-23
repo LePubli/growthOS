@@ -47,12 +47,17 @@ const prospectSchema = z.object({
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   company: z.string().optional(),
+  siren: z.string().regex(/^\d{9}$/).optional().or(z.literal("")),
+  siret: z.string().regex(/^\d{14}$/).optional().or(z.literal("")),
+  postalCode: z.string().regex(/^\d{5}$/).optional().or(z.literal("")),
+  city: z.string().max(120).optional(),
+  linkedinUrl: z.string().optional(),
   jobTitle: z.string().optional(),
   website: z.string().optional(),
   address: z.string().optional(),
   lat: z.number().optional(),
   lng: z.number().optional(),
-  status: z.enum(["new", "contacted", "qualified", "negotiation", "won", "lost"]).optional().default("new"),
+  status: z.enum(["new", "contacted", "qualified", "negotiation", "won", "lost", "converted", "archived"]).optional().default("new"),
   score: z.number().int().min(0).max(100).optional(),
   isStarred: z.boolean().optional(),
 });
@@ -147,6 +152,9 @@ router.post("/", async (req, res) => {
     return;
   }
   const { email, address, lat, lng, ...rest } = parse.data;
+  for (const key of ['siren', 'siret', 'postalCode'] as const) {
+    if (rest[key] === '') rest[key] = null as never;
+  }
 
   // If lat/lng provided manually, use them; otherwise geocode in background
   const [prospect] = await db.insert(prospectsTable).values({
@@ -273,6 +281,9 @@ router.patch("/:id", async (req, res) => {
   }
   const { email, address, lat, lng, ...rest } = parse.data;
   const updateData: any = { ...rest, updatedAt: new Date() };
+  for (const key of ["siren", "siret", "postalCode"] as const) {
+    if (updateData[key] === "") updateData[key] = null;
+  }
   if (email !== undefined) updateData.email = email || null;
   if (address !== undefined) updateData.address = address || null;
   if (lat !== undefined) updateData.lat = lat ?? null;

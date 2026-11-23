@@ -5,6 +5,7 @@ import { sourcingJobsTable, prospectsTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
+import { DEPARTMENT_TO_REGION, departmentFromPostalCode } from "../../lib/france-geo";
 
 const router = Router();
 
@@ -13,15 +14,21 @@ const jobSchema = z.object({
   name: z.string().trim().min(1).max(120),
   params: z.object({
     query: z.string().trim().min(3).max(120),
-    codePostal: z.string().regex(/^\d{5}$/, "Un code postal français à 5 chiffres est requis"),
+    regions: z.array(z.string().regex(/^\d{2}$/)).max(18).default([]),
+    departements: z.array(z.string().regex(/^(?:\d{2}|2A|2B|97\d)$/)).max(101).default([]),
+    codesPostaux: z.array(z.string().regex(/^\d{5}$/)).max(25).default([]),
     limit: z.coerce.number().int().min(1).max(25).optional().default(10),
-  }),
+  }).refine(p => p.regions.length + p.departements.length + p.codesPostaux.length > 0,
+    "Choisissez au moins une région, un département ou un code postal"),
 });
 
 type DirectoryAddress = {
   adresse?: string;
   code_postal?: string;
   libelle_commune?: string;
+  siret?: string;
+  code_departement?: string;
+  code_region?: string;
 };
 type CompanyRecord = {
   siren?: string;
@@ -32,6 +39,7 @@ type CompanyRecord = {
 };
 type SearchCandidate = {
   siren: string;
+  siret: string | null;
   company: string;
   address: string | null;
   codePostal: string;
@@ -39,17 +47,34 @@ type SearchCandidate = {
 };
 type SavedParams = {
   query?: string;
-  codePostal?: string;
+  codePostal?: string; // anciennes recherches
+  regions?: string[];
+  departements?: string[];
+  codesPostaux?: string[];
   limit?: number;
   results?: SearchCandidate[];
   importedIds?: string[]; // historical jobs created before selective import
 };
 
-async function searchFrenchCompanies(params: { query: string; codePostal: string; limit: number }): Promise<SearchCandidate[]> {
-  // The server controls this endpoint. The requester cannot supply an arbitrary URL.
+type GeoFilters = { query: string; regions: string[]; departements: string[]; codesPostaux: string[]; limit: number };
+
+function matchingGeo(establishment: DirectoryAddress, params: GeoFilters): boolean {
+  const cp = establishment.code_postal || "";
+  if (!/^\d{5}$/.test(cp)) return false;
+  const dep = establishment.code_departement || departmentFromPostalCode(cp);
+  const region = establishment.code_region || DEPARTMENT_TO_REGION[dep];
+  return (!params.codesPostaux.length || params.codesPostaux.includes(cp))
+    && (!params.departements.length || params.departements.includes(dep))
+    && (!params.regions.length || Boolean(region && params.regions.includes(region)));
+}
+
+async function searchFrenchCompanies(params: GeoFilters): Promise<SearchCandidate[]> {
+  // Requête exclusivement dirigée vers l'annuaire public, jamais vers une URL utilisateur.
   const url = new URL(process.env.COMPANY_DIRECTORY_API_URL ?? "https://recherche-entreprises.api.gouv.fr/search");
   url.searchParams.set("q", params.query);
-  url.searchParams.set("code_postal", params.codePostal);
+  if (params.regions.length) url.searchParams.set("region", params.regions.join(","));
+  if (params.departements.length) url.searchParams.set("departement", params.departements.join(","));
+  if (params.codesPostaux.length) url.searchParams.set("code_postal", params.codesPostaux.join(","));
   url.searchParams.set("per_page", String(params.limit));
   url.searchParams.set("page", "1");
 
@@ -61,24 +86,25 @@ async function searchFrenchCompanies(params: { query: string; codePostal: string
   const body = await response.json() as { results?: CompanyRecord[] };
   if (!Array.isArray(body.results)) throw new Error("Réponse incorrecte de l'annuaire des entreprises");
 
-  // The official endpoint can match an establishment in Lille while returning
-  // the headquarters of the same company in Paris. Use the local establishment
-  // and discard any result without proof of the requested postal code.
+  // L'API peut ignorer les filtres lorsque q est un SIREN/SIRET. Elle peut aussi
+  // renvoyer un siège hors zone alors que l'établissement correspondant est local.
+  // Ne jamais proposer un établissement sans preuve de localisation conforme.
   const found: SearchCandidate[] = [];
   const seen = new Set<string>();
   for (const result of body.results) {
     const siren = String(result.siren || "").trim();
     const company = (result.nom_complet ?? result.nom_raison_sociale ?? "").trim();
     if (!/^\d{9}$/.test(siren) || !company || seen.has(siren)) continue;
-    const local = (result.matching_etablissements || []).find(e => e.code_postal === params.codePostal)
-      ?? (result.siege?.code_postal === params.codePostal ? result.siege : undefined);
+    const local = [...(result.matching_etablissements || []), ...(result.siege ? [result.siege] : [])]
+      .find(est => matchingGeo(est, params));
     if (!local) continue;
     seen.add(siren);
     found.push({
       siren,
+      siret: /^\d{14}$/.test(local.siret || "") ? local.siret! : null,
       company,
       address: local.adresse?.trim() || null,
-      codePostal: params.codePostal,
+      codePostal: local.code_postal!,
       city: local.libelle_commune?.trim() || null,
     });
     if (found.length >= params.limit) break;
@@ -183,7 +209,7 @@ router.get("/jobs/:id/results", requireAuth, async (req, res) => {
     .where(and(eq(prospectsTable.tenantId, req.auth!.tenantId), inArray(prospectsTable.id, ids)));
   res.json({
     data: old.map(p => ({ siren: p.siren || p.id, company: p.company, address: p.address,
-      codePostal: params.codePostal || "", city: null, imported: true, prospectId: p.id })),
+      codePostal: p.postalCode || params.codePostal || "", city: p.city || null, siret: p.siret || null, imported: true, prospectId: p.id })),
     total: old.length, imported: old.length,
   });
 });
@@ -226,7 +252,8 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
     if (legacy) { skipped++; continue; }
 
     const inserted = await db.insert(prospectsTable).values({
-      siren: candidate.siren, company: candidate.company, address: candidate.address,
+      siren: candidate.siren, siret: candidate.siret, company: candidate.company,
+      address: candidate.address, postalCode: candidate.codePostal, city: candidate.city,
       status: "new", tenantId: req.auth!.tenantId, createdBy: req.auth!.userId,
     }).onConflictDoNothing().returning({ id: prospectsTable.id });
     if (inserted.length) imported++; else skipped++;

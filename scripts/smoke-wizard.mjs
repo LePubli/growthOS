@@ -109,10 +109,11 @@ const companies = createServer((req, res) => {
   if (!req.url?.startsWith("/search?")) { res.writeHead(404).end(); return; }
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ results: [
-    { siren: "100000001", nom_complet: "Entreprise test A", siege: { adresse: "10 rue Nationale, 59000 Lille", code_postal: "59000", libelle_commune: "Lille" } },
+    { siren: "100000001", nom_complet: "Entreprise test A", siege: { siret: "10000000100012", adresse: "10 rue Nationale, 59000 Lille", code_postal: "59000", libelle_commune: "Lille" } },
     { siren: "100000002", nom_complet: "Entreprise test B", siege: { adresse: "Paris, France", code_postal: "75001", libelle_commune: "Paris" },
-      matching_etablissements: [{ adresse: "20 rue du Molinel, 59000 Lille", code_postal: "59000", libelle_commune: "Lille" }] },
+      matching_etablissements: [{ siret: "10000000200015", adresse: "20 rue du Molinel, 59000 Lille", code_postal: "59000", libelle_commune: "Lille" }] },
     { siren: "100000003", nom_complet: "Entreprise hors zone", siege: { adresse: "Paris, France", code_postal: "75001", libelle_commune: "Paris" } },
+    { siren: "100000004", nom_complet: "Entreprise Roubaix", siege: { siret: "10000000400018", adresse: "4 rue de Roubaix, 59100 Roubaix", code_postal: "59100", libelle_commune: "Roubaix" } },
   ] }));
 });
 const ollama = createServer((req, res) => {
@@ -204,8 +205,12 @@ try {
   check((await request("POST", "/sourcing/jobs", {
     type: "linkedin", name: "Connecteur indisponible", params: { query: "CEO" },
   }, token)).status === 400, "Faux connecteur LinkedIn désactivé");
+  const invalidGeo = await request("POST", "/sourcing/jobs", {
+    type: "entreprises", name: "Zone vide", params: { query: "plombier", regions: [], departements: [], codesPostaux: [], limit: 5 },
+  }, token);
+  check(invalidGeo.status === 400, "Une zone géographique est obligatoire");
   const source = await request("POST", "/sourcing/jobs", {
-    type: "entreprises", name: "Test Lille", params: { query: "plombier", codePostal: "59000", limit: 5 },
+    type: "entreprises", name: "Test Lille", params: { query: "plombier", regions: [], departements: [], codesPostaux: ["59000"], limit: 5 },
   }, token);
   check(source.status === 201 && source.body.count === 2 && source.body.status === "completed",
     "Annuaire officiel simulé : seulement 2 établissements locaux trouvés");
@@ -213,6 +218,27 @@ try {
   check(results.status === 200 && results.body.total === 2 &&
     results.body.data.every(r => r.codePostal === "59000" && !r.address.includes("Paris")),
     "Géographie stricte : le siège parisien est remplacé par son établissement lillois");
+  const multipleZones = await request("POST", "/sourcing/jobs", {
+    type: "entreprises", name: "Lille et Roubaix", params: {
+      query: "plombier", regions: ["32"], departements: ["59", "62"], codesPostaux: ["59000", "59100"], limit: 5,
+    },
+  }, token);
+  check(multipleZones.status === 201 && multipleZones.body.count === 3,
+    "Multi-zones : régions, départements et codes postaux acceptent plusieurs valeurs");
+  const byRegion = await request("POST", "/sourcing/jobs", {
+    type: "entreprises", name: "Région HDF", params: {
+      query: "plombier", regions: ["32"], departements: [], codesPostaux: [], limit: 5,
+    },
+  }, token);
+  check(byRegion.status === 201 && byRegion.body.count === 3,
+    "Recherche par région sans code postal");
+  const byDepartment = await request("POST", "/sourcing/jobs", {
+    type: "entreprises", name: "Deux départements", params: {
+      query: "plombier", regions: [], departements: ["59", "62"], codesPostaux: [], limit: 5,
+    },
+  }, token);
+  check(byDepartment.status === 201 && byDepartment.body.count === 3,
+    "Recherche par plusieurs départements sans code postal");
   const crmBeforeImport = await request("GET", "/prospects", undefined, token);
   check(crmBeforeImport.status === 200 && crmBeforeImport.body.total === 0,
     "Une recherche n'insère aucun prospect sans sélection");
@@ -232,8 +258,9 @@ try {
   check(importSecond.status === 200 && importSecond.body.imported === 1,
     "La seconde entreprise est importée uniquement à la demande");
   const crm = await request("GET", "/prospects", undefined, token);
-  check(crm.status === 200 && crm.body.total === 2,
-    "Les deux entreprises choisies apparaissent dans le CRM");
+  check(crm.status === 200 && crm.body.total === 2 &&
+    crm.body.data.some(p => p.siren === "100000001" && p.siret === "10000000100012" && p.postalCode === "59000" && p.city === "Lille"),
+    "Les prospects importés conservent leur SIREN, SIRET, code postal et ville");
   const noMockActivity = await request("GET", `/activities?prospectId=${crm.body.data[0].id}`, undefined, token);
   check(noMockActivity.status === 200 && noMockActivity.body.length === 0,
     "Une fiche prospect importée démarre sans activités ni commentaires");
