@@ -313,6 +313,29 @@ try {
   const noMockActivity = await request("GET", `/activities?prospectId=${crm.body.data[0].id}`, undefined, token);
   check(noMockActivity.status === 200 && noMockActivity.body.length === 0,
     "Une fiche prospect importée démarre sans activités ni commentaires");
+  // Le navigateur local remet des fiches réelles à la page authentifiée :
+  // le serveur refuse les faux domaines, les mauvais codes postaux et les doublons.
+  const localParams = {sources:["pagesjaunes","entreprises"],query:"plombier",
+    regions:[],departements:[],codesPostaux:["59000"],limit:5};
+  const localCandidate = {id:"pj_local_testing",company:"Plomberie Locale",
+    address:"12 rue de la Paix 59000 Lille",codePostal:"59000",city:"Lille",
+    phone:null,website:null,sourceUrl:"https://www.pagesjaunes.fr/pros/123",siret:null};
+  const invalidLocal = await request("POST", "/sourcing/device/jobs", {
+    name:"Rejet domaine frauduleux",params:localParams,
+    candidates:[{...localCandidate,sourceUrl:"https://evilpagesjaunes.fr/pros/123"}],
+  },token);
+  check(invalidLocal.status === 400,"Connecteur appareil : domaine tiers rejeté");
+  const localJob = await request("POST", "/sourcing/device/jobs", {
+    name:"Recherche Chrome locale",params:localParams,
+    candidates:[localCandidate,localCandidate,{...localCandidate,id:"pj_local_far",company:"Hors zone",address:"Paris 75001",codePostal:"75001"}],
+  },token);
+  check(localJob.status === 201 && localJob.body.status === "completed" && localJob.body.count === 3,
+    "Connecteur appareil : fusion Annuaire + PagesJaunes sans doublon ni entreprise hors zone");
+  const localPreview = await request("GET", `/sourcing/jobs/${localJob.body.id}/results`,undefined,token);
+  check(localPreview.status === 200 && localPreview.body.total === 3 &&
+    localPreview.body.data.some(row=>row.source === "pagesjaunes" && row.company === "Plomberie Locale"),
+    "Connecteur appareil : résultats visibles avant import CRM");
+
   const pjSearch = await request("POST", "/sourcing/jobs", {
     type: "pagesjaunes", name: "Plombiers Lille via HTML", params: { query: "plombier", location: "Lille", limit: 10 },
   }, token);

@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
   Search, Plus, Play, Pause, CheckCircle, Clock, AlertCircle, Loader2,
-  Globe, Users, ChevronRight, X, RotateCcw, Trash2, Eye, Zap, Filter,
+  Globe, Users, ChevronRight, X, RotateCcw, Trash2, Eye, Zap, Filter, Laptop, Smartphone, Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
 import GeoMultiSelect from '@/components/sourcing/GeoMultiSelect';
 import { FRENCH_DEPARTMENTS, FRENCH_REGIONS } from '@/lib/france-geo';
+import { pingLocalPagesJaunes, searchLocalPagesJaunes, localPagesJaunesLocations, isMobileConnectorRequired } from '@/lib/pagesjaunes-device';
 
 const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; color: string; fields: { key:string; label:string; placeholder:string; type?:string }[] }> = {
   entreprises: {
@@ -48,7 +49,7 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
   },
   pagesjaunes: {
     name: 'PagesJaunes.fr', icon: '📒',
-    desc: 'Professionnels locaux — navigateur Chromium local (expérimental)', color: '#EAB308',
+    desc: 'Professionnels locaux — navigateur de votre appareil ou du VPS', color: '#EAB308',
     fields: [
       { key: 'query', label: 'Activité / métier', placeholder: 'Ex : artisans, restaurants' },
       { key: 'location', label: 'Ville ou département', placeholder: 'Ex : Lille, 59' },
@@ -84,7 +85,7 @@ const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:stri
   queued:   { label:'En attente',color:'#374151',bg:'#F3F4F6', dot:'#9CA3AF' },
 };
 
-function LaunchModal({ onClose, onLaunch, initialSource, browserStatus }: { onClose:()=>void; onLaunch:(job:any)=>void; initialSource:string; browserStatus: 'direct' | 'ready' | 'offline' }) {
+function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceConnected }: { onClose:()=>void; onLaunch:(job:any)=>void; initialSource:string; browserStatus: 'direct' | 'ready' | 'offline'; deviceConnected:boolean }) {
   const [step, setStep] = useState<1|2>(1);
   const [sources, setSources] = useState<string[]>([initialSource]);
   const [name, setName] = useState('');
@@ -109,12 +110,28 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus }: { onCl
     }
     setLaunching(true);
     try {
-      const job = await apiClient.post('/sourcing/jobs', {
-        type: 'multi', name: name.trim() || `${params.query.trim()} · ${sources.length} source(s)`,
-        params: { sources, query: params.query.trim(), limit: params.limit || '10', regions, departements, codesPostaux },
-      });
+      const jobName = name.trim() || `${params.query.trim()} · ${sources.length} source(s)`;
+      const criteria = {sources, query:params.query.trim(), limit:params.limit || '10',regions,departements,codesPostaux};
+      let job: any;
+      if (sources.includes('pagesjaunes') && deviceConnected) {
+        const departmentNames = Object.fromEntries(FRENCH_DEPARTMENTS.map(item=>[item.code,item.label]));
+        const regionNames = Object.fromEntries(FRENCH_REGIONS.map(item=>[item.code,item.label]));
+        const locations = localPagesJaunesLocations({regions,departements,codesPostaux,departmentNames,regionNames});
+        if (locations.length > 8) {
+          toast.error('Le connecteur local accepte 8 zones par recherche. Réduisez la sélection ou lancez plusieurs recherches.');
+          return;
+        }
+        toast.info('Recherche PagesJaunes dans votre navigateur. Gardez GrowthOS ouvert pendant l’opération.');
+        const local = await searchLocalPagesJaunes({query:criteria.query,locations,limit:Number(criteria.limit)});
+        if (local.warnings.length) toast.warning(local.warnings.slice(0,2).join(' · '));
+        if (!local.results.length && local.warnings.length) throw new Error(local.warnings[0]);
+        job = await apiClient.post('/sourcing/device/jobs', {name:jobName,params:criteria,candidates:local.results});
+        toast.success('Recherche locale terminée. Choisissez les entreprises à importer.');
+      } else {
+        job = await apiClient.post('/sourcing/jobs', {type:'multi',name:jobName,params:criteria});
+        toast.success('Recherche lancée. Les sources seront analysées indépendamment.');
+      }
       onLaunch(job);
-      toast.success('Recherche lancée. Les sources seront analysées indépendamment.');
       onClose();
     } catch (error: any) {
       toast.error(error.message ?? 'Import impossible');
@@ -185,7 +202,7 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus }: { onCl
                   <label className="block text-xs font-medium text-gray-500 mb-1">Résultats maximum par source (1 à 25)</label>
                   <input type="number" min={1} max={25} value={params.limit || '10'} onChange={e => setParam('limit', e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
                 </div>
-                {sources.includes('pagesjaunes') && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">PagesJaunes est interrogé par zone. Le navigateur privé fonctionne sans service cloud, mais un filtrage de l'IP du VPS ou un CAPTCHA peut toujours empêcher la collecte.</p>}
+                {sources.includes('pagesjaunes') && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">{deviceConnected ? '✓ Connecteur de cet appareil actif. PagesJaunes sera consulté depuis votre navigateur actuel. Gardez cet onglet ouvert jusqu’à la fin.' : '⚠ Connecteur non activé. La recherche passera par le navigateur du VPS, qui peut être bloqué par PagesJaunes (HTTP 403). Utilisez « Connecter cet appareil » sur la page précédente.'}</p>}
                 {<div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 space-y-3">
                   <div>
                     <h4 className="text-sm font-semibold text-gray-800">Zone de prospection *</h4>
@@ -224,6 +241,24 @@ export default function SourcingPage() {
   const [showNew, setShowNew] = useState(false);
   const [browserStatus, setBrowserStatus] = useState<'direct' | 'ready' | 'offline'>('direct');
   const [initialSource, setInitialSource] = useState('entreprises');
+  const [deviceConnected,setDeviceConnected] = useState(false);
+  const [deviceConnecting,setDeviceConnecting] = useState(false);
+  const mobileConnector = isMobileConnectorRequired();
+  const connectDevice = async () => {
+    if (mobileConnector) {
+      toast.info('Sur Android, une application compagnon est nécessaire. Le connecteur Chrome est pour ordinateur.');
+      return;
+    }
+    setDeviceConnecting(true);
+    try {
+      await pingLocalPagesJaunes();
+      setDeviceConnected(true);
+      toast.success('Extension Chrome connectée sur cet ordinateur !');
+    } catch(error:any) {
+      setDeviceConnected(false);
+      toast.error(error.message || 'Extension non détectée');
+    } finally {setDeviceConnecting(false);}
+  };
   const openSearch = (source = 'entreprises') => { setInitialSource(source); setShowNew(true); };
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -278,7 +313,7 @@ export default function SourcingPage() {
 
   return (
     <div className="min-h-screen p-6" style={{background:'var(--body-bg)'}}>
-      {showNew && <LaunchModal initialSource={initialSource} browserStatus={browserStatus} onClose={()=>setShowNew(false)} onLaunch={j=>{setJobs(js=>[j,...js]);navigate(`/sourcing/${j.id}`);}}/>}
+      {showNew && <LaunchModal initialSource={initialSource} browserStatus={browserStatus} deviceConnected={deviceConnected} onClose={()=>setShowNew(false)} onLaunch={j=>{setJobs(js=>[j,...js]);navigate(`/sourcing/${j.id}`);}}/>}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -323,6 +358,28 @@ export default function SourcingPage() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Connecteur appareil : jamais de permission ou de token partagé avec le navigateur tiers. */}
+      <div className="rounded-2xl border p-4 mb-5 flex flex-wrap items-center gap-3" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
+        <div className="flex-1 min-w-[220px]">
+          <div className="flex items-center gap-2 text-sm font-semibold" style={{color:'var(--text-primary)'}}>
+            {mobileConnector ? <Smartphone size={17}/> : <Laptop size={17}/>} Connecteur PagesJaunes sur cet appareil
+            {deviceConnected && <span className="rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs">Connecté</span>}
+          </div>
+          <p className="text-xs mt-1" style={{color:'var(--text-muted)'}}>
+            {mobileConnector ? 'Android : application compagnon à installer (pas encore disponible). La version Chrome ordinateur est prête à tester.'
+              : deviceConnected ? 'La prochaine recherche PagesJaunes utilisera ce Chrome. Les entreprises restent à sélectionner avant import.'
+              : 'Installez une fois l’extension Chrome, actualisez GrowthOS, puis cliquez sur « Connecter cet appareil ». Le VPS reste inchangé.'}
+          </p>
+        </div>
+        <a href="https://github.com/LePubli/growthOS/blob/fix/growthos-functional-redesign/docs/CONNECTEUR_APPAREIL.md" target="_blank" rel="noreferrer"
+          className="flex items-center gap-1 text-xs font-medium text-teal-700 hover:underline"><Link2 size={14}/> Installation</a>
+        <button onClick={connectDevice} disabled={deviceConnecting || mobileConnector}
+          className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+          style={{background:'var(--color-primary)'}}>
+          {deviceConnecting ? 'Connexion…' : deviceConnected ? 'Vérifier la connexion' : 'Connecter cet appareil'}
+        </button>
       </div>
 
       {/* Filters */}

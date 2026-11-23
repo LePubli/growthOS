@@ -257,6 +257,90 @@ async function runMultiSearch(jobId: string, tenantId: string, params: MultiPara
   }
 }
 
+// Import des résultats collectés dans le Chrome local, après validation côté serveur.
+// L'extension n'obtient jamais le JWT : c'est la page GrowthOS authentifiée qui poste les données.
+const deviceCandidateSchema = z.object({
+  id: z.string().trim().min(3).max(64),
+  company: z.string().trim().min(2).max(160),
+  address: z.string().trim().min(5).max(320),
+  codePostal: z.string().regex(/^\d{5}$/),
+  city: z.string().trim().max(120).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+  website: z.string().url().max(500).nullable().optional(),
+  sourceUrl: z.string().url().max(500).nullable().optional()
+    .refine(value => !value || (() => { const host = new URL(value).hostname; return host === "pagesjaunes.fr" || host.endsWith(".pagesjaunes.fr"); })(), "Fiche PagesJaunes requise"),
+  siret: z.string().regex(/^\d{14}$/).nullable().optional(),
+}).strict();
+const deviceSearchSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  params: z.object({
+    sources: z.array(z.enum(["entreprises", "pagesjaunes"])).min(1).max(2)
+      .refine(items => items.includes("pagesjaunes") && new Set(items).size === items.length),
+    query: z.string().trim().min(3).max(120),
+    regions: z.array(z.string().regex(/^\d{2}$/)).max(18).default([]),
+    departements: z.array(z.string().regex(/^(?:\d{2}|2A|2B|97\d)$/)).max(101).default([]),
+    codesPostaux: z.array(z.string().regex(/^\d{5}$/)).max(25).default([]),
+    limit: z.coerce.number().int().min(1).max(25).default(10),
+  }).refine(p => p.regions.length + p.departements.length + p.codesPostaux.length > 0),
+  candidates: z.array(deviceCandidateSchema).max(25),
+}).strict();
+
+router.post("/device/jobs", requireAuth, async (req, res) => {
+  const parsed = deviceSearchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Résultats locaux invalides", details: parsed.error.issues }); return;
+  }
+  const { name, params, candidates } = parsed.data;
+  const seen = new Map<string, SearchCandidate>();
+  const localResults: SearchCandidate[] = [];
+  for (const item of candidates) {
+    if (!matchingGeo({ code_postal: item.codePostal }, params)) continue;
+    const candidate: SearchCandidate = {
+      ...item, siren: item.siret?.slice(0, 9) || "", siret: item.siret || null,
+      city: item.city || null, phone: item.phone || null,
+      website: item.website || null, sourceUrl: item.sourceUrl || null,
+      source: "pagesjaunes", sources: ["pagesjaunes"],
+    };
+    const key = candidateKey(candidate);
+    if (seen.has(key)) continue;
+    seen.set(key, candidate);
+    localResults.push(candidate);
+    if (localResults.length >= params.limit) break;
+  }
+  const sourceStatuses: NonNullable<SavedParams["sourceStatuses"]> = {
+    pagesjaunes: { status: "completed", count: localResults.length },
+  };
+  let error: string | null = null;
+  if (params.sources.includes("entreprises")) {
+    try {
+      const official = await searchFrenchCompanies(params);
+      sourceStatuses.entreprises = { status: "completed", count: official.length };
+      for (const record of official) {
+        const key = candidateKey(record);
+        if (seen.has(key)) {
+          const prior = seen.get(key)!;
+          prior.sources = [...new Set([...(prior.sources || []), "entreprises"])];
+          prior.siren ||= record.siren;
+          prior.siret ||= record.siret;
+        } else {
+          seen.set(key, { ...record, source: "entreprises", sources: ["entreprises"] });
+        }
+      }
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : "Annuaire indisponible";
+      sourceStatuses.entreprises = { status: "error", error };
+    }
+  }
+  const results = [...seen.values()].slice(0, 50);
+  const [job] = await db.insert(sourcingJobsTable).values({
+    type: "multi", name, tenantId: req.auth!.tenantId, createdBy: req.auth!.userId,
+    status: "completed", count: results.length, progress: 100,
+    params: { ...params, results, sourceStatuses, collectionMode: "device" },
+    duration: "Navigateur local", error,
+  }).returning();
+  res.status(201).json(job);
+});
+
 router.get("/sources/status", requireAuth, async (_req, res) => {
   const configured = process.env.PAGESJAUNES_BROWSER_URL?.trim();
   if (!configured) { res.json({ pagesjaunes: { mode: "direct", browserReady: false } }); return; }

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "GrowthOS — Connecteur PagesJaunes",
+  "version": "0.1.0",
+  "description": "Recherche PagesJaunes depuis votre propre navigateur pour GrowthOS, avec import manuel des résultats.",
+  "permissions": [
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.pagesjaunes.fr/*",
+    "https://pagesjaunes.fr/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://agile.le-publicitaire.fr/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

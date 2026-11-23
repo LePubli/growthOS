@@ -65,6 +65,12 @@ jobs:
       - name: Validate in-house Chromium worker syntax
         run: node --check workers/pagesjaunes-browser/server.mjs
 
+      - name: Validate local Chrome extension scripts
+        run: |
+          node --check extensions/growthos-pagesjaunes/bridge.js
+          node --check extensions/growthos-pagesjaunes/background.js
+          node -e 'const m=require("./extensions/growthos-pagesjaunes/manifest.json"); if(m.manifest_version!==3 || m.host_permissions.some(p=>!p.includes("pagesjaunes.fr")))process.exit(1)'
+
       - name: Build API for integration tests
         run: pnpm --filter @workspace/api-server build
 
