@@ -459,9 +459,9 @@ async function addToQueue(items, manual=false, verifiedSiret=false){
   return {ok:true,added,ignored,results:queue,warnings:[]};
 }
 
-// Identification des brouillons depuis l'extension : seule l'API officielle
-// recherche-entreprises.api.gouv.fr est consultée. Le code postal saisi sert
-// de FILTRE ; l'adresse n'est reprise que depuis la réponse officielle.
+// Enrichissement conservateur : répertoire national des entreprises ou
+// Géoplateforme/BAN pour une rue ET un numéro déjà visibles dans la carte.
+// Le code postal saisi n'est qu'un filtre, jamais une preuve à lui seul.
 function normalizeBusiness(value){
   return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -477,6 +477,46 @@ function normalizeStreet(value){
     .toLowerCase().replace(/\b(?:av|ave)\.?\b/g,'avenue')
     .replace(/\bbd\.?\b/g,'boulevard').replace(/\br\.?\b/g,'rue')
     .replace(/[^a-z0-9]/g,'');
+}
+function visibleStreetNumber(value){
+  const text=String(value||'').replace(/\s+/g,' ').trim();
+  const match=text.match(/\b(\d{1,4})(?:\s*(?:bis|ter))?\s+(?:rue|r\.?|avenue|av\.?|boulevard|bd\.?|place|route|rte\.?|chemin|all[eé]e|impasse|quai|square)\s+[^,;·•]{3,90}/i);
+  return match?match[0].replace(/\s+\d{5}\b.*$/,'').trim():null;
+}
+async function fetchOfficialJson(url,timeoutMs=4500){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const response=await fetch(url.href,{headers:{Accept:'application/json'},signal:controller.signal});
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    return await response.json();
+  }finally{clearTimeout(timer);}
+}
+async function geocodeVisibleStreet(draft,postal){
+  const partial=visibleStreetNumber(draft.address);
+  if(!partial)return null;
+  const url=new URL('https://data.geopf.fr/geocodage/search');
+  url.searchParams.set('q',[partial,draft.city||''].filter(Boolean).join(' '));
+  url.searchParams.set('postcode',postal);
+  url.searchParams.set('type','housenumber');
+  url.searchParams.set('limit','5');
+  const response=await fetchOfficialJson(url);
+  if(!Array.isArray(response.features))throw new Error('Format du géocodeur incorrect');
+  const exact=[];
+  for(const feature of response.features){
+    const item=feature?.properties||{};
+    if(item.type!=='housenumber'||String(item.postcode||'')!==postal)continue;
+    if(Number(item.score??item._score??0)<0.85)continue;
+    const verifiedStreet=[item.housenumber,item.street].filter(Boolean).join(' ');
+    if(normalizeStreet(partial)!==normalizeStreet(verifiedStreet))continue;
+    if(draft.city && normalizeBusiness(draft.city)!==normalizeBusiness(item.city))continue;
+    const address=String(item.label||'').trim();
+    const city=String(item.city||'').trim();
+    if(!address.includes(postal)||!city||address.length>320)continue;
+    if(!exact.some(e=>normalizeStreet(e.address)===normalizeStreet(address)))
+      exact.push({address,codePostal:postal,city,siret:null});
+  }
+  return exact.length===1?exact[0]:null;
 }
 function verifiedOfficialMatch(draft,records,postal){
   const distinctive=normalizeBusiness(draft.company);
@@ -522,29 +562,44 @@ async function enrichLocalDrafts(payload){
   const savedCursor=(await chrome.storage.local.get(ENRICH_CURSOR_KEY))[ENRICH_CURSOR_KEY];
   const start=(Number.isInteger(savedCursor)&&savedCursor>=0?savedCursor:0)%drafts.length;
   const batch=[...drafts.slice(start),...drafts.slice(0,start)].slice(0,12);
-  const matched=[];const errors=[];
+  const matched=[];const errors=[],details=[];let fromDirectory=0,fromGeocoder=0;
   let already=0;
   for(const draft of batch){
     const query=String(draft.company||'').trim();
     if(!query){continue;}
+    let result=null,reason='';
+    // Une rue et un numéro affichés dans Google sont une preuve locale plus
+    // forte qu'un simple nom commercial. La BAN confirme l'adresse, pas le SIRET.
+    if(visibleStreetNumber(draft.address)){
+      try{
+        result=await geocodeVisibleStreet(draft,postal);
+        if(result)fromGeocoder++;
+        else reason='Rue et numéro non confirmés de façon unique par la BAN';
+      }catch(error){
+        reason='Géocodeur indisponible : '+String(error?.message||error).slice(0,70);
+        errors.push(query+' : '+reason);
+      }
+    }
+    if(result){matched.push({...draft,...result});continue;}
     try{
       const url=new URL('https://recherche-entreprises.api.gouv.fr/search');
       url.searchParams.set('q',query);
       url.searchParams.set('code_postal',postal);
       url.searchParams.set('per_page','25');
-      const controller=new AbortController();
-      const timer=setTimeout(()=>controller.abort(),5000);
-      let response;
-      try{response=await fetch(url.href,{headers:{Accept:'application/json'},signal:controller.signal});}
-      finally{clearTimeout(timer);}
-      if(!response.ok)throw new Error('Annuaire officiel HTTP '+response.status);
-      const body=await response.json();
+      const body=await fetchOfficialJson(url,5000);
       if(!Array.isArray(body.results))throw new Error('Format de réponse de l’annuaire incorrect');
       // Résultats tronqués : on ne peut plus prouver l'unicité.
-      if(Number(body.total_results||0)>25)continue;
-      const match=verifiedOfficialMatch(draft,body.results,postal);
-      if(match)matched.push({...draft,...match});
-    }catch(error){errors.push(query+' : '+String(error?.message||error).slice(0,90));}
+      const truncated=Number(body.total_results||0)>25||body.results.length>=25;
+      const match=truncated?null:verifiedOfficialMatch(draft,body.results,postal);
+      if(match){matched.push({...draft,...match});fromDirectory++;}
+      else details.push({company:query,reason:truncated?'Trop de résultats officiels : identité ambiguë':
+        reason||(!visibleStreetNumber(draft.address)
+          ? 'Google ne montre pas de rue numérotée ; aucun nom légal unique confirmé'
+          : 'Nom commercial absent de l’annuaire ou plusieurs sociétés possibles')});
+    }catch(error){
+      errors.push(query+' : '+String(error?.message||error).slice(0,90));
+      details.push({company:query,reason:reason||'Annuaire indisponible : '+String(error?.message||error).slice(0,70)});
+    }
     await wait(300);
   }
   const saved=matched.length?await addToQueue(matched,false,true):{added:0,ignored:0};
@@ -555,7 +610,8 @@ async function enrichLocalDrafts(payload){
   }
   await chrome.storage.local.set({[ENRICH_CURSOR_KEY]:(start+batch.length)%drafts.length});
   return {ok:true,checked:batch.length,added:saved.added||0,already,
-    pending:batch.length-matched.length,skipped:Math.max(0,drafts.length-batch.length),errors};
+    pending:batch.length-matched.length,skipped:Math.max(0,drafts.length-batch.length),
+    fromDirectory,fromGeocoder,details:details.slice(0,12),errors};
 }
 async function popupAction(message){
   const action=message.action;

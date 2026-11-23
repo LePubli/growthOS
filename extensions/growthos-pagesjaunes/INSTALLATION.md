@@ -1,4 +1,4 @@
-# Connecteur multisource GrowthOS — version 0.5.1
+# Connecteur multisource GrowthOS — version 0.5.2
 
 L'extension fonctionne dans **Chrome sur l'appareil de l'utilisateur** (ordinateur).
 Les images Docker de GrowthOS sont construites par GitHub Actions, pas sur le VPS.
@@ -28,7 +28,7 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 
 1. Récupérer **le dossier complet** `extensions/growthos-pagesjaunes` depuis la branche `fix/growthos-functional-redesign`, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`.
 2. Remplacer le contenu de votre dossier d'extension Chrome local (sans changer le chemin du dossier chargé dans Chrome).
-3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.5.1** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Cette mise à jour demande aussi la permission limitée au site officiel `recherche-entreprises.api.gouv.fr`.
+3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.5.2** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Cette mise à jour demande aussi l'autorisation limitée au géocodeur officiel `data.geopf.fr` et à l'annuaire `recherche-entreprises.api.gouv.fr`.
 4. Garder Chrome et l'onglet `https://agile.le-publicitaire.fr` ouverts.
 5. Dans GrowthOS, ouvrir **Trouver des entreprises**, cliquer sur **Connecter cet appareil** si nécessaire, puis choisir les sources. Pour Google et Bing, le nouvel onglet doit être ouvert manuellement depuis le panneau de l'extension.
 6. Pour les fiches déjà importées depuis PagesJaunes, **Compléter depuis PagesJaunes** reste opérationnel.
@@ -37,7 +37,11 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 
 - Dans Google Maps, **ouvrez d'abord une fiche entreprise précise** dans la liste : le panneau détaillé expose souvent l'adresse postale complète. Cliquez ensuite sur **Capturer les fiches visibles**.
 - Pour les cartes sans adresse complète, l'extension conserve le nom, le téléphone et la rue partielle réellement affichés dans **Fiches à vérifier**.
-- Saisissez un code postal unique dans le champ **Ville, département ou code postal** du popup, puis cliquez sur **Enrichir les fiches à vérifier (annuaire officiel)**. L'extension recherche au plus 12 fiches par clic, compare strictement le nom, la ville et toute rue partielle, et récupère une adresse et un SIRET uniquement si une correspondance officielle unique est confirmée. Les fiches validées passent dans **Sélection locale** ; aucun prospect n'est importé automatiquement.
+- Saisissez un code postal unique dans le champ **Ville, département ou code postal** du popup, puis cliquez sur **Vérifier les adresses (BAN + annuaire officiel)**. L'extension recherche au plus 12 fiches par clic et essaie deux vérifications distinctes :
+  1. Si Google fournit **une rue et un numéro**, la Géoplateforme confirme leur correspondance avec une adresse de la Base Adresse Nationale (BAN). Cette méthode ne prouve pas l'identité légale et ne fournit pas de SIRET.
+  2. Sinon, l'Annuaire des entreprises doit confirmer **une unique entreprise au nom correspondant exactement** et une adresse dans la zone indiquée. Ici le SIRET peut être récupéré.
+  Les fiches confirmées passent dans **Sélection locale** ; aucun prospect n'est importé automatiquement. Pour les autres, ouvrez **Pourquoi certaines fiches restent à vérifier ?** afin de voir les blocages.
+- Si la liste Google n'affiche **ni numéro ni rue**, cliquez sur **Maps** devant une fiche à vérifier pour rechercher directement cette entreprise, puis ouvrez son panneau détaillé et capturez à nouveau. Aucune API officielle ne garantit de retrouver une adresse commerciale depuis le seul nom et le téléphone.
 - Dans GrowthOS, lancez la recherche multisource avec cette source : l'application rapproche les brouillons de l'Annuaire des entreprises ou des fiches locales vérifiées. Vous pouvez aussi cliquer sur **Enrichir automatiquement mes fiches** dans les résultats d'une recherche existante.
 - Les fiches identifiées de manière unique passent dans les résultats à sélectionner ; les autres restent **à vérifier**. Pour ces dernières, cliquez sur **Compléter** dans l'extension et ouvrez si besoin la fiche détaillée du professionnel sur le site source afin de vérifier sa rue, son code postal et sa ville.
 - Validez seulement après avoir indiqué une adresse complète contenant le code postal réel. Le simple texte de recherche « plombier 59100 » ne prouve pas que chaque entreprise a ce code postal.

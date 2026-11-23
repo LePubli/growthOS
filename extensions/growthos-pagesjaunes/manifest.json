@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GrowthOS — Connecteur multisource",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Collecte locale PagesJaunes et capture volontaire de fiches Google, Bing et saisie LinkedIn sans accès aux mots de passe.",
   "permissions": [
     "tabs",
@@ -16,7 +16,8 @@
   "host_permissions": [
     "https://www.pagesjaunes.fr/*",
     "https://pagesjaunes.fr/*",
-    "https://recherche-entreprises.api.gouv.fr/*"
+    "https://recherche-entreprises.api.gouv.fr/*",
+    "https://data.geopf.fr/*"
   ],
   "background": {
     "service_worker": "background.js"

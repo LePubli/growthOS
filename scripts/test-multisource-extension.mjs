@@ -11,6 +11,8 @@ assert.ok(!manifest.host_permissions.some(host=>/linkedin|google|bing/.test(host
   'La lecture manuelle utilise activeTab : pas de permissions permanentes Google/LinkedIn/Bing');
 assert.ok(manifest.host_permissions.includes('https://recherche-entreprises.api.gouv.fr/*'),
   'L’enrichissement officiel utilise une permission limitée au seul annuaire public');
+assert.ok(manifest.host_permissions.includes('https://data.geopf.fr/*'),
+  'La validation des rues partielles utilise le géocodeur officiel de la Géoplateforme');
 
 const captureScript=readFileSync(new URL('capture.js',root),'utf8');
 function capture(url,hasAddress=true,localPack=false){
@@ -82,6 +84,8 @@ const opened=[];
 let injectedResult=googleLocal;
 let officialResults=[];
 const officialRequests=[];
+const geocodeRequests=[];
+let geocodeResponse={features:[]};
 const chrome={
   runtime:{getURL:(path='')=>'chrome-extension://unit-test/'+path,
     onMessage:{addListener:fn=>{listener=fn;}}},
@@ -93,8 +97,13 @@ const chrome={
 vm.runInNewContext(readFileSync(new URL('background.js',root),'utf8'),
   {chrome,URL,crypto:webcrypto,Date,setTimeout,clearTimeout,Promise,console,AbortController,
     fetch:async url=>{
+      const request=new URL(url);
+      if(request.hostname==='data.geopf.fr'){
+        geocodeRequests.push(String(url));
+        return {ok:true,json:async()=>geocodeResponse};
+      }
       officialRequests.push(String(url));
-      assert.equal(new URL(url).hostname,'recherche-entreprises.api.gouv.fr');
+      assert.equal(request.hostname,'recherche-entreprises.api.gouv.fr');
       return {ok:true,json:async()=>({total_results:officialResults.length,results:officialResults})};
     }},{timeout:1500});
 const sender={url:'chrome-extension://unit-test/popup.html'};
@@ -159,9 +168,29 @@ const verified=(await send('get-captures',null,growthos)).results.find(r=>r.comp
 assert.equal(verified.address,'35 AVENUE JEAN LEBAS 59100 ROUBAIX');
 assert.equal(verified.siret,'12345678901234');
 assert.ok(officialRequests.every(url=>new URL(url).searchParams.get('code_postal')==='59100'));
+injectedResult={source:'google_search',results:[],drafts:[{
+  source:'google_search',company:'Boulangerie Exemple',address:'18 rue de Lille',
+  city:'Roubaix',phone:'03 20 01 02 03',sourceUrl:'https://www.google.com/search?q=boulangerie+exemple',
+}]};
+assert.equal((await send('capture-tab')).draftAdded,1);
+officialResults=[];
+geocodeResponse={features:[{properties:{label:'19 Rue de Lille 59100 Roubaix',
+  housenumber:'19',street:'Rue de Lille',postcode:'59100',city:'Roubaix',score:0.99,type:'housenumber'}}]};
+const badGeocode=await send('enrich-local-drafts',{area:'59100 Roubaix'});
+assert.equal(badGeocode.added,0,'Le géocodeur ne doit pas inventer un autre numéro de rue');
+assert.ok(badGeocode.details[0]?.reason,'Les raisons des échecs doivent être visibles dans le connecteur');
+geocodeResponse={features:[{properties:{label:'18 Rue de Lille 59100 Roubaix',
+  housenumber:'18',street:'Rue de Lille',postcode:'59100',city:'Roubaix',score:0.97,type:'housenumber'}}]};
+const geocoded=await send('enrich-local-drafts',{area:'59100 Roubaix'});
+assert.equal(geocoded.added,1,'La BAN confirme une adresse affichée partiellement sur Google');
+assert.equal(geocoded.fromGeocoder,1);
+const geocodedItem=(await send('get-captures',null,growthos)).results.find(r=>r.company==='Boulangerie Exemple');
+assert.equal(geocodedItem.address,'18 Rue de Lille 59100 Roubaix');
+assert.equal(geocodedItem.siret,null,'Le géocodage ne prouve aucun identifiant SIRET');
+assert.ok(geocodeRequests.every(url=>new URL(url).searchParams.get('postcode')==='59100'));
 for(const item of storage.growthos_verified_captures_v1)item.capturedAt=Date.now()-25*60*60*1000;
 assert.equal((await send('get-captures',null,growthos)).results.length,0,
   'Les captures expirées ne sortent pas de l’extension');
 const cleared=await send('clear-captures');
 assert.equal(cleared.results.length,0);
-console.log('✓ MV3, fiche Maps détaillée, enrichissement INSEE conservateur, URLs, expiration et isolation GrowthOS');
+console.log('✓ MV3, fiche Maps détaillée, BAN/INSEE conservateurs, URLs, expiration et isolation GrowthOS');

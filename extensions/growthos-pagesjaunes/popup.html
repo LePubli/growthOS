@@ -39,8 +39,9 @@
       <button type="button" class="primary teal" id="capture">⤓ Capturer les fiches visibles</button>
       <p class="hint">Pour Maps, ouvrez une entreprise dans la liste pour afficher sa fiche complète, puis capturez. Les cartes de liste peuvent ne pas afficher le code postal.</p>
       <div class="draft-title"><strong>Fiches à vérifier <span class="count amber" id="draftCount">0</span></strong><span>Adresse manquante</span></div>
-      <button type="button" class="secondary enrich" id="autoEnrich">✦ Enrichir les fiches à vérifier (annuaire officiel)</button>
-      <p class="hint">Utilise le code postal du champ « Zone » et cherche une entreprise unique dans l’annuaire officiel. Si l’adresse n’est pas vérifiable, la fiche reste à compléter. Aucun import automatique.</p>
+      <button type="button" class="secondary enrich" id="autoEnrich">✦ Vérifier les adresses (BAN + annuaire officiel)</button>
+      <p class="hint">Le numéro et la rue réellement affichés peuvent être vérifiés auprès de la Base Adresse Nationale. Sans rue, seule une correspondance d’entreprise officielle certaine est acceptée. Aucun import automatique.</p>
+      <details id="diagnosticPanel" hidden><summary>Pourquoi certaines fiches restent à vérifier ?</summary><div id="diagnostics" class="diagnostics"></div></details>
       <div id="drafts" class="draft-list"><p class="empty">Aucun brouillon</p></div>
       <details id="manualPanel">
         <summary>+ Compléter ou ajouter une fiche vérifiée</summary>
