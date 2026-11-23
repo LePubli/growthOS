@@ -81,8 +81,15 @@ export async function getLocalCaptures(): Promise<LocalCompany[]> {
 }
 /** Brouillons locaux (jamais importables tant qu'une adresse n'est pas vérifiée). */
 export async function getLocalDrafts(): Promise<LocalDraft[]> {
-  const response = await askExtension('get-drafts');
-  return response.drafts.filter(item => ['google_maps','google_search','bing'].includes(item.source));
+  try {
+    const response = await askExtension('get-drafts');
+    return response.drafts.filter(item => ['google_maps','google_search','bing'].includes(item.source));
+  } catch {
+    // Le pont de l'extension 0.4.1 ignore cette action et expire après 2 s.
+    // Conserver les captures vérifiées de cette version jusqu'à la migration
+    // vers l'extension 0.5 (le ping et get-captures restent vérifiés séparément).
+    return [];
+  }
 }
 export function searchLocalPagesJaunes(payload: {query:string;locations:string[];limit:number}) {
   // 8 zones * (chargement 25s + pause 5s), plus marge pour la recherche.
