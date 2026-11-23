@@ -46,6 +46,15 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
       { key:'limit', label:'Nombre max.', placeholder:'100', type:'number' },
     ],
   },
+  pagesjaunes: {
+    name: 'PagesJaunes.fr', icon: '📒',
+    desc: 'Professionnels locaux — accès partenaire Solocal requis', color: '#EAB308',
+    fields: [
+      { key: 'query', label: 'Activité / métier', placeholder: 'Ex : artisans, restaurants' },
+      { key: 'location', label: 'Ville ou département', placeholder: 'Ex : Lille, 59' },
+      { key: 'limit', label: 'Nombre de résultats', placeholder: '10', type: 'number' },
+    ],
+  },
   twitter: {
     name:'Twitter / X', icon:'🐦', desc:'Signaux sociaux, mentions et profils', color:'#1D9BF0',
     fields:[
@@ -142,10 +151,11 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
                     <div className="text-2xl mb-2">{t.icon}</div>
                     <div className="font-semibold text-sm text-gray-900 mb-0.5">{t.name}</div>
                     <div className="text-xs text-gray-400">{t.desc}</div>
-                    {!SUPPORTED_TYPES.has(id) && <div className="text-xs text-amber-700 mt-1">Intégration non disponible</div>}
+                    {!SUPPORTED_TYPES.has(id) && <div className="text-xs text-amber-700 mt-1">{id === 'pagesjaunes' ? 'Accord/API partenaire Solocal nécessaire' : 'Intégration non disponible'}</div>}
                   </button>
                 ))}
               </div>
+              <p className="text-xs text-gray-500 mb-4">PagesJaunes.fr : l’extraction automatisée pour la prospection est interdite par ses conditions d’utilisation. <a className="text-teal-700 underline" href="https://developer.pagesjaunes.fr/" target="_blank" rel="noopener noreferrer">Demander un accès partenaire</a>.</p>
               <div className="flex gap-3">
                 <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
                 <button onClick={()=>setStep(2)} disabled={!type} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Suivant →</button>
