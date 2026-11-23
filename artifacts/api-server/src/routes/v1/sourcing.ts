@@ -174,14 +174,39 @@ function normalizedStreet(candidate: SearchCandidate): string | null {
   if (!candidate.address || !/^\d{5}$/.test(candidate.codePostal)) return null;
   const beforePostal = candidate.address
     .replace(/\s*Voir (?:le plan|l'itinéraire).*$/i, "")
-    .split(candidate.codePostal)[0]
-    .replace(/\b(?:r|r\.)\b/gi, "rue")
-    .replace(/\b(?:av|av\.)\b/gi, "avenue")
-    .replace(/\b(?:bd|bd\.)\b/gi, "boulevard")
-    .replace(/\b(?:pl|pl\.)\b/gi, "place")
-    .replace(/\b(?:rte|rte\.)\b/gi, "route");
-  const street = normalizedIdentity(beforePostal);
-  return street.length >= 5 ? street : null;
+    .split(candidate.codePostal)[0];
+  // Une adresse légale peut commencer par un complément :
+  // "MAISON 10 95 RUE DE L'EPEULE" doit se comparer à "95 rue Epeule".
+  // Le numéro est obligatoirement suivi d'un type de voie.
+  const road = beforePostal.match(/(?:^|\s)(\d{1,4}[a-z]?)\s+(rue|r|avenue|av|boulevard|bd|place|pl|route|rte|chemin|che|impasse|imp|allée|allee|quai)\.?\s+(.+)$/i);
+  if (!road) return null;
+  const typeAliases: Record<string,string> = {
+    r:"rue",av:"avenue",bd:"boulevard",pl:"place",rte:"route",
+    che:"chemin",imp:"impasse",allee:"allée",
+  };
+  const type = normalizedIdentity(typeAliases[road[2].toLowerCase()] || road[2]);
+  const streetTokens = road[3].normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/);
+  const articles = new Set(["de","du","des","la","le","les","l","d"]);
+  const street = streetTokens.filter(token => !articles.has(token))
+    .map(token => token === "st" ? "saint" : token === "ste" ? "sainte" : token)
+    .join("");
+  return street.length >= 4 ? normalizedIdentity(road[1]) + "|" + type + "|" + street : null;
+}
+function businessNamesMatch(a: string, b: string): boolean {
+  // Un nom d'usage officiel peut être indiqué entre parenthèses :
+  // "OULAID BEN BOUDINA (BEN PLOMBIER)" et "Ben Plombier".
+  // Aucun rapprochement par sous-chaîne approximative ou mot-clé générique.
+  const names = (label: string) => {
+    const variants = [normalizedIdentity(label)];
+    for (const match of label.matchAll(/\(([^()]+)\)/g)) {
+      const alias = normalizedIdentity(match[1]);
+      if (alias.length >= 6) variants.push(alias);
+    }
+    return variants;
+  };
+  const left = new Set(names(a));
+  return names(b).some(name => name.length >= 6 && left.has(name));
 }
 function isSameCompany(a: SearchCandidate, b: SearchCandidate): boolean {
   const aSiren = /^\d{9}$/.test(a.siren) ? a.siren : null;
@@ -193,8 +218,7 @@ function isSameCompany(a: SearchCandidate, b: SearchCandidate): boolean {
   const aStreet = normalizedStreet(a);
   const bStreet = normalizedStreet(b);
   return Boolean(aStreet && bStreet && aStreet === bStreet
-    && a.codePostal === b.codePostal
-    && normalizedIdentity(a.company) === normalizedIdentity(b.company));
+    && a.codePostal === b.codePostal && businessNamesMatch(a.company,b.company));
 }
 function mergeCompany(target: SearchCandidate, other: SearchCandidate): void {
   target.sources = [...new Set([

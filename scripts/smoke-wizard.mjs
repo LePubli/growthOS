@@ -120,8 +120,18 @@ async function awaitApi(timeoutMs = 90000) {
 
 const companies = createServer((req, res) => {
   if (!req.url?.startsWith("/search?")) { res.writeHead(404).end(); return; }
-  if (new URL(req.url, 'http://localhost').searchParams.get("q") === "official-down") {
+  const directoryQuery = new URL(req.url, 'http://localhost').searchParams.get("q");
+  if (directoryQuery === "official-down") {
     res.writeHead(503).end(); return;
+  }
+  if (directoryQuery === "alias-check") {
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ results: [
+      { siren:"200000001",nom_complet:"OULAID BEN BOUDINA (BEN PLOMBIER)",
+        siege:{siret:"20000000100012",adresse:"21 RUE DE CASSEL 59100 ROUBAIX",code_postal:"59100",libelle_commune:"Roubaix"} },
+      { siren:"200000002",nom_complet:"HASSAN AMJOUN (NORD PLOMBIER - NORD BRILLANCE)",
+        siege:{siret:"20000000200015",adresse:"MAISON 10 95 RUE DE L'EPEULE 59100 ROUBAIX",code_postal:"59100",libelle_commune:"Roubaix"} },
+    ] })); return;
   }
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ results: [
@@ -357,6 +367,47 @@ try {
   }, token);
   check(conflictingIdentity.status === 201 && conflictingIdentity.body.count === 3,
     "Deux SIREN contradictoires ne sont jamais fusionnés sur le seul nom et la seule adresse");
+
+  const aliasParams = {...localParams,query:"alias-check",codesPostaux:["59100"]};
+  const benPlombier = {...localCandidate,id:"pj_local_ben",company:"Ben Plombier",
+    address:"21 rue Cassel 59100 Roubaix",city:"Roubaix",codePostal:"59100",
+    sourceUrl:"https://www.pagesjaunes.fr/pros/22000001"};
+  const nordBrillance = {...localCandidate,id:"pj_local_nord",company:"Nord Plombier - Nord Brillance",
+    address:"95 rue Epeule 59100 Roubaix",city:"Roubaix",codePostal:"59100",
+    sourceUrl:"https://www.pagesjaunes.fr/pros/22000002"};
+  const aliasJob = await request("POST", "/sourcing/device/jobs", {
+    name:"Enseignes locales et noms juridiques",params:aliasParams,
+    candidates:[benPlombier,nordBrillance],
+  },token);
+  check(aliasJob.status === 201 && aliasJob.body.count === 2 &&
+    aliasJob.body.params.sourceStatuses.pagesjaunes.count === 2 &&
+    aliasJob.body.params.sourceStatuses.entreprises.count === 2,
+    "Deux enseignes rapprochées à deux identités légales par alias exact et rue malgré variations d'adresse");
+  const aliasResults = await request("GET", `/sourcing/jobs/${aliasJob.body.id}/results`,undefined,token);
+  const mergedBen = aliasResults.body.data?.find(row => row.company === "Ben Plombier");
+  const mergedNord = aliasResults.body.data?.find(row => row.company === "Nord Plombier - Nord Brillance");
+  check(aliasResults.body.total === 2 &&
+    mergedBen?.id === benPlombier.id && mergedBen.siren === "200000001" &&
+    mergedBen.siret === "20000000100012" && mergedBen.sourceUrl === benPlombier.sourceUrl &&
+    mergedNord?.id === nordBrillance.id && mergedNord.siren === "200000002" &&
+    mergedNord.siret === "20000000200015" &&
+    [mergedBen,mergedNord].every(row =>
+      row?.sources?.includes("pagesjaunes") && row?.sources?.includes("entreprises") && !row.imported),
+    "Enseignes PagesJaunes conservées, SIREN/SIRET officiels ajoutés, provenance double et aucun import automatique");
+
+  const noStreetMatch = await request("POST", "/sourcing/device/jobs", {
+    name:"Adresse différente : ne pas fusionner",params:aliasParams,
+    candidates:[{...benPlombier,id:"pj_local_wrongstreet",address:"21 avenue Cassel 59100 Roubaix"}],
+  },token);
+  check(noStreetMatch.status === 201 && noStreetMatch.body.count === 3,
+    "Nom commercial exact mais voie différente : aucun rapprochement hasardeux");
+
+  const noAliasMatch = await request("POST", "/sourcing/device/jobs", {
+    name:"Nom approximatif : ne pas fusionner",params:aliasParams,
+    candidates:[{...benPlombier,id:"pj_local_wrongname",company:"Ben Plomberie"}],
+  },token);
+  check(noAliasMatch.status === 201 && noAliasMatch.body.count === 3,
+    "Nom ressemblant mais non identique à l'enseigne juridique : aucun rapprochement approximatif");
 
   const unavailableOfficial = await request("POST", "/sourcing/device/jobs", {
     name:"Annuaire temporairement indisponible",
