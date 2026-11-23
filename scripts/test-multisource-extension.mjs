@@ -9,6 +9,8 @@ assert.equal(manifest.manifest_version,3);
 assert.equal(manifest.action.default_popup,'popup.html');
 assert.ok(!manifest.host_permissions.some(host=>/linkedin|google|bing/.test(host)),
   'La lecture manuelle utilise activeTab : pas de permissions permanentes Google/LinkedIn/Bing');
+assert.ok(manifest.host_permissions.includes('https://recherche-entreprises.api.gouv.fr/*'),
+  'L’enrichissement officiel utilise une permission limitée au seul annuaire public');
 
 const captureScript=readFileSync(new URL('capture.js',root),'utf8');
 function capture(url,hasAddress=true,localPack=false){
@@ -40,22 +42,61 @@ assert.equal(googleLocal.drafts.length,1);
 assert.equal(googleLocal.drafts[0].company,'Leclerc & Chéry Valnegreen');
 assert.equal(googleLocal.drafts[0].phone,'03 20 70 48 97');
 assert.equal(googleLocal.drafts[0].codePostal,null);
+const partialCard={innerText:'France Dépannage\nPlombier · 35 Av. Jean Lebas\nRoubaix\n03 20 70 48 97',
+  getClientRects:()=>[{}],querySelector:()=>null,querySelectorAll:()=>[],closest:()=>null};
+const partialDocument={body:partialCard,querySelectorAll:selector=>selector==='[role="article"]'?[partialCard]:[],querySelector:()=>null};
+const partial=vm.runInNewContext(captureScript,{document:partialDocument,
+  location:new URL('https://www.google.com/maps/search/plombier+59100'),URL,
+  getComputedStyle:()=>({visibility:'visible'})},{timeout:1000});
+assert.equal(partial.results.length,0,'La rue seule ne prouve pas le code postal');
+assert.equal(partial.drafts[0].address,'35 Av. Jean Lebas',
+  'La rue affichée doit être conservée pour vérifier le rapprochement officiel');
+// Une fiche Maps détaillée possède une vraie adresse dans son bouton Adresse.
+// Ne jamais confondre le CP présent dans la requête avec celui du panneau.
+const detailsTitle={innerText:'France Dépannage',getClientRects:()=>[{}]};
+const addressControl={innerText:'35 Avenue Jean Lebas, 59100 Roubaix',
+  getAttribute:key=>key==='aria-label'?'Adresse : 35 Avenue Jean Lebas, 59100 Roubaix':null,
+  matches:selector=>selector==='[data-item-id="address"]',getClientRects:()=>[{}]};
+const detailsPanel={innerText:'France Dépannage\n35 Avenue Jean Lebas, 59100 Roubaix\n03 20 70 48 97',
+  getClientRects:()=>[{}],
+  querySelector:selector=>selector==='h1'?detailsTitle:
+    selector.startsWith('button[data-item-id^="phone"')?{getAttribute:()=> 'Téléphone : 03 20 70 48 97'}:
+    selector.startsWith('a[data-item-id="authority"')?{href:'https://example-pro.fr'}:null,
+  querySelectorAll:selector=>selector.includes('[data-item-id="address"]')?[addressControl]:[],
+};
+const detailsDocument={body:detailsPanel,querySelector:selector=>selector==='[role="main"]'?detailsPanel:null,
+  querySelectorAll:()=>[]};
+const details=vm.runInNewContext(captureScript,{document:detailsDocument,
+  location:new URL('https://www.google.com/maps/place/France-Depannage/'),URL,
+  getComputedStyle:()=>({visibility:'visible'})},{timeout:1000});
+assert.equal(details.results.length,1);
+assert.equal(details.results[0].codePostal,'59100');
+assert.equal(details.results[0].company,'France Dépannage');
+assert.equal(details.results[0].phone,'03 20 70 48 97');
 assert.ok(capture('https://www.linkedin.com/company/test').error,
   'Aucun scraping LinkedIn par le lecteur de pages');
 
 let listener;
 const storage={};
 const opened=[];
+let injectedResult=googleLocal;
+let officialResults=[];
+const officialRequests=[];
 const chrome={
   runtime:{getURL:(path='')=>'chrome-extension://unit-test/'+path,
     onMessage:{addListener:fn=>{listener=fn;}}},
   storage:{local:{get:async key=>({[key]:storage[key]}),set:async changes=>{Object.assign(storage,changes);}}},
   tabs:{create:async data=>{opened.push(data);return{id:12};},
     query:async()=>[{id:42,url:'https://www.google.com/search?q=plombier%2059100'}]},
-  scripting:{executeScript:async()=>[{result:googleLocal}]},
+  scripting:{executeScript:async()=>[{result:injectedResult}]},
 };
 vm.runInNewContext(readFileSync(new URL('background.js',root),'utf8'),
-  {chrome,URL,crypto:webcrypto,Date,setTimeout,clearTimeout,Promise,console},{timeout:1500});
+  {chrome,URL,crypto:webcrypto,Date,setTimeout,clearTimeout,Promise,console,AbortController,
+    fetch:async url=>{
+      officialRequests.push(String(url));
+      assert.equal(new URL(url).hostname,'recherche-entreprises.api.gouv.fr');
+      return {ok:true,json:async()=>({total_results:officialResults.length,results:officialResults})};
+    }},{timeout:1500});
 const sender={url:'chrome-extension://unit-test/popup.html'};
 const growthos={url:'https://agile.le-publicitaire.fr/sourcing'};
 function send(action,payload,from=sender){
@@ -91,9 +132,36 @@ const completed=await send('manual-add',{source:draft.source,draftId:draft.id,co
 assert.equal(completed.added,1);
 assert.equal((await send('list-drafts')).drafts.length,0);
 assert.equal((await send('get-captures',null,growthos)).results.length,2);
+injectedResult={source:'google_maps',results:[],drafts:[{
+  source:'google_maps',company:'Entreprise Test Vérifiée',address:'35 Av. Jean Lebas',
+  city:'Roubaix',phone:null,sourceUrl:'https://www.google.com/maps/place/entreprise-test',
+}]};
+assert.equal((await send('capture-tab')).draftAdded,1);
+const officialSite={adresse:'35 AVENUE JEAN LEBAS 59100 ROUBAIX',code_postal:'59100',
+  libelle_commune:'ROUBAIX',siret:'12345678901234'};
+officialResults=[{nom_complet:'ENTREPRISE TEST VÉRIFIÉE',matching_etablissements:[officialSite,
+  {...officialSite,siret:'12345678905678'}]}];
+assert.equal((await send('enrich-local-drafts',{area:'Roubaix'})).ok,false,
+  'Un code postal non vérifié n’est jamais inféré de la ville');
+const ambiguous=await send('enrich-local-drafts',{area:'59100 Roubaix'});
+assert.equal(ambiguous.added,0,'Deux établissements homonymes empêchent l’enrichissement automatique');
+assert.equal((await send('list-drafts')).drafts.length,1);
+officialResults=[{nom_complet:'ENTREPRISE TEST VÉRIFIÉE',matching_etablissements:[
+  {...officialSite,adresse:'11 RUE AUTRE 59100 ROUBAIX'}]}];
+assert.equal((await send('enrich-local-drafts',{area:'59100 Roubaix'})).added,0,
+  'Une rue visible contradictoire empêche le rapprochement même si le nom correspond');
+officialResults=[{nom_complet:'ENTREPRISE TEST VÉRIFIÉE',matching_etablissements:[officialSite]}];
+const enriched=await send('enrich-local-drafts',{area:'59100 Roubaix'});
+assert.equal(enriched.checked,1);
+assert.equal(enriched.added,1);
+assert.equal((await send('list-drafts')).drafts.length,0);
+const verified=(await send('get-captures',null,growthos)).results.find(r=>r.company==='Entreprise Test Vérifiée');
+assert.equal(verified.address,'35 AVENUE JEAN LEBAS 59100 ROUBAIX');
+assert.equal(verified.siret,'12345678901234');
+assert.ok(officialRequests.every(url=>new URL(url).searchParams.get('code_postal')==='59100'));
 for(const item of storage.growthos_verified_captures_v1)item.capturedAt=Date.now()-25*60*60*1000;
 assert.equal((await send('get-captures',null,growthos)).results.length,0,
   'Les captures expirées ne sortent pas de l’extension');
 const cleared=await send('clear-captures');
 assert.equal(cleared.results.length,0);
-console.log('✓ MV3 permissions, collecte visible, données manuelles, URLs, expiration et isolation GrowthOS');
+console.log('✓ MV3, fiche Maps détaillée, enrichissement INSEE conservateur, URLs, expiration et isolation GrowthOS');

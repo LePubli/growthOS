@@ -376,6 +376,7 @@ async function enrichProfile(payload) {
 const CAPTURE_SOURCES = ['google_maps','google_search','bing','linkedin'];
 const QUEUE_KEY = 'growthos_verified_captures_v1';
 const DRAFTS_KEY = 'growthos_unverified_drafts_v1';
+const ENRICH_CURSOR_KEY = 'growthos_enrich_cursor_v1';
 const AGE_LIMIT = 24 * 60 * 60 * 1000;
 function hostMatches(source,url) {
   try {
@@ -427,7 +428,7 @@ async function addDrafts(rawDrafts, verified=[]){
   await storeDrafts(drafts);
   return {draftAdded,draftIgnored};
 }
-function validCaptured(item,manual=false){
+function validCaptured(item,manual=false,verifiedSiret=false){
   if(!item || !CAPTURE_SOURCES.includes(item.source))throw new Error('Source non prise en charge');
   const company=String(item.company||'').trim().slice(0,160);
   const address=String(item.address||'').trim().slice(0,320);
@@ -440,13 +441,14 @@ function validCaptured(item,manual=false){
   const phone=String(item.phone||'').trim().slice(0,40)||null;
   const city=String(item.city||'').trim().slice(0,120)||null;
   return {id:'local_'+crypto.randomUUID().replace(/-/g,'').slice(0,32),source:item.source,
-    company,address,codePostal,city,phone,website:cleanUrl(item.website),sourceUrl,siret:null,
+    company,address,codePostal,city,phone,website:cleanUrl(item.website),sourceUrl,
+    siret:verifiedSiret && /^\d{14}$/.test(String(item.siret||'')) ? item.siret : null,
     collectionMode:manual?'manual':'visible',capturedAt:Date.now()};
 }
-async function addToQueue(items, manual=false){
+async function addToQueue(items, manual=false, verifiedSiret=false){
   const queue=await readQueue();let added=0,ignored=0;
   for(const raw of items.slice(0,25)){
-    const item=validCaptured(raw,manual);
+    const item=validCaptured(raw,manual,verifiedSiret);
     const key=[item.source,item.company,item.address,item.codePostal].join('|').toLocaleLowerCase('fr');
     if(queue.some(q=>[q.source,q.company,q.address,q.codePostal].join('|').toLocaleLowerCase('fr')===key)){
       ignored++;continue;
@@ -456,10 +458,114 @@ async function addToQueue(items, manual=false){
   await storeQueue(queue);
   return {ok:true,added,ignored,results:queue,warnings:[]};
 }
+
+// Identification des brouillons depuis l'extension : seule l'API officielle
+// recherche-entreprises.api.gouv.fr est consultée. Le code postal saisi sert
+// de FILTRE ; l'adresse n'est reprise que depuis la réponse officielle.
+function normalizeBusiness(value){
+  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+function businessMatches(left,right){
+  const variants=value=>[normalizeBusiness(value),
+    ...[...String(value||'').matchAll(/\(([^()]+)\)/g)].map(m=>normalizeBusiness(m[1]))];
+  const first=new Set(variants(left).filter(v=>v.length>=7));
+  return variants(right).some(v=>v.length>=7&&first.has(v));
+}
+function normalizeStreet(value){
+  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/\b(?:av|ave)\.?\b/g,'avenue')
+    .replace(/\bbd\.?\b/g,'boulevard').replace(/\br\.?\b/g,'rue')
+    .replace(/[^a-z0-9]/g,'');
+}
+function verifiedOfficialMatch(draft,records,postal){
+  const distinctive=normalizeBusiness(draft.company);
+  if(distinctive.length<7 || ['plombier','restaurant','chauffagiste','electricien','depannage',
+    'plomberie','serrurier','boulangerie','services','entreprise'].includes(distinctive))return null;
+  const matches=[];
+  for(const company of records){
+    const names=[company.nom_complet,company.nom_raison_sociale,company.nom_commercial];
+    const establishments=[...(Array.isArray(company.matching_etablissements)?company.matching_etablissements:[]),
+      ...(company.siege?[company.siege]:[])];
+    for(const site of establishments){
+      if(String(site.code_postal||'')!==postal)continue;
+      const tradeNames=[...names,site.enseigne,site.enseigne_1,site.denomination_usuelle].filter(Boolean);
+      if(!tradeNames.some(name=>businessMatches(draft.company,name)))continue;
+      const city=String(site.libelle_commune||'').trim();
+      if(draft.city && city && normalizeBusiness(draft.city)!==normalizeBusiness(city))continue;
+      const street=String(site.adresse||'').trim();
+      // Un résultat ne contenant que « 59100 Roubaix » n'est pas une rue vérifiée.
+      const streetOnly=street.replace(new RegExp('\\b'+postal+'\\b','g'),'')
+        .replace(city?new RegExp(city.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'ig'):/a^/g,'').trim();
+      if(streetOnly.length<6)continue;
+      if(draft.address){
+        const localStreet=normalizeStreet(draft.address.replace(/\b\d{5}\b/g,''));
+        const officialStreet=normalizeStreet(streetOnly);
+        if(localStreet.length>=8 && !officialStreet.includes(localStreet) && !localStreet.includes(officialStreet))continue;
+      }
+      const siret=String(site.siret||'');
+      if(!/^\d{14}$/.test(siret))continue;
+      const address=street.includes(postal)?street:[street,postal,city].filter(Boolean).join(' ');
+      if(!address.includes(postal))continue;
+      if(!matches.some(m=>m.siret===siret))matches.push({address,codePostal:postal,city:city||null,siret});
+    }
+  }
+  return matches.length===1?matches[0]:null;
+}
+async function enrichLocalDrafts(payload){
+  const area=String(payload?.area||'').trim();
+  const codes=[...new Set(area.match(/\b\d{5}\b/g)||[])];
+  if(codes.length!==1)throw new Error('Pour enrichir, saisissez un code postal unique dans le champ Zone (ex. 59100 Roubaix).');
+  const postal=codes[0];
+  const drafts=await readDrafts();
+  if(!drafts.length)return {ok:true,checked:0,added:0,already:0,pending:0,skipped:0,errors:[]};
+  const savedCursor=(await chrome.storage.local.get(ENRICH_CURSOR_KEY))[ENRICH_CURSOR_KEY];
+  const start=(Number.isInteger(savedCursor)&&savedCursor>=0?savedCursor:0)%drafts.length;
+  const batch=[...drafts.slice(start),...drafts.slice(0,start)].slice(0,12);
+  const matched=[];const errors=[];
+  let already=0;
+  for(const draft of batch){
+    const query=String(draft.company||'').trim();
+    if(!query){continue;}
+    try{
+      const url=new URL('https://recherche-entreprises.api.gouv.fr/search');
+      url.searchParams.set('q',query);
+      url.searchParams.set('code_postal',postal);
+      url.searchParams.set('per_page','25');
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),5000);
+      let response;
+      try{response=await fetch(url.href,{headers:{Accept:'application/json'},signal:controller.signal});}
+      finally{clearTimeout(timer);}
+      if(!response.ok)throw new Error('Annuaire officiel HTTP '+response.status);
+      const body=await response.json();
+      if(!Array.isArray(body.results))throw new Error('Format de réponse de l’annuaire incorrect');
+      // Résultats tronqués : on ne peut plus prouver l'unicité.
+      if(Number(body.total_results||0)>25)continue;
+      const match=verifiedOfficialMatch(draft,body.results,postal);
+      if(match)matched.push({...draft,...match});
+    }catch(error){errors.push(query+' : '+String(error?.message||error).slice(0,90));}
+    await wait(300);
+  }
+  const saved=matched.length?await addToQueue(matched,false,true):{added:0,ignored:0};
+  already=saved.ignored||0;
+  if(saved.added||already){
+    const promoted=new Set(matched.map(item=>item.id));
+    await storeDrafts((await readDrafts()).filter(draft=>!promoted.has(draft.id)));
+  }
+  await chrome.storage.local.set({[ENRICH_CURSOR_KEY]:(start+batch.length)%drafts.length});
+  return {ok:true,checked:batch.length,added:saved.added||0,already,
+    pending:batch.length-matched.length,skipped:Math.max(0,drafts.length-batch.length),errors};
+}
 async function popupAction(message){
   const action=message.action;
   if(action==='list-captures')return {ok:true,results:await readQueue(),warnings:[]};
   if(action==='list-drafts')return {ok:true,drafts:await readDrafts()};
+  if(action==='enrich-local-drafts'){
+    if(busy)throw new Error('Une autre collecte est en cours');
+    busy=true;
+    try{return await enrichLocalDrafts(message.payload);}finally{busy=false;}
+  }
   if(action==='remove-draft'){
     const drafts=(await readDrafts()).filter(d=>d.id!==String(message.payload?.id||''));
     await storeDrafts(drafts);return {ok:true,drafts};
@@ -470,7 +576,7 @@ async function popupAction(message){
     await storeQueue(queue);return {ok:true,results:queue};
   }
   if(action==='clear-captures'){
-    await Promise.all([storeQueue([]),storeDrafts([])]);
+    await Promise.all([storeQueue([]),storeDrafts([]),chrome.storage.local.set({[ENRICH_CURSOR_KEY]:0})]);
     return {ok:true,results:[],drafts:[]};
   }
   if(action==='manual-add'){

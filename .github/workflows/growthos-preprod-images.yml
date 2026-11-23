@@ -72,7 +72,7 @@ jobs:
           node --check extensions/growthos-pagesjaunes/capture.js
           node --check extensions/growthos-pagesjaunes/popup.js
           node scripts/test-multisource-extension.mjs
-          node -e 'const m=require("./extensions/growthos-pagesjaunes/manifest.json"); if(m.manifest_version!==3 || m.host_permissions.some(p=>!p.includes("pagesjaunes.fr")))process.exit(1)'
+          node -e 'const m=require("./extensions/growthos-pagesjaunes/manifest.json"); if(m.manifest_version!==3 || m.host_permissions.some(p=>!p.includes("pagesjaunes.fr")&&!p.includes("recherche-entreprises.api.gouv.fr")))process.exit(1)'
 
       - name: Build API for integration tests
         run: pnpm --filter @workspace/api-server build

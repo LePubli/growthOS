@@ -14,6 +14,11 @@
     catch { return null; }
   };
   const candidates = [], drafts = [];
+  const streetFromLine = value => {
+    const line = clean(value).replace(/^.*?[·•]\s*/, '');
+    const match = line.match(/\b\d{1,4}\s*(?:bis|ter)?\s*(?:rue|r\.|avenue|av\.|boulevard|bd\.|place|route|rte\.|chemin|all[eé]e|impasse|quai|square)\s+[^·•\n]{3,95}/i);
+    return match ? clean(match[0]).replace(/\s*(?:·|\|).*$/, '').slice(0, 150) : '';
+  };
   const read = (node, preferredName, preferredAddress, preferredWebsite, preferredPhone, preferredUrl, allowDraft = false) => {
     if (!node || !visible(node)) return;
     const lines = (node.innerText || '').split(/\n+/).map(clean).filter(Boolean).slice(0, 80);
@@ -25,7 +30,8 @@
     const labelled = [...node.querySelectorAll('[aria-label]')].filter(visible)
       .map(el => clean(el.getAttribute('aria-label'))).find(v => /^(?:adresse|address)\s*:/i.test(v) && /\b\d{5}\b/.test(v));
     const address = clean(preferredAddress || (labelled && labelled.replace(/^(?:adresse|address)\s*:\s*/i,''))
-      || lines.find(line => /\b\d{5}\b/.test(line) && /\b(?:rue|avenue|av\.?|boulevard|bd\.?|place|route|chemin|all[eé]e|impasse|quai|square)\b/i.test(line))).slice(0, 320);
+      || lines.find(line => /\b\d{5}\b/.test(line) && /\b(?:rue|avenue|av\.?|boulevard|bd\.?|place|route|chemin|all[eé]e|impasse|quai|square)\b/i.test(line))
+      || (allowDraft && lines.map(streetFromLine).find(Boolean))).slice(0, 320);
     const codePostal = address.match(/\b\d{5}\b/)?.[0];
     const city = codePostal
       ? clean(address.split(codePostal)[1] || '').replace(/\s*(?:Voir|Itinéraire|Directions).*$/i,'').slice(0,120) || null
@@ -51,6 +57,34 @@
       }
     }
   };
+  // Google Maps : la liste montre fréquemment seulement « 35 Av. Jean Lebas ».
+  // Une fiche d'établissement OUVERTE expose un bouton « Adresse » contenant
+  // souvent la rue, le code postal et la ville. Lecture du panneau actif seul.
+  if(source==='google_maps'){
+    const main=document.querySelector('[role="main"]');
+    const placeTitle=main?.querySelector('h1');
+    const addressControls=main ? [...main.querySelectorAll('[data-item-id="address"],button[aria-label]')]
+      .filter(visible).filter(el => el.matches?.('[data-item-id="address"]') ||
+        /^(?:adresse|address)\s*:/i.test(clean(el.getAttribute('aria-label')))) : [];
+    const addressValue=addressControls.map(el=>{
+      const label=clean(el.getAttribute('aria-label'));
+      return /^(?:adresse|address)\s*:/i.test(label)
+        ? clean(label.replace(/^(?:adresse|address)\s*:\s*/i,''))
+        : clean(el.innerText||el.textContent);
+    }).find(value=>/\b\d{5}\b/.test(value));
+    // Sur une liste de recherche, ne pas mélanger le titre d'une carte avec
+    // l'adresse d'une autre. Le panneau de fiche doit être identifiable.
+    const isDetail=/^\/maps\/place\//.test(location.pathname) ||
+      (placeTitle?.matches?.('h1.DUwDvf') === true);
+    if(isDetail && placeTitle && visible(placeTitle) && addressValue){
+      const placeLink=main.querySelector('a[href*="/maps/place/"]');
+      const phoneNode=main.querySelector('button[data-item-id^="phone"],a[href^="tel:"]');
+      const phoneLabel=clean(phoneNode?.getAttribute('aria-label')||phoneNode?.innerText);
+      const websiteNode=main.querySelector('a[data-item-id="authority"],a[aria-label^="Site web"]');
+      read(main,placeTitle.innerText,addressValue,websiteNode?.href||null,
+        phoneLabel,safeUrl(placeLink?.href)||location.href);
+    }
+  }
   // JSON-LD quand la page publie explicitement un établissement local (pas de données devinées).
   for (const script of [...document.querySelectorAll('script[type="application/ld+json"]')].slice(0,25)) {
     try {
@@ -68,7 +102,7 @@
     }catch{}
   }
   const selectors = source==='google_maps'
-    ? ['[role="article"]','.Nv2PK','[data-item-id="address"]','div[role="main"]']
+    ? ['[role="article"]','.Nv2PK']
     : source==='google_search' ? ['#rhs','.kp-wholepage','[data-attrid*="address"]',
       '.VkpGBb','.rllt__details','[data-cid]','.cXedhc']
     : ['#b_context','.b_entityTP','.b_ans','.b_vList li'];

@@ -37,8 +37,10 @@
     <section>
       <h2>3. Collecter</h2>
       <button type="button" class="primary teal" id="capture">⤓ Capturer les fiches visibles</button>
-      <p class="hint">Cette action lit uniquement l’onglet affiché. Les fiches sans adresse complète restent « À vérifier » ; aucun code postal n'est déduit de ta recherche.</p>
+      <p class="hint">Pour Maps, ouvrez une entreprise dans la liste pour afficher sa fiche complète, puis capturez. Les cartes de liste peuvent ne pas afficher le code postal.</p>
       <div class="draft-title"><strong>Fiches à vérifier <span class="count amber" id="draftCount">0</span></strong><span>Adresse manquante</span></div>
+      <button type="button" class="secondary enrich" id="autoEnrich">✦ Enrichir les fiches à vérifier (annuaire officiel)</button>
+      <p class="hint">Utilise le code postal du champ « Zone » et cherche une entreprise unique dans l’annuaire officiel. Si l’adresse n’est pas vérifiable, la fiche reste à compléter. Aucun import automatique.</p>
       <div id="drafts" class="draft-list"><p class="empty">Aucun brouillon</p></div>
       <details id="manualPanel">
         <summary>+ Compléter ou ajouter une fiche vérifiée</summary>

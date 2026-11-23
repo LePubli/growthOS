@@ -1,9 +1,11 @@
-# Connecteur multisource GrowthOS — version 0.5.0
+# Connecteur multisource GrowthOS — version 0.5.1
 
 L'extension fonctionne dans **Chrome sur l'appareil de l'utilisateur** (ordinateur).
 Les images Docker de GrowthOS sont construites par GitHub Actions, pas sur le VPS.
 
-## Mises à jour automatiques — Chrome Web Store (solution recommandée)
+## Mises à jour automatiques — Chrome Web Store (option non activée)
+
+**Choix actuel du projet : mise à jour manuelle** du dossier de l'extension dans Chrome. La procédure prioritaire figure plus bas. Le Chrome Web Store n'est pas nécessaire pour continuer les tests.
 
 Une extension ouverte via **« Charger l'extension non empaquetée »** dans Chrome ne se met **pas** à jour depuis GitHub avec le bouton « Mettre à jour ». Chrome ne distribue automatiquement que les versions publiées via le Chrome Web Store sur les navigateurs classiques Windows/macOS.
 
@@ -22,23 +24,24 @@ Ensuite, quand un changement touche `extensions/growthos-pagesjaunes/` sur la br
 
 La publication automatique ne démarre **pas** tant que ces éléments ne sont pas configurés. Ne fournissez pas votre mot de passe Google.
 
-## Ancienne installation locale (dépannage uniquement)
+## Installation locale — procédure actuelle
 
 1. Récupérer **le dossier complet** `extensions/growthos-pagesjaunes` depuis la branche `fix/growthos-functional-redesign`, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`.
 2. Remplacer le contenu de votre dossier d'extension Chrome local (sans changer le chemin du dossier chargé dans Chrome).
-3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.5.0** (le ZIP GitHub Actions porte un quatrième numéro de version incrémental).
+3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.5.1** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Cette mise à jour demande aussi la permission limitée au site officiel `recherche-entreprises.api.gouv.fr`.
 4. Garder Chrome et l'onglet `https://agile.le-publicitaire.fr` ouverts.
 5. Dans GrowthOS, ouvrir **Trouver des entreprises**, cliquer sur **Connecter cet appareil** si nécessaire, puis choisir les sources. Pour Google et Bing, le nouvel onglet doit être ouvert manuellement depuis le panneau de l'extension.
 6. Pour les fiches déjà importées depuis PagesJaunes, **Compléter depuis PagesJaunes** reste opérationnel.
 
 ### Quand Google affiche le nom et le téléphone mais pas l'adresse
 
-- Sur la page des résultats locaux Google, cliquez sur **Capturer les fiches visibles**.
-- L'extension conserve le nom et le téléphone réellement affichés dans une liste **Fiches à vérifier**.
+- Dans Google Maps, **ouvrez d'abord une fiche entreprise précise** dans la liste : le panneau détaillé expose souvent l'adresse postale complète. Cliquez ensuite sur **Capturer les fiches visibles**.
+- Pour les cartes sans adresse complète, l'extension conserve le nom, le téléphone et la rue partielle réellement affichés dans **Fiches à vérifier**.
+- Saisissez un code postal unique dans le champ **Ville, département ou code postal** du popup, puis cliquez sur **Enrichir les fiches à vérifier (annuaire officiel)**. L'extension recherche au plus 12 fiches par clic, compare strictement le nom, la ville et toute rue partielle, et récupère une adresse et un SIRET uniquement si une correspondance officielle unique est confirmée. Les fiches validées passent dans **Sélection locale** ; aucun prospect n'est importé automatiquement.
 - Dans GrowthOS, lancez la recherche multisource avec cette source : l'application rapproche les brouillons de l'Annuaire des entreprises ou des fiches locales vérifiées. Vous pouvez aussi cliquer sur **Enrichir automatiquement mes fiches** dans les résultats d'une recherche existante.
 - Les fiches identifiées de manière unique passent dans les résultats à sélectionner ; les autres restent **à vérifier**. Pour ces dernières, cliquez sur **Compléter** dans l'extension et ouvrez si besoin la fiche détaillée du professionnel sur le site source afin de vérifier sa rue, son code postal et sa ville.
 - Validez seulement après avoir indiqué une adresse complète contenant le code postal réel. Le simple texte de recherche « plombier 59100 » ne prouve pas que chaque entreprise a ce code postal.
-- Les brouillons restent sur l'appareil jusqu'à ce que l'utilisateur lance une recherche ou un enrichissement depuis GrowthOS. Les brouillons envoyés au serveur ne sont pas des prospects CRM ; les entrées non confirmées sont seulement affichées avec une raison de non-identification. Les captures locales expirent au bout de 24 heures.
+- Les brouillons restent sur l'appareil jusqu'à un enrichissement explicite depuis l'extension, une recherche ou un enrichissement depuis GrowthOS. Les brouillons envoyés au serveur ne sont pas des prospects CRM ; les entrées non confirmées sont seulement affichées avec une raison de non-identification. Les captures locales expirent au bout de 24 heures.
 
 ## Données traitées
 

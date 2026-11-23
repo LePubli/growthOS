@@ -18,7 +18,7 @@ Ce connecteur fonctionne avec **Chrome ou Edge sur ordinateur**. Il garde les re
 6. Ouvrir [GrowthOS – Trouver des entreprises](https://agile.le-publicitaire.fr/sourcing), **actualiser la page**.
 7. Cliquer sur **Connecter cet appareil**. L'indicateur devient **Connecté** si l'extension répond.
 
-> Si vous utilisez encore le dossier local : remplacez tous ses fichiers, cliquez sur **Actualiser** sous l’extension dans `chrome://extensions`, vérifiez la version **0.5.0**, puis actualisez GrowthOS. Cette manipulation ne sera plus nécessaire une fois la version du Store installée.
+> Pour notre installation locale actuelle : remplacez tous les fichiers du dossier de l'extension, cliquez sur **Actualiser** sous l’extension dans `chrome://extensions`, vérifiez la version **0.5.1**, puis actualisez GrowthOS. Le Chrome Web Store reste une option ultérieure.
 
 ### Utilisation multisource
 
@@ -64,7 +64,7 @@ La sélection locale reste sur votre appareil **24 heures**. Le menu de l'extens
 - « Connecteur non détecté » : vérifier l'extension activée, le bon profil Chrome, puis actualiser GrowthOS.
 - « Aucun bloc entreprise détecté » : ouvrir PagesJaunes directement, vérifier que les résultats sont visibles et qu'aucun CAPTCHA ne les masque. Les sélecteurs HTML devront peut-être être adaptés.
 - « Aucune fiche avec adresse postale complète » : ouvrez le panneau détaillé de l'établissement puis réessayez la capture. Une page de liens de recherche sans adresse vérifiée ne peut pas être importée comme entreprise.
-- « 0 capture » sur GrowthOS : vérifiez que vous avez bien l'extension en version **0.5.0** (ou une version Store plus récente) et que les sources sont cochées. Les brouillons sont comptés séparément et ne deviennent importables qu'après un rapprochement confirmé.
+- « 0 capture » sur GrowthOS : vérifiez que vous avez bien l'extension en version **0.5.1** (ou une version Store plus récente) et que les sources sont cochées. Les brouillons sont comptés séparément et ne deviennent importables qu'après un rapprochement confirmé. L'extension propose désormais son propre bouton **Enrichir les fiches à vérifier** : il consulte uniquement l'annuaire officiel à partir du code postal saisi.
 - N'installez pas l'extension dans un dossier temporaire : Chrome doit pouvoir retrouver les fichiers au redémarrage.
 
 ## Compléter une fiche PagesJaunes

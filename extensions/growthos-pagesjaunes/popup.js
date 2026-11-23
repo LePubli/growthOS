@@ -42,6 +42,7 @@ async function refresh(){
   const [data,draftData]=await Promise.all([message('list-captures'),message('list-drafts')]);
   const queue=data.results||[]; $('total').textContent=String(queue.length);
   const drafts=draftData.drafts||[];
+  $('autoEnrich').disabled=!drafts.length;
   $('draftCount').textContent=String(drafts.length);
   const draftsBox=$('drafts');draftsBox.replaceChildren();
   if(!drafts.length){const p=document.createElement('p');p.className='empty';p.textContent='Aucune fiche à compléter';draftsBox.append(p);}
@@ -109,6 +110,20 @@ $('capture').addEventListener('click',async()=>{
       : r.warning||'Aucune nouvelle fiche');
   }catch(e){notice(e.message,true);}
   finally{$('capture').disabled=source==='linkedin'||source==='pagesjaunes';}
+});
+$('autoEnrich').addEventListener('click',async()=>{
+  const button=$('autoEnrich');button.disabled=true;
+  button.textContent='Enrichissement en cours (12 fiches maximum)…';
+  try{
+    const result=await message('enrich-local-drafts',{area:$('area').value.trim()});
+    await refresh();
+    const explanation=result.errors?.length?' · Annuaire indisponible pour '+result.errors.length+' fiche(s) : '+result.errors[0]:'';
+    notice(`${result.checked} fiche(s) examinée(s) · ${result.added} enrichie(s) et prêtes à sélectionner · ${result.already} déjà présentes · ${result.pending} à vérifier`+
+      (result.skipped?` · ${result.skipped} à examiner au prochain clic`:'')+explanation,
+    Boolean(result.errors?.length && !result.added));
+  }catch(error){notice(error.message,true);}
+  finally{button.textContent='✦ Enrichir les fiches à vérifier (annuaire officiel)';
+    try{button.disabled=!(await message('list-drafts')).drafts?.length;}catch{button.disabled=false;}}
 });
 $('manualForm').addEventListener('submit',async e=>{
   e.preventDefault();
