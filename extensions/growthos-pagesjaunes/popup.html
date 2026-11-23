@@ -37,6 +37,9 @@
     <section>
       <h2>3. Collecter</h2>
       <button type="button" class="primary teal" id="capture">⤓ Capturer les fiches visibles</button>
+      <button type="button" class="secondary" id="autoMaps">▣ Ouvrir et lire 5 fiches Maps automatiquement</button>
+      <p class="hint">Sur un onglet Google, ce bouton ouvre successivement jusqu'à 5 fiches Maps visibles, lit leurs informations puis revient à l'onglet initial. Ne changez pas d'onglet pendant la lecture ; rouvrez l'extension pour voir le bilan. Dans GrowthOS, cochez la source Google Maps pour retrouver ces captures.</p>
+      <p id="mapProgress" class="map-progress" role="status" aria-live="polite" hidden></p>
       <p class="hint">Pour Maps, ouvrez une entreprise dans la liste pour afficher sa fiche complète, puis capturez. Les cartes de liste peuvent ne pas afficher le code postal.</p>
       <div class="draft-title"><strong>Fiches à vérifier <span class="count amber" id="draftCount">0</span></strong><span>Adresse manquante</span></div>
       <button type="button" class="secondary enrich" id="autoEnrich">✦ Vérifier les adresses (BAN + annuaire officiel)</button>

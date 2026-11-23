@@ -1,4 +1,4 @@
-# Connecteur multisource GrowthOS — version 0.5.2
+# Connecteur multisource GrowthOS — version 0.6.0
 
 L'extension fonctionne dans **Chrome sur l'appareil de l'utilisateur** (ordinateur).
 Les images Docker de GrowthOS sont construites par GitHub Actions, pas sur le VPS.
@@ -28,12 +28,24 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 
 1. Récupérer **le dossier complet** `extensions/growthos-pagesjaunes` depuis la branche `fix/growthos-functional-redesign`, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`.
 2. Remplacer le contenu de votre dossier d'extension Chrome local (sans changer le chemin du dossier chargé dans Chrome).
-3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.5.2** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Cette mise à jour demande aussi l'autorisation limitée au géocodeur officiel `data.geopf.fr` et à l'annuaire `recherche-entreprises.api.gouv.fr`.
+3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.6.0** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Cette version conserve les autorisations limitées au géocodeur officiel `data.geopf.fr` et à l'annuaire `recherche-entreprises.api.gouv.fr`.
 4. Garder Chrome et l'onglet `https://agile.le-publicitaire.fr` ouverts.
 5. Dans GrowthOS, ouvrir **Trouver des entreprises**, cliquer sur **Connecter cet appareil** si nécessaire, puis choisir les sources. Pour Google et Bing, le nouvel onglet doit être ouvert manuellement depuis le panneau de l'extension.
 6. Pour les fiches déjà importées depuis PagesJaunes, **Compléter depuis PagesJaunes** reste opérationnel.
 
 ### Quand Google affiche le nom et le téléphone mais pas l'adresse
+
+#### Lecture par lot des fiches Maps
+
+Dans un onglet `google.com`, indiquez l'activité et la zone dans l'extension puis cliquez sur **Ouvrir et lire 5 fiches Maps automatiquement**. Après ce clic explicite, le connecteur :
+
+1. Ouvre la recherche correspondante **dans l'onglet Google actuel** et récupère au maximum cinq liens de fiches Maps visibles.
+2. Ouvre successivement ces cinq fiches sur le même domaine, lit les données rendues et place les fiches à adresse complète dans la sélection locale.
+3. Enregistre un bilan consultable en rouvrant l'extension, puis revient à l'URL de départ, sauf si vous avez navigué manuellement entre-temps.
+
+La lecture peut être interrompue par Google (page non chargée, résultat non exposé, demande de vérification) et ne contourne aucune restriction du site. **Ne changez pas d'onglet pendant l'opération.** Les adresses absentes restent non confirmées.
+
+#### Enrichissement et prospects provisoires
 
 - Dans Google Maps, **ouvrez d'abord une fiche entreprise précise** dans la liste : le panneau détaillé expose souvent l'adresse postale complète. Cliquez ensuite sur **Capturer les fiches visibles**.
 - Pour les cartes sans adresse complète, l'extension conserve le nom, le téléphone et la rue partielle réellement affichés dans **Fiches à vérifier**.
@@ -42,6 +54,7 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
   2. Sinon, l'Annuaire des entreprises doit confirmer **une unique entreprise au nom correspondant exactement** et une adresse dans la zone indiquée. Ici le SIRET peut être récupéré.
   Les fiches confirmées passent dans **Sélection locale** ; aucun prospect n'est importé automatiquement. Pour les autres, ouvrez **Pourquoi certaines fiches restent à vérifier ?** afin de voir les blocages.
 - Si la liste Google n'affiche **ni numéro ni rue**, cliquez sur **Maps** devant une fiche à vérifier pour rechercher directement cette entreprise, puis ouvrez son panneau détaillé et capturez à nouveau. Aucune API officielle ne garantit de retrouver une adresse commerciale depuis le seul nom et le téléphone.
+- Si l'adresse reste introuvable, lancez la recherche GrowthOS pour créer un *job* de sourcing. Ouvrez ses résultats, relancez si besoin **Enrichir automatiquement mes fiches**, puis dans **Prospects incomplets · import sur décision**, cochez uniquement les entreprises à conserver et cliquez sur **Importer les prospects à compléter**. Les fiches ne sont jamais importées automatiquement. Il faut au moins un téléphone, un site ou une adresse partielle réellement recueilli ; SIREN/SIRET et code postal restent vides.
 - Dans GrowthOS, lancez la recherche multisource avec cette source : l'application rapproche les brouillons de l'Annuaire des entreprises ou des fiches locales vérifiées. Vous pouvez aussi cliquer sur **Enrichir automatiquement mes fiches** dans les résultats d'une recherche existante.
 - Les fiches identifiées de manière unique passent dans les résultats à sélectionner ; les autres restent **à vérifier**. Pour ces dernières, cliquez sur **Compléter** dans l'extension et ouvrez si besoin la fiche détaillée du professionnel sur le site source afin de vérifier sa rue, son code postal et sa ville.
 - Validez seulement après avoir indiqué une adresse complète contenant le code postal réel. Le simple texte de recherche « plombier 59100 » ne prouve pas que chaque entreprise a ce code postal.
@@ -56,5 +69,5 @@ Un champ non trouvé reste vide. Certains éléments PagesJaunes peuvent nécess
 ## VPS
 
 Aucune installation de navigateur, aucune extension et aucun traitement de scraping à lancer sur le VPS.
-La mise à jour des images `:preprod` dans DockPanel est distincte du rechargement de cette extension locale.
+**Nouveau :** l'import des prospects provisoires nécessite un déploiement des images GrowthOS API et web `:preprod` après GitHub Actions, en plus de l'actualisation de l'extension Chrome.
 Le déploiement ne doit pas modifier les limites de ressources des autres conteneurs.

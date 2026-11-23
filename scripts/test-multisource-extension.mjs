@@ -82,6 +82,8 @@ let listener;
 const storage={};
 const opened=[];
 let injectedResult=googleLocal;
+let mapLinks=[];
+let activeTabUrl='https://www.google.com/search?q=plombier%2059100';
 let officialResults=[];
 const officialRequests=[];
 const geocodeRequests=[];
@@ -91,8 +93,10 @@ const chrome={
     onMessage:{addListener:fn=>{listener=fn;}}},
   storage:{local:{get:async key=>({[key]:storage[key]}),set:async changes=>{Object.assign(storage,changes);}}},
   tabs:{create:async data=>{opened.push(data);return{id:12};},
-    query:async()=>[{id:42,url:'https://www.google.com/search?q=plombier%2059100'}]},
-  scripting:{executeScript:async()=>[{result:injectedResult}]},
+    query:async()=>[{id:42,url:activeTabUrl}],
+    get:async()=>({id:42,url:activeTabUrl,status:'complete'}),
+    update:async (_id,data)=>{activeTabUrl=data.url;return{id:42,url:activeTabUrl,status:'complete'};}},
+  scripting:{executeScript:async options=>[{result:options.func?mapLinks:injectedResult}]},
 };
 vm.runInNewContext(readFileSync(new URL('background.js',root),'utf8'),
   {chrome,URL,crypto:webcrypto,Date,setTimeout,clearTimeout,Promise,console,AbortController,
@@ -188,9 +192,20 @@ const geocodedItem=(await send('get-captures',null,growthos)).results.find(r=>r.
 assert.equal(geocodedItem.address,'18 Rue de Lille 59100 Roubaix');
 assert.equal(geocodedItem.siret,null,'Le géocodage ne prouve aucun identifiant SIRET');
 assert.ok(geocodeRequests.every(url=>new URL(url).searchParams.get('postcode')==='59100'));
+mapLinks=['https://www.google.com/maps/place/Atelier-de-Roubaix'];
+injectedResult={source:'google_maps',drafts:[],results:[{source:'google_maps',company:'Atelier de Roubaix',
+  address:'20 Rue Nationale 59100 Roubaix',codePostal:'59100',city:'Roubaix',
+  sourceUrl:mapLinks[0],phone:'03 20 00 11 22'}]};
+const originalUrl=activeTabUrl;
+const mapBatch=await send('auto-capture-maps',{query:'plombier',area:'59100'});
+assert.equal(mapBatch.added,1);
+assert.equal(mapBatch.checked,1);
+assert.equal(activeTabUrl,originalUrl,'Après la lecture Maps, revenir à la recherche originale');
+assert.equal((await send('auto-capture-status')).status.status,'done');
+assert.equal((await send('get-captures',null,growthos)).results.some(item=>item.company==='Atelier de Roubaix'),true);
 for(const item of storage.growthos_verified_captures_v1)item.capturedAt=Date.now()-25*60*60*1000;
 assert.equal((await send('get-captures',null,growthos)).results.length,0,
   'Les captures expirées ne sortent pas de l’extension');
 const cleared=await send('clear-captures');
 assert.equal(cleared.results.length,0);
-console.log('✓ MV3, fiche Maps détaillée, BAN/INSEE conservateurs, URLs, expiration et isolation GrowthOS');
+console.log('✓ MV3, lot Maps navigué/restauré, BAN/INSEE conservateurs, URLs, expiration et isolation GrowthOS');

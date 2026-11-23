@@ -777,6 +777,37 @@ try {
   check(prospectProbe?.status === 200 && prospectProbe.passed,
     `Route CRM avec tenant administrateur : HTTP ${prospectProbe?.status ?? 'absent'} (${prospectProbe?.error ?? 'aucun détail'})`);
 
+  const incompleteDraft={id:'draft_incomplete_persisted',source:'google_search',
+    company:'Enseigne Locale Provisoire',address:null,city:'Lille',phone:'03 20 55 44 33',website:null,
+    sourceUrl:'https://www.google.com/search?q=Enseigne+Locale+Provisoire',capturedAt:Date.now()};
+  const provisional=await request('POST','/sourcing/device/jobs',{
+    name:'Piste commerciale sans adresse',
+    params:{...localParams,sources:['google_search']},candidates:[],drafts:[incompleteDraft],
+  },token);
+  check(provisional.status===201 && provisional.body.params.deviceDrafts?.length===1 &&
+    provisional.body.params.draftEnrichment?.pending===1,
+    'Les pistes incomplètes sont conservées hors CRM, disponibles après validation');
+  const forgedImport=await request('POST',`/sourcing/device/jobs/${provisional.body.id}/import-drafts`,
+    {ids:['draft_foreign_company']},token);
+  check(forgedImport.status===400,'Une fiche non issue de la recherche ne peut pas être importée');
+  const provisionalImport=await request('POST',`/sourcing/device/jobs/${provisional.body.id}/import-drafts`,
+    {ids:[incompleteDraft.id]},token);
+  check(provisionalImport.status===200&&provisionalImport.body.imported===1,
+    'Import provisoire seulement sur sélection explicite');
+  const savedProvisional=await request('GET',`/sourcing/jobs/${provisional.body.id}`,undefined,token);
+  const provisionalId=savedProvisional.body.params.draftImports?.[incompleteDraft.id];
+  const provisionalProspect=await request('GET',`/prospects/${provisionalId}`,undefined,token);
+  check(provisionalProspect.status===200 && provisionalProspect.body.company===incompleteDraft.company &&
+    provisionalProspect.body.phone===incompleteDraft.phone &&
+    !provisionalProspect.body.postalCode && !provisionalProspect.body.siret &&
+    !provisionalProspect.body.siren && !provisionalProspect.body.sourceUrl &&
+    provisionalProspect.body.sourceDetails?.browserDraft?.incomplete===true,
+    'L’import provisoire ne crée aucun identifiant, code postal ou lien de fiche fictif');
+  const repeatedProvisional=await request('POST',`/sourcing/device/jobs/${provisional.body.id}/import-drafts`,
+    {ids:[incompleteDraft.id]},token);
+  check(repeatedProvisional.status===200&&repeatedProvisional.body.imported===0&&
+    repeatedProvisional.body.skipped===1,'Import provisoire répété : aucun doublon');
+
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
 } catch (error) {
   process.exitCode = 1;

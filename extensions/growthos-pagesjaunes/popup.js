@@ -30,6 +30,7 @@ function selectSource(value){
   for(const btn of document.querySelectorAll('[data-source]'))btn.setAttribute('aria-pressed',String(btn.dataset.source===value));
   const isLinkedin=value==='linkedin',isPagesjaunes=value==='pagesjaunes';
   $('capture').disabled=isLinkedin||isPagesjaunes;
+  $('autoMaps').disabled=!['google_maps','google_search'].includes(sourceFromUrl(currentUrl));
   $('manualPanel').hidden=isPagesjaunes;
   $('sourceHint').textContent=isLinkedin
     ? 'Connectez-vous normalement à LinkedIn. Son règlement interdit le scraping par extension : utilisez seulement la saisie manuelle d’une entreprise que vous avez vérifiée.'
@@ -39,7 +40,13 @@ function selectSource(value){
   $('sourceUrl').value=sourceFromUrl(currentUrl)===value?currentUrl:'';
 }
 async function refresh(){
-  const [data,draftData]=await Promise.all([message('list-captures'),message('list-drafts')]);
+  const [data,draftData,mapRun]=await Promise.all([message('list-captures'),message('list-drafts'),message('auto-capture-status')]);
+  const progress=$('mapProgress'),status=mapRun.status||{};
+  progress.hidden=status.status==='idle'||!status.status;
+  progress.textContent=status.status==='running'
+    ? `Lecture Maps en cours : ${status.checked||0}/${status.total||'?'} fiche(s), ${status.added||0} ajoutée(s).`
+    : `Dernière lecture Maps : ${status.checked||0}/${status.total||0} fiche(s), ${status.added||0} ajoutée(s)`+
+      (status.errors?.length?` · ${status.errors.length} fiche(s) sans adresse complète ou erreur : ${status.errors[0]}`:'')+'.';
   const queue=data.results||[]; $('total').textContent=String(queue.length);
   const drafts=draftData.drafts||[];
   $('autoEnrich').disabled=!drafts.length;
@@ -118,6 +125,19 @@ $('capture').addEventListener('click',async()=>{
       : r.warning||'Aucune nouvelle fiche');
   }catch(e){notice(e.message,true);}
   finally{$('capture').disabled=source==='linkedin'||source==='pagesjaunes';}
+});
+$('autoMaps').addEventListener('click',async()=>{
+  const query=$('query').value.trim(),area=$('area').value.trim();
+  if(query.length<3||!area){notice('Renseignez une activité et une zone géographique avant la lecture Maps.',true);return;}
+  const button=$('autoMaps');button.disabled=true;
+  try{
+    await chrome.storage.local.set({growthos_popup_prefs:{query,area}});
+    notice('La lecture Maps a démarré. L’onglet Google va naviguer entre les fiches. Rouvrez ensuite l’extension pour voir le bilan.');
+    const result=await message('auto-capture-maps',{query,area});
+    await refresh();
+    notice(`${result.checked} fiche(s) Maps examinée(s) · ${result.added} adresse(s) complète(s) ajoutée(s).`);
+  }catch(error){notice(error.message,true);}
+  finally{button.disabled=!['google_maps','google_search'].includes(sourceFromUrl(currentUrl));}
 });
 $('autoEnrich').addEventListener('click',async()=>{
   const button=$('autoEnrich');button.disabled=true;

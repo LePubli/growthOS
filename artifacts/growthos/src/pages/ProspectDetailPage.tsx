@@ -584,6 +584,11 @@ export default function ProspectDetailPage() {
         </div>
       )}
 
+      {prospect.sourceDetails?.browserDraft?.incomplete && !prospect.postalCode &&
+        <div role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <strong>Prospect importé avec des informations incomplètes.</strong> La fiche provient d’une capture Google/Bing.
+          L’adresse exacte, le code postal, le SIREN et le SIRET n’ont pas été vérifiés. Complétez les données avant de démarrer une campagne.
+        </div>}
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <button onClick={() => navigate('/prospects')} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">

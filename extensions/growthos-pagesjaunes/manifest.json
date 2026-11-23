@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GrowthOS — Connecteur multisource",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Collecte locale PagesJaunes et capture volontaire de fiches Google, Bing et saisie LinkedIn sans accès aux mots de passe.",
   "permissions": [
     "tabs",

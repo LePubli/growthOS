@@ -92,6 +92,8 @@ type SavedParams = {
   results?: SearchCandidate[];
   importedIds?: string[]; // historical jobs created before selective import
   draftEnrichment?: { checked: number; matched: number; pending: number; pendingItems: { id: string; company: string; source: string; reason: string }[]; updatedAt: string };
+  deviceDrafts?: DeviceDraft[]; // captures locales incomplètes, conservées hors du CRM
+  draftImports?: Record<string,string>; // id de capture locale => id du prospect créé explicitement
 };
 
 type GeoFilters = { query: string; regions: string[]; departements: string[]; codesPostaux: string[]; limit: number };
@@ -566,6 +568,7 @@ router.post("/device/jobs", requireAuth, async (req, res) => {
     }
   }
   const draftEnrichment=drafts.length ? await enrichDeviceDrafts(drafts,params,seen) : undefined;
+  const pendingIds=new Set((draftEnrichment?.pendingItems||[]).map(item=>item.id));
   for(const source of params.sources.filter(source=>source!=='entreprises')){
     const verified=[...seen.values()].filter(candidate=>candidate.sources?.includes(source));
     if(verified.length && sourceStatuses[source]?.status!=='error')
@@ -577,7 +580,8 @@ router.post("/device/jobs", requireAuth, async (req, res) => {
   const [job] = await db.insert(sourcingJobsTable).values({
     type: "multi", name, tenantId: req.auth!.tenantId, createdBy: req.auth!.userId,
     status: "completed", count: results.length, progress: 100,
-    params: { ...params, results, sourceStatuses, draftEnrichment, collectionMode: "device" },
+    params: { ...params, results, sourceStatuses, draftEnrichment,
+      deviceDrafts:drafts.filter(draft=>pendingIds.has(draft.id)),draftImports:{},collectionMode: "device" },
     duration: "Navigateur local", error,
   }).returning();
   res.status(201).json(job);
@@ -601,7 +605,10 @@ router.post('/device/jobs/:id/enrich-drafts',requireAuth,async(req,res)=>{
   const params={query:prior.query||'',regions:prior.regions||[],departements:prior.departements||[],
     codesPostaux:prior.codesPostaux||[],limit:prior.limit||10};
   const seen=new Map<string,SearchCandidate>(prior.results.map(candidate=>[candidateKey(candidate),candidate]));
-  const draftEnrichment=await enrichDeviceDrafts(parsed.data,params,seen);
+  const allDrafts=[...(prior.deviceDrafts||[]),...parsed.data]
+    .filter((draft,index,items)=>items.findIndex(item=>item.id===draft.id)===index).slice(0,75);
+  const draftEnrichment=await enrichDeviceDrafts(allDrafts,params,seen);
+  const pendingIds=new Set(draftEnrichment.pendingItems.map(item=>item.id));
   const results=[...seen.values()].slice(0,150);
   const sourceStatuses={...(prior.sourceStatuses||{})};
   for(const source of sources.filter(item=>item!=='entreprises')){
@@ -611,9 +618,76 @@ router.post('/device/jobs/:id/enrich-drafts',requireAuth,async(req,res)=>{
       sourceStatuses[source]={status:'incomplete',count:0};
   }
   const [updated]=await db.update(sourcingJobsTable).set({count:results.length,
-    params:{...prior,results,sourceStatuses,draftEnrichment},
+    params:{...prior,results,sourceStatuses,draftEnrichment,
+      deviceDrafts:allDrafts.filter(draft=>pendingIds.has(draft.id)||prior.draftImports?.[draft.id])},
   }).where(and(eq(sourcingJobsTable.id,job.id),eq(sourcingJobsTable.tenantId,req.auth!.tenantId))).returning();
   res.json({job:updated,enrichment:draftEnrichment});
+});
+
+// L'utilisateur peut choisir de conserver une piste commerciale même sans
+// adresse : import explicite et traçable, jamais une preuve SIRET/SIREN ni CP.
+router.post('/device/jobs/:id/import-drafts',requireAuth,async(req,res)=>{
+  const parsed=z.object({ids:z.array(z.string().trim().min(3).max(64)).min(1).max(25)})
+    .strict().safeParse(req.body);
+  if(!parsed.success || new Set(parsed.data?.ids||[]).size!==parsed.data?.ids.length){
+    res.status(400).json({error:'Sélection de fiches incomplètes invalide'});return;
+  }
+  const job=await getJob(String(req.params.id),req.auth!.tenantId);
+  if(!job){res.status(404).json({error:'Recherche introuvable'});return;}
+  const saved=savedParams(job);
+  if(job.status!=='completed' ||
+     (saved as SavedParams & {collectionMode?:string}).collectionMode!=='device' ||
+     !Array.isArray(saved.deviceDrafts)){
+    res.status(409).json({error:'Cette recherche ne permet pas l’import de fiches incomplètes'});return;
+  }
+  const pending=new Set((saved.draftEnrichment?.pendingItems||[]).map(item=>item.id));
+  const selected=parsed.data.ids.map(id=>saved.deviceDrafts!.find(draft=>draft.id===id));
+  if(selected.some(draft=>!draft || !pending.has(draft.id) || !saved.sources?.includes(draft.source))){
+    res.status(400).json({error:'Une fiche est absente, enrichie ou issue d’une source non sélectionnée'});return;
+  }
+  let imported=0,skipped=0;
+  const draftImports={...(saved.draftImports||{})};
+  for(const draft of selected as DeviceDraft[]){
+    if(draftImports[draft.id]){skipped++;continue;}
+    const phone=normalizedPhone(draft.phone);
+    const company=normalizedIdentity(draft.company);
+    const city=normalizedIdentity(draft.city||'');
+    const website=String(draft.website||'').toLowerCase();
+    const partialAddress=normalizedIdentity(draft.address||'');
+    // Au moins une coordonnée ou rue réellement relevée, afin d'éviter des
+    // imports de simples mots-clés de recherche sans entreprise identifiable.
+    if(!phone&&!website&&!partialAddress){skipped++;continue;}
+    const existing=await db.select({id:prospectsTable.id,company:prospectsTable.company,
+      phone:prospectsTable.phone,city:prospectsTable.city,website:prospectsTable.website,
+      address:prospectsTable.address}).from(prospectsTable).where(and(
+      eq(prospectsTable.tenantId,req.auth!.tenantId),eq(prospectsTable.company,draft.company)
+    )).limit(60);
+    const duplicate=existing.find(record=>normalizedIdentity(record.company||'')===company &&
+      normalizedIdentity(record.city||'')===city && (
+        (phone && normalizedPhone(record.phone)===phone) ||
+        (website && String(record.website||'').toLowerCase()===website) ||
+        (partialAddress && normalizedIdentity(record.address||'')===partialAddress)
+      ));
+    if(duplicate){draftImports[draft.id]=duplicate.id;skipped++;continue;}
+    const url=(()=>{try{
+      const parsed=new URL(draft.sourceUrl);
+      return /^\/maps\/place\//.test(parsed.pathname)?draft.sourceUrl:null;
+    }catch{return null;}})();
+    const [created]=await db.insert(prospectsTable).values({
+      siren:null,siret:null,company:draft.company,
+      address:draft.address||null,postalCode:null,city:draft.city||null,
+      phone:draft.phone||null,email:null,website:draft.website||null,
+      source:draft.source,sourceUrl:url,status:'new',
+      sourceDetails:{browserDraft:{incomplete:true,source:draft.source,
+        sourceUrl:draft.sourceUrl,capturedAt:new Date(draft.capturedAt).toISOString(),
+        draftId:draft.id,jobId:job.id,postalCodeVerified:false}},
+      tenantId:req.auth!.tenantId,createdBy:req.auth!.userId,
+    }).onConflictDoNothing().returning({id:prospectsTable.id});
+    if(created){draftImports[draft.id]=created.id;imported++;}else skipped++;
+  }
+  await db.update(sourcingJobsTable).set({params:{...saved,draftImports},updatedAt:new Date()})
+    .where(and(eq(sourcingJobsTable.id,job.id),eq(sourcingJobsTable.tenantId,req.auth!.tenantId)));
+  res.json({imported,skipped,selected:selected.length});
 });
 
 

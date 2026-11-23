@@ -11,6 +11,8 @@ type SourcingJob = {
   params: { query?: string; location?: string; codePostal?: string; regions?: string[]; departements?: string[]; codesPostaux?: string[]; limit?: number;
     sources?: string[]; sourceStatuses?: Record<string, { status: string; count?: number; error?: string; zonesAttempted?: number; zonesTotal?: number }>;
     draftEnrichment?: {checked:number;matched:number;pending:number;pendingItems:{id:string;company:string;source:string;reason:string}[];updatedAt:string};
+    deviceDrafts?: {id:string;company:string;source:string;address?:string|null;city?:string|null;phone?:string|null;website?:string|null}[];
+    draftImports?:Record<string,string>;
   };
 };
 type Candidate = {
@@ -38,6 +40,8 @@ export default function SourcingJobPage() {
   const [enrichingSelection,setEnrichingSelection] = useState(false);
   const [enrichProgress,setEnrichProgress] = useState('');
   const [enrichingDrafts,setEnrichingDrafts] = useState(false);
+  const [selectedDrafts,setSelectedDrafts]=useState<string[]>([]);
+  const [importingDrafts,setImportingDrafts]=useState(false);
   const [error, setError] = useState('');
 
   const reload = useCallback(async (silent = false) => {
@@ -53,6 +57,9 @@ export default function SourcingJobPage() {
       setSelected(previous => previous.filter(siren => resultInfo.data?.some(
         candidate => (candidate.id || candidate.siren) === siren && !candidate.imported,
       )));
+      const pending=new Set(jobInfo.params.draftEnrichment?.pendingItems.map(item=>item.id)||[]);
+      setSelectedDrafts(previous=>previous.filter(draftId=>pending.has(draftId)&&
+        jobInfo.params.deviceDrafts?.some(draft=>draft.id===draftId)&&!jobInfo.params.draftImports?.[draftId]));
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Recherche introuvable');
@@ -71,6 +78,9 @@ export default function SourcingJobPage() {
   const candidateKey = (candidate: Candidate) => candidate.id || candidate.siren;
   const available = results.filter(candidate => !candidate.imported);
   const allSelected = available.length > 0 && available.every(candidate => selected.includes(candidateKey(candidate)));
+  const pendingDraftIds=new Set(job?.params.draftEnrichment?.pendingItems.map(item=>item.id)||[]);
+  const incompleteDrafts=(job?.params.deviceDrafts||[]).filter(draft=>pendingDraftIds.has(draft.id));
+  const canImportDraft=(draft: typeof incompleteDrafts[number])=>Boolean(draft.phone||draft.website||draft.address);
 
   function toggleAll() {
     setSelected(allSelected ? [] : available.map(candidateKey));
@@ -90,6 +100,20 @@ export default function SourcingJobPage() {
     } finally {
       setImporting(false);
     }
+  }
+
+  async function importIncompleteDrafts(){
+    if(!id||!selectedDrafts.length||importingDrafts)return;
+    if(!window.confirm(`Importer ${selectedDrafts.length} prospect(s) incomplet(s) dans le CRM ?\n\nAucun SIREN, SIRET, code postal ou email manquant ne sera inventé. Ces fiches devront être vérifiées avant toute campagne.`))return;
+    setImportingDrafts(true);
+    try{
+      const result=await apiClient.post<{imported:number;skipped:number}>(
+        `/sourcing/device/jobs/${id}/import-drafts`,{ids:selectedDrafts});
+      toast.success(`${result.imported} prospect(s) provisoire(s) créé(s)${result.skipped?` · ${result.skipped} ignoré(s)` : ''}`);
+      setSelectedDrafts([]);
+      await reload();
+    }catch(cause){toast.error(cause instanceof Error?cause.message:'Import incomplet impossible');}
+    finally{setImportingDrafts(false);}
   }
 
   async function enrichSelection() {
@@ -241,13 +265,48 @@ export default function SourcingJobPage() {
                   <span className="bg-amber-100 text-amber-900 rounded-lg px-3 py-2">{job.params.draftEnrichment.pending} à vérifier</span>
                 </div>
                 {job.params.draftEnrichment.pendingItems.length>0 && <details className="text-xs text-slate-700">
-                  <summary className="cursor-pointer font-semibold">Voir les fiches non rapprochées (elles ne sont pas importables)</summary>
+                  <summary className="cursor-pointer font-semibold">Voir les fiches non rapprochées (import provisoire possible sur sélection)</summary>
                   <ul className="mt-2 max-h-44 overflow-auto divide-y divide-slate-200">
                     {job.params.draftEnrichment.pendingItems.map(item=><li key={item.id} className="py-1.5"><strong>{item.company}</strong> · {item.reason}</li>)}
                   </ul>
                 </details>}
               </>}
             </section>}
+
+          {incompleteDrafts.length>0 && <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 mb-4 space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Prospects incomplets · import sur décision</h2>
+                <p className="text-xs text-slate-700 mt-1">Ces fiches ont été trouvées sur Google/Bing mais leur adresse complète n’a pas été confirmée. Tu peux conserver une piste commerciale avec ses seules coordonnées visibles. Aucune donnée manquante n’est inventée.</p>
+              </div>
+              <button onClick={()=>void importIncompleteDrafts()}
+                disabled={!selectedDrafts.length||importingDrafts||job.status!=='completed'}
+                className="rounded-xl bg-amber-700 px-4 py-2.5 text-white text-sm font-semibold disabled:opacity-50">
+                {importingDrafts?'Import en cours…':`Importer ${selectedDrafts.length} prospect(s) à compléter`}
+              </button>
+            </div>
+            <div className="max-h-64 overflow-y-auto divide-y divide-amber-200 rounded-lg border border-amber-200 bg-white">
+              {incompleteDrafts.map(draft=>{
+                const importedId=job.params.draftImports?.[draft.id];
+                const selectable=!importedId&&canImportDraft(draft);
+                return <label key={draft.id} className="flex items-center gap-3 p-3 text-xs cursor-pointer">
+                  <input type="checkbox" aria-label={`Importer la fiche incomplète ${draft.company}`}
+                    disabled={!selectable} checked={Boolean(importedId)||selectedDrafts.includes(draft.id)}
+                    onChange={()=>setSelectedDrafts(previous=>previous.includes(draft.id)
+                      ? previous.filter(item=>item!==draft.id)
+                      : previous.length<25?[...previous,draft.id]:previous)} />
+                  <span className="flex-1 min-w-0">
+                    <strong className="text-slate-900">{draft.company}</strong>
+                    <span className="block text-slate-600">{SOURCE_LABELS[draft.source]||draft.source} · {[draft.phone,draft.address,draft.city].filter(Boolean).join(' · ')||'Aucune coordonnée vérifiée'}</span>
+                  </span>
+                  {importedId?<button type="button" onClick={event=>{event.preventDefault();navigate(`/prospects/${importedId}`);}}
+                    className="text-green-700 font-semibold">Dans le CRM ↗</button>
+                    :<span className={selectable?'text-amber-700':'text-red-700'}>{selectable?'À compléter':'Données insuffisantes'}</span>}
+                </label>;
+              })}
+            </div>
+            <p className="text-xs text-amber-900">Les coordonnées absentes restent vides ; ces fiches doivent être vérifiées avant la prospection ou l’envoi d’emails.</p>
+          </section>}
 
           <section style={{ border: '1px solid var(--card-border)', background: 'var(--card-bg)', borderRadius: 16, overflow: 'hidden' }}>
             <div style={{ padding: 16, display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
