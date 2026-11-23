@@ -91,6 +91,7 @@ type SavedParams = {
   limit?: number;
   results?: SearchCandidate[];
   importedIds?: string[]; // historical jobs created before selective import
+  draftEnrichment?: { checked: number; matched: number; pending: number; pendingItems: { id: string; company: string; source: string; reason: string }[]; updatedAt: string };
 };
 
 type GeoFilters = { query: string; regions: string[]; departements: string[]; codesPostaux: string[]; limit: number };
@@ -373,6 +374,108 @@ const deviceCandidateSchema = z.object({
     context.addIssue({code:'custom',path:['collectionMode'],message:'LinkedIn : saisie manuelle uniquement'});
   }
 });
+// Une fiche incomplète n'est JAMAIS considérée comme une entreprise importable.
+// Seul un rapprochement unique à une adresse vérifiée permet de la promouvoir.
+const deviceDraftSchema = z.object({
+  id: z.string().trim().min(3).max(64),
+  source: z.enum(['google_maps','google_search','bing']),
+  company: z.string().trim().min(2).max(160),
+  address: z.string().trim().max(320).nullable().optional(),
+  city: z.string().trim().max(120).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+  website: z.string().url().max(500).refine(v=>['https:','http:'].includes(new URL(v).protocol)).nullable().optional(),
+  sourceUrl: z.string().url().max(500),
+  capturedAt: z.number().int().positive(),
+}).strict().superRefine((item, context)=>{
+  if(!validDeviceSourceUrl(item.source,item.sourceUrl))
+    context.addIssue({code:'custom',path:['sourceUrl'],message:'Source du brouillon invalide'});
+  if(item.capturedAt>Date.now()+60000 || Date.now()-item.capturedAt>24*60*60*1000)
+    context.addIssue({code:'custom',path:['capturedAt'],message:'Brouillon expiré (24 h)'});
+});
+type DeviceDraft = z.infer<typeof deviceDraftSchema>;
+const deviceDraftsSchema = z.array(deviceDraftSchema).max(75);
+
+const distinctiveDraft = (company: string) => {
+  const label=normalizedIdentity(company);
+  return label.length>=7 && !new Set([
+    'plombier','plomberie','chauffagiste','restaurant','electricien','entreprise',
+    'artisan','boulangerie','serrurier','depannage','services',
+  ]).has(label);
+};
+const normalizedPhone = (value: string | null | undefined) => {
+  const digits=String(value||'').replace(/\D/g,'');
+  return digits.startsWith('33') && digits.length===11 ? '0'+digits.slice(2) : digits;
+};
+function attachVerifiedDraft(target: SearchCandidate, draft: DeviceDraft, method: string): void {
+  const sourceDetails={
+    [draft.source]: {sourceUrl:draft.sourceUrl,collectionMode:'browser-visible',
+      matchedBy:method,capturedAt:new Date(draft.capturedAt).toISOString()},
+  };
+  mergeCompany(target,{
+    id:draft.id,source:draft.source,sources:[draft.source],siren:'',siret:null,
+    company:draft.company,address:target.address,codePostal:target.codePostal,city:target.city,
+    phone:draft.phone||null,website:draft.website||null,sourceUrl:draft.sourceUrl,
+    sourceDetails,
+  });
+}
+async function enrichDeviceDrafts(drafts: DeviceDraft[], params: GeoFilters,
+  seen: Map<string, SearchCandidate>) {
+  const pendingItems: {id:string;company:string;source:string;reason:string}[]=[];
+  const already=new Set<string>();
+  let matched=0;
+  const toLookup:DeviceDraft[]=[];
+  for(const draft of drafts){
+    const key=draft.source+'|'+normalizedIdentity(draft.company)+'|'+draft.sourceUrl;
+    if(already.has(key))continue;
+    already.add(key);
+    if(!distinctiveDraft(draft.company)){
+      pendingItems.push({id:draft.id,company:draft.company,source:draft.source,reason:'Nom trop générique pour une identification fiable'});continue;
+    }
+    const localMatches=[...seen.values()].filter(candidate=>
+      candidate.address && businessNamesMatch(candidate.company,draft.company) &&
+      (!draft.phone || !candidate.phone || normalizedPhone(candidate.phone)===normalizedPhone(draft.phone)));
+    // Le nom + un établissement unique déjà géolocalisé constituent une preuve.
+    // Si les deux fiches affichent un téléphone, il doit être identique.
+    if(localMatches.length===1){attachVerifiedDraft(localMatches[0],draft,'verified-local-profile');matched++;continue;}
+    if(localMatches.length>1){
+      pendingItems.push({id:draft.id,company:draft.company,source:draft.source,reason:'Plusieurs établissements locaux portent ce nom'});continue;
+    }
+    toLookup.push(draft);
+  }
+  const started=Date.now();
+  for(let i=0;i<toLookup.length;i+=2){
+    if(Date.now()-started>45000){
+      for(const draft of toLookup.slice(i))pendingItems.push({id:draft.id,company:draft.company,source:draft.source,reason:'Limite de temps atteinte ; relancez l’enrichissement'});
+      break;
+    }
+    const batch=toLookup.slice(i,i+2);
+    const found=await Promise.all(batch.map(async draft=>{
+      try {return {draft,candidates:await searchFrenchCompanies({...params,query:draft.company,limit:15})};}
+      catch(error){return {draft,candidates:[] as SearchCandidate[],error:error instanceof Error?error.message:'Annuaire indisponible'};}
+    }));
+    for(const item of found){
+      const {draft}=item;
+      if('error' in item){
+        pendingItems.push({id:draft.id,company:draft.company,source:draft.source,reason:`Annuaire indisponible : ${item.error}`});continue;
+      }
+      const exact=item.candidates.filter(candidate=>businessNamesMatch(candidate.company,draft.company));
+      // Les homonymes sont laissés à vérifier, sans supposer un CP depuis la recherche.
+      if(exact.length!==1 || !exact[0].address){
+        pendingItems.push({id:draft.id,company:draft.company,source:draft.source,
+          reason:exact.length>1?'Plusieurs correspondances officielles':'Aucune adresse officielle unique vérifiée'});continue;
+      }
+      const verified=exact[0];
+      const prior=[...seen.values()].find(candidate=>isSameCompany(candidate,verified));
+      const target=prior||{...verified,source:'entreprises' as const,sources:['entreprises']};
+      if(!prior)seen.set(candidateKey(target),target);
+      attachVerifiedDraft(target,draft,'official-directory-exact-name');matched++;
+    }
+    // L'annuaire public limite les requêtes par IP ; au plus deux par demi-seconde.
+    if(i+2<toLookup.length)await new Promise(resolve=>setTimeout(resolve,500));
+  }
+  return {checked:already.size,matched,pending:pendingItems.length,
+    pendingItems:pendingItems.slice(0,75),updatedAt:new Date().toISOString()};
+}
 const deviceSearchSchema = z.object({
   name: z.string().trim().min(1).max(120),
   params: z.object({
@@ -385,11 +488,15 @@ const deviceSearchSchema = z.object({
     limit: z.coerce.number().int().min(1).max(25).default(10),
   }).refine(p => p.regions.length + p.departements.length + p.codesPostaux.length > 0),
   candidates: z.array(deviceCandidateSchema).max(125),
+  drafts: deviceDraftsSchema.optional().default([]),
   sourceErrors: z.record(z.string(),z.string().trim().min(1).max(200)).optional(),
 }).strict().superRefine((item,context)=>{
   for(const candidate of item.candidates)if(!item.params.sources.includes(candidate.source)){
     context.addIssue({code:'custom',path:['candidates'],message:'Candidat issu d’une source non sélectionnée'});
     break;
+  }
+  if(item.drafts.some(draft=>!item.params.sources.includes(draft.source))){
+    context.addIssue({code:'custom',path:['drafts'],message:'Brouillon issu d’une source non sélectionnée'});
   }
   if(Object.keys(item.sourceErrors||{}).some(source=>!item.params.sources.some(selected=>selected===source))){
     context.addIssue({code:'custom',path:['sourceErrors'],message:'Erreur associée à une source non sélectionnée'});
@@ -401,7 +508,7 @@ router.post("/device/jobs", requireAuth, async (req, res) => {
   if (!parsed.success) {
     res.status(400).json({ error: "Résultats locaux invalides", details: parsed.error.issues }); return;
   }
-  const { name, params, candidates, sourceErrors } = parsed.data;
+  const { name, params, candidates, drafts, sourceErrors } = parsed.data;
   const seen = new Map<string, SearchCandidate>();
   const counts: Record<string, number> = {};
   for (const item of candidates) {
@@ -452,14 +559,55 @@ router.post("/device/jobs", requireAuth, async (req, res) => {
       sourceStatuses.entreprises = { status: "error", error:issue };
     }
   }
+  const draftEnrichment=drafts.length ? await enrichDeviceDrafts(drafts,params,seen) : undefined;
+  for(const source of params.sources.filter(source=>source!=='entreprises')){
+    const verified=[...seen.values()].filter(candidate=>candidate.sources?.includes(source));
+    if(verified.length && sourceStatuses[source]?.status!=='error')
+      sourceStatuses[source]={status:'completed',count:verified.length};
+    else if(drafts.some(draft=>draft.source===source) && sourceStatuses[source]?.status==='pending')
+      sourceStatuses[source]={status:'incomplete',count:0};
+  }
   const results = [...seen.values()].slice(0, 150);
   const [job] = await db.insert(sourcingJobsTable).values({
     type: "multi", name, tenantId: req.auth!.tenantId, createdBy: req.auth!.userId,
     status: "completed", count: results.length, progress: 100,
-    params: { ...params, results, sourceStatuses, collectionMode: "device" },
+    params: { ...params, results, sourceStatuses, draftEnrichment, collectionMode: "device" },
     duration: "Navigateur local", error,
   }).returning();
   res.status(201).json(job);
+});
+
+// Réessayer un lot depuis le navigateur actuel, sans réimporter les fiches en CRM.
+router.post('/device/jobs/:id/enrich-drafts',requireAuth,async(req,res)=>{
+  const parsed=deviceDraftsSchema.safeParse(req.body?.drafts);
+  if(!parsed.success){res.status(400).json({error:'Brouillons locaux invalides',details:parsed.error.issues});return;}
+  const job=await getJob(String(req.params.id),req.auth!.tenantId);
+  if(!job){res.status(404).json({error:'Recherche introuvable'});return;}
+  const prior=savedParams(job);
+  if(job.type!=='multi' || (prior as SavedParams & {collectionMode?:string}).collectionMode!=='device'
+    || !Array.isArray(prior.results) || job.status!=='completed'){
+    res.status(409).json({error:'Cette recherche ne prend pas en charge le connecteur local'});return;
+  }
+  const sources=prior.sources||[];
+  if(parsed.data.some(draft=>!sources.includes(draft.source))){
+    res.status(400).json({error:'Source non sélectionnée pour cette recherche'});return;
+  }
+  const params={query:prior.query||'',regions:prior.regions||[],departements:prior.departements||[],
+    codesPostaux:prior.codesPostaux||[],limit:prior.limit||10};
+  const seen=new Map<string,SearchCandidate>(prior.results.map(candidate=>[candidateKey(candidate),candidate]));
+  const draftEnrichment=await enrichDeviceDrafts(parsed.data,params,seen);
+  const results=[...seen.values()].slice(0,150);
+  const sourceStatuses={...(prior.sourceStatuses||{})};
+  for(const source of sources.filter(item=>item!=='entreprises')){
+    const count=results.filter(item=>item.sources?.includes(source)).length;
+    if(count && sourceStatuses[source]?.status!=='error')sourceStatuses[source]={status:'completed',count};
+    else if(parsed.data.some(draft=>draft.source===source) && sourceStatuses[source]?.status==='pending')
+      sourceStatuses[source]={status:'incomplete',count:0};
+  }
+  const [updated]=await db.update(sourcingJobsTable).set({count:results.length,
+    params:{...prior,results,sourceStatuses,draftEnrichment},
+  }).where(and(eq(sourcingJobsTable.id,job.id),eq(sourcingJobsTable.tenantId,req.auth!.tenantId))).returning();
+  res.json({job:updated,enrichment:draftEnrichment});
 });
 
 
@@ -686,12 +834,12 @@ router.get("/jobs/:id/results", requireAuth, async (req, res) => {
     const bySiren = new Map(existing.map(p => [p.siren, p.id]));
     const sirets = [...new Set(candidates.map(p => p.siret).filter((v): v is string => Boolean(v && /^\d{14}$/.test(v))))];
     const urls = [...new Set(candidates.map(p => p.sourceUrl).filter((v): v is string => Boolean(v)))];
-    const [bySiretRows, byUrlRows] = await Promise.all([
-      sirets.length ? db.select({ id: prospectsTable.id, siret: prospectsTable.siret }).from(prospectsTable)
-        .where(and(eq(prospectsTable.tenantId, req.auth!.tenantId), inArray(prospectsTable.siret, sirets))) : Promise.resolve([]),
-      urls.length ? db.select({ id: prospectsTable.id, sourceUrl: prospectsTable.sourceUrl }).from(prospectsTable)
-        .where(and(eq(prospectsTable.tenantId, req.auth!.tenantId), inArray(prospectsTable.sourceUrl, urls))) : Promise.resolve([]),
-    ]);
+    // Requêtes séquentielles : évite les lectures concurrentes dans l'adaptateur
+    // PostgreSQL local utilisé pour les vérifications d'intégration isolées.
+    const bySiretRows = sirets.length ? await db.select({ id: prospectsTable.id, siret: prospectsTable.siret }).from(prospectsTable)
+      .where(and(eq(prospectsTable.tenantId, req.auth!.tenantId), inArray(prospectsTable.siret, sirets))) : [];
+    const byUrlRows = urls.length ? await db.select({ id: prospectsTable.id, sourceUrl: prospectsTable.sourceUrl }).from(prospectsTable)
+      .where(and(eq(prospectsTable.tenantId, req.auth!.tenantId), inArray(prospectsTable.sourceUrl, urls))) : [];
     const bySiret = new Map(bySiretRows.map(p => [p.siret, p.id]));
     const byUrl = new Map(byUrlRows.map(p => [p.sourceUrl, p.id]));
     const companies = [...new Set(candidates.map(candidate => candidate.company))];

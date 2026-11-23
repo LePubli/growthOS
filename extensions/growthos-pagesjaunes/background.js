@@ -529,6 +529,11 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       .catch(error=>reply({ok:false,error:String(error?.message||error)}));
     return true;
   }
+  if(message?.action==='get-drafts'){
+    readDrafts().then(drafts=>reply({ok:true,drafts,warnings:[]}))
+      .catch(error=>reply({ok:false,error:String(error?.message||error)}));
+    return true;
+  }
   if (!['search', 'enrich'].includes(message?.action)) {
     reply({ok:false,error:'Action inconnue'}); return false;
   }

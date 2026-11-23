@@ -81,6 +81,10 @@ assert.equal((await send('get-captures',null,growthos)).results.length,1,
   'Une fiche incomplète ne doit jamais être envoyée au CRM');
 const [draft]=(await send('list-drafts')).drafts;
 assert.equal(draft.company,'Leclerc & Chéry Valnegreen');
+assert.equal((await send('get-drafts',null,growthos)).drafts.length,1,
+  'GrowthOS récupère les brouillons sans adresse pour leur rapprochement officiel');
+assert.equal((await send('get-drafts',null,{url:'https://other.example/sourcing'})).ok,false,
+  'Une origine étrangère ne peut pas lire les brouillons');
 const completed=await send('manual-add',{source:draft.source,draftId:draft.id,company:draft.company,
   address:'12 rue de Lille 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone:draft.phone,
   sourceUrl:draft.sourceUrl});

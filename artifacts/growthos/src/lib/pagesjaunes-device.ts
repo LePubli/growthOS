@@ -14,6 +14,17 @@ export type LocalCompany = {
   collectionMode?: 'manual' | 'visible';
   capturedAt?: number;
 };
+export type LocalDraft = {
+  id: string;
+  source: 'google_maps' | 'google_search' | 'bing';
+  company: string;
+  address: string | null;
+  city: string | null;
+  phone: string | null;
+  website: string | null;
+  sourceUrl: string;
+  capturedAt: number;
+};
 export type LocalProfile = {
   sourceUrl: string; name: string;
   address: string | null; codePostal: string | null; city: string | null;
@@ -25,6 +36,7 @@ export type LocalProfile = {
 };
 type ExtensionResponse = {
   results: LocalCompany[];
+  drafts: LocalDraft[];
   warnings: string[];
   profile: LocalProfile | null;
 };
@@ -41,7 +53,7 @@ export function localPagesJaunesLocations(filters: {
     departements.length ? departements.map(code => departmentNames[code] || code) :
     regions.map(code => regionNames[code] || code))];
 }
-function askExtension(action: 'ping'|'search'|'enrich'|'get-captures', payload?: object, timeoutMs = 2000): Promise<ExtensionResponse> {
+function askExtension(action: 'ping'|'search'|'enrich'|'get-captures'|'get-drafts', payload?: object, timeoutMs = 2000): Promise<ExtensionResponse> {
   return new Promise((resolve,reject) => {
     if (isMobile) { reject(new Error('Sur téléphone, une application Android dédiée sera nécessaire.')); return; }
     const requestId = crypto.randomUUID();
@@ -55,7 +67,7 @@ function askExtension(action: 'ping'|'search'|'enrich'|'get-captures', payload?:
       if (!m || m.channel !== CHANNEL || m.direction !== 'from-extension' || m.requestId !== requestId) return;
       window.clearTimeout(timeout); window.removeEventListener('message',listener);
       if (!m.ok) { reject(new Error(m.error || 'Extension indisponible')); return; }
-      resolve({results: Array.isArray(m.results) ? m.results : [], warnings: Array.isArray(m.warnings) ? m.warnings : [], profile: m.profile || null});
+      resolve({results: Array.isArray(m.results) ? m.results : [], drafts: Array.isArray(m.drafts) ? m.drafts : [], warnings: Array.isArray(m.warnings) ? m.warnings : [], profile: m.profile || null});
     }
     window.addEventListener('message',listener);
     window.postMessage({channel:CHANNEL,direction:'to-extension',requestId,action,payload},window.location.origin);
@@ -66,6 +78,11 @@ export function pingLocalPagesJaunes() { return askExtension('ping'); }
 export async function getLocalCaptures(): Promise<LocalCompany[]> {
   const response=await askExtension('get-captures');
   return response.results.filter(item=>['google_maps','google_search','bing','linkedin'].includes(item.source||''));
+}
+/** Brouillons locaux (jamais importables tant qu'une adresse n'est pas vérifiée). */
+export async function getLocalDrafts(): Promise<LocalDraft[]> {
+  const response = await askExtension('get-drafts');
+  return response.drafts.filter(item => ['google_maps','google_search','bing'].includes(item.source));
 }
 export function searchLocalPagesJaunes(payload: {query:string;locations:string[];limit:number}) {
   // 8 zones * (chargement 25s + pause 5s), plus marge pour la recherche.

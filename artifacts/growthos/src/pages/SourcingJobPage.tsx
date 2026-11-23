@@ -3,13 +3,15 @@ import { useLocation, useParams } from 'wouter';
 import { ArrowLeft, Building2, Download, ExternalLink, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
-import { enrichLocalPagesJaunes } from '@/lib/pagesjaunes-device';
+import { enrichLocalPagesJaunes, getLocalDrafts } from '@/lib/pagesjaunes-device';
 
 type SourcingJob = {
   id: string; type: string; name: string; status: string; count: number | null;
   error: string | null; duration: string | null; createdAt: string;
   params: { query?: string; location?: string; codePostal?: string; regions?: string[]; departements?: string[]; codesPostaux?: string[]; limit?: number;
-    sources?: string[]; sourceStatuses?: Record<string, { status: string; count?: number; error?: string; zonesAttempted?: number; zonesTotal?: number }> };
+    sources?: string[]; sourceStatuses?: Record<string, { status: string; count?: number; error?: string; zonesAttempted?: number; zonesTotal?: number }>;
+    draftEnrichment?: {checked:number;matched:number;pending:number;pendingItems:{id:string;company:string;source:string;reason:string}[];updatedAt:string};
+  };
 };
 type Candidate = {
   id?: string; siren: string; source?: string; sources?: string[]; siret?: string | null; company: string | null; address: string | null;
@@ -35,6 +37,7 @@ export default function SourcingJobPage() {
   const [importing, setImporting] = useState(false);
   const [enrichingSelection,setEnrichingSelection] = useState(false);
   const [enrichProgress,setEnrichProgress] = useState('');
+  const [enrichingDrafts,setEnrichingDrafts] = useState(false);
   const [error, setError] = useState('');
 
   const reload = useCallback(async (silent = false) => {
@@ -120,6 +123,22 @@ export default function SourcingJobPage() {
     }
   }
 
+  async function autoEnrichDrafts() {
+    if(!id || enrichingDrafts)return;
+    setEnrichingDrafts(true);
+    try{
+      const sourceNames=job?.params.sources||[];
+      const drafts=(await getLocalDrafts()).filter(item=>sourceNames.includes(item.source));
+      if(!drafts.length){toast.warning('Aucune fiche Google/Bing à enrichir dans cette extension (conservation 24 h).');return;}
+      toast.info(`Rapprochement de ${drafts.length} fiche(s) avec l’annuaire officiel. Patientez…`,{duration:8000});
+      const response=await apiClient.post<{enrichment:{matched:number;pending:number}}>(
+        `/sourcing/device/jobs/${id}/enrich-drafts`,{drafts},{timeoutMs:90000});
+      await reload();
+      toast.success(`${response.enrichment.matched} rapprochement(s) confirmé(s) · ${response.enrichment.pending} fiche(s) à vérifier.`,{duration:8500});
+    }catch(cause){toast.error(cause instanceof Error?cause.message:'Enrichissement indisponible',{duration:12000});}
+    finally{setEnrichingDrafts(false);}
+  }
+
   function exportCsv() {
     if (!results.length) return;
     const lines = [
@@ -187,13 +206,14 @@ export default function SourcingJobPage() {
               {(job.params.sources || []).map(source => {
                 const state = job.params.sourceStatuses?.[source];
                 const status = state?.status || 'pending';
-                return <div key={source} className={`rounded-xl border px-3 py-2.5 text-sm ${status === 'error' ? 'bg-red-50 border-red-200' : status === 'completed' ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
+                return <div key={source} className={`rounded-xl border px-3 py-2.5 text-sm ${status === 'error' ? 'bg-red-50 border-red-200' : status === 'completed' ? 'bg-green-50 border-green-200' : status === 'incomplete' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="flex items-center justify-between gap-2">
                     <strong>{SOURCE_LABELS[source]||source}</strong>
-                    <span className="text-xs">{status === 'completed' ? '✓ Terminé' : status === 'error' ? 'Échec' : status === 'running' ? 'En cours…' : 'À collecter'}</span>
+                    <span className="text-xs">{status === 'completed' ? '✓ Terminé' : status === 'error' ? 'Échec' : status === 'running' ? 'En cours…' : status === 'incomplete' ? 'À enrichir' : 'À collecter'}</span>
                   </div>
                   {status === 'completed' && <p className="text-xs mt-1">{state?.count ?? 0} résultat(s) · fiches consultées</p>}
                   {status === 'pending' && <p className="text-xs mt-1">Ouvrez l’extension GrowthOS, capturez cette source puis relancez une nouvelle recherche.</p>}
+                  {status === 'incomplete' && <p className="text-xs mt-1">Fiches capturées, mais aucune adresse confirmée. Consultez la section Enrichissement ci-dessous.</p>}
                   {state?.zonesTotal && <p className="text-xs mt-1">{state.zonesAttempted ?? 0}/{state.zonesTotal} zone(s) consultée(s)</p>}
                   {state?.error && <p role="alert" className="text-xs text-red-800 mt-1 break-words">{state.error}</p>}
                 </div>;
@@ -201,6 +221,33 @@ export default function SourcingJobPage() {
             </div>
             {(job.status === 'running' || job.status === 'queued') && <p className="text-xs text-gray-500">Les résultats apparaissent progressivement. Aucune entreprise n'est importée automatiquement.</p>}
           </div>}
+
+          {(job.params.sources||[]).some(source=>['google_maps','google_search','bing'].includes(source)) &&
+            <section className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4 mb-4 space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Enrichissement automatique des fiches Google / Bing</h2>
+                  <p className="text-xs text-slate-600 mt-1">Recherche une correspondance unique dans l’Annuaire officiel ou les fiches locales vérifiées. Aucune adresse n’est inventée.</p>
+                </div>
+                <button onClick={()=>void autoEnrichDrafts()} disabled={enrichingDrafts||job.status!=='completed'}
+                  className="rounded-xl bg-teal-700 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">
+                  {enrichingDrafts?'Identification en cours…':'↻ Enrichir automatiquement mes fiches'}
+                </button>
+              </div>
+              {job.params.draftEnrichment && <>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="bg-white rounded-lg border px-3 py-2">{job.params.draftEnrichment.checked} fiche(s) analysée(s)</span>
+                  <span className="bg-green-100 text-green-800 rounded-lg px-3 py-2">{job.params.draftEnrichment.matched} identifiée(s)</span>
+                  <span className="bg-amber-100 text-amber-900 rounded-lg px-3 py-2">{job.params.draftEnrichment.pending} à vérifier</span>
+                </div>
+                {job.params.draftEnrichment.pendingItems.length>0 && <details className="text-xs text-slate-700">
+                  <summary className="cursor-pointer font-semibold">Voir les fiches non rapprochées (elles ne sont pas importables)</summary>
+                  <ul className="mt-2 max-h-44 overflow-auto divide-y divide-slate-200">
+                    {job.params.draftEnrichment.pendingItems.map(item=><li key={item.id} className="py-1.5"><strong>{item.company}</strong> · {item.reason}</li>)}
+                  </ul>
+                </details>}
+              </>}
+            </section>}
 
           <section style={{ border: '1px solid var(--card-border)', background: 'var(--card-bg)', borderRadius: 16, overflow: 'hidden' }}>
             <div style={{ padding: 16, display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>

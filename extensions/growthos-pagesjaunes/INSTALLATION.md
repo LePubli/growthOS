@@ -1,13 +1,32 @@
-# Connecteur multisource GrowthOS — version 0.4.1
+# Connecteur multisource GrowthOS — version 0.5.0
 
 L'extension fonctionne dans **Chrome sur l'appareil de l'utilisateur** (ordinateur).
 Les images Docker de GrowthOS sont construites par GitHub Actions, pas sur le VPS.
 
-## Mise à jour manuelle
+## Mises à jour automatiques — Chrome Web Store (solution recommandée)
+
+Une extension ouverte via **« Charger l'extension non empaquetée »** dans Chrome ne se met **pas** à jour depuis GitHub avec le bouton « Mettre à jour ». Chrome ne distribue automatiquement que les versions publiées via le Chrome Web Store sur les navigateurs classiques Windows/macOS.
+
+Configuration **une seule fois** par le propriétaire de GrowthOS :
+
+1. Créer un compte éditeur sur [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole) et activer la validation en deux étapes.
+2. Dans GitHub Actions, lancer **GrowthOS Chrome extension package and updates** : un ZIP prêt à publier est joint à l'exécution (artefact `growthos-connecteur-chrome-...`).
+3. Créer l'extension dans le Developer Dashboard avec ce ZIP, renseigner les onglets de présentation et confidentialité, puis publier la première version. Choisir une visibilité restreinte appropriée. La vérification Google peut prendre du temps ; l'extension ne peut pas être distribuée automatiquement avant sa validation.
+4. Sur Google Cloud, activer **Chrome Web Store API (v2)** et créer un **compte de service** ; l'ajouter dans la section **Account** du Developer Dashboard. Ne jamais insérer ses identifiants dans le code source ou dans la conversation.
+5. Ajouter à la configuration du dépôt GitHub :
+   - **Variables** `CWS_PUBLISHER_ID` et `CWS_EXTENSION_ID` (identifiants obtenus dans le tableau de bord Chrome Web Store) ;
+   - **Secret** `CWS_SERVICE_ACCOUNT_JSON` (clé JSON du compte de service, conservée uniquement dans GitHub Actions).
+6. Remplacer **une seule fois** l'extension de développement chargée localement par la version installée depuis le Chrome Web Store. **Attention :** terminer l'import des captures en attente avant de la remplacer ; les données conservées par une extension avec un autre identifiant ne sont pas transférées automatiquement.
+
+Ensuite, quand un changement touche `extensions/growthos-pagesjaunes/` sur la branche de préproduction, GitHub prépare automatiquement le ZIP, attribue une version croissante, l'envoie à Google et demande sa publication. Après validation de Google, **Chrome distribue la mise à jour** aux utilisateurs de l'extension du Store, sans téléchargement manuel. Il n'y a aucune modification Docker ou VPS à réaliser pour la seule extension.
+
+La publication automatique ne démarre **pas** tant que ces éléments ne sont pas configurés. Ne fournissez pas votre mot de passe Google.
+
+## Ancienne installation locale (dépannage uniquement)
 
 1. Récupérer **le dossier complet** `extensions/growthos-pagesjaunes` depuis la branche `fix/growthos-functional-redesign`, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`.
 2. Remplacer le contenu de votre dossier d'extension Chrome local (sans changer le chemin du dossier chargé dans Chrome).
-3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version doit être **0.4.1**.
+3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.5.0** (le ZIP GitHub Actions porte un quatrième numéro de version incrémental).
 4. Garder Chrome et l'onglet `https://agile.le-publicitaire.fr` ouverts.
 5. Dans GrowthOS, ouvrir **Trouver des entreprises**, cliquer sur **Connecter cet appareil** si nécessaire, puis choisir les sources. Pour Google et Bing, le nouvel onglet doit être ouvert manuellement depuis le panneau de l'extension.
 6. Pour les fiches déjà importées depuis PagesJaunes, **Compléter depuis PagesJaunes** reste opérationnel.
@@ -16,9 +35,10 @@ Les images Docker de GrowthOS sont construites par GitHub Actions, pas sur le VP
 
 - Sur la page des résultats locaux Google, cliquez sur **Capturer les fiches visibles**.
 - L'extension conserve le nom et le téléphone réellement affichés dans une liste **Fiches à vérifier**.
-- Cliquez sur **Compléter** pour ouvrir le formulaire déjà prérempli. Ouvrez si besoin la fiche détaillée du professionnel sur le site source afin de vérifier sa rue, son code postal et sa ville.
+- Dans GrowthOS, lancez la recherche multisource avec cette source : l'application rapproche les brouillons de l'Annuaire des entreprises ou des fiches locales vérifiées. Vous pouvez aussi cliquer sur **Enrichir automatiquement mes fiches** dans les résultats d'une recherche existante.
+- Les fiches identifiées de manière unique passent dans les résultats à sélectionner ; les autres restent **à vérifier**. Pour ces dernières, cliquez sur **Compléter** dans l'extension et ouvrez si besoin la fiche détaillée du professionnel sur le site source afin de vérifier sa rue, son code postal et sa ville.
 - Validez seulement après avoir indiqué une adresse complète contenant le code postal réel. Le simple texte de recherche « plombier 59100 » ne prouve pas que chaque entreprise a ce code postal.
-- Les brouillons restent uniquement sur l'appareil ; seuls les résultats validés peuvent être synchronisés avec GrowthOS. Ils expirent au bout de 24 heures.
+- Les brouillons restent sur l'appareil jusqu'à ce que l'utilisateur lance une recherche ou un enrichissement depuis GrowthOS. Les brouillons envoyés au serveur ne sont pas des prospects CRM ; les entrées non confirmées sont seulement affichées avec une raison de non-identification. Les captures locales expirent au bout de 24 heures.
 
 ## Données traitées
 

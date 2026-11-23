@@ -1,8 +1,14 @@
-# Connecter GrowthOS à son navigateur — connecteur multisource 0.4.1
+# Connecter GrowthOS à son navigateur — connecteur multisource 0.5.0
 
 Ce connecteur fonctionne avec **Chrome ou Edge sur ordinateur**. Il garde les recherches et les éventuelles sessions des sites consultés **dans votre propre navigateur**, sans transmettre de mot de passe ni de cookie à GrowthOS. Il ne modifie ni DockPanel ni les autres conteneurs.
 
-## Installation unique (Chrome / Edge)
+## Mise à jour automatique : Chrome Web Store
+
+**Objectif : plus aucun fichier ZIP à retélécharger à chaque évolution.** Une extension installée depuis le Chrome Web Store reçoit automatiquement les versions que Google publie. Le dépôt contient désormais une action GitHub qui prépare le ZIP et peut soumettre les mises à jour automatiquement après une configuration unique du compte éditeur Google. Voir [les étapes d'activation](../extensions/growthos-pagesjaunes/INSTALLATION.md).
+
+**La première publication est nécessaire :** Google impose un compte développeur, une fiche dans le Chrome Web Store, la vérification en deux étapes et, pour l'automatisation, les identifiants du compte de service. La publication n'est pas encore activée par défaut. Jusqu'à la première installation depuis le Store, l'extension chargée localement doit être actualisée manuellement.
+
+## Installation locale de dépannage (Chrome / Edge)
 
 1. Ouvrir le dépôt [GrowthOS sur GitHub](https://github.com/LePubli/growthOS/tree/fix/growthos-functional-redesign).
 2. Menu **Code → Download ZIP**. Décompresser l'archive dans un dossier permanent.
@@ -12,7 +18,7 @@ Ce connecteur fonctionne avec **Chrome ou Edge sur ordinateur**. Il garde les re
 6. Ouvrir [GrowthOS – Trouver des entreprises](https://agile.le-publicitaire.fr/sourcing), **actualiser la page**.
 7. Cliquer sur **Connecter cet appareil**. L'indicateur devient **Connecté** si l'extension répond.
 
-> Si vous aviez une version précédente : remplacez **tous les fichiers** du dossier d'extension, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`. Puis cliquez sur **Actualiser** sous l’extension dans `chrome://extensions`. Vérifiez la version **0.4.1** et actualisez l’onglet GrowthOS.
+> Si vous utilisez encore le dossier local : remplacez tous ses fichiers, cliquez sur **Actualiser** sous l’extension dans `chrome://extensions`, vérifiez la version **0.5.0**, puis actualisez GrowthOS. Cette manipulation ne sera plus nécessaire une fois la version du Store installée.
 
 ### Utilisation multisource
 
@@ -27,9 +33,9 @@ Ce connecteur fonctionne avec **Chrome ou Edge sur ordinateur**. Il garde les re
 
 1. Dans GrowthOS, **Trouver des entreprises → Nouvelle recherche**, sélectionnez autant de sources que souhaité et vos régions/départements/codes postaux.
 2. Pour Google Maps, Google Search ou Bing : cliquez sur l'icône **GrowthOS** dans les extensions Chrome, choisissez le moteur, indiquez **activité et localisation**, cliquez sur **Ouvrir une recherche**.
-3. Naviguez normalement sur le moteur ; ouvrez une **fiche entreprise**. Cliquez à nouveau sur l'icône GrowthOS puis sur **Capturer les fiches visibles**. Les cartes avec nom et téléphone, mais sans adresse complète, sont enregistrées comme **brouillons à vérifier**. Cliquez sur **Compléter** : le formulaire récupère les valeurs visibles, puis vous pouvez vérifier la rue, la ville et le code postal sur la fiche détaillée. N'inventez aucune donnée.
+3. Naviguez normalement sur le moteur ; ouvrez une **fiche entreprise**. Cliquez à nouveau sur l'icône GrowthOS puis sur **Capturer les fiches visibles**. Les cartes avec nom et téléphone, mais sans adresse complète, sont enregistrées comme **brouillons à enrichir**. GrowthOS tente ensuite un rapprochement automatique avec les établissements officiels et les autres sources vérifiées. Les fiches restant ambiguës peuvent être complétées manuellement depuis l'extension. N'inventez aucune donnée.
 4. Pour LinkedIn, connectez-vous à votre compte sur le site si besoin, ouvrez manuellement la fiche entreprise, puis renseignez les informations vérifiées dans le formulaire de l'extension. L'extension ne lit pas automatiquement LinkedIn.
-5. Revenez dans le formulaire GrowthOS et cliquez sur **Vérifier mes captures**. Lancez la recherche : les fiches capturées sont fusionnées avec les autres sources, filtrées par zone puis **présentées avant import**. Une source non capturée affiche **À collecter**.
+5. Revenez dans le formulaire GrowthOS et cliquez sur **Vérifier mes captures**. Lancez la recherche : les fiches vérifiées et les brouillons récupérés depuis votre navigateur sont rapprochés des sources officielles. Dans la page de résultats, le bouton **Enrichir automatiquement mes fiches** permet de réessayer le lot. Les fiches sans identité unique vérifiable restent non importables, avec une explication.
 6. Sélectionnez explicitement les entreprises désirées dans les résultats avant l'import CRM. Les doublons compatibles sont rapprochés, les identifiants légaux ne sont jamais inventés.
 
 La sélection locale reste sur votre appareil **24 heures**. Le menu de l'extension permet de retirer une fiche ou de vider la sélection. Elle ne lance pas de collecte ni d'import en arrière-plan.
@@ -58,7 +64,7 @@ La sélection locale reste sur votre appareil **24 heures**. Le menu de l'extens
 - « Connecteur non détecté » : vérifier l'extension activée, le bon profil Chrome, puis actualiser GrowthOS.
 - « Aucun bloc entreprise détecté » : ouvrir PagesJaunes directement, vérifier que les résultats sont visibles et qu'aucun CAPTCHA ne les masque. Les sélecteurs HTML devront peut-être être adaptés.
 - « Aucune fiche avec adresse postale complète » : ouvrez le panneau détaillé de l'établissement puis réessayez la capture. Une page de liens de recherche sans adresse vérifiée ne peut pas être importée comme entreprise.
-- « 0 capture » sur GrowthOS : vérifiez que vous avez bien actualisé l'extension en version **0.4.1** et **validé** les brouillons ; seules les fiches complètes des sources cochées dans le formulaire sont prises en compte.
+- « 0 capture » sur GrowthOS : vérifiez que vous avez bien l'extension en version **0.5.0** (ou une version Store plus récente) et que les sources sont cochées. Les brouillons sont comptés séparément et ne deviennent importables qu'après un rapprochement confirmé.
 - N'installez pas l'extension dans un dossier temporaire : Chrome doit pouvoir retrouver les fichiers au redémarrage.
 
 ## Compléter une fiche PagesJaunes
@@ -71,4 +77,4 @@ Le connecteur lit d'abord les entreprises depuis la liste de résultats. Les don
 - Un bouton « Email » qui ouvre un formulaire de contact ne donne **pas** accès à une adresse email.
 - Si le site refuse l'accès ou modifie sa structure, certains champs restent vides. Vérifiez toujours la fiche source.
 
-Lorsqu'une nouvelle version de l'extension est publiée, **remplacez les fichiers de votre dossier d'extension** par ceux de la branche actuelle, cliquez sur Actualiser dans `chrome://extensions` puis actualisez l'onglet GrowthOS.
+Pour les installations Chrome Web Store, **Chrome récupère la nouvelle version publiée automatiquement**. La mise à jour manuelle des fichiers ne concerne que l'ancienne extension locale non empaquetée.

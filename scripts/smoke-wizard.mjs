@@ -366,6 +366,38 @@ try {
     candidates:[{...linkedRecord,collectionMode:'visible'}],
   },token);
   check(scrapedLinkedIn.status===400,'Le serveur refuse un profil LinkedIn extrait automatiquement');
+  const googleDraft={id:'draft_google_001',source:'google_search',company:'Entreprise test A',
+    address:null,city:'Lille',phone:'03 20 00 00 01',website:null,
+    sourceUrl:'https://www.google.com/search?q=Entreprise+test+A',capturedAt:Date.now()};
+  const genericDraft={...googleDraft,id:'draft_google_generic',company:'Plombier',phone:null};
+  const unverifiedDraftJob=await request('POST','/sourcing/device/jobs',{
+    name:'Identification Google sans adresse',
+    params:{...localParams,sources:['google_search']},candidates:[],drafts:[googleDraft,genericDraft],
+  },token);
+  check(unverifiedDraftJob.status===201 && unverifiedDraftJob.body.count===1 &&
+    unverifiedDraftJob.body.params.draftEnrichment.matched===1 &&
+    unverifiedDraftJob.body.params.draftEnrichment.pending===1,
+    'Les brouillons Google sont rapprochés de l’annuaire officiel sans inventer d’adresse');
+  const unverifiedDraftPreview=await request('GET',`/sourcing/jobs/${unverifiedDraftJob.body.id}/results`,undefined,token);
+  check(unverifiedDraftPreview.body.data.length===1 &&
+    unverifiedDraftPreview.body.data[0].siren==='100000001' &&
+    unverifiedDraftPreview.body.data[0].sources.includes('google_search') &&
+    unverifiedDraftPreview.body.data[0].imported &&
+    unverifiedDraftPreview.body.data[0].prospectId,
+    'La fiche Google vérifiée retrouve le prospect déjà importé sans le recréer');
+  const crmAfterDraft=await request('GET','/prospects',undefined,token);
+  check(crmAfterDraft.body.total===2,'Le rapprochement automatique ne crée aucun prospect dans le CRM');
+  const recheckDrafts=await request('POST',`/sourcing/device/jobs/${unverifiedDraftJob.body.id}/enrich-drafts`,{
+    drafts:[googleDraft,genericDraft],
+  },token);
+  check(recheckDrafts.status===200 && recheckDrafts.body.job.count===1 &&
+    recheckDrafts.body.enrichment.matched===1 && recheckDrafts.body.enrichment.pending===1,
+    'Le nouvel enrichissement de fiches Google ne crée aucun doublon');
+  const forgedDraft=await request('POST','/sourcing/device/jobs',{
+    name:'Brouillon frauduleux',params:{...localParams,sources:['google_search']},
+    candidates:[],drafts:[{...googleDraft,sourceUrl:'https://google.com.evil.example/fiche'}],
+  },token);
+  check(forgedDraft.status===400,'Le serveur refuse les brouillons dont la source ne correspond pas au domaine');
   const multiDevice=await request('POST','/sourcing/device/jobs',{
     name:'Multisource Chrome local',params:allSourcesParams,
     candidates:[localCandidate,mapRecord,bingRecord,searchRecord,linkedRecord],

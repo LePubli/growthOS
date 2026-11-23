@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
 import GeoMultiSelect from '@/components/sourcing/GeoMultiSelect';
 import { FRENCH_DEPARTMENTS, FRENCH_REGIONS } from '@/lib/france-geo';
-import { pingLocalPagesJaunes, searchLocalPagesJaunes, localPagesJaunesLocations, getLocalCaptures, isMobileConnectorRequired } from '@/lib/pagesjaunes-device';
+import { pingLocalPagesJaunes, searchLocalPagesJaunes, localPagesJaunesLocations, getLocalCaptures, getLocalDrafts, isMobileConnectorRequired } from '@/lib/pagesjaunes-device';
 
 const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; color: string; fields: { key:string; label:string; placeholder:string; type?:string }[] }> = {
   entreprises: {
@@ -100,6 +100,7 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
   const [launching, setLaunching] = useState(false);
   const [launchStage, setLaunchStage] = useState<'collect'|'save'|'api'|null>(null);
   const [captures,setCaptures] = useState<Record<string,number>>({});
+  const [draftCounts,setDraftCounts] = useState<Record<string,number>>({});
   const [checkingCaptures,setCheckingCaptures] = useState(false);
   const [regions, setRegions] = useState<string[]>([]);
   const [departements, setDepartements] = useState<string[]>([]);
@@ -115,11 +116,14 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
   const checkCaptures = async () => {
     setCheckingCaptures(true);
     try {
-      const items=await getLocalCaptures();
+      const [items,drafts]=await Promise.all([getLocalCaptures(),getLocalDrafts()]);
       const counts:Record<string,number>={};
       items.forEach(item=>{if(item.source)counts[item.source]=(counts[item.source]||0)+1;});
       setCaptures(counts);
-      toast.success(`${items.length} fiche(s) conservée(s) dans votre extension Chrome`);
+      const incomplete:Record<string,number>={};
+      drafts.forEach(item=>{incomplete[item.source]=(incomplete[item.source]||0)+1;});
+      setDraftCounts(incomplete);
+      toast.success(`${items.length} fiche(s) vérifiée(s) et ${drafts.length} à enrichir sur votre appareil`);
     } catch (error:any) {toast.error(error.message||'Extension non détectée');}
     finally {setCheckingCaptures(false);}
   };
@@ -141,10 +145,12 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
         throw new Error('Connectez d’abord l’extension Chrome multisource sur cet appareil.');
       }
       if (sources.some(source=>source!=='entreprises') && deviceConnected) {
-        const manuallyCaptured=(await getLocalCaptures()).filter(item=>item.source && sources.includes(item.source));
+        const [allCaptured,allDrafts]=await Promise.all([getLocalCaptures(),getLocalDrafts()]);
+        const manuallyCaptured=allCaptured.filter(item=>item.source && sources.includes(item.source));
+        const drafts=allDrafts.filter(item=>sources.includes(item.source));
         const localCandidates = [...manuallyCaptured];
         const sourceErrors:Record<string,string>={};
-        if (!manuallyCaptured.length && !sources.includes('pagesjaunes') && !sources.includes('entreprises')) {
+        if (!manuallyCaptured.length && !drafts.length && !sources.includes('pagesjaunes') && !sources.includes('entreprises')) {
           throw new Error('Aucune fiche capturée pour les sources sélectionnées. Ouvrez l’extension GrowthOS, capturez vos fiches puis réessayez.');
         }
         const departmentNames = Object.fromEntries(FRENCH_DEPARTMENTS.map(item=>[item.code,item.label]));
@@ -161,16 +167,20 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
             localCandidates.push(...local.results.map(result=>({...result,source:'pagesjaunes' as const})));
             if(local.warnings.length)toast.warning(local.warnings.slice(0,2).join(' · '));
           } catch (error:any) {
-            if(!manuallyCaptured.length && !sources.includes('entreprises'))throw error;
+            if(!manuallyCaptured.length && !drafts.length && !sources.includes('entreprises'))throw error;
             sourceErrors.pagesjaunes=String(error?.message||'PagesJaunes indisponible').slice(0,200);
             toast.warning(`PagesJaunes indisponible : ${error.message||'Erreur'}. Les autres sources restent utilisables.`);
           }
         }
         currentStage = 'save';
         setLaunchStage(currentStage);
+        if(drafts.length)toast.info(`Enrichissement de ${drafts.length} fiche(s) Google/Bing via les données locales et l’annuaire officiel…`,{duration:7000});
         job = await apiClient.post('/sourcing/device/jobs',
-          {name:jobName,params:criteria,candidates:localCandidates,sourceErrors}, {timeoutMs: 90000});
-        toast.success('Résultats regroupés. Choisissez les entreprises à importer.');
+          {name:jobName,params:criteria,candidates:localCandidates,drafts,sourceErrors}, {timeoutMs: 90000});
+        const summary=job?.params?.draftEnrichment;
+        toast.success(summary?.checked
+          ? `${summary.matched} fiche(s) identifiée(s) automatiquement · ${summary.pending} restant à vérifier. Aucun import automatique.`
+          : 'Résultats regroupés. Choisissez les entreprises à importer.',{duration:7000});
       } else {
         job = await apiClient.post('/sourcing/jobs', {type:'multi',name:jobName,params:criteria});
         toast.success('Recherche lancée. Les sources seront analysées indépendamment.');
@@ -256,9 +266,9 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
                   <div className="flex gap-2 flex-wrap items-center">
                     <button type="button" onClick={()=>void checkCaptures()} disabled={checkingCaptures || !deviceConnected}
                       className="border border-blue-300 px-3 py-1.5 rounded-lg text-xs text-blue-900 disabled:opacity-50">{checkingCaptures?'Vérification…':'↻ Vérifier mes captures'}</button>
-                    <span className="text-xs text-blue-900">{sources.filter(source=>CAPTURE_TYPES.has(source)).map(source=>`${SCRAPER_TYPES[source].name} : ${captures[source]||0}`).join(' · ')}</span>
+                    <span className="text-xs text-blue-900">{sources.filter(source=>CAPTURE_TYPES.has(source)).map(source=>`${SCRAPER_TYPES[source].name} : ${captures[source]||0} prête(s), ${draftCounts[source]||0} à enrichir`).join(' · ')}</span>
                   </div>
-                  <p className="text-xs text-blue-800">Seules les fiches avec nom, adresse et code postal réels pourront être proposées dans le CRM. Les sources sans capture seront marquées « À collecter ».</p>
+                  <p className="text-xs text-blue-800">Les fiches sans adresse sont rapprochées automatiquement des données officielles et des fiches locales vérifiées. Les correspondances ambiguës restent hors CRM.</p>
                 </div>}
                 {<div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 space-y-3">
                   <div>
