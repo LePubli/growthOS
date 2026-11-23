@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>GrowthOS — Sources</title>
+  <link rel="stylesheet" href="popup.css"/>
+</head>
+<body>
+  <header>
+    <span class="logo">G</span>
+    <div><h1>GrowthOS <small>Connecteur</small></h1><p>Recherche locale et collecte contrôlée</p></div>
+    <a id="growthos" href="https://agile.le-publicitaire.fr/sourcing" target="_blank" rel="noopener noreferrer" title="Ouvrir GrowthOS">↗</a>
+  </header>
+  <main>
+    <div class="hero"><span class="dot"></span> Extension prête <span id="currentTab">· Vérification de l’onglet…</span></div>
+    <section aria-label="Choisir la source">
+      <h2>1. Choisir la source</h2>
+      <div class="sources" id="sources">
+        <button type="button" data-source="google_maps">🗺️ Maps</button>
+        <button type="button" data-source="google_search">🔎 Google</button>
+        <button type="button" data-source="bing">🟦 Bing</button>
+        <button type="button" data-source="linkedin">💼 LinkedIn</button>
+        <button type="button" data-source="pagesjaunes">📒 PagesJaunes</button>
+      </div>
+    </section>
+    <section>
+      <h2>2. Chercher</h2>
+      <label for="query">Activité ou entreprise</label>
+      <input id="query" placeholder="Ex. plombier" autocomplete="off" maxlength="120"/>
+      <label for="area">Ville, département ou code postal</label>
+      <input id="area" placeholder="Ex. 59100 Roubaix" autocomplete="off" maxlength="100"/>
+      <button type="button" class="primary" id="open">Ouvrir une recherche <span>↗</span></button>
+      <p class="hint" id="sourceHint"></p>
+    </section>
+    <section>
+      <h2>3. Collecter</h2>
+      <button type="button" class="primary teal" id="capture">⤓ Capturer les fiches visibles</button>
+      <p class="hint">Cette action lit uniquement l’onglet affiché. Elle ne fait pas défiler, ne contourne pas les contrôles d’accès et ne lance pas de recherches automatiques.</p>
+      <details id="manualPanel">
+        <summary>+ Ajouter une fiche vérifiée manuellement</summary>
+        <form id="manualForm">
+          <label for="company">Entreprise *</label><input id="company" required maxlength="160"/>
+          <label for="address">Adresse complète (avec CP) *</label><input id="address" placeholder="8 rue Exemple 59100 Roubaix" required maxlength="320"/>
+          <div class="two"><div><label for="postal">Code postal *</label><input id="postal" placeholder="59100" inputmode="numeric" pattern="[0-9]{5}" required maxlength="5"/></div>
+          <div><label for="city">Ville</label><input id="city" placeholder="Roubaix" maxlength="120"/></div></div>
+          <label for="phone">Téléphone (facultatif)</label><input id="phone" placeholder="Numéro affiché et vérifié" maxlength="40"/>
+          <label for="website">Site web (facultatif)</label><input id="website" type="url" placeholder="https://…"/>
+          <label for="sourceUrl">Lien de la fiche source *</label><input id="sourceUrl" type="url" required placeholder="https://…"/>
+          <button class="secondary" type="submit">Ajouter à la sélection</button>
+        </form>
+      </details>
+    </section>
+    <section>
+      <div class="listhead"><h2>4. Sélection locale <span class="count" id="total">0</span></h2><button type="button" class="link" id="clear">Vider</button></div>
+      <div id="queue" class="queue"><p class="empty">Aucune fiche capturée</p></div>
+      <p class="hint">Conservées 24 h sur cet appareil. Revenez dans GrowthOS, choisissez vos sources et sélectionnez les résultats à importer. Aucun import CRM automatique.</p>
+      <a class="primary growthos" href="https://agile.le-publicitaire.fr/sourcing" target="_blank" rel="noopener noreferrer">Continuer dans GrowthOS →</a>
+    </section>
+  </main>
+  <div id="notice" role="status" aria-live="polite" hidden></div>
+  <script src="popup.js"></script>
+</body>
+</html>

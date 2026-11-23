@@ -17,6 +17,7 @@ type Candidate = {
   sourceDetails?: {pagesjaunes?:{description?:string;openingHours?:string;services?:string;rating?:number;reviewCount?:number}};
   codePostal: string; city: string | null; imported: boolean; prospectId: string | null;
 };
+const SOURCE_LABELS:Record<string,string>={entreprises:'Annuaire des entreprises',pagesjaunes:'PagesJaunes.fr',google_maps:'Google Maps',google_search:'Google Search',bing:'Bing Search',linkedin:'LinkedIn · saisie manuelle'};
 
 function csvCell(value: unknown): string {
   const raw = String(value ?? '');
@@ -188,10 +189,11 @@ export default function SourcingJobPage() {
                 const status = state?.status || 'pending';
                 return <div key={source} className={`rounded-xl border px-3 py-2.5 text-sm ${status === 'error' ? 'bg-red-50 border-red-200' : status === 'completed' ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="flex items-center justify-between gap-2">
-                    <strong>{source === 'entreprises' ? 'Annuaire des entreprises' : 'PagesJaunes.fr'}</strong>
-                    <span className="text-xs">{status === 'completed' ? '✓ Terminé' : status === 'error' ? 'Échec' : status === 'running' ? 'En cours…' : 'En attente'}</span>
+                    <strong>{SOURCE_LABELS[source]||source}</strong>
+                    <span className="text-xs">{status === 'completed' ? '✓ Terminé' : status === 'error' ? 'Échec' : status === 'running' ? 'En cours…' : 'À collecter'}</span>
                   </div>
-                  {status === 'completed' && <p className="text-xs mt-1">{state?.count ?? 0} résultat(s) · source consultée</p>}
+                  {status === 'completed' && <p className="text-xs mt-1">{state?.count ?? 0} résultat(s) · fiches consultées</p>}
+                  {status === 'pending' && <p className="text-xs mt-1">Ouvrez l’extension GrowthOS, capturez cette source puis relancez une nouvelle recherche.</p>}
                   {state?.zonesTotal && <p className="text-xs mt-1">{state.zonesAttempted ?? 0}/{state.zonesTotal} zone(s) consultée(s)</p>}
                   {state?.error && <p role="alert" className="text-xs text-red-800 mt-1 break-words">{state.error}</p>}
                 </div>;
@@ -241,7 +243,7 @@ export default function SourcingJobPage() {
                       </td>
                       <td style={{ padding: 12, color: 'var(--text-primary)', fontWeight: 650 }}>
                         <Building2 size={14} style={{ display: 'inline', marginRight: 7 }}/>{candidate.company || 'Inconnue'}
-                         <div className="text-xs text-teal-700 mt-1">{(candidate.sources || [candidate.source]).filter(Boolean).map(source => source === 'entreprises' ? 'Annuaire' : source === 'pagesjaunes' ? 'PagesJaunes' : source).join(' + ')}</div>
+                         <div className="text-xs text-teal-700 mt-1">{(candidate.sources || [candidate.source]).filter(Boolean).map(source => SOURCE_LABELS[source!]||source).join(' + ')}</div>
                       </td>
                       <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.address || 'Non renseignée'}</td>
                       <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.codePostal || '—'}</td>

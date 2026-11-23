@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
 import GeoMultiSelect from '@/components/sourcing/GeoMultiSelect';
 import { FRENCH_DEPARTMENTS, FRENCH_REGIONS } from '@/lib/france-geo';
-import { pingLocalPagesJaunes, searchLocalPagesJaunes, localPagesJaunesLocations, isMobileConnectorRequired } from '@/lib/pagesjaunes-device';
+import { pingLocalPagesJaunes, searchLocalPagesJaunes, localPagesJaunesLocations, getLocalCaptures, isMobileConnectorRequired } from '@/lib/pagesjaunes-device';
 
 const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; color: string; fields: { key:string; label:string; placeholder:string; type?:string }[] }> = {
   entreprises: {
@@ -19,7 +19,7 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
     ],
   },
   linkedin: {
-    name:'LinkedIn Sales Navigator', icon:'💼', desc:'Décideurs B2B — titre, entreprise, localisation', color:'#0A66C2',
+    name:'LinkedIn · saisie assistée', icon:'💼', desc:'Fiche entreprise renseignée manuellement ; compte personnel possible', color:'#0A66C2',
     fields:[
       { key:'keywords', label:'Mots-clés / titre', placeholder:'Ex: Directeur Commercial, VP Sales, CEO' },
       { key:'location', label:'Localisation', placeholder:'Ex: Paris, Lyon, Île-de-France' },
@@ -28,14 +28,20 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
       { key:'limit', label:'Nombre max. de profils', placeholder:'100', type:'number' },
     ],
   },
-  google: {
-    name:'Google Maps', icon:'🗺️', desc:'Établissements locaux, contacts et avis', color:'#EA4335',
+  google_maps: {
+    name:'Google Maps', icon:'🗺️', desc:'Fiche visible capturée après votre clic dans l’extension', color:'#EA4335',
     fields:[
       { key:'query', label:'Recherche', placeholder:'Ex: Agences immobilières Bordeaux' },
       { key:'location', label:'Ville / Zone', placeholder:'Ex: Bordeaux, 33000' },
       { key:'category', label:'Catégorie', placeholder:'Ex: restaurant, agence, artisan' },
       { key:'limit', label:'Nombre max.', placeholder:'50', type:'number' },
     ],
+  },
+  google_search: {
+    name:'Google Search', icon:'🔎', desc:'Fiches locales visibles avec adresse vérifiable', color:'#4285F4', fields:[],
+  },
+  bing: {
+    name:'Bing Search', icon:'🟦', desc:'Fiches entreprises visibles avec adresse vérifiable', color:'#008CFF', fields:[],
   },
   societe_info: {
     name:'Societe.info', icon:'🏢', desc:'Données légales entreprises françaises', color:'#1E3A5F',
@@ -75,7 +81,8 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
     ],
   },
 };
-const SUPPORTED_TYPES = new Set(['entreprises', 'pagesjaunes']);
+const SUPPORTED_TYPES = new Set(['entreprises','pagesjaunes','google_maps','google_search','bing','linkedin']);
+const CAPTURE_TYPES = new Set(['google_maps','google_search','bing','linkedin']);
 
 const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:string}> = {
   completed:{ label:'Terminé',  color:'#065F46', bg:'#ECFDF5', dot:'#10B981' },
@@ -92,6 +99,8 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
   const [params, setParams] = useState<Record<string,string>>({});
   const [launching, setLaunching] = useState(false);
   const [launchStage, setLaunchStage] = useState<'collect'|'save'|'api'|null>(null);
+  const [captures,setCaptures] = useState<Record<string,number>>({});
+  const [checkingCaptures,setCheckingCaptures] = useState(false);
   const [regions, setRegions] = useState<string[]>([]);
   const [departements, setDepartements] = useState<string[]>([]);
   const [codesPostauxInput, setCodesPostauxInput] = useState('');
@@ -103,6 +112,18 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
   const setParam = (k:string, v:string) => setParams(p=>({...p,[k]:v}));
   const searchReady = Boolean((params.query?.trim().length ?? 0) >= 3 && zonesValid && sources.length);
 
+  const checkCaptures = async () => {
+    setCheckingCaptures(true);
+    try {
+      const items=await getLocalCaptures();
+      const counts:Record<string,number>={};
+      items.forEach(item=>{if(item.source)counts[item.source]=(counts[item.source]||0)+1;});
+      setCaptures(counts);
+      toast.success(`${items.length} fiche(s) conservée(s) dans votre extension Chrome`);
+    } catch (error:any) {toast.error(error.message||'Extension non détectée');}
+    finally {setCheckingCaptures(false);}
+  };
+
   const launch = async () => {
     if (!sources.length || sources.some(source => !SUPPORTED_TYPES.has(source))) { toast.error('Sélectionnez au moins une source disponible'); return; }
     if (!searchReady) {
@@ -110,29 +131,46 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
       return;
     }
     setLaunching(true);
-    let currentStage: 'collect'|'save'|'api' = sources.includes('pagesjaunes') && deviceConnected ? 'collect' : 'api';
+    let currentStage: 'collect'|'save'|'api' = sources.some(source=>source!=='entreprises') && deviceConnected ? 'collect' : 'api';
     setLaunchStage(currentStage);
     try {
       const jobName = name.trim() || `${params.query.trim()} · ${sources.length} source(s)`;
       const criteria = {sources, query:params.query.trim(), limit:params.limit || '10',regions,departements,codesPostaux};
       let job: any;
-      if (sources.includes('pagesjaunes') && deviceConnected) {
+      if (sources.some(source=>CAPTURE_TYPES.has(source)) && !deviceConnected) {
+        throw new Error('Connectez d’abord l’extension Chrome multisource sur cet appareil.');
+      }
+      if (sources.some(source=>source!=='entreprises') && deviceConnected) {
+        const manuallyCaptured=(await getLocalCaptures()).filter(item=>item.source && sources.includes(item.source));
+        const localCandidates = [...manuallyCaptured];
+        const sourceErrors:Record<string,string>={};
+        if (!manuallyCaptured.length && !sources.includes('pagesjaunes') && !sources.includes('entreprises')) {
+          throw new Error('Aucune fiche capturée pour les sources sélectionnées. Ouvrez l’extension GrowthOS, capturez vos fiches puis réessayez.');
+        }
         const departmentNames = Object.fromEntries(FRENCH_DEPARTMENTS.map(item=>[item.code,item.label]));
         const regionNames = Object.fromEntries(FRENCH_REGIONS.map(item=>[item.code,item.label]));
-        const locations = localPagesJaunesLocations({regions,departements,codesPostaux,departmentNames,regionNames});
-        if (locations.length > 8) {
+        const locations = sources.includes('pagesjaunes') ? localPagesJaunesLocations({regions,departements,codesPostaux,departmentNames,regionNames}) : [];
+        if (sources.includes('pagesjaunes') && locations.length > 8) {
           toast.error('Le connecteur local accepte 8 zones par recherche. Réduisez la sélection ou lancez plusieurs recherches.');
           return;
         }
-        toast.info('Recherche PagesJaunes dans votre navigateur. Gardez GrowthOS ouvert pendant l’opération.');
-        const local = await searchLocalPagesJaunes({query:criteria.query,locations,limit:Number(criteria.limit)});
-        if (local.warnings.length) toast.warning(local.warnings.slice(0,2).join(' · '));
-        if (!local.results.length && local.warnings.length) throw new Error(local.warnings[0]);
+        if (sources.includes('pagesjaunes')) {
+          toast.info('Recherche PagesJaunes dans votre navigateur ; gardez GrowthOS ouvert.');
+          try {
+            const local=await searchLocalPagesJaunes({query:criteria.query,locations,limit:Number(criteria.limit)});
+            localCandidates.push(...local.results.map(result=>({...result,source:'pagesjaunes' as const})));
+            if(local.warnings.length)toast.warning(local.warnings.slice(0,2).join(' · '));
+          } catch (error:any) {
+            if(!manuallyCaptured.length && !sources.includes('entreprises'))throw error;
+            sourceErrors.pagesjaunes=String(error?.message||'PagesJaunes indisponible').slice(0,200);
+            toast.warning(`PagesJaunes indisponible : ${error.message||'Erreur'}. Les autres sources restent utilisables.`);
+          }
+        }
         currentStage = 'save';
         setLaunchStage(currentStage);
         job = await apiClient.post('/sourcing/device/jobs',
-          {name:jobName,params:criteria,candidates:local.results}, {timeoutMs: 90000});
-        toast.success('Recherche locale terminée. Choisissez les entreprises à importer.');
+          {name:jobName,params:criteria,candidates:localCandidates,sourceErrors}, {timeoutMs: 90000});
+        toast.success('Résultats regroupés. Choisissez les entreprises à importer.');
       } else {
         job = await apiClient.post('/sourcing/jobs', {type:'multi',name:jobName,params:criteria});
         toast.success('Recherche lancée. Les sources seront analysées indépendamment.');
@@ -140,7 +178,7 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
       onLaunch(job);
       onClose();
     } catch (error: any) {
-      const phase = currentStage === 'collect' ? 'Navigation PagesJaunes sur cet appareil'
+      const phase = currentStage === 'collect' ? 'Collecte dans le navigateur de cet appareil'
         : currentStage === 'save' ? 'Enregistrement des résultats dans GrowthOS'
         : 'Recherche sur le serveur';
       toast.error(`${phase} : ${error.message ?? 'Échec inattendu'}`, {duration: 10000});
@@ -184,7 +222,7 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-gray-500 mb-4">{browserStatus === 'ready' ? '🟢 Navigateur Chromium privé connecté.' : browserStatus === 'offline' ? '🔴 Navigateur privé configuré mais inaccessible : vérifier son conteneur dans DockerPanel.' : '🟡 Navigation directe uniquement : activez le conteneur Chromium dans DockerPanel.'} Aucun abonnement externe n’est requis.</p>
+              <p className="text-xs text-gray-500 mb-4">{deviceConnected ? '🟢 Extension multisource connectée à cet appareil.' : '🟡 Connectez l’extension Chrome pour Google Maps, Google Search, Bing et LinkedIn.'} {browserStatus === 'offline' ? 'Le navigateur VPS est hors ligne, mais la collecte locale peut fonctionner.' : ''}</p>
               <div className="flex gap-3">
                 <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
                 <button onClick={()=>setStep(2)} disabled={!sources.length} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Suivant →</button>
@@ -212,6 +250,16 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
                   <input type="number" min={1} max={25} value={params.limit || '10'} onChange={e => setParam('limit', e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
                 </div>
                 {sources.includes('pagesjaunes') && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">{deviceConnected ? '✓ Connecteur de cet appareil actif. PagesJaunes sera consulté depuis votre navigateur actuel. Gardez cet onglet ouvert jusqu’à la fin.' : '⚠ Connecteur non activé. La recherche passera par le navigateur du VPS, qui peut être bloqué par PagesJaunes (HTTP 403). Utilisez « Connecter cet appareil » sur la page précédente.'}</p>}
+                {sources.some(source=>CAPTURE_TYPES.has(source)) && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-blue-900">Collecte multisource sur votre ordinateur</p>
+                  <p className="text-xs text-blue-800">1. Cliquez sur l’extension GrowthOS dans Chrome. 2. Ouvrez les recherches souhaitées ; pour Google/Bing, cliquez sur « Capturer les fiches visibles ». Pour LinkedIn, ajoutez une entreprise vérifiée manuellement (pas de scraping LinkedIn). 3. Revenez ici et lancez la recherche. Vos comptes restent dans Chrome.</p>
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <button type="button" onClick={()=>void checkCaptures()} disabled={checkingCaptures || !deviceConnected}
+                      className="border border-blue-300 px-3 py-1.5 rounded-lg text-xs text-blue-900 disabled:opacity-50">{checkingCaptures?'Vérification…':'↻ Vérifier mes captures'}</button>
+                    <span className="text-xs text-blue-900">{sources.filter(source=>CAPTURE_TYPES.has(source)).map(source=>`${SCRAPER_TYPES[source].name} : ${captures[source]||0}`).join(' · ')}</span>
+                  </div>
+                  <p className="text-xs text-blue-800">Seules les fiches avec nom, adresse et code postal réels pourront être proposées dans le CRM. Les sources sans capture seront marquées « À collecter ».</p>
+                </div>}
                 {<div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 space-y-3">
                   <div>
                     <h4 className="text-sm font-semibold text-gray-800">Zone de prospection *</h4>
@@ -282,6 +330,13 @@ export default function SourcingPage() {
       .catch(() => setBrowserStatus('direct'));
   }, []);
   useEffect(()=>{
+    if(mobileConnector)return;
+    let mounted=true;
+    void pingLocalPagesJaunes().then(()=>{if(mounted)setDeviceConnected(true);})
+      .catch(()=>{if(mounted)setDeviceConnected(false);});
+    return ()=>{mounted=false;};
+  },[mobileConnector]);
+  useEffect(()=>{
     let mounted = true;
     const reload = () => apiClient.get('/sourcing/jobs').then((d:any)=>{
       if (mounted) {setJobs(Array.isArray(d) ? d : d?.data ?? []); setJobListError(false);}
@@ -295,6 +350,11 @@ export default function SourcingPage() {
     e.stopPropagation();
     const old = jobs.find(j=>j.id===id);
     if (!old || !(SUPPORTED_TYPES.has(old.type) || old.type === 'multi')) { toast.error('Source non disponible'); return; }
+    if((old.params?.sources || []).some((source:string)=>CAPTURE_TYPES.has(source))){
+      openSearch(old.params.sources[0] || 'entreprises');
+      toast.info('Les nouvelles sources se collectent d’abord dans l’extension Chrome. Reprenez vos critères dans la fenêtre de recherche.');
+      return;
+    }
     try {
       const newJob = await apiClient.post('/sourcing/jobs', { type: old.type, name: old.name, params: old.params });
       setJobs(js=>[newJob,...js]);

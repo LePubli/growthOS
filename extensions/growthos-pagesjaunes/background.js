@@ -1,4 +1,4 @@
-/* Extension MV3 : navigation depuis le Chrome de l'utilisateur, sur PagesJaunes uniquement.
+/* Extension MV3 : PagesJaunes depuis le navigateur, capture explicite d'autres sources.
    Aucune requête vers le VPS, aucun accès aux identifiants, aucune donnée inventée.
 */
 let busy = false;
@@ -373,14 +373,113 @@ async function enrichProfile(payload) {
   }
 }
 
+const CAPTURE_SOURCES = ['google_maps','google_search','bing','linkedin'];
+const QUEUE_KEY = 'growthos_verified_captures_v1';
+const AGE_LIMIT = 24 * 60 * 60 * 1000;
+function hostMatches(source,url) {
+  try {
+    const u = new URL(url);
+    if(u.protocol!=='https:')return false;
+    if(source==='pagesjaunes')return ['pagesjaunes.fr','www.pagesjaunes.fr'].includes(u.hostname);
+    if(source==='google_maps')return ['google.com','www.google.com','maps.google.com','google.fr','www.google.fr'].includes(u.hostname) && u.pathname.startsWith('/maps');
+    if(source==='google_search')return ['google.com','www.google.com','google.fr','www.google.fr'].includes(u.hostname);
+    if(source==='bing')return ['www.bing.com','bing.com'].includes(u.hostname);
+    if(source==='linkedin')return ['www.linkedin.com','linkedin.com'].includes(u.hostname) && /^\/company\/[a-z0-9_-]+\/?/i.test(u.pathname);
+  }catch{}
+  return false;
+}
+async function readQueue(){
+  const saved = (await chrome.storage.local.get(QUEUE_KEY))[QUEUE_KEY];
+  const queue = Array.isArray(saved) ? saved : [];
+  return queue.filter(item=>item && CAPTURE_SOURCES.includes(item.source)
+    && typeof item.capturedAt==='number' && Date.now()-item.capturedAt>=0 && Date.now()-item.capturedAt<AGE_LIMIT).slice(-100);
+}
+async function storeQueue(queue){await chrome.storage.local.set({[QUEUE_KEY]:queue.slice(-100)});}
+function validCaptured(item,manual=false){
+  if(!item || !CAPTURE_SOURCES.includes(item.source))throw new Error('Source non prise en charge');
+  const company=String(item.company||'').trim().slice(0,160);
+  const address=String(item.address||'').trim().slice(0,320);
+  const codePostal=String(item.codePostal||'').trim();
+  if(company.length<2 || address.length<7 || !/^\d{5}$/.test(codePostal)
+    || !address.includes(codePostal))throw new Error('Nom, adresse complète et code postal obligatoires');
+  const sourceUrl=String(item.sourceUrl||'').trim();
+  if(!hostMatches(item.source,sourceUrl))throw new Error('Lien de source invalide pour '+item.source);
+  const cleanUrl=raw=>{try{const url=new URL(String(raw||''));return /^https?:$/.test(url.protocol)?url.href.slice(0,500):null;}catch{return null;}};
+  const phone=String(item.phone||'').trim().slice(0,40)||null;
+  const city=String(item.city||'').trim().slice(0,120)||null;
+  return {id:'local_'+crypto.randomUUID().replace(/-/g,'').slice(0,32),source:item.source,
+    company,address,codePostal,city,phone,website:cleanUrl(item.website),sourceUrl,siret:null,
+    collectionMode:manual?'manual':'visible',capturedAt:Date.now()};
+}
+async function addToQueue(items, manual=false){
+  const queue=await readQueue();let added=0,ignored=0;
+  for(const raw of items.slice(0,25)){
+    const item=validCaptured(raw,manual);
+    const key=[item.source,item.company,item.address,item.codePostal].join('|').toLocaleLowerCase('fr');
+    if(queue.some(q=>[q.source,q.company,q.address,q.codePostal].join('|').toLocaleLowerCase('fr')===key)){
+      ignored++;continue;
+    }
+    queue.push(item);added++;
+  }
+  await storeQueue(queue);
+  return {ok:true,added,ignored,results:queue,warnings:[]};
+}
+async function popupAction(message){
+  const action=message.action;
+  if(action==='list-captures')return {ok:true,results:await readQueue(),warnings:[]};
+  if(action==='remove-capture'){
+    const id=String(message.payload?.id||'');
+    const queue=(await readQueue()).filter(q=>q.id!==id);
+    await storeQueue(queue);return {ok:true,results:queue};
+  }
+  if(action==='clear-captures'){await storeQueue([]);return {ok:true,results:[]};}
+  if(action==='manual-add')return addToQueue([message.payload],true);
+  if(action==='open-source'){
+    const {source,query,area}=message.payload||{};
+    if(!CAPTURE_SOURCES.includes(source) && source!=='pagesjaunes')throw new Error('Source inconnue');
+    const activity=String(query||'').trim(),location=String(area||'').trim();
+    if(activity.length<3 || activity.length>120 || location.length>100)throw new Error('Saisissez une activité (3 caractères minimum).');
+    let url;
+    if(source==='google_maps')url='https://www.google.com/maps/search/'+encodeURIComponent([activity,location].filter(Boolean).join(' '));
+    else if(source==='google_search')url='https://www.google.com/search?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
+    else if(source==='bing')url='https://www.bing.com/search?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
+    else if(source==='linkedin')url='https://www.linkedin.com/search/results/companies/?keywords='+encodeURIComponent(activity);
+    else url='https://www.pagesjaunes.fr/annuaire/chercherlespros?quoiqui='+encodeURIComponent(activity)+'&ou='+encodeURIComponent(location);
+    await chrome.tabs.create({url,active:true});return {ok:true,url};
+  }
+  if(action==='capture-tab'){
+    const tabs=await chrome.tabs.query({active:true,currentWindow:true});
+    const tab=tabs[0];
+    if(!tab?.id || !tab.url || !['google_maps','google_search','bing'].some(s=>hostMatches(s,tab.url)))
+      throw new Error('Ouvrez un résultat Google Maps, Google Search ou Bing puis recliquez sur l’extension.');
+    const injected=await chrome.scripting.executeScript({target:{tabId:tab.id},files:['capture.js']});
+    const result=injected?.[0]?.result;
+    if(!result || result.error)throw new Error(result?.error||'Page illisible');
+    if(!result.results?.length)return {ok:true,results:await readQueue(),added:0,warning:result.warning};
+    const stored=await addToQueue(result.results);
+    return {...stored,warning:result.warning};
+  }
+  throw new Error('Action non autorisée');
+}
+
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   let origin;
   try { origin = new URL(sender.url || '').origin; } catch {}
+  const fromPopup=typeof sender.url==='string' && sender.url.startsWith(chrome.runtime.getURL(''));
+  if(fromPopup){
+    popupAction(message).then(reply).catch(err=>reply({ok:false,error:String(err?.message||err)}));
+    return true;
+  }
   if (origin !== 'https://agile.le-publicitaire.fr') {
     reply({ok:false,error:'Origine non autorisée'}); return false;
   }
   if (message?.action === 'ping') {
     reply({ok:true,results:[],warnings:[]}); return false;
+  }
+  if(message?.action==='get-captures'){
+    readQueue().then(results=>reply({ok:true,results,warnings:[]}))
+      .catch(error=>reply({ok:false,error:String(error?.message||error)}));
+    return true;
   }
   if (!['search', 'enrich'].includes(message?.action)) {
     reply({ok:false,error:'Action inconnue'}); return false;

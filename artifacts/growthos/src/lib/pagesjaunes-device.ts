@@ -2,6 +2,7 @@
    Le serveur GrowthOS et l'extension ne partagent ni mot de passe ni token. */
 export type LocalCompany = {
   id: string;
+  source?: 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin';
   company: string;
   address: string;
   codePostal: string;
@@ -10,6 +11,8 @@ export type LocalCompany = {
   website: string | null;
   sourceUrl: string | null;
   siret: string | null;
+  collectionMode?: 'manual' | 'visible';
+  capturedAt?: number;
 };
 export type LocalProfile = {
   sourceUrl: string; name: string;
@@ -38,7 +41,7 @@ export function localPagesJaunesLocations(filters: {
     departements.length ? departements.map(code => departmentNames[code] || code) :
     regions.map(code => regionNames[code] || code))];
 }
-function askExtension(action: 'ping'|'search'|'enrich', payload?: object, timeoutMs = 2000): Promise<ExtensionResponse> {
+function askExtension(action: 'ping'|'search'|'enrich'|'get-captures', payload?: object, timeoutMs = 2000): Promise<ExtensionResponse> {
   return new Promise((resolve,reject) => {
     if (isMobile) { reject(new Error('Sur téléphone, une application Android dédiée sera nécessaire.')); return; }
     const requestId = crypto.randomUUID();
@@ -59,6 +62,11 @@ function askExtension(action: 'ping'|'search'|'enrich', payload?: object, timeou
   });
 }
 export function pingLocalPagesJaunes() { return askExtension('ping'); }
+/** Les fiches restent sur l'appareil jusqu'à la recherche : aucun token CRM dans l'extension. */
+export async function getLocalCaptures(): Promise<LocalCompany[]> {
+  const response=await askExtension('get-captures');
+  return response.results.filter(item=>['google_maps','google_search','bing','linkedin'].includes(item.source||''));
+}
 export function searchLocalPagesJaunes(payload: {query:string;locations:string[];limit:number}) {
   // 8 zones * (chargement 25s + pause 5s), plus marge pour la recherche.
   return askExtension('search',payload,Math.min(270000, payload.locations.length * 34000 + 15000));

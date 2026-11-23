@@ -343,6 +343,55 @@ try {
     candidates:[{...localCandidate,sourceUrl:"https://evilpagesjaunes.fr/pros/123"}],
   },token);
   check(invalidLocal.status === 400,"Connecteur appareil : domaine tiers rejeté");
+  const allSourcesParams={...localParams,sources:['entreprises','pagesjaunes','google_maps','google_search','bing','linkedin']};
+  const mapRecord={id:'local_maps_001',source:'google_maps',company:'Atelier Multi',
+    address:'14 rue des Tests 59000 Lille',codePostal:'59000',city:'Lille',phone:null,
+    website:'https://atelier.example.org',sourceUrl:'https://www.google.com/maps/place/Atelier+Multi',siret:null,
+    collectionMode:'visible'};
+  const bingRecord={...mapRecord,id:'local_bing_001',source:'bing',
+    sourceUrl:'https://www.bing.com/search?q=Atelier+Multi'};
+  const searchRecord={...mapRecord,id:'local_search_001',source:'google_search',
+    company:'Boulangerie Recherche',address:'8 avenue des Artisans 59000 Lille',
+    sourceUrl:'https://www.google.com/search?q=Boulangerie+Recherche'};
+  const linkedRecord={...mapRecord,id:'local_linked_001',source:'linkedin',collectionMode:'manual',
+    company:'Entreprise LinkedIn',address:'31 avenue du Parc 59000 Lille',
+    sourceUrl:'https://www.linkedin.com/company/entreprise-linkedin/'};
+  const forgedGoogle=await request('POST','/sourcing/device/jobs',{
+    name:'Google falsifié',params:allSourcesParams,
+    candidates:[{...mapRecord,sourceUrl:'https://google.com.evil.example/maps/place/123'}],
+  },token);
+  check(forgedGoogle.status===400,'Le serveur refuse les faux domaines Google Maps');
+  const scrapedLinkedIn=await request('POST','/sourcing/device/jobs',{
+    name:'LinkedIn automatique',params:allSourcesParams,
+    candidates:[{...linkedRecord,collectionMode:'visible'}],
+  },token);
+  check(scrapedLinkedIn.status===400,'Le serveur refuse un profil LinkedIn extrait automatiquement');
+  const multiDevice=await request('POST','/sourcing/device/jobs',{
+    name:'Multisource Chrome local',params:allSourcesParams,
+    candidates:[localCandidate,mapRecord,bingRecord,searchRecord,linkedRecord],
+  },token);
+  check(multiDevice.status===201 && multiDevice.body.count>=5 &&
+    ['pagesjaunes','google_maps','google_search','bing','linkedin','entreprises']
+      .every(s=>multiDevice.body.params.sourceStatuses[s]?.status==='completed'),
+    'Six sources acceptées indépendamment, sans import automatique');
+  const multiDevicePreview=await request('GET',`/sourcing/jobs/${multiDevice.body.id}/results`,undefined,token);
+  const atelier=multiDevicePreview.body.data.find(item=>item.company==='Atelier Multi');
+  check(atelier?.sources?.includes('google_maps') && atelier?.sources?.includes('bing') &&
+    !atelier.imported && multiDevicePreview.body.data.filter(item=>item.company==='Atelier Multi').length===1,
+    'Google Maps et Bing fusionnent le même établissement sans doublon');
+  const missingLinkedin=await request('POST','/sourcing/device/jobs',{
+    name:'LinkedIn pas encore saisi',params:allSourcesParams,candidates:[mapRecord],
+  },token);
+  check(missingLinkedin.status===201 && missingLinkedin.body.params.sourceStatuses.linkedin.status==='pending',
+    'Une source non collectée est présentée comme à collecter, et non comme réussie');
+  const partialDevice=await request('POST','/sourcing/device/jobs',{
+    name:'PagesJaunes bloqué mais Google capturé',params:allSourcesParams,
+    candidates:[mapRecord],sourceErrors:{pagesjaunes:'Vérification manuelle nécessaire'},
+  },token);
+  check(partialDevice.status===201 && partialDevice.body.params.sourceStatuses.pagesjaunes.status==='error' &&
+    partialDevice.body.params.sourceStatuses.google_maps.status==='completed' &&
+    partialDevice.body.error.includes('Vérification manuelle'),
+    'Un blocage PagesJaunes ne dissimule pas l’échec et ne supprime pas les autres sources');
   const localJob = await request("POST", "/sourcing/device/jobs", {
     name:"Recherche Chrome locale",params:localParams,
     candidates:[localCandidate,localCandidate,localMatched,{...localCandidate,id:"pj_local_far",company:"Hors zone",address:"Paris 75001",codePostal:"75001"}],

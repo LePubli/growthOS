@@ -1,15 +1,16 @@
-# Connecteur PagesJaunes GrowthOS — version 0.3.0
+# Connecteur multisource GrowthOS — version 0.4.0
 
 L'extension fonctionne dans **Chrome sur l'appareil de l'utilisateur** (ordinateur).
 Les images Docker de GrowthOS sont construites par GitHub Actions, pas sur le VPS.
 
 ## Mise à jour manuelle
 
-1. Récupérer les trois fichiers de ce dossier depuis la branche `fix/growthos-functional-redesign` : `manifest.json`, `background.js`, `bridge.js`.
-2. Remplacer les trois fichiers de la copie locale de l'extension Chrome (sans changer le nom du dossier).
-3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version doit être **0.3.0**.
+1. Récupérer **le dossier complet** `extensions/growthos-pagesjaunes` depuis la branche `fix/growthos-functional-redesign`, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`.
+2. Remplacer le contenu de votre dossier d'extension Chrome local (sans changer le chemin du dossier chargé dans Chrome).
+3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version doit être **0.4.0**.
 4. Garder Chrome et l'onglet `https://agile.le-publicitaire.fr` ouverts.
-5. Dans GrowthOS, ouvrir un prospect provenant de PagesJaunes et cliquer sur **Compléter depuis PagesJaunes**. Le bouton d'enrichissement générique ne relance pas l'extracteur local.
+5. Dans GrowthOS, ouvrir **Trouver des entreprises**, cliquer sur **Connecter cet appareil** si nécessaire, puis choisir les sources. Pour Google et Bing, le nouvel onglet doit être ouvert manuellement depuis le panneau de l'extension.
+6. Pour les fiches déjà importées depuis PagesJaunes, **Compléter depuis PagesJaunes** reste opérationnel.
 
 ## Données traitées
 

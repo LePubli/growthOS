@@ -65,7 +65,7 @@ type CompanyRecord = {
 };
 type SearchCandidate = {
   id?: string; // Identifiant de source, utile sans SIREN
-  source?: 'entreprises' | 'pagesjaunes';
+  source?: 'entreprises' | 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin';
   sources?: string[];
   siren: string;
   siret: string | null;
@@ -230,7 +230,10 @@ function mergeCompany(target: SearchCandidate, other: SearchCandidate): void {
   target.phone ||= other.phone;
   target.email ||= other.email;
   target.website ||= other.website;
-  target.sourceUrl ||= other.sourceUrl;
+  // Une fiche PagesJaunes détaillée doit rester accessible même si Google/Bing
+  // a été capturé en premier. Les URLs de toutes les sources restent dans sourceDetails.
+  if(other.source==='pagesjaunes' && other.sourceUrl)target.sourceUrl=other.sourceUrl;
+  else target.sourceUrl ||= other.sourceUrl;
   target.id ||= other.id;
   target.sourceDetails = { ...(other.sourceDetails || {}), ...(target.sourceDetails || {}) };
 }
@@ -328,58 +331,108 @@ async function runMultiSearch(jobId: string, tenantId: string, params: MultiPara
 
 // Import des résultats collectés dans le Chrome local, après validation côté serveur.
 // L'extension n'obtient jamais le JWT : c'est la page GrowthOS authentifiée qui poste les données.
+const deviceSources = ['pagesjaunes','google_maps','google_search','bing','linkedin'] as const;
+type DeviceSource = typeof deviceSources[number];
+function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname.toLowerCase();
+    switch (source) {
+      case 'pagesjaunes': return ['pagesjaunes.fr','www.pagesjaunes.fr'].includes(host);
+      case 'google_maps': return ['www.google.com','maps.google.com','google.com','www.google.fr','google.fr'].includes(host)
+        && url.pathname.startsWith('/maps');
+      case 'google_search': return ['www.google.com','google.com','www.google.fr','google.fr'].includes(host);
+      case 'bing': return ['www.bing.com','bing.com'].includes(host);
+      case 'linkedin': return ['www.linkedin.com','linkedin.com'].includes(host)
+        && /^\/company\/[a-z0-9_-]+\/?/i.test(url.pathname);
+    }
+  } catch { return false; }
+}
 const deviceCandidateSchema = z.object({
   id: z.string().trim().min(3).max(64),
+  source: z.enum(deviceSources).default('pagesjaunes'), // compatibilité extension 0.3
   company: z.string().trim().min(2).max(160),
   address: z.string().trim().min(5).max(320),
   codePostal: z.string().regex(/^\d{5}$/),
   city: z.string().trim().max(120).nullable().optional(),
   phone: z.string().trim().max(40).nullable().optional(),
-  website: z.string().url().max(500).nullable().optional(),
-  sourceUrl: z.string().url().max(500).nullable().optional()
-    .refine(value => !value || (() => { const host = new URL(value).hostname; return host === "pagesjaunes.fr" || host.endsWith(".pagesjaunes.fr"); })(), "Fiche PagesJaunes requise"),
+  website: z.string().url().max(500).refine(url=>['https:','http:'].includes(new URL(url).protocol)).nullable().optional(),
+  sourceUrl: z.string().url().max(500).nullable().optional(),
   siret: z.string().regex(/^\d{14}$/).nullable().optional(),
-}).strict();
+  collectionMode: z.enum(['manual','visible']).optional(),
+  capturedAt: z.number().int().positive().optional(),
+}).strict().superRefine((item, context) => {
+  if (item.sourceUrl ? !validDeviceSourceUrl(item.source,item.sourceUrl) : item.source!=='pagesjaunes') {
+    context.addIssue({code:'custom',path:['sourceUrl'],message:'URL de source obligatoire et conforme à la source'});
+  }
+  if (!item.address.includes(item.codePostal)) {
+    context.addIssue({code:'custom',path:['address'],message:'Adresse et code postal incohérents'});
+  }
+  if (item.source==='linkedin' && item.collectionMode!=='manual') {
+    context.addIssue({code:'custom',path:['collectionMode'],message:'LinkedIn : saisie manuelle uniquement'});
+  }
+});
 const deviceSearchSchema = z.object({
   name: z.string().trim().min(1).max(120),
   params: z.object({
-    sources: z.array(z.enum(["entreprises", "pagesjaunes"])).min(1).max(2)
-      .refine(items => items.includes("pagesjaunes") && new Set(items).size === items.length),
+    sources: z.array(z.enum(['entreprises',...deviceSources])).min(1).max(6)
+      .refine(items => items.some(source=>source!=='entreprises') && new Set(items).size === items.length),
     query: z.string().trim().min(3).max(120),
     regions: z.array(z.string().regex(/^\d{2}$/)).max(18).default([]),
     departements: z.array(z.string().regex(/^(?:\d{2}|2A|2B|97\d)$/)).max(101).default([]),
     codesPostaux: z.array(z.string().regex(/^\d{5}$/)).max(25).default([]),
     limit: z.coerce.number().int().min(1).max(25).default(10),
   }).refine(p => p.regions.length + p.departements.length + p.codesPostaux.length > 0),
-  candidates: z.array(deviceCandidateSchema).max(25),
-}).strict();
+  candidates: z.array(deviceCandidateSchema).max(125),
+  sourceErrors: z.record(z.string(),z.string().trim().min(1).max(200)).optional(),
+}).strict().superRefine((item,context)=>{
+  for(const candidate of item.candidates)if(!item.params.sources.includes(candidate.source)){
+    context.addIssue({code:'custom',path:['candidates'],message:'Candidat issu d’une source non sélectionnée'});
+    break;
+  }
+  if(Object.keys(item.sourceErrors||{}).some(source=>!item.params.sources.some(selected=>selected===source))){
+    context.addIssue({code:'custom',path:['sourceErrors'],message:'Erreur associée à une source non sélectionnée'});
+  }
+});
 
 router.post("/device/jobs", requireAuth, async (req, res) => {
   const parsed = deviceSearchSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Résultats locaux invalides", details: parsed.error.issues }); return;
   }
-  const { name, params, candidates } = parsed.data;
+  const { name, params, candidates, sourceErrors } = parsed.data;
   const seen = new Map<string, SearchCandidate>();
-  const localResults: SearchCandidate[] = [];
+  const counts: Record<string, number> = {};
   for (const item of candidates) {
     if (!matchingGeo({ code_postal: item.codePostal }, params)) continue;
+    if((counts[item.source]||0)>=params.limit)continue;
     const candidate: SearchCandidate = {
       ...item, siren: item.siret?.slice(0, 9) || "", siret: item.siret || null,
       city: item.city || null, phone: item.phone || null,
       website: item.website || null, sourceUrl: item.sourceUrl || null,
-      source: "pagesjaunes", sources: ["pagesjaunes"],
+      source: item.source, sources: [item.source],
+      sourceDetails: {[item.source]: {
+        sourceUrl:item.sourceUrl || null,
+        collectionMode:item.collectionMode || (item.source==='pagesjaunes'?'browser':'visible'),
+        capturedAt:new Date().toISOString(),
+      }},
     };
     const key = candidateKey(candidate);
-    if ([...seen.values()].some(previous => isSameCompany(previous, candidate))) continue;
-    seen.set(key, candidate);
-    localResults.push(candidate);
-    if (localResults.length >= params.limit) break;
+    const prior = seen.get(key) || [...seen.values()].find(previous=>isSameCompany(previous,candidate));
+    if(prior && prior.sources?.includes(item.source))continue;
+    if(prior)mergeCompany(prior,candidate);
+    else seen.set(key,candidate);
+    counts[item.source]=(counts[item.source]||0)+1;
   }
-  const sourceStatuses: NonNullable<SavedParams["sourceStatuses"]> = {
-    pagesjaunes: { status: "completed", count: localResults.length },
-  };
-  let error: string | null = null;
+  const sourceStatuses: NonNullable<SavedParams["sourceStatuses"]> = {};
+  for(const source of params.sources.filter(source=>source!=='entreprises')){
+    const failure=sourceErrors?.[source];
+    sourceStatuses[source] = {status:failure?'error':(counts[source] || source==='pagesjaunes'?'completed':'pending'),
+      count:counts[source]||0,...(failure?{error:failure}:{})};
+  }
+  let error: string | null = Object.entries(sourceErrors||{}).filter(([source])=>params.sources.some(selected=>selected===source))
+    .map(([source,reason])=>`${source}: ${reason}`).join(' | ') || null;
   if (params.sources.includes("entreprises")) {
     try {
       const official = await searchFrenchCompanies(params);
@@ -394,11 +447,12 @@ router.post("/device/jobs", requireAuth, async (req, res) => {
         }
       }
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : "Annuaire indisponible";
-      sourceStatuses.entreprises = { status: "error", error };
+      const issue = cause instanceof Error ? cause.message : "Annuaire indisponible";
+      error = [error,issue].filter(Boolean).join(' | ');
+      sourceStatuses.entreprises = { status: "error", error:issue };
     }
   }
-  const results = [...seen.values()].slice(0, 50);
+  const results = [...seen.values()].slice(0, 150);
   const [job] = await db.insert(sourcingJobsTable).values({
     type: "multi", name, tenantId: req.auth!.tenantId, createdBy: req.auth!.userId,
     status: "completed", count: results.length, progress: 100,
