@@ -116,7 +116,7 @@ export default function SourcingJobPage() {
               <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 13 }}>{job.type === 'multi' ? 'Recherche multisource' : job.type === 'pagesjaunes' ? 'PagesJaunes.fr · extraction HTML' : 'Annuaire des entreprises'} · {new Date(job.createdAt).toLocaleString('fr-FR')}</p>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={reload} style={{ border: '1px solid var(--card-border)', color: 'var(--text-primary)', background: 'var(--card-bg)', padding: '10px 14px', borderRadius: 10, display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}><RefreshCw size={15}/> Actualiser</button>
+              <button onClick={() => { void reload(); }} style={{ border: '1px solid var(--card-border)', color: 'var(--text-primary)', background: 'var(--card-bg)', padding: '10px 14px', borderRadius: 10, display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}><RefreshCw size={15}/> Actualiser</button>
               <button onClick={exportCsv} disabled={!results.length} style={{ border: 0, color: '#fff', background: '#2563EB', opacity: results.length ? 1 : .5, padding: '10px 14px', borderRadius: 10, display: 'flex', gap: 7, alignItems: 'center', cursor: results.length ? 'pointer' : 'not-allowed' }}><Download size={15}/> Export CSV</button>
             </div>
           </div>
