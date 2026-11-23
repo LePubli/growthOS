@@ -144,7 +144,7 @@ export default function SourcingJobPage() {
           {job.type === 'multi' && <div className="rounded-2xl border p-4 mb-4 space-y-3" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>État des sources</h2>
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{job.status === 'running' ? 'Recherche en cours…' : job.status === 'completed' ? 'Recherche terminée' : 'Recherche interrompue'}</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{job.status === 'running' ? 'Recherche en cours…' : job.status === 'completed' ? (job.error ? 'Recherche terminée avec erreurs' : 'Recherche terminée') : 'Recherche interrompue'}</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {(job.params.sources || []).map(source => {

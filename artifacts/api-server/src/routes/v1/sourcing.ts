@@ -231,7 +231,7 @@ async function runMultiSearch(jobId: string, tenantId: string, params: MultiPara
         for (const location of locations) {
           attempted++;
           // Recherche d'une localité à la fois : pas de concaténation de codes postaux interprétée comme une ville.
-          const candidates = await searchPagesJaunes({ query: params.query, location, limit: params.limit });
+          const candidates = await searchPagesJaunes({ query: params.query, location, limit: params.limit, tenantId });
           for (const candidate of candidates) {
             if (!candidate.codePostal || !matchingGeo({
               code_postal: candidate.codePostal,
@@ -291,7 +291,7 @@ router.post("/jobs", requireAuth, async (req, res) => {
   const started = Date.now();
   try {
     const results = parsed.data.type === "pagesjaunes"
-      ? await searchPagesJaunes(parsed.data.params)
+      ? await searchPagesJaunes({ ...parsed.data.params, tenantId: req.auth!.tenantId })
       : await searchFrenchCompanies(parsed.data.params);
     const [finished] = await db.update(sourcingJobsTable).set({
       status: "completed", count: results.length, progress: 100,

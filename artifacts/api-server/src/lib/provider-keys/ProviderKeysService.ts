@@ -87,6 +87,7 @@ export const PROVIDERS = [
   { id: "deepseek",   name: "DeepSeek",              icon: "🐋", description: "LLM open-source haute performance" },
   { id: "ollama",     name: "Ollama (local)",        icon: "🦙", description: "LLM local — Llama, Mistral, Qwen", hasEndpoint: true },
   { id: "serpapi",    name: "SerpAPI",               icon: "🔍", description: "Suivi SERP, résultats Google" },
+  { id: "scrapingbee", name: "ScrapingBee (PagesJaunes)", icon: "📒", description: "Passerelle anti-403 : navigateur distant + proxys pour PagesJaunes (service externe payant)" },
   { id: "linkedin",   name: "LinkedIn API",          icon: "💼", description: "Enrichissement LinkedIn", hasSecret: true },
   { id: "hunter",     name: "Hunter.io",             icon: "📧", description: "Recherche emails professionnels" },
   { id: "pappers",    name: "Pappers",               icon: "🏢", description: "Données légales françaises (connexion à vérifier)" },
@@ -292,6 +293,18 @@ async function _testProvider(provider: string, apiKey: string, endpointUrl?: str
           return { ok: true, message: `Ollama ✅ Connecté — modèles: ${models}` };
         }
         return { ok: false, message: `Ollama ❌ HTTP ${r.status} — vérifiez l'URL` };
+      }
+      case "scrapingbee": {
+        // Contrôle de la clé sans lancer de scraping et sans consommer de crédits.
+        const usageOrigin = process.env.GROWTHOS_SMOKE_TEST === "true" && process.env.PAGESJAUNES_TEST_GATEWAY_ORIGIN
+          ? process.env.PAGESJAUNES_TEST_GATEWAY_ORIGIN : "https://app.scrapingbee.com";
+        const r = await fetch(new URL("/api/v1/usage", usageOrigin), {
+          headers: { Authorization: `Bearer ${apiKey}` }, signal: ctrl.signal,
+        });
+        if (!r.ok) return { ok: false, message: `ScrapingBee ❌ HTTP ${r.status} — vérifiez votre clé` };
+        const quota = await r.json() as { max_api_credit?: number; used_api_credit?: number };
+        const remaining = Math.max(0, (quota.max_api_credit ?? 0) - (quota.used_api_credit ?? 0));
+        return { ok: true, message: `ScrapingBee ✅ Clé valide — ${remaining} crédit(s) disponibles` };
       }
       case "serpapi": {
         const r = await fetch(`https://serpapi.com/account?api_key=${apiKey}`, { signal: ctrl.signal });

@@ -34,8 +34,8 @@ async function availablePort() {
   return port;
 }
 
-const [dbPort, apiPort, companiesPort, ollamaPort, pagesJaunesPort] = await Promise.all([
-  availablePort(), availablePort(), availablePort(), availablePort(), availablePort(),
+const [dbPort, apiPort, companiesPort, ollamaPort, pagesJaunesPort, scrapingBeePort] = await Promise.all([
+  availablePort(), availablePort(), availablePort(), availablePort(), availablePort(), availablePort(),
 ]);
 const base = `http://127.0.0.1:${apiPort}/api/v1`;
 const testEnv = {
@@ -48,6 +48,7 @@ const testEnv = {
   COMPANY_DIRECTORY_API_URL: `http://127.0.0.1:${companiesPort}/search`,
   GROWTHOS_SMOKE_TEST: "true",
   PAGESJAUNES_TEST_ORIGIN: `http://127.0.0.1:${pagesJaunesPort}`,
+  PAGESJAUNES_TEST_GATEWAY_ORIGIN: `http://127.0.0.1:${scrapingBeePort}`,
   ENABLE_OUTBOUND_EMAIL: "false",
   ALLOW_PUBLIC_REGISTRATION: "false",
   PLATFORM_ADMIN_EMAILS: "admin@wizard.invalid",
@@ -137,6 +138,27 @@ const pagesJaunes = createServer((req, res) => {
     <li class="bi bi-generic" id="epj-456"><div class="bi-content"><a class="bi-denomination" href="/pros/456"><h3>Electricité Nord</h3></a><div class="bi-address"><a>5 avenue Faidherbe 59000 Lille</a></div></div></li>
   </ul></section></html>`);
 });
+let gatewayRequests = 0;
+const scrapingBee = createServer((req, res) => {
+  if (req.headers.authorization !== "Bearer mock-scrapingbee") { res.writeHead(401).end(); return; }
+  const requestUrl = new URL(req.url || "/", "http://localhost");
+  if (requestUrl.pathname === "/api/v1/usage") {
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ max_api_credit: 1000, used_api_credit: 50 }));
+    return;
+  }
+  if (requestUrl.pathname !== "/api/v1" || requestUrl.searchParams.get("mode") !== "auto" ||
+      requestUrl.searchParams.get("max_cost") !== "25" || requestUrl.searchParams.get("country_code") !== "fr") {
+    res.writeHead(400).end(); return;
+  }
+  const target = new URL(requestUrl.searchParams.get("url") || "https://invalid.local");
+  if (target.pathname !== "/annuaire/chercherlespros" || target.searchParams.get("quoiqui") !== "blocked") {
+    res.writeHead(400).end(); return;
+  }
+  gatewayRequests++;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.end('<ul><li class="bi"><a class="bi-denomination" href="/pros/789"><h3>Passerelle locale</h3></a><div class="bi-address">3 rue du Test 59000 Lille</div></li></ul>');
+});
 const ollama = createServer((req, res) => {
   if (req.url !== "/api/tags") { res.writeHead(404).end(); return; }
   res.setHeader("Content-Type", "application/json");
@@ -149,6 +171,7 @@ try {
     new Promise(resolve => companies.listen(companiesPort, "127.0.0.1", resolve)),
     new Promise(resolve => ollama.listen(ollamaPort, "127.0.0.1", resolve)),
     new Promise(resolve => pagesJaunes.listen(pagesJaunesPort, "127.0.0.1", resolve)),
+    new Promise(resolve => scrapingBee.listen(scrapingBeePort, "127.0.0.1", resolve)),
   ]);
   if (!realPostgresUrl) {
     startProcess("npx", ["--yes", "@electric-sql/pglite-socket", `--db=${ephemeralDbDir}`, `--port=${dbPort}`, "--host=127.0.0.1"]);
@@ -334,6 +357,29 @@ try {
     partialDone.params.sourceStatuses.pagesjaunes.status === "error" &&
     partialDone.params.sourceStatuses.pagesjaunes.error.includes("403"),
     "Un refus PagesJaunes HTTP 403 n'efface pas les résultats de l'annuaire");
+  const gatewaySaved = await request("POST", "/admin/api-keys", {
+    provider: "scrapingbee", apiKey: "mock-scrapingbee",
+  }, token);
+  check(gatewaySaved.status === 201 && gatewaySaved.body.apiKeyMasked && !gatewaySaved.body.apiKey,
+    "Clé ScrapingBee stockée chiffrée, masquée dans la réponse");
+  const gatewayTest = await request("POST", "/admin/api-keys/scrapingbee/test", {}, token);
+  check(gatewayTest.status === 200 && gatewayTest.body.ok &&
+    gatewayTest.body.message.includes("950"),
+    "Vérification du quota de crédits sans lancer de scraping");
+  const proxied = await request("POST", "/sourcing/jobs", {
+    type: "multi", name: "Collecte via passerelle anti-403", params: {
+      sources: ["entreprises", "pagesjaunes"], query: "blocked",
+      regions: [], departements: [], codesPostaux: ["59000"], limit: 5,
+    },
+  }, token);
+  const proxiedDone = await awaitSourcingJob(proxied.body.id, token);
+  check(proxied.status === 202 && proxiedDone.status === "completed" && gatewayRequests === 1 &&
+    proxiedDone.params.sourceStatuses.pagesjaunes.status === "completed" && proxiedDone.count === 3,
+    "La passerelle distante récupère une fiche quand l'accès direct renvoie HTTP 403");
+  const proxiedPreview = await request("GET", `/sourcing/jobs/${proxied.body.id}/results`, undefined, token);
+  check(proxiedPreview.body.data.some(p => p.company === "Passerelle locale" &&
+      p.sources?.includes("pagesjaunes")),
+    "La fiche de la passerelle conserve sa provenance PagesJaunes");
   const realComment = await request("POST", "/activities", {
     prospectId: crm.body.data[0].id, type: "comment",
     title: "Commentaire", description: "Message réel de suivi", status: "done",
@@ -506,6 +552,7 @@ try {
     new Promise(resolve => companies.close(resolve)),
     new Promise(resolve => ollama.close(resolve)),
     new Promise(resolve => pagesJaunes.close(resolve)),
+    new Promise(resolve => scrapingBee.close(resolve)),
   ]);
   await rm(ephemeralDbDir, { recursive: true, force: true });
 }
