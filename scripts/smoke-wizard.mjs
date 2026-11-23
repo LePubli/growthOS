@@ -95,6 +95,16 @@ async function request(method, path, data, token) {
   return { status: response.status, body: await response.json() };
 }
 
+async function awaitSourcingJob(id, token, timeoutMs = 40000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await request('GET', `/sourcing/jobs/${id}`, undefined, token);
+    if (result.body.status === 'completed' || result.body.status === 'error') return result.body;
+    await delay(400);
+  }
+  throw new Error('La recherche multisource n’a pas terminé dans le délai imparti');
+}
+
 async function awaitApi(timeoutMs = 90000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -120,6 +130,7 @@ const companies = createServer((req, res) => {
 });
 const pagesJaunes = createServer((req, res) => {
   if (!req.url?.startsWith("/annuaire/chercherlespros?")) { res.writeHead(404).end(); return; }
+  if (new URL(req.url, 'http://localhost').searchParams.get('quoiqui') === 'blocked') { res.writeHead(403).end(); return; }
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.end(`<html><section id="listResults"><ul class="bi-list">
     <li class="bi bi-generic" id="epj-123"><div class="bi-content"><a class="bi-denomination" href="/pros/123"><h3>Plomberie Lille</h3></a><div class="bi-address"><a>12 rue Nationale 59000 Lille</a></div><a href="tel:0320123456">Appeler</a></div></li>
@@ -296,6 +307,33 @@ try {
   check(pjCrm.body.data?.length === 1 && pjCrm.body.data[0].source === "pagesjaunes" &&
     pjCrm.body.data[0].siren === null && pjCrm.body.data[0].sourceUrl.endsWith("/pros/123"),
     "CRM : provenance conservée et aucun identifiant légal fictif");
+  const multi = await request("POST", "/sourcing/jobs", {
+    type: "multi", name: "Deux sources", params: {
+      sources: ["entreprises", "pagesjaunes"], query: "plombier",
+      regions: [], departements: [], codesPostaux: ["59000"], limit: 5,
+    },
+  }, token);
+  check(multi.status === 202 && multi.body.status === "running",
+    "Recherche multisource créée sans bloquer la requête HTTP");
+  const multiDone = await awaitSourcingJob(multi.body.id, token);
+  check(multiDone.status === "completed" && multiDone.params.sourceStatuses.entreprises.status === "completed" &&
+    multiDone.params.sourceStatuses.pagesjaunes.status === "completed" && multiDone.count >= 3,
+    "Deux fournisseurs traités indépendamment avec résultats regroupés");
+  const multiPreview = await request("GET", `/sourcing/jobs/${multi.body.id}/results`, undefined, token);
+  check(multiPreview.body.data.some(p => p.sources?.includes("pagesjaunes")) &&
+    multiPreview.body.data.some(p => p.sources?.includes("entreprises")),
+    "Prévisualisation conserve l'origine de chaque résultat");
+  const partial = await request("POST", "/sourcing/jobs", {
+    type: "multi", name: "Tolérance aux erreurs", params: {
+      sources: ["entreprises", "pagesjaunes"], query: "blocked",
+      regions: [], departements: [], codesPostaux: ["59000"], limit: 5,
+    },
+  }, token);
+  const partialDone = await awaitSourcingJob(partial.body.id, token);
+  check(partialDone.status === "completed" && partialDone.count === 2 &&
+    partialDone.params.sourceStatuses.pagesjaunes.status === "error" &&
+    partialDone.params.sourceStatuses.pagesjaunes.error.includes("403"),
+    "Un refus PagesJaunes HTTP 403 n'efface pas les résultats de l'annuaire");
   const realComment = await request("POST", "/activities", {
     prospectId: crm.body.data[0].id, type: "comment",
     title: "Commentaire", description: "Message réel de suivi", status: "done",

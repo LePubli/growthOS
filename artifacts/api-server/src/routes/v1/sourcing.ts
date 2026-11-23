@@ -5,7 +5,7 @@ import { sourcingJobsTable, prospectsTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
-import { DEPARTMENT_TO_REGION, departmentFromPostalCode } from "../../lib/france-geo";
+import { DEPARTMENT_TO_REGION, departmentFromPostalCode, REGION_NAMES, DEPARTMENT_NAMES } from "../../lib/france-geo";
 import { searchPagesJaunes } from "../../lib/pagesjaunes-scraper";
 
 const router = Router();
@@ -32,6 +32,20 @@ const jobSchema = z.discriminatedUnion("type", [
       limit: z.coerce.number().int().min(1).max(25).optional().default(10),
     }),
   }),
+  z.object({
+    type: z.literal("multi"),
+    name: z.string().trim().min(1).max(120),
+    params: z.object({
+      sources: z.array(z.enum(["entreprises", "pagesjaunes"])).min(1).max(2)
+        .refine(items => new Set(items).size === items.length),
+      query: z.string().trim().min(3).max(120),
+      regions: z.array(z.string().regex(/^\d{2}$/)).max(18).default([]),
+      departements: z.array(z.string().regex(/^(?:\d{2}|2A|2B|97\d)$/)).max(101).default([]),
+      codesPostaux: z.array(z.string().regex(/^\d{5}$/)).max(25).default([]),
+      limit: z.coerce.number().int().min(1).max(25).optional().default(10),
+    }).refine(p => p.regions.length + p.departements.length + p.codesPostaux.length > 0,
+      "Choisissez au moins une zone géographique"),
+  }),
 ]);
 
 type DirectoryAddress = {
@@ -51,6 +65,8 @@ type CompanyRecord = {
 };
 type SearchCandidate = {
   id?: string; // Identifiant de source, utile sans SIREN
+  source?: 'entreprises' | 'pagesjaunes';
+  sources?: string[];
   siren: string;
   siret: string | null;
   company: string;
@@ -64,6 +80,8 @@ type SearchCandidate = {
 type SavedParams = {
   query?: string;
   location?: string;
+  sources?: string[];
+  sourceStatuses?: Record<string, { status: string; count?: number; error?: string; zonesAttempted?: number; zonesTotal?: number }>;
   codePostal?: string; // anciennes recherches
   regions?: string[];
   departements?: string[];
@@ -139,6 +157,106 @@ async function getJob(id: string, tenantId: string) {
   return job;
 }
 
+
+type MultiParams = Extract<z.infer<typeof jobSchema>, { type: "multi" }>["params"];
+type SourceName = MultiParams["sources"][number];
+
+function candidateKey(c: SearchCandidate): string {
+  const normalize = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (/^\d{9}$/.test(c.siren)) return "siren:" + c.siren;
+  if (c.siret) return "siret:" + c.siret;
+  return "local:" + normalize(c.company) + "|" + normalize(c.address || "") + "|" + c.codePostal;
+}
+
+function pagesJaunesLocations(params: MultiParams): string[] {
+  const precise = params.codesPostaux.map(cp => cp);
+  const departments = params.departements.map(code => DEPARTMENT_NAMES[code] ? DEPARTMENT_NAMES[code] + " (" + code + ")" : code);
+  const regions = params.regions.map(code => REGION_NAMES[code] || code);
+  // Si un code postal est choisi, les départements/régions sont des filtres supplémentaires, pas des zones à ajouter.
+  return [...new Set(precise.length ? precise : departments.length ? departments : regions)];
+}
+
+async function runMultiSearch(jobId: string, tenantId: string, params: MultiParams): Promise<void> {
+  const began = Date.now();
+  const merged = new Map<string, SearchCandidate>();
+  const statuses: NonNullable<SavedParams["sourceStatuses"]> = Object.fromEntries(
+    params.sources.map(source => [source, { status: "pending", count: 0 }]),
+  );
+  let done = 0;
+  let successes = 0;
+
+  async function persist() {
+    const allDone = done === params.sources.length;
+    const result = [...merged.values()].slice(0, 50);
+    const failed = params.sources.filter(source => statuses[source]?.status === "error");
+    await db.update(sourcingJobsTable).set({
+      status: allDone ? (successes ? "completed" : "error") : "running",
+      count: result.length,
+      progress: Math.round(done / params.sources.length * 100),
+      params: { ...params, results: result, sourceStatuses: statuses },
+      error: allDone && failed.length ? failed.map(source => source + ": " + (statuses[source].error || "Erreur")).join(" | ") : null,
+      duration: ((Date.now() - began) / 1000).toFixed(1) + " s",
+      updatedAt: new Date(),
+    }).where(and(eq(sourcingJobsTable.id, jobId), eq(sourcingJobsTable.tenantId, tenantId)));
+  }
+
+  function add(candidate: SearchCandidate, source: SourceName) {
+    const key = candidateKey(candidate);
+    const previous = merged.get(key);
+    if (previous) {
+      previous.sources = [...new Set([...(previous.sources || []), source])];
+      previous.phone ||= candidate.phone;
+      previous.website ||= candidate.website;
+      previous.sourceUrl ||= candidate.sourceUrl;
+      previous.siret ||= candidate.siret;
+    } else {
+      merged.set(key, { ...candidate, source, sources: [source] });
+    }
+  }
+  await persist();
+
+  for (const source of params.sources) {
+    statuses[source] = { status: "running", count: 0 };
+    await persist();
+    try {
+      if (source === "entreprises") {
+        const candidates = await searchFrenchCompanies(params);
+        candidates.forEach(candidate => add(candidate, source));
+        statuses[source] = { status: "completed", count: candidates.length };
+      } else {
+        const locations = pagesJaunesLocations(params);
+        const found = new Map<string, SearchCandidate>();
+        let attempted = 0;
+        for (const location of locations) {
+          attempted++;
+          // Recherche d'une localité à la fois : pas de concaténation de codes postaux interprétée comme une ville.
+          const candidates = await searchPagesJaunes({ query: params.query, location, limit: params.limit });
+          for (const candidate of candidates) {
+            if (!candidate.codePostal || !matchingGeo({
+              code_postal: candidate.codePostal,
+            }, params)) continue;
+            found.set(candidateKey(candidate), candidate);
+            if (found.size >= params.limit) break;
+          }
+          if (found.size >= params.limit) break;
+          statuses[source] = { status: "running", count: found.size, zonesAttempted: attempted, zonesTotal: locations.length };
+          await persist();
+        }
+        [...found.values()].forEach(candidate => add(candidate, source));
+        statuses[source] = { status: "completed", count: found.size, zonesAttempted: attempted, zonesTotal: locations.length };
+      }
+      successes++;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Recherche indisponible";
+      statuses[source] = { status: "error", error: message };
+      logger.warn({ jobId, source, message }, "Sourcing provider failed; other sources continue");
+    }
+    done++;
+    await persist();
+  }
+}
+
 router.get("/jobs", requireAuth, async (req, res) => {
   const jobs = await db.select().from(sourcingJobsTable)
     .where(eq(sourcingJobsTable.tenantId, req.auth!.tenantId))
@@ -155,11 +273,21 @@ router.post("/jobs", requireAuth, async (req, res) => {
   const [job] = await db.insert(sourcingJobsTable).values({
     type: parsed.data.type,
     name: parsed.data.name,
-    params: parsed.data.params,
+    params: parsed.data.type === "multi" ? { ...parsed.data.params, results: [], sourceStatuses: {} } : parsed.data.params,
     status: "running",
     tenantId: req.auth!.tenantId,
     createdBy: req.auth!.userId,
   }).returning();
+  if (parsed.data.type === "multi") {
+    void runMultiSearch(job.id, req.auth!.tenantId, parsed.data.params).catch(async error => {
+      const message = error instanceof Error ? error.message : "Échec du traitement";
+      logger.error({ jobId: job.id, message }, "Multi-source worker stopped unexpectedly");
+      await db.update(sourcingJobsTable).set({ status: "error", error: message, updatedAt: new Date() })
+        .where(eq(sourcingJobsTable.id, job.id));
+    });
+    res.status(202).json(job);
+    return;
+  }
   const started = Date.now();
   try {
     const results = parsed.data.type === "pagesjaunes"
@@ -194,7 +322,7 @@ router.get("/jobs/:id/results", requireAuth, async (req, res) => {
   const params = savedParams(job);
 
   if (Array.isArray(params.results)) {
-    const candidates = params.results.slice(0, 25);
+    const candidates = params.results.slice(0, 50);
     const sirens = candidates.map(r => r.siren).filter(s => /^\d{9}$/.test(s));
     const existing = sirens.length ? await db.select({
       id: prospectsTable.id, siren: prospectsTable.siren,
@@ -248,7 +376,7 @@ router.get("/jobs/:id/results", requireAuth, async (req, res) => {
 router.post("/jobs/:id/import", requireAuth, async (req, res) => {
   const parsed = z.object({
     sirens: z.array(z.string().regex(/^\d{9}$/)).min(1).max(25).optional(),
-    ids: z.array(z.string().min(3).max(64)).min(1).max(25).optional(),
+    ids: z.array(z.string().min(3).max(64)).min(1).max(50).optional(),
   }).refine(input => Boolean(input.sirens?.length || input.ids?.length)).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Sélection invalide" }); return; }
   const job = await getJob(String(req.params.id), req.auth!.tenantId);
@@ -303,7 +431,8 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
       city: candidate.city,
       phone: candidate.phone || null,
       website: candidate.website || null,
-      source: job.type === "pagesjaunes" ? "pagesjaunes" : "annuaire-entreprises",
+      source: candidate.sources?.map(item => item === "entreprises" ? "annuaire-entreprises" : item).join(",")
+        || (candidate.source === "pagesjaunes" || job.type === "pagesjaunes" ? "pagesjaunes" : "annuaire-entreprises"),
       sourceUrl: candidate.sourceUrl || null,
       status: "new", tenantId: req.auth!.tenantId, createdBy: req.auth!.userId,
     }).onConflictDoNothing().returning({ id: prospectsTable.id });

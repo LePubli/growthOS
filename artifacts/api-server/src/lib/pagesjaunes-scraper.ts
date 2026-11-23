@@ -86,19 +86,17 @@ export function parsePagesJaunesHtml(html: string, limit: number): PagesJaunesRe
 }
 
 let nextAllowedAt = 0;
-let fetching = false;
+let requestQueue: Promise<void> = Promise.resolve();
 
 export async function searchPagesJaunes(params: { query: string; location: string; limit: number }): Promise<PagesJaunesResult[]> {
-  // Une requête par recherche ; délai minimal de cinq secondes pour l'ensemble du processus.
-  if (fetching || Date.now() < nextAllowedAt) {
-    throw new Error("PagesJaunes : patientez 5 secondes avant une nouvelle recherche.");
-  }
-  fetching = true;
-  const requestedInterval = Number(process.env.PAGESJAUNES_MIN_INTERVAL_MS);
-  const interval = Number.isFinite(requestedInterval) && requestedInterval > 0
-    ? Math.min(60000, Math.max(5000, requestedInterval)) : 5000;
-  nextAllowedAt = Date.now() + interval;
-  try {
+  // File d'attente globale : jamais plus d'une requête simultanée, minimum 5 s entre deux.
+  const run = requestQueue.then(async () => {
+    const requestedInterval = Number(process.env.PAGESJAUNES_MIN_INTERVAL_MS);
+    const interval = Number.isFinite(requestedInterval) && requestedInterval > 0
+      ? Math.min(60000, Math.max(5000, requestedInterval)) : 5000;
+    const wait = Math.max(0, nextAllowedAt - Date.now());
+    if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+    nextAllowedAt = Date.now() + interval;
     const isSmoke = process.env.GROWTHOS_SMOKE_TEST === "true";
     const origin = isSmoke && process.env.PAGESJAUNES_TEST_ORIGIN
       ? process.env.PAGESJAUNES_TEST_ORIGIN : "https://www.pagesjaunes.fr";
@@ -107,12 +105,16 @@ export async function searchPagesJaunes(params: { query: string; location: strin
     url.searchParams.set("ou", params.location);
     url.searchParams.set("univers", "pagesjaunes");
     const response = await fetch(url, {
-      headers: { "Accept": "text/html", "User-Agent": "GrowthOS/1.0 (authorized local search)" },
+      headers: {
+        "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      },
       redirect: "error",
       signal: AbortSignal.timeout(12000),
     });
     if (response.status === 403 || response.status === 429) {
-      throw new Error("PagesJaunes refuse ou limite l'accès automatisé ; recherche interrompue sans contournement.");
+      throw new Error("PagesJaunes HTTP " + response.status + " : accès refusé par le site. Demandez à PagesJaunes d'autoriser l'adresse IP du VPS ; aucune tentative de contournement.");
     }
     if (!response.ok) throw new Error("PagesJaunes : HTTP " + response.status);
     if (!(response.headers.get("content-type") || "").includes("text/html")) {
@@ -124,7 +126,7 @@ export async function searchPagesJaunes(params: { query: string; location: strin
       throw new Error("PagesJaunes demande une vérification humaine ; recherche interrompue.");
     }
     return parsePagesJaunesHtml(html, params.limit);
-  } finally {
-    fetching = false;
-  }
+  });
+  requestQueue = run.then(() => undefined, () => undefined);
+  return run;
 }

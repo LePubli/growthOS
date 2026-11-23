@@ -86,7 +86,7 @@ const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:stri
 
 function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:any)=>void }) {
   const [step, setStep] = useState<1|2>(1);
-  const [type, setType] = useState('');
+  const [sources, setSources] = useState<string[]>(['entreprises']);
   const [name, setName] = useState('');
   const [params, setParams] = useState<Record<string,string>>({});
   const [launching, setLaunching] = useState(false);
@@ -99,33 +99,30 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
     && codesPostaux.length <= 25 && codesPostaux.every(code => /^\d{5}$/.test(code));
 
   const setParam = (k:string, v:string) => setParams(p=>({...p,[k]:v}));
-  const searchReady = type === 'pagesjaunes'
-    ? (params.query?.trim().length ?? 0) >= 2 && (params.location?.trim().length ?? 0) >= 2
-    : Boolean(params.query?.trim() && zonesValid);
+  const searchReady = Boolean((params.query?.trim().length ?? 0) >= 3 && zonesValid && sources.length);
 
   const launch = async () => {
-    if (!type || !SUPPORTED_TYPES.has(type)) { toast.error('Sélectionnez une source disponible'); return; }
+    if (!sources.length || sources.some(source => !SUPPORTED_TYPES.has(source))) { toast.error('Sélectionnez au moins une source disponible'); return; }
     if (!searchReady) {
-      toast.error(type === 'pagesjaunes' ? 'Renseignez un métier et une localité' : 'Saisissez une activité et au moins une zone valide.');
+      toast.error('Saisissez une activité et une ou plusieurs régions, départements ou codes postaux valides.');
       return;
     }
     setLaunching(true);
     try {
       const job = await apiClient.post('/sourcing/jobs', {
-        type, name: name.trim() || (type === 'pagesjaunes' ? `${params.query.trim()} · ${params.location.trim()}` : `${params.query.trim()} · ${regions.length} région(s), ${departements.length} département(s), ${codesPostaux.length} CP`),
-        params: type === 'pagesjaunes'
-          ? { query: params.query.trim(), location: params.location.trim(), limit: params.limit || '10' }
-          : { query: params.query.trim(), limit: params.limit || '10', regions, departements, codesPostaux },
+        type: 'multi', name: name.trim() || `${params.query.trim()} · ${sources.length} source(s)`,
+        params: { sources, query: params.query.trim(), limit: params.limit || '10', regions, departements, codesPostaux },
       });
       onLaunch(job);
-      toast.success(`${job.count ?? 0} entreprise(s) trouvée(s). Sélectionnez celles à importer.`);
+      toast.success('Recherche lancée. Les sources seront analysées indépendamment.');
       onClose();
     } catch (error: any) {
       toast.error(error.message ?? 'Import impossible');
     } finally { setLaunching(false); }
   };
 
-  const selectedType = SCRAPER_TYPES[type];
+  const toggleSource = (id: string) => setSources(previous => previous.includes(id)
+    ? previous.filter(source => source !== id) : [...previous, id]);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -148,11 +145,12 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
         <div className="p-6 overflow-y-auto">
           {step === 1 ? (
             <>
-              <h3 className="font-semibold text-gray-800 mb-4">Choisissez une source</h3>
+              <h3 className="font-semibold text-gray-800 mb-2">Choisissez une ou plusieurs sources</h3>
+              <p className="text-xs text-gray-500 mb-4">Les résultats seront regroupés dans une seule recherche. Une source indisponible ne bloquera pas les autres.</p>
               <div className="grid grid-cols-2 gap-3 mb-5">
                 {Object.entries(SCRAPER_TYPES).map(([id,t])=>(
-                  <button key={id} onClick={()=>setType(id)} disabled={!SUPPORTED_TYPES.has(id)}
-                    className={`text-left p-3.5 rounded-xl border-2 transition-all ${type===id?'border-teal-500 bg-teal-50':'border-gray-200 hover:border-gray-300'} ${SUPPORTED_TYPES.has(id) ? '' : 'opacity-40 cursor-not-allowed'}`}>
+                  <button key={id} onClick={()=>toggleSource(id)} disabled={!SUPPORTED_TYPES.has(id)} aria-pressed={sources.includes(id)}
+                    className={`text-left p-3.5 rounded-xl border-2 transition-all ${sources.includes(id)?'border-teal-500 bg-teal-50':'border-gray-200 hover:border-gray-300'} ${SUPPORTED_TYPES.has(id) ? '' : 'opacity-40 cursor-not-allowed'}`}>
                     <div className="text-2xl mb-2">{t.icon}</div>
                     <div className="font-semibold text-sm text-gray-900 mb-0.5">{t.name}</div>
                     <div className="text-xs text-gray-400">{t.desc}</div>
@@ -163,14 +161,14 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
               <p className="text-xs text-gray-500 mb-4">PagesJaunes.fr : connecteur expérimental réservé aux utilisateurs disposant de l’autorisation nécessaire. Une recherche HTTP limitée, sans contournement des blocages.</p>
               <div className="flex gap-3">
                 <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
-                <button onClick={()=>setStep(2)} disabled={!type} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Suivant →</button>
+                <button onClick={()=>setStep(2)} disabled={!sources.length} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Suivant →</button>
               </div>
             </>
           ) : (
             <>
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-xl">{selectedType?.icon}</span>
-                <h3 className="font-semibold text-gray-800">{selectedType?.name}</h3>
+                <span className="text-xl">🔎</span>
+                <h3 className="font-semibold text-gray-800">Critères communs · {sources.map(id => SCRAPER_TYPES[id]?.name).join(' + ')}</h3>
               </div>
               <div className="space-y-3 mb-5">
                 <div>
@@ -179,17 +177,16 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     placeholder="Ex : Plombiers Lille centre"/>
                 </div>
-                {selectedType?.fields.map(f=>(
-                  <div key={f.key}>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">{f.label}</label>
-                    <input value={params[f.key]||''} onChange={e=>setParam(f.key,e.target.value)}
-                      type={f.type||'text'}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                      placeholder={f.placeholder}/>
-                  </div>
-                ))}
-                {type === 'pagesjaunes' && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">Recherche limitée à la première page (25 entreprises maximum). L'adresse, le téléphone et le site web sont récupérés uniquement s'ils sont visibles dans le résultat. Si le site bloque l'accès, GrowthOS s'arrête et affiche l'erreur.</p>}
-                {type === 'entreprises' && <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Métier ou activité *</label>
+                  <input value={params.query || ''} onChange={e => setParam('query', e.target.value)} placeholder="Ex : plombier, électricien, boulangerie" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Résultats maximum par source (1 à 25)</label>
+                  <input type="number" min={1} max={25} value={params.limit || '10'} onChange={e => setParam('limit', e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+                </div>
+                {sources.includes('pagesjaunes') && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">PagesJaunes est interrogé pour chaque zone jusqu'au nombre de résultats demandé. Si son serveur refuse l'accès, l'erreur apparaîtra sur cette source, sans annuler les résultats de l'annuaire.</p>}
+                {<div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 space-y-3">
                   <div>
                     <h4 className="text-sm font-semibold text-gray-800">Zone de prospection *</h4>
                     <p className="text-xs text-gray-500 mt-1">Choisissez une ou plusieurs régions, départements et/ou codes postaux. Entre les types de zone, les filtres se cumulent.</p>
