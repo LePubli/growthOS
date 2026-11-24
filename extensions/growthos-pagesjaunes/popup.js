@@ -1,7 +1,7 @@
 /* Aucune connexion directe au serveur GrowthOS ; toutes les fiches restent dans Chrome. */
 const $ = id => document.getElementById(id);
-const labels = {google_maps:'Maps',google_search:'Google',bing:'Bing',linkedin:'LinkedIn',societe_com:'Societe.com',facebook:'Facebook Pages',instagram:'Instagram professionnel',pagesjaunes:'PagesJaunes'};
-const manualSources = new Set(['linkedin','societe_com','facebook','instagram']);
+const labels = {google_maps:'Maps',google_search:'Google',bing:'Bing',linkedin:'LinkedIn',societe_com:'Societe.com',facebook:'Facebook Pages',instagram:'Instagram professionnel',tiktok:'TikTok professionnel',pagesjaunes:'PagesJaunes'};
+const manualSources = new Set(['linkedin','societe_com','facebook','instagram','tiktok']);
 let source='google_maps';
 let currentUrl='';
 let pendingDraftId=null;
@@ -22,6 +22,7 @@ function sourceFromUrl(value){
     if(/(^|\.)google\.(?:com|fr)$/.test(host))return u.pathname.startsWith('/maps')?'google_maps':'google_search';
     if(['societe.com','www.societe.com'].includes(host))return 'societe_com';
     if(['facebook.com','www.facebook.com'].includes(host))return 'facebook';
+    if(['tiktok.com','www.tiktok.com'].includes(host))return 'tiktok';
     if(['instagram.com','www.instagram.com'].includes(host))return 'instagram';
     if(/(^|\.)linkedin\.com$/.test(host))return 'linkedin';
     if(/(^|\.)pagesjaunes\.fr$/.test(host))return 'pagesjaunes';
@@ -36,10 +37,13 @@ function selectSource(value){
   $('legalIdentity').hidden=value!=='societe_com';
   $('siret').disabled=value!=='societe_com';
   $('siret').value='';
-  $('capture').disabled=isManual||isPagesjaunes;
+  $('capture').disabled=(isManual && value!=='societe_com')||isPagesjaunes;
+  $('capture').textContent=value==='societe_com'?'Capturer la fiche Societe.com':'⤓ Capturer les fiches';
   $('autoMaps').disabled=!['google_maps','google_search'].includes(sourceFromUrl(currentUrl));
   $('manualPanel').hidden=isPagesjaunes;
-  $('sourceHint').textContent=isManual
+  $('sourceHint').textContent=value==='societe_com'
+    ? 'Ouvrez une fiche société, puis capturez les informations affichées. GrowthOS vous permettra de les comparer à un prospect existant avant enrichissement.'
+    : isManual
     ? 'Ouvrez la page professionnelle de l’entreprise. Confirmez son identité et renseignez les coordonnées affichées avant de valider la fiche.'
     : isPagesjaunes ? 'PagesJaunes est collecté automatiquement depuis le formulaire GrowthOS. Vous pouvez aussi ouvrir les résultats ici.'
     : 'Ouvrez les résultats puis cliquez sur Capturer. Sur une liste Maps, les fiches détaillées seront ouvertes successivement.';
@@ -132,7 +136,7 @@ $('capture').addEventListener('click',async()=>{
       ? `${r.added||0} fiche(s) prêtes · ${r.draftAdded||0} fiche(s) à compléter ci-dessous · ${(r.ignored||0)+(r.draftIgnored||0)} doublon(s)`
       : r.warning||'Aucune nouvelle fiche');
   }catch(e){notice(e.message,true);}
-  finally{$('capture').disabled=manualSources.has(source)||source==='pagesjaunes';}
+  finally{$('capture').disabled=(manualSources.has(source)&&source!=='societe_com')||source==='pagesjaunes';}
 });
 $('autoMaps').addEventListener('click',async()=>{
   const query=$('query').value.trim(),area=$('area').value.trim();

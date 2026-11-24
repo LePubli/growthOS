@@ -72,7 +72,7 @@ type CompanyRecord = {
 };
 type SearchCandidate = {
   id?: string; // Identifiant de source, utile sans SIREN
-  source?: 'entreprises' | 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin' | 'societe_com' | 'facebook' | 'instagram';
+  source?: 'entreprises' | 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin' | 'societe_com' | 'facebook' | 'instagram' | 'tiktok';
   sources?: string[];
   siren: string;
   siret: string | null;
@@ -360,7 +360,7 @@ async function runMultiSearch(jobId: string, tenantId: string, params: MultiPara
 
 // Import des résultats collectés dans le Chrome local, après validation côté serveur.
 // L'extension n'obtient jamais le JWT : c'est la page GrowthOS authentifiée qui poste les données.
-const deviceSources = ['pagesjaunes','google_maps','google_search','bing','linkedin','societe_com','facebook','instagram'] as const;
+const deviceSources = ['pagesjaunes','google_maps','google_search','bing','linkedin','societe_com','facebook','instagram','tiktok'] as const;
 type DeviceSource = typeof deviceSources[number];
 function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
   try {
@@ -375,6 +375,7 @@ function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
       case 'bing': return ['www.bing.com','bing.com'].includes(host);
       case 'societe_com': return ['societe.com','www.societe.com'].includes(host) && /^\/societe\/[a-z0-9-]+-\d{9}\.html\/?$/i.test(url.pathname);
       case 'facebook': return ['facebook.com','www.facebook.com'].includes(host) && /^\/[a-z0-9.\-]+\/?$/i.test(url.pathname) && !/^\/(?:home.php|profile.php|groups|events|watch|marketplace|login|share|search|reel|stories|gaming|people|pages)\/?$/i.test(url.pathname);
+      case 'tiktok': return ['tiktok.com','www.tiktok.com'].includes(host) && /^\/@[a-z0-9_](?:[a-z0-9_.]{0,22}[a-z0-9_])?\/?$/i.test(url.pathname);
       case 'instagram': return ['instagram.com','www.instagram.com'].includes(host) && /^\/[a-z0-9._]+\/?$/i.test(url.pathname) && !/^\/(?:p|reels?|stories|accounts|explore|direct|about|developer|legal)\/?$/i.test(url.pathname);
       case 'linkedin': return ['www.linkedin.com','linkedin.com'].includes(host)
         && /^\/company\/[a-z0-9_-]+\/?/i.test(url.pathname);
@@ -408,7 +409,7 @@ const deviceCandidateSchema = z.object({
   if (!item.address.includes(item.codePostal)) {
     context.addIssue({code:'custom',path:['address'],message:'Adresse et code postal incohérents'});
   }
-  if (['linkedin','societe_com','facebook','instagram'].includes(item.source) && item.collectionMode!=='manual') {
+  if (['linkedin','facebook','instagram','tiktok'].includes(item.source) && item.collectionMode!=='manual') {
     context.addIssue({code:'custom',path:['collectionMode'],message:'Confirmez la fiche professionnelle en saisie manuelle'});
   }
 }).transform(item => ({
@@ -574,6 +575,32 @@ async function mergeProspectCapture(
   }).where(and(eq(prospectsTable.id,existing.id),eq(prospectsTable.tenantId,tenantId)));
   return {updated:true,filled,conflicts:newConflicts.length,newConflicts};
 }
+
+router.post('/device/prospects/:id/societe-enrich', requireAuth, async (req, res) => {
+  const prospectId = z.string().uuid().safeParse(req.params.id);
+  if (!prospectId.success) { res.status(400).json({error:'Identifiant prospect invalide'}); return; }
+  const parsed = z.object({capture: deviceCandidateSchema, confirmed: z.literal(true)}).strict().safeParse(req.body);
+  if (!parsed.success || parsed.data.capture.source !== 'societe_com') {
+    res.status(400).json({error:'Confirmez une fiche Societe.com valide avant enrichissement.'}); return;
+  }
+  const [prospect] = await db.select().from(prospectsTable).where(and(
+    eq(prospectsTable.id,prospectId.data),eq(prospectsTable.tenantId,req.auth!.tenantId),
+  )).limit(1);
+  if (!prospect) { res.status(404).json({error:'Prospect introuvable'}); return; }
+  const incoming = parsed.data.capture;
+  const knownSiren = prospect.siren || prospect.siret?.slice(0,9);
+  if ((knownSiren && knownSiren !== incoming.siren) ||
+      (prospect.siret && incoming.siret && prospect.siret !== incoming.siret)) {
+    res.status(409).json({error:'L’identité juridique ou l’établissement de la fiche Societe.com diffère de ce prospect.'}); return;
+  }
+  if (!knownSiren && !sameEstablishment(prospect,incoming,false) &&
+      (normalizedIdentity(prospect.company || '') !== normalizedIdentity(incoming.company) ||
+       (prospect.city && incoming.city && normalizedIdentity(prospect.city) !== normalizedIdentity(incoming.city)))) {
+    res.status(409).json({error:'La société ou la ville diffère. Vérifiez le rapprochement et le SIREN avant enrichissement.'}); return;
+  }
+  const merged = await mergeProspectCapture(prospect,incoming,false,req.auth!.tenantId);
+  res.json({enriched:merged.filled.length>0,conflicts:merged.conflicts});
+});
 
 // Entrée directe des captures de l'extension vers Prospects, sans job sourcing.
 // Aucun identifiant, code postal ou adresse n'est déduit d'une requête Google.

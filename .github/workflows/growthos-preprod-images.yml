@@ -69,6 +69,7 @@ jobs:
         run: |
           node --check extensions/growthos-pagesjaunes/bridge.js
           node --check extensions/growthos-pagesjaunes/background.js
+          node --check extensions/growthos-pagesjaunes/societe.js
           node --check extensions/growthos-pagesjaunes/capture.js
           node --check extensions/growthos-pagesjaunes/popup.js
           node scripts/test-multisource-extension.mjs

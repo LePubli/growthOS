@@ -237,6 +237,7 @@ assert.equal(cleared.results.length,0);
 console.log('✓ MV3, lot Maps navigué/restauré, BAN/INSEE conservateurs, URLs, expiration et isolation GrowthOS');
 
 for (const [source,profile] of Object.entries({
+  tiktok:'https://www.tiktok.com/@atelier.local/',
   facebook:'https://www.facebook.com/atelier.local/',
   instagram:'https://www.instagram.com/atelier.local/',
   societe_com:'https://www.societe.com/societe/atelier-local-999000001.html',
@@ -250,3 +251,37 @@ for (const [source,profile] of Object.entries({
 const bingResult=capture('https://www.bing.com/search?q=atelier');
 assert.equal(bingResult.results[0].company,'Atelier Test');
 assert.equal(bingResult.results[0].codePostal,'59100');
+
+const tiktokForm={source:'tiktok',company:'Atelier TikTok',address:'10 rue de Lille 59100 Roubaix',codePostal:'59100'};
+for (const url of [
+  'https://www.tiktok.com/@atelier/video/123',
+  'https://www.tiktok.com/search/user?q=atelier',
+  'https://www.tiktok.com.evil.example/@atelier',
+  'https://vm.tiktok.com/faux',
+  'http://www.tiktok.com/@atelier',
+]) {
+  assert.equal((await send('manual-add',{...tiktokForm,sourceUrl:url})).ok,false,url);
+}
+const tiktokSearch=await send('open-source',{source:'tiktok',query:'artisan',area:'Roubaix'});
+assert.equal(tiktokSearch.ok,true);
+assert.equal(new URL(tiktokSearch.url).searchParams.get('q'),'artisan Roubaix');
+assert.ok((await send('get-captures',null,growthos)).results.some(item=>item.source==='tiktok'));
+console.log('✓ TikTok : profil, recherche, import local, doublons et liens invalides');
+
+const societeScript=readFileSync(new URL('societe.js',root),'utf8');
+const societeText='ATELIER RECETTE\nSIREN\n999 000 002\nSIRET DU SIEGE SOCIAL\n999 000 002 00017\nACTIVITÉ (NAF / APE)\nPlomberie - 4322A\nADRESSE\n8 RUE DU TEST, 59100 ROUBAIX\nTéléphone\nAfficher le numéro';
+function societeCapture(text=societeText,url='https://www.societe.com/societe/atelier-recette-999000002.html') {
+  return vm.runInNewContext(societeScript,{
+    location:new URL(url),URL,getComputedStyle:()=>({visibility:'visible'}),
+    document:{body:{innerText:text},querySelector:selector=>selector==='h1'?{innerText:'ATELIER RECETTE',getClientRects:()=>[{}]}:null},
+  },{timeout:1000});
+}
+const societeResult=societeCapture();
+assert.equal(societeResult.results[0].siret,'99900000200017');
+assert.equal(societeResult.results[0].apeCode,'43.22A');
+assert.equal(societeResult.results[0].phone,null,'Un numéro masqué reste absent');
+assert.equal(societeResult.results[0].website,null,'Un site absent reste absent');
+assert.ok(societeCapture(societeText.replace('999 000 002\n','888 000 002\n')).error);
+assert.ok(societeCapture(societeText.replace('59100','')).error);
+assert.ok(societeCapture(societeText,'https://example.com/societe/atelier-recette-999000002.html').error);
+console.log('✓ Societe.com : lecture des champs affichés, adresse et SIREN cohérents, données masquées absentes');

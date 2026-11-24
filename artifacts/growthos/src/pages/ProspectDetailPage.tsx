@@ -1,3 +1,5 @@
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { SocieteEnrichment } from '@/components/SocieteEnrichment';
 import { EditNote } from '@/components/EditNote';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation } from 'wouter';
@@ -307,6 +309,7 @@ export default function ProspectDetailPage() {
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [enrichingPagesJaunes, setEnrichingPagesJaunes] = useState(false);
+  const [showSocieteEnrichment, setShowSocieteEnrichment] = useState(false);
   const [enrichingActivity, setEnrichingActivity] = useState(false);
   const [lastEnrichedAt, setLastEnrichedAt] = useState<Date | null>(null);
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -566,6 +569,13 @@ export default function ProspectDetailPage() {
 
   return (
     <div className="min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
+      <Dialog key={id} open={showSocieteEnrichment} onOpenChange={setShowSocieteEnrichment}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogTitle>Enrichir via Societe.com</DialogTitle>
+          <DialogDescription>Recherchez par nom, SIRET/SIREN ou adresse, puis comparez la fiche avant de confirmer.</DialogDescription>
+          <SocieteEnrichment prospect={prospect} onSaved={() => void fetchProspect()} />
+        </DialogContent>
+      </Dialog>
       {showAddActivity && (
         <AddActivityModal prospectId={id} onClose={() => setShowAddActivity(false)} onSaved={fetchActivities} />
       )}
@@ -685,6 +695,9 @@ export default function ProspectDetailPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setShowSocieteEnrichment(true)} className="px-3 py-2 border rounded-xl text-sm font-medium text-teal-700">
+            Enrichir via Societe.com
+          </button>
           <button onClick={toggleStar} className={`p-2 rounded-xl ${prospect.isStarred ? 'bg-amber-50' : 'hover:bg-gray-100'}`}>
             <Star size={18} className={prospect.isStarred ? 'fill-amber-400 text-amber-400' : 'text-gray-400'} />
           </button>

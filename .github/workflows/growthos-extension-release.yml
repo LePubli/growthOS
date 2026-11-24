@@ -31,6 +31,7 @@ jobs:
         run: |
           node --check extensions/growthos-pagesjaunes/background.js
           node --check extensions/growthos-pagesjaunes/bridge.js
+          node --check extensions/growthos-pagesjaunes/societe.js
           node --check extensions/growthos-pagesjaunes/capture.js
           node --check extensions/growthos-pagesjaunes/popup.js
           node scripts/test-multisource-extension.mjs
@@ -54,7 +55,7 @@ jobs:
           NODE
           cd extensions/growthos-pagesjaunes
           zip -q "$RUNNER_TEMP/growthos-connecteur-chrome.zip" \
-            manifest.json background.js bridge.js capture.js popup.html popup.css popup.js
+            manifest.json background.js bridge.js capture.js societe.js popup.html popup.css popup.js
 
       - name: Keep verified extension ZIP available from GitHub Actions
         uses: actions/upload-artifact@v4

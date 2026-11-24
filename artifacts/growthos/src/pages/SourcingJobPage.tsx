@@ -23,7 +23,7 @@ type Candidate = {
   sourceDetails?: {annuaire?:{apeScope?:string};pagesjaunes?:{description?:string;openingHours?:string;services?:string;rating?:number;reviewCount?:number}};
   codePostal: string; city: string | null; imported: boolean; prospectId: string | null;
 };
-const SOURCE_LABELS:Record<string,string>={entreprises:'Annuaire des entreprises',pagesjaunes:'PagesJaunes.fr',google_maps:'Google Maps',google_search:'Google Search',bing:'Bing Search',linkedin:'LinkedIn · saisie manuelle',societe_com:'Societe.com',facebook:'Facebook Pages',instagram:'Instagram professionnel'};
+const SOURCE_LABELS:Record<string,string>={entreprises:'Annuaire des entreprises',pagesjaunes:'PagesJaunes.fr',google_maps:'Google Maps',google_search:'Google Search',bing:'Bing Search',linkedin:'LinkedIn · saisie manuelle',societe_com:'Societe.com',facebook:'Facebook Pages',instagram:'Instagram professionnel',tiktok:'TikTok professionnel'};
 
 function csvCell(value: unknown): string {
   const raw = String(value ?? '');

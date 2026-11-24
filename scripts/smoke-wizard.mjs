@@ -930,6 +930,7 @@ try {
     societe_com:'https://www.societe.com/societe/atelier-recette-999000001.html',
     facebook:'https://www.facebook.com/atelier.recette/',
     instagram:'https://www.instagram.com/atelier.recette/',
+    tiktok:'https://www.tiktok.com/@atelier.recette/',
     bing:'https://www.bing.com/search?q=atelier+recette',
   };
   for (const [source,sourceUrl] of Object.entries(sources)) {
@@ -940,6 +941,33 @@ try {
     const replay=await request('POST','/sourcing/device/import-prospects',payload,token);
     check(first.status===200 && first.body.imported===1 && replay.body.imported===0 && replay.body.skipped===1,
       source+' : création puis réimport sans doublon');
+    if (source==='tiktok') {
+      for (const invalid of [
+        {...record,sourceUrl:sourceUrl+'video/123'},
+        {...record,sourceUrl:'https://www.tiktok.com.evil.example/@atelier'},
+        {...record,collectionMode:'visible'},
+      ]) {
+        const rejected=await request('POST','/sourcing/device/import-prospects',{verified:[invalid]},token);
+        check(rejected.status===400,'TikTok : lien de profil et confirmation manuelle exigés');
+      }
+    }
+    const newWebsite='https://atelier-'+source.replaceAll('_','-')+'.example.org';
+    const merged=await request('POST','/sourcing/device/import-prospects',{verified:[{
+      ...record,id:'enriched_'+source,website:newWebsite,
+    }]},token);
+    check(merged.status===200 && merged.body.imported===0 && merged.body.enriched===1,
+      source+' : le réimport complète un champ absent');
+    const saved=await request('GET','/prospects?search='+encodeURIComponent(record.company),undefined,token);
+    check(saved.body.data.length===1 && saved.body.data[0].website===newWebsite &&
+      saved.body.data[0].sourceDetails.crossSource.observations.some(item=>item.sourceUrl===sourceUrl),
+      source+' : données enrichies et provenance relues dans le CRM');
+    if (source!=='societe_com') {
+      const otherCity=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,
+        id:'homonym_'+source,sourceUrl:source==='bing'?sourceUrl+'+Lille':sourceUrl.replace(/\/$/,'')+(source==='linkedin'?'-lille/':'.lille/'),
+        address:'8 rue des Fleurs 59000 Lille',codePostal:'59000',city:'Lille',phone:null}]},token);
+      check(otherCity.status===200 && otherCity.body.imported===1 && otherCity.body.enriched===0,
+        source+' : un homonyme dans une autre ville reste distinct');
+    }
     if (source==='societe_com') {
       const forged=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,siret:'88800000100012',sourceUrl:sourceUrl+'?fake=-888000001.html'}]},token);
       const homonym = await request('POST','/sourcing/device/import-prospects',{verified:[{...record,
@@ -950,6 +978,36 @@ try {
       check(forged.status===400,'SIRET et SIREN de la fiche Societe.com doivent correspondre');
     }
   }
+
+  const societeTarget = await request('POST','/prospects',{
+    company:'Atelier Enrichissement',siren:'999000002',phone:'03 20 11 22 33',city:'Roubaix',
+  },token);
+  const societeCapture = {id:'societe_enrich_01',source:'societe_com',company:'Atelier Enrichissement',
+    sourceUrl:'https://www.societe.com/societe/atelier-enrichissement-999000002.html',
+    siret:'99900000200017',address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',
+    phone:'03 20 44 55 66',website:'https://atelier-enrichissement.example.org',apeCode:'43.22A',
+    collectionMode:'visible',capturedAt:Date.now()};
+  const enrichPath = `/sourcing/device/prospects/${societeTarget.body.id}/societe-enrich`;
+  const noConfirm = await request('POST',enrichPath,{capture:societeCapture,confirmed:false},token);
+  check(noConfirm.status===400,'Societe.com : confirmation exigée avant enrichissement');
+  const enrich = await request('POST',enrichPath,{capture:societeCapture,confirmed:true},token);
+  check(enrich.status===200 && enrich.body.enriched && enrich.body.conflicts===1,
+    'Societe.com : champs absents complétés et téléphone divergent signalé');
+  const reread = await request('GET',`/prospects/${societeTarget.body.id}`,undefined,token);
+  check(reread.body.siret===societeCapture.siret && reread.body.website===societeCapture.website &&
+    reread.body.phone==='03 20 11 22 33' && reread.body.nafLabel?.includes('eau et de gaz') &&
+    reread.body.sourceDetails.crossSource.observations.some(o=>o.sourceUrl===societeCapture.sourceUrl),
+    'Societe.com : enrichissement relu avec libellé, provenance et téléphone initial conservé');
+  const repeatedEnrich = await request('POST',enrichPath,{capture:societeCapture,confirmed:true},token);
+  check(repeatedEnrich.status===200 && !repeatedEnrich.body.enriched && repeatedEnrich.body.conflicts===0,
+    'Societe.com : répéter l’enrichissement ne duplique pas les conflits');
+  const differentSiren = await request('POST',enrichPath,{confirmed:true,capture:{...societeCapture,
+    sourceUrl:'https://www.societe.com/societe/autre-entreprise-999000003.html',siret:'99900000300017'}},token);
+  check(differentSiren.status===409,'Societe.com : une identité juridique différente est refusée');
+  const differentSite = await request('POST',enrichPath,{confirmed:true,capture:{...societeCapture,siret:'99900000200025'}},token);
+  check(differentSite.status===409,'Societe.com : un autre établissement ne remplace pas celui du prospect');
+  const wrongSource = await request('POST',enrichPath,{confirmed:true,capture:directCapture},token);
+  check(wrongSource.status===400,'Societe.com : la route refuse une capture d’une autre source');
 
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
 } catch (error) {
