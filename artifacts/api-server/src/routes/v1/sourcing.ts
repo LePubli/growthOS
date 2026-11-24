@@ -397,6 +397,65 @@ const deviceDraftSchema = z.object({
 type DeviceDraft = z.infer<typeof deviceDraftSchema>;
 const deviceDraftsSchema = z.array(deviceDraftSchema).max(75);
 
+// Entrée directe des captures de l'extension vers Prospects, sans job sourcing.
+// Aucun identifiant, code postal ou adresse n'est déduit d'une requête Google.
+router.post('/device/import-prospects',requireAuth,async(req,res)=>{
+  const parsed=z.object({
+    verified:z.array(deviceCandidateSchema).max(25).default([]),
+    drafts:z.array(deviceDraftSchema).max(25).default([]),
+  }).strict().refine(data=>data.verified.length+data.drafts.length>0 &&
+    data.verified.length+data.drafts.length<=25).safeParse(req.body);
+  if(!parsed.success){res.status(400).json({error:'Sélection invalide (25 fiches maximum)',details:parsed.error.issues});return;}
+  let imported=0,skipped=0;
+  const processedIds:string[]=[];
+  const usedIds=new Set<string>();
+  for(const entry of [...parsed.data.verified.map(value=>({item:value,incomplete:false})),
+    ...parsed.data.drafts.map(value=>({item:value,incomplete:true}))]){
+    const {item,incomplete}=entry;
+    if(usedIds.has(item.id)){skipped++;continue;}
+    usedIds.add(item.id);
+    const company=normalizedIdentity(item.company);
+    const phone=normalizedPhone(item.phone);
+    const address=normalizedIdentity(item.address||'');
+    const city=normalizedIdentity(item.city||'');
+    const website=String(item.website||'').toLowerCase();
+    if(incomplete && !phone && !website && !address){skipped++;continue;}
+    const siret=!incomplete && 'siret' in item ? item.siret : null;
+    const prior=await db.select({id:prospectsTable.id,company:prospectsTable.company,
+      address:prospectsTable.address,city:prospectsTable.city,phone:prospectsTable.phone,
+      website:prospectsTable.website,siret:prospectsTable.siret,sourceUrl:prospectsTable.sourceUrl})
+      .from(prospectsTable).where(and(eq(prospectsTable.tenantId,req.auth!.tenantId),
+        eq(prospectsTable.company,item.company))).limit(100);
+    const isProfileLink=(()=>{try{return new URL(item.sourceUrl||'').pathname.startsWith('/maps/place/');}
+      catch{return false;}})();
+    const duplicate=prior.find(record=>(siret && record.siret===siret) ||
+      (isProfileLink && record.sourceUrl===item.sourceUrl) ||
+      (normalizedIdentity(record.company||'')===company && (
+        (address.length>=9 && normalizedIdentity(record.address||'')===address) ||
+        (phone.length>=9 && normalizedPhone(record.phone)===phone &&
+          (!city || !record.city || normalizedIdentity(record.city)===city)) ||
+        (website && String(record.website||'').toLowerCase()===website &&
+          (!city || !record.city || normalizedIdentity(record.city)===city))
+      )));
+    if(duplicate){skipped++;processedIds.push(item.id);continue;}
+    const [created]=await db.insert(prospectsTable).values({
+      company:item.company,address:item.address||null,
+      postalCode:!incomplete && 'codePostal' in item ? item.codePostal : null,
+      city:item.city||null,phone:item.phone||null,website:item.website||null,
+      email:null,siren:null,siret:siret||null,
+      source:item.source,sourceUrl:isProfileLink?item.sourceUrl:null,
+      sourceDetails:{browserCapture:{source:item.source,sourceUrl:item.sourceUrl,
+        incomplete,capturedAt:new Date(item.capturedAt||Date.now()).toISOString(),
+        postalCodeVerified:!incomplete,localCaptureId:item.id},
+        ...(incomplete?{browserDraft:{incomplete:true,source:item.source,
+          sourceUrl:item.sourceUrl,postalCodeVerified:false}}:{})},
+      status:'new',tenantId:req.auth!.tenantId,createdBy:req.auth!.userId,
+    }).onConflictDoNothing().returning({id:prospectsTable.id});
+    if(created){imported++;processedIds.push(item.id);}else skipped++;
+  }
+  res.json({imported,skipped,selected:usedIds.size,processedIds});
+});
+
 const distinctiveDraft = (company: string) => {
   const label=normalizedIdentity(company);
   return label.length>=7 && !new Set([

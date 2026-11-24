@@ -808,6 +808,32 @@ try {
   check(repeatedProvisional.status===200&&repeatedProvisional.body.imported===0&&
     repeatedProvisional.body.skipped===1,'Import provisoire répété : aucun doublon');
 
+  const directCapture={id:'local_direct_verified_01',source:'google_maps',
+    company:'Atelier Direct Roubaix',address:'22 Rue du Test 59100 Roubaix',codePostal:'59100',
+    city:'Roubaix',phone:'03 20 12 34 99',website:null,siret:null,
+    sourceUrl:'https://www.google.com/maps/place/Atelier-Direct-Roubaix',
+    capturedAt:Date.now(),collectionMode:'visible'};
+  const directDraft={id:'draft_direct_incomplete_01',source:'google_search',
+    company:'Service Direct Incomplet',address:null,city:'Lille',phone:'03 20 90 89 88',website:null,
+    sourceUrl:'https://www.google.com/search?q=Service+Direct+Incomplet',capturedAt:Date.now()};
+  const directImport=await request('POST','/sourcing/device/import-prospects',{
+    verified:[directCapture],drafts:[directDraft],
+  },token);
+  check(directImport.status===200 && directImport.body.imported===2 &&
+    directImport.body.processedIds.includes(directCapture.id) &&
+    directImport.body.processedIds.includes(directDraft.id),
+  'L’extension importe directement deux fiches dans Prospects, même sans sourcing');
+  const directRepeated=await request('POST','/sourcing/device/import-prospects',{
+    verified:[directCapture],drafts:[directDraft],
+  },token);
+  check(directRepeated.status===200 && directRepeated.body.imported===0 && directRepeated.body.skipped===2,
+    'Import direct répété : pas de doublons dans le CRM');
+  const directInvalid=await request('POST','/sourcing/device/import-prospects',{
+    verified:[],drafts:[{...directDraft,id:'draft_empty_01',address:null,phone:null,website:null}],
+  },token);
+  check(directInvalid.status===200 && directInvalid.body.imported===0 && directInvalid.body.processedIds.length===0,
+    'Une fiche sans coordonnées utiles ne peut pas entrer dans le CRM');
+
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
 } catch (error) {
   process.exitCode = 1;

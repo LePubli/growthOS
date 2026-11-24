@@ -99,6 +99,7 @@ async function refresh(){
 }
 async function init(){
   try{
+    $('extensionIdentity').textContent='v'+chrome.runtime.getManifest().version+' · '+chrome.runtime.id.slice(-8);
     const tabs=await chrome.tabs.query({active:true,currentWindow:true});
     currentUrl=tabs[0]?.url||'';
     const current=sourceFromUrl(currentUrl);
@@ -138,6 +139,11 @@ $('autoMaps').addEventListener('click',async()=>{
     notice(`${result.checked} fiche(s) Maps examinée(s) · ${result.added} adresse(s) complète(s) ajoutée(s).`);
   }catch(error){notice(error.message,true);}
   finally{button.disabled=!['google_maps','google_search'].includes(sourceFromUrl(currentUrl));}
+});
+$('resetMaps').addEventListener('click',async()=>{
+  if(!confirm('Recommencer la lecture des fiches Maps depuis le début ? Les captures déjà enregistrées sont conservées.'))return;
+  try{await message('reset-maps-progress');notice('Parcours Maps réinitialisé ; les captures existantes restent conservées.');}
+  catch(error){notice(error.message,true);}
 });
 $('autoEnrich').addEventListener('click',async()=>{
   const button=$('autoEnrich');button.disabled=true;

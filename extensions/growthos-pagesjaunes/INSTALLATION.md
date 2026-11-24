@@ -1,4 +1,4 @@
-# Connecteur multisource GrowthOS — version 0.6.0
+# Connecteur multisource GrowthOS — version 0.7.0
 
 L'extension fonctionne dans **Chrome sur l'appareil de l'utilisateur** (ordinateur).
 Les images Docker de GrowthOS sont construites par GitHub Actions, pas sur le VPS.
@@ -28,7 +28,7 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 
 1. Récupérer **le dossier complet** `extensions/growthos-pagesjaunes` depuis la branche `fix/growthos-functional-redesign`, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`.
 2. Remplacer le contenu de votre dossier d'extension Chrome local (sans changer le chemin du dossier chargé dans Chrome).
-3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.6.0** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Cette version conserve les autorisations limitées au géocodeur officiel `data.geopf.fr` et à l'annuaire `recherche-entreprises.api.gouv.fr`.
+3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.7.0** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Gardez le même dossier local et évitez une deuxième installation : chaque extension Chrome possède ses propres captures locales.
 4. Garder Chrome et l'onglet `https://agile.le-publicitaire.fr` ouverts.
 5. Dans GrowthOS, ouvrir **Trouver des entreprises**, cliquer sur **Connecter cet appareil** si nécessaire, puis choisir les sources. Pour Google et Bing, le nouvel onglet doit être ouvert manuellement depuis le panneau de l'extension.
 6. Pour les fiches déjà importées depuis PagesJaunes, **Compléter depuis PagesJaunes** reste opérationnel.
@@ -61,6 +61,10 @@ La lecture peut être interrompue par Google (page non chargée, résultat non e
 - Les brouillons restent sur l'appareil jusqu'à un enrichissement explicite depuis l'extension, une recherche ou un enrichissement depuis GrowthOS. Les brouillons envoyés au serveur ne sont pas des prospects CRM ; les entrées non confirmées sont seulement affichées avec une raison de non-identification. Les captures locales expirent au bout de 24 heures.
 
 ## Données traitées
+
+**Import direct (0.7.0) :** Après la collecte, cliquez sur **Sélectionner et importer dans Prospects** dans l'extension. La page `/prospects/connecteur` lit les captures locales de cet appareil, affiche les adresses vérifiées et les fiches incomplètes, puis vous laisse confirmer au plus 25 importations. Les champs absents restent vides, les doublons sont ignorés, et les captures confirmées sont retirées de la file locale. Le module « Trouver des entreprises » reste disponible séparément pour les recherches multisources avec l'annuaire public.
+
+**Lecture Maps :** Cliquez sur **Examiner les 5 fiches Maps suivantes** ; le connecteur mémorise les liens Maps déjà examinés pour la recherche courante et défile les résultats. S'il n'existe plus de nouveau lien chargé, il l'indique ; le bouton « Repartir du premier résultat Maps » permet une relecture volontaire. Il ne peut pas garantir que Google chargera toutes les entreprises ni obtenir un code postal absent de la fiche.
 
 Le navigateur parcourt les onglets de la fiche source : **Présentation, Horaires, Avis, Contact, INSEE**.
 Il envoie uniquement les valeurs visibles et vérifiables : coordonnées, site web, éventuels SIREN/SIRET effectivement affichés, horaires structurés par jour, note et nombre d'avis, avis clients explicitement délimités et prestations.

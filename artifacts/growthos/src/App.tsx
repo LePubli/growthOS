@@ -18,6 +18,7 @@ import UnavailablePage from '@/pages/UnavailablePage';
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
 const ProspectsPage = lazy(() => import('@/pages/ProspectsPage'));
+const ConnectorImportPage = lazy(() => import('@/pages/ConnectorImportPage'));
 const ProspectDetailPage = lazy(() => import('@/pages/ProspectDetailPage'));
 const PipelinePage = lazy(() => import('@/pages/PipelinePage'));
 const DealDetailPage = lazy(() => import('@/pages/DealDetailPage'));
@@ -159,6 +160,9 @@ function AppRoutes() {
 
       <Route path="/prospects">
         {() => <DashboardLayout><ProspectsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/prospects/connecteur">
+        {() => <DashboardLayout><ConnectorImportPage /></DashboardLayout>}
       </Route>
       <Route path="/prospects/:id">
         {() => <DashboardLayout><ProspectDetailPage /></DashboardLayout>}

@@ -378,6 +378,7 @@ const QUEUE_KEY = 'growthos_verified_captures_v1';
 const DRAFTS_KEY = 'growthos_unverified_drafts_v1';
 const ENRICH_CURSOR_KEY = 'growthos_enrich_cursor_v1';
 const MAP_BATCH_KEY = 'growthos_maps_batch_v1';
+const MAP_SEEN_KEY = 'growthos_maps_seen_v1';
 const AGE_LIMIT = 24 * 60 * 60 * 1000;
 function hostMatches(source,url) {
   try {
@@ -406,8 +407,21 @@ async function readDrafts(){
     Date.now()-item.capturedAt<AGE_LIMIT).slice(-75);
 }
 async function storeDrafts(items){await chrome.storage.local.set({[DRAFTS_KEY]:items.slice(-75)});}
+function sameCaptureIdentity(a,b){
+  if(a.source!==b.source || normalizeBusiness(a.company)!==normalizeBusiness(b.company))return false;
+  const ap=String(a.phone||'').replace(/\D/g,''),bp=String(b.phone||'').replace(/\D/g,'');
+  if(ap.length>=9 && bp.length>=9 && ap===bp)return true;
+  if(a.address && b.address && normalizeStreet(a.address).length>=9 &&
+    normalizeStreet(a.address)===normalizeStreet(b.address))return true;
+  try{
+    const left=new URL(a.sourceUrl),right=new URL(b.sourceUrl);
+    return left.pathname.startsWith('/maps/place/')&&left.pathname===right.pathname;
+  }catch{return false;}
+}
 async function addDrafts(rawDrafts, verified=[]){
-  const drafts=await readDrafts();let draftAdded=0,draftIgnored=0;
+  const queue=await readQueue();
+  const drafts=(await readDrafts()).filter(d=>![...queue,...verified].some(v=>sameCaptureIdentity(d,v)));
+  let draftAdded=0,draftIgnored=0;
   for(const raw of rawDrafts.slice(0,25)){
     const source=String(raw?.source||'');
     const company=String(raw?.company||'').trim().slice(0,160);
@@ -416,7 +430,7 @@ async function addDrafts(rawDrafts, verified=[]){
       !hostMatches(source,sourceUrl))continue;
     const key=[source,company.toLocaleLowerCase('fr'),sourceUrl].join('|');
     const existing=drafts.some(d=>[d.source,d.company.toLocaleLowerCase('fr'),d.sourceUrl].join('|')===key)
-      || verified.some(v=>v.source===source && v.company.toLocaleLowerCase('fr')===company.toLocaleLowerCase('fr'));
+      || [...queue,...verified].some(v=>sameCaptureIdentity(v,raw));
     if(existing){draftIgnored++;continue;}
     const safeWebsite=(()=>{try{const u=new URL(String(raw.website||''));return /^https?:$/.test(u.protocol)?u.href.slice(0,500):null;}catch{return null;}})();
     drafts.push({id:'draft_'+crypto.randomUUID().replace(/-/g,'').slice(0,32),source,company,
@@ -457,6 +471,7 @@ async function addToQueue(items, manual=false, verifiedSiret=false){
     queue.push(item);added++;
   }
   await storeQueue(queue);
+  await storeDrafts((await readDrafts()).filter(draft=>!queue.some(item=>sameCaptureIdentity(draft,item))));
   return {ok:true,added,ignored,results:queue,warnings:[]};
 }
 
@@ -614,21 +629,30 @@ async function enrichLocalDrafts(payload){
     pending:batch.length-matched.length,skipped:Math.max(0,drafts.length-batch.length),
     fromDirectory,fromGeocoder,details:details.slice(0,12),errors};
 }
-// Fonction exécutée dans l'onglet Maps après ouverture explicite de la recherche.
-// Elle ne lit que les liens des cartes effectivement présentes, sans défiler.
-function readMapBusinessLinks(){
+// Fonction exécutée dans l'onglet Maps : ne lit que des résultats chargés dans le navigateur.
+async function readMapBusinessLinks(){
   const links=[];const seen=new Set();
-  const anchors=[...document.querySelectorAll('.Nv2PK a[href*="/maps/place/"],a.hfpxzc[href*="/maps/place/"],a[href*="/maps/place/"]')];
-  for(const anchor of anchors){
-    if(!anchor.getClientRects().length)continue;
-    try{
-      const link=new URL(anchor.href,location.href);
-      if(link.origin!==location.origin || !link.pathname.startsWith('/maps/place/'))continue;
-      const url=location.origin+link.pathname+link.search;
-      if(seen.has(url))continue;
-      seen.add(url);links.push(url);
-      if(links.length===5)break;
-    }catch{}
+  const feed=document.querySelector('[role="feed"]') || document.querySelector('div.m6QErb[aria-label]');
+  let scroller=feed;
+  for(let level=0;scroller&&level<5&&scroller.scrollHeight<=scroller.clientHeight+16;level++)
+    scroller=scroller.parentElement;
+  for(let page=0;page<12;page++){
+    const anchors=[...document.querySelectorAll('.Nv2PK a[href*="/maps/place/"],a.hfpxzc[href*="/maps/place/"],a[href*="/maps/place/"]')];
+    for(const anchor of anchors){
+      if(!anchor.getClientRects().length)continue;
+      try{
+        const link=new URL(anchor.href,location.href);
+        if(link.origin!==location.origin || !link.pathname.startsWith('/maps/place/'))continue;
+        const url=location.origin+link.pathname+link.search;
+        if(seen.has(link.pathname))continue;
+        seen.add(link.pathname);links.push(url);
+      }catch{}
+    }
+    if(!scroller || links.length>=65)break;
+    const before=scroller.scrollTop;
+    scroller.scrollBy({top:650,behavior:'instant'});
+    await new Promise(resolve=>setTimeout(resolve,500));
+    if(page>=2 && scroller.scrollTop===before)break;
   }
   return links;
 }
@@ -642,6 +666,7 @@ async function captureMapBatch(payload){
   if(query.length<3||query.length>120||!area||area.length>100)
     throw new Error('Indiquez une activité et une zone avant la lecture automatique.');
   const searchUrl=original.origin+'/maps/search/'+encodeURIComponent(query+' '+area);
+  const searchKey=normalizeBusiness(query)+'|'+normalizeBusiness(area);
   const tabId=tab.id;
   let state={status:'running',checked:0,total:0,added:0,errors:[],startedAt:Date.now()};
   const save=async()=>chrome.storage.local.set({[MAP_BATCH_KEY]:state});
@@ -658,9 +683,15 @@ async function captureMapBatch(payload){
       links=Array.isArray(injected?.[0]?.result)?injected[0].result:[];
     }
     if(!links.length)throw new Error('Aucun lien de fiche Maps visible : ouvrez manuellement une entreprise, puis capturez-la.');
+    const savedSeen=(await chrome.storage.local.get(MAP_SEEN_KEY))[MAP_SEEN_KEY]||{};
+    const done=new Set(Array.isArray(savedSeen[searchKey])?savedSeen[searchKey]:[]);
+    links=links.filter(url=>!done.has(new URL(url).pathname)).slice(0,5);
+    if(!links.length)throw new Error('Toutes les fiches Maps chargées ont déjà été examinées. Faites défiler les résultats ou réinitialisez le parcours Maps.');
     state={...state,total:links.length};await save();
     for(const url of links){
       targets.add(url);
+      done.add(new URL(url).pathname);
+      await chrome.storage.local.set({[MAP_SEEN_KEY]:{...savedSeen,[searchKey]:[...done].slice(-300)}});
       try{
         await chrome.tabs.update(tabId,{url});
         await waitTab(tabId,20000);
@@ -673,7 +704,10 @@ async function captureMapBatch(payload){
         if(verified.length){
           const stored=await addToQueue(verified.slice(0,1));
           state={...state,added:state.added+stored.added};
-        }else state.errors.push('Adresse complète non affichée sur une fiche');
+        }else{
+          await addDrafts((captured.drafts||[]).filter(item=>item.source==='google_maps'));
+          state.errors.push('Adresse complète non affichée : fiche conservée à compléter');
+        }
       }catch(error){state.errors.push(String(error?.message||error).slice(0,100));}
       state={...state,checked:state.checked+1};await save();
       await wait(400);
@@ -699,6 +733,16 @@ async function popupAction(message){
   const action=message.action;
   if(action==='list-captures')return {ok:true,results:await readQueue(),warnings:[]};
   if(action==='list-drafts')return {ok:true,drafts:await readDrafts()};
+  if(action==='reset-maps-progress'){
+    await chrome.storage.local.set({[MAP_SEEN_KEY]:{}});return {ok:true};
+  }
+  if(action==='ack-import'){
+    const ids=new Set((Array.isArray(message.payload?.ids)?message.payload.ids:[])
+      .filter(id=>typeof id==='string'&&id.length<=64).slice(0,50));
+    await Promise.all([storeQueue((await readQueue()).filter(item=>!ids.has(item.id))),
+      storeDrafts((await readDrafts()).filter(item=>!ids.has(item.id)))]);
+    return {ok:true};
+  }
   if(action==='auto-capture-status'){
     const saved=(await chrome.storage.local.get(MAP_BATCH_KEY))[MAP_BATCH_KEY];
     if(saved?.status==='running' && Date.now()-Number(saved.startedAt||0)>150000)
@@ -778,7 +822,11 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     reply({ok:false,error:'Origine non autorisée'}); return false;
   }
   if (message?.action === 'ping') {
-    reply({ok:true,results:[],warnings:[]}); return false;
+    Promise.all([readQueue(),readDrafts()]).then(([results,drafts])=>reply({ok:true,
+      results,drafts,version:chrome.runtime.getManifest?.().version||'inconnue',
+      extensionId:chrome.runtime.id||'inconnue',warnings:[]}))
+      .catch(error=>reply({ok:false,error:String(error?.message||error)}));
+    return true;
   }
   if(message?.action==='get-captures'){
     readQueue().then(results=>reply({ok:true,results,warnings:[]}))
@@ -788,6 +836,10 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if(message?.action==='get-drafts'){
     readDrafts().then(drafts=>reply({ok:true,drafts,warnings:[]}))
       .catch(error=>reply({ok:false,error:String(error?.message||error)}));
+    return true;
+  }
+  if(message?.action==='ack-import'){
+    popupAction(message).then(reply).catch(error=>reply({ok:false,error:String(error?.message||error)}));
     return true;
   }
   if (!['search', 'enrich'].includes(message?.action)) {

@@ -203,6 +203,21 @@ assert.equal(mapBatch.checked,1);
 assert.equal(activeTabUrl,originalUrl,'Après la lecture Maps, revenir à la recherche originale');
 assert.equal((await send('auto-capture-status')).status.status,'done');
 assert.equal((await send('get-captures',null,growthos)).results.some(item=>item.company==='Atelier de Roubaix'),true);
+mapLinks=['https://www.google.com/maps/place/Atelier-de-Roubaix',
+  'https://www.google.com/maps/place/Nouveau-Plombier'];
+injectedResult={source:'google_maps',drafts:[],results:[{source:'google_maps',company:'Nouveau Plombier',
+  address:'22 Rue Nationale 59100 Roubaix',codePostal:'59100',city:'Roubaix',
+  sourceUrl:mapLinks[1],phone:'03 20 00 11 23'}]};
+const nextBatch=await send('auto-capture-maps',{query:'plombier',area:'59100'});
+assert.equal(nextBatch.checked,1,'Le lot suivant ne doit pas rouvrir la première fiche Maps');
+assert.equal((await send('get-captures',null,growthos)).results.some(item=>item.company==='Nouveau Plombier'),true);
+assert.equal((await send('auto-capture-maps',{query:'plombier',area:'59100'})).ok,false,
+  'Quand toutes les fiches chargées sont vues, prévenir au lieu de recommencer les mêmes');
+const newItem=(await send('get-captures',null,growthos)).results.find(item=>item.company==='Nouveau Plombier');
+assert.equal((await send('ack-import',{ids:[newItem.id]},growthos)).ok,true);
+assert.equal((await send('get-captures',null,growthos)).results.some(item=>item.id===newItem.id),false,
+  'Après import CRM confirmé, la capture doit disparaître de la file locale');
+assert.equal((await send('reset-maps-progress')).ok,true);
 for(const item of storage.growthos_verified_captures_v1)item.capturedAt=Date.now()-25*60*60*1000;
 assert.equal((await send('get-captures',null,growthos)).results.length,0,
   'Les captures expirées ne sortent pas de l’extension');

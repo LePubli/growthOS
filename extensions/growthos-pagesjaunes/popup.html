@@ -10,11 +10,11 @@
   <header>
     <span class="logo">G</span>
     <div><h1>GrowthOS <small>Connecteur</small></h1><p>Recherche locale et collecte contrôlée</p></div>
-    <a id="growthos" href="https://agile.le-publicitaire.fr/sourcing" target="_blank" rel="noopener noreferrer" title="Ouvrir GrowthOS">↗</a>
+    <a id="growthos" href="https://agile.le-publicitaire.fr/prospects/connecteur" target="_blank" rel="noopener noreferrer" title="Importer dans Prospects">↗</a>
   </header>
   <div id="notice" role="status" aria-live="polite" hidden></div>
   <main>
-    <div class="hero"><span class="dot"></span> Extension prête <span id="currentTab">· Vérification de l’onglet…</span></div>
+    <div class="hero"><span class="dot"></span> Extension prête <span id="currentTab">· Vérification de l’onglet…</span> <small id="extensionIdentity"></small></div>
     <section aria-label="Choisir la source">
       <h2>1. Choisir la source</h2>
       <div class="sources" id="sources">
@@ -37,8 +37,9 @@
     <section>
       <h2>3. Collecter</h2>
       <button type="button" class="primary teal" id="capture">⤓ Capturer les fiches visibles</button>
-      <button type="button" class="secondary" id="autoMaps">▣ Ouvrir et lire 5 fiches Maps automatiquement</button>
-      <p class="hint">Sur un onglet Google, ce bouton ouvre successivement jusqu'à 5 fiches Maps visibles, lit leurs informations puis revient à l'onglet initial. Ne changez pas d'onglet pendant la lecture ; rouvrez l'extension pour voir le bilan. Dans GrowthOS, cochez la source Google Maps pour retrouver ces captures.</p>
+      <button type="button" class="secondary" id="autoMaps">▣ Examiner les 5 fiches Maps suivantes</button>
+      <button type="button" class="link" id="resetMaps">Repartir du premier résultat Maps</button>
+      <p class="hint">Le connecteur mémorise les fiches Maps déjà ouvertes pour cette activité et cette zone, fait défiler les résultats et passe aux suivantes par lots de 5. Rouvrez l'extension pour vérifier le bilan.</p>
       <p id="mapProgress" class="map-progress" role="status" aria-live="polite" hidden></p>
       <p class="hint">Pour Maps, ouvrez une entreprise dans la liste pour afficher sa fiche complète, puis capturez. Les cartes de liste peuvent ne pas afficher le code postal.</p>
       <div class="draft-title"><strong>Fiches à vérifier <span class="count amber" id="draftCount">0</span></strong><span>Adresse manquante</span></div>
@@ -63,8 +64,8 @@
     <section>
       <div class="listhead"><h2>4. Sélection locale <span class="count" id="total">0</span></h2><button type="button" class="link" id="clear">Vider</button></div>
       <div id="queue" class="queue"><p class="empty">Aucune fiche capturée</p></div>
-      <p class="hint">Conservées 24 h sur cet appareil. Revenez dans GrowthOS, choisissez vos sources et sélectionnez les résultats à importer. Aucun import CRM automatique.</p>
-      <a class="primary growthos" href="https://agile.le-publicitaire.fr/sourcing" target="_blank" rel="noopener noreferrer">Continuer dans GrowthOS →</a>
+      <p class="hint">Conservées 24 h sur cet appareil. L'import est validé dans GrowthOS : les fiches incomplètes peuvent être importées sans inventer d'adresse ni SIRET.</p>
+      <a class="primary growthos" href="https://agile.le-publicitaire.fr/prospects/connecteur" target="_blank" rel="noopener noreferrer">Sélectionner et importer dans Prospects →</a>
     </section>
   </main>
   <script src="popup.js"></script>

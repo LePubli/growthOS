@@ -456,12 +456,14 @@ export default function SourcingPage() {
           </div>
           <p className="text-xs mt-1" style={{color:'var(--text-muted)'}}>
             {mobileConnector ? 'Android : application compagnon à installer (pas encore disponible). La version Chrome ordinateur est prête à tester.'
-              : deviceConnected ? 'La prochaine recherche PagesJaunes utilisera ce Chrome. Les entreprises restent à sélectionner avant import.'
+              : deviceConnected ? 'Les captures Google/Maps/Bing de Chrome peuvent maintenant être importées directement dans Prospects, sans créer de recherche.'
               : 'Installez une fois l’extension Chrome, actualisez GrowthOS, puis cliquez sur « Connecter cet appareil ». Le VPS reste inchangé.'}
           </p>
         </div>
         <a href="https://github.com/LePubli/growthOS/blob/fix/growthos-functional-redesign/docs/CONNECTEUR_APPAREIL.md" target="_blank" rel="noreferrer"
           className="flex items-center gap-1 text-xs font-medium text-teal-700 hover:underline"><Link2 size={14}/> Installation</a>
+        {deviceConnected && <button onClick={()=>navigate('/prospects/connecteur')}
+          className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700">Importer mes captures dans Prospects</button>}
         <button onClick={connectDevice} disabled={deviceConnecting || mobileConnector}
           className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
           style={{background:'var(--color-primary)'}}>
