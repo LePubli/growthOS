@@ -531,6 +531,23 @@ export default function ProspectDetailPage() {
     ? pagesJaunesDetails.services : null;
   const pjWebsite = prospect.website || pagesJaunesDetails?.website;
   const pjWebsiteValid = typeof pjWebsite === 'string' && /^https?:\/\//i.test(pjWebsite);
+  const pendingConflicts=Array.isArray(prospect.sourceDetails?.crossSource?.conflicts)
+    ? prospect.sourceDetails.crossSource.conflicts as Array<{
+      id:string;field:string;existing:string;incoming:string;source:string;sourceUrl?:string|null;capturedAt:string;
+    }> : [];
+  const sourceHistory=Array.isArray(prospect.sourceDetails?.crossSource?.observations)
+    ? prospect.sourceDetails.crossSource.observations as Array<{
+      captureId:string;source:string;sourceUrl?:string|null;capturedAt:string;fieldsFilled?:string[];
+    }> : [];
+  const conflictLabels:Record<string,string>={address:'Adresse',postalCode:'Code postal',city:'Ville',
+    phone:'Téléphone',email:'Email',website:'Site web',siret:'SIRET',siren:'SIREN'};
+  const resolveConflict=async(conflictId:string,decision:'keep_existing'|'use_incoming')=>{
+    try{
+      const result=await apiClient.post(`/sourcing/device/prospects/${id}/resolve-conflict`,{conflictId,decision}) as {prospect:any};
+      setProspect(result.prospect);
+      toast.success(decision==='use_incoming'?'Nouvelle valeur appliquée':'Valeur actuelle conservée');
+    }catch(error:any){toast.error(error?.message||'Impossible de résoudre ce conflit');}
+  };
 
   return (
     <div className="min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
@@ -589,6 +606,49 @@ export default function ProspectDetailPage() {
           <strong>Prospect importé avec des informations incomplètes.</strong> La fiche provient d’une capture Google/Bing.
           L’adresse exacte, le code postal, le SIREN et le SIRET n’ont pas été vérifiés. Complétez les données avant de démarrer une campagne.
         </div>}
+      {pendingConflicts.length>0&&
+        <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+          <h2 className="text-base font-bold text-amber-950 flex gap-2 items-center"><GitMerge size={18}/>
+            {pendingConflicts.length} donnée(s) contradictoire(s) à vérifier</h2>
+          <p className="text-xs text-amber-900 my-2">Les valeurs déjà présentes dans le CRM n'ont pas été remplacées.
+            Pour chaque désaccord, choisissez celle que vous souhaitez conserver.</p>
+          <div className="space-y-3 mt-3">
+            {pendingConflicts.map(conflict=><div key={conflict.id} className="bg-white rounded-xl border border-amber-200 p-3">
+              <div className="font-semibold text-sm text-gray-800">{conflictLabels[conflict.field]||conflict.field}
+                <span className="ml-2 text-xs text-gray-500 font-normal">Source : {conflict.source}</span></div>
+              <div className="grid gap-3 sm:grid-cols-2 my-2 text-sm">
+                <div className="rounded-lg bg-gray-50 p-2"><span className="text-xs text-gray-500">Dans le CRM</span>
+                  <p className="break-all font-medium">{conflict.existing}</p></div>
+                <div className="rounded-lg bg-teal-50 p-2"><span className="text-xs text-teal-800">Nouvelle information</span>
+                  <p className="break-all font-medium">{conflict.incoming}</p></div>
+              </div>
+              <div className="flex flex-wrap gap-2 items-center">
+                <button type="button" onClick={()=>void resolveConflict(conflict.id,'keep_existing')}
+                  className="px-3 py-2 rounded-lg bg-gray-100 text-gray-800 text-xs font-semibold">Conserver le CRM</button>
+                <button type="button" onClick={()=>void resolveConflict(conflict.id,'use_incoming')}
+                  className="px-3 py-2 rounded-lg bg-teal-600 text-white text-xs font-semibold">Utiliser la nouvelle valeur</button>
+                {conflict.sourceUrl&&<a href={conflict.sourceUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-teal-700 underline">Vérifier la source ↗</a>}
+              </div>
+            </div>)}
+          </div>
+        </div>}
+      {sourceHistory.length>0&&<details className="mb-5 rounded-xl border border-gray-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-gray-800">
+          Historique des enrichissements · {sourceHistory.length} source(s) consultée(s)
+        </summary>
+        <div className="mt-3 space-y-2">
+          {[...sourceHistory].reverse().map((entry,index)=><div key={`${entry.captureId}-${index}`}
+            className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+            <strong>{entry.source.replaceAll('_',' ')}</strong>
+            <span className="mx-2 text-gray-400">·</span>
+            <time>{new Date(entry.capturedAt).toLocaleString('fr-FR')}</time>
+            {Array.isArray(entry.fieldsFilled)&&entry.fieldsFilled.length>0&&<p className="mt-1">Données ajoutées : {entry.fieldsFilled.map(f=>conflictLabels[f]||f).join(', ')}</p>}
+            {entry.sourceUrl&&<a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer"
+              className="text-teal-700 underline inline-block mt-1">Consulter la fiche source</a>}
+          </div>)}
+        </div>
+      </details>}
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <button onClick={() => navigate('/prospects')} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">

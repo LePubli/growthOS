@@ -828,6 +828,48 @@ try {
   },token);
   check(directRepeated.status===200 && directRepeated.body.imported===0 && directRepeated.body.skipped===2,
     'Import direct répété : pas de doublons dans le CRM');
+  const siteAddition={...directCapture,id:'local_website_enrichment_02',source:'google_search',
+    sourceUrl:'https://www.google.com/search?q=Atelier+Direct+Roubaix',
+    website:'https://atelier-direct-roubaix.fr'};
+  const mergedDirect=await request('POST','/sourcing/device/import-prospects',{
+    verified:[siteAddition],drafts:[],
+  },token);
+  check(mergedDirect.status===200&&mergedDirect.body.imported===0&&mergedDirect.body.enriched===1,
+    'Le doublon enrichit le site web absent sans créer un deuxième prospect');
+  const conflictAddition={...siteAddition,id:'local_conflict_bing_03',source:'bing',
+    sourceUrl:'https://www.bing.com/search?q=Atelier+Direct+Roubaix',
+    phone:'03 20 99 88 77',website:'https://autre-atelier.fr'};
+  const conflictingDirect=await request('POST','/sourcing/device/import-prospects',{
+    verified:[conflictAddition],drafts:[],
+  },token);
+  check(conflictingDirect.status===200&&conflictingDirect.body.imported===0&&
+    conflictingDirect.body.conflicts===2&&conflictingDirect.body.reviews?.length===1,
+    'Des coordonnées contradictoires sont signalées, sans écraser les données CRM');
+  const matchedDirect=await request('GET','/prospects?search=Atelier%20Direct%20Roubaix',undefined,token);
+  const joinedProspects=(matchedDirect.body.data||[]).filter(p=>p.company===directCapture.company);
+  check(joinedProspects.length===1&&joinedProspects[0].phone===directCapture.phone&&
+    joinedProspects[0].website===siteAddition.website&&
+    joinedProspects[0].sourceDetails?.crossSource?.conflicts?.length===2&&
+    joinedProspects[0].sourceDetails?.crossSource?.observations?.length===3,
+    'Fiche CRM unique, sources historisées et conflits préservés');
+  const prospectId=joinedProspects[0].id;
+  const [phoneConflict,websiteConflict]=joinedProspects[0].sourceDetails.crossSource.conflicts;
+  const useOther=await request('POST',`/sourcing/device/prospects/${prospectId}/resolve-conflict`,{
+    conflictId:phoneConflict.id,decision:'use_incoming',
+  },token);
+  check(useOther.status===200&&useOther.body.prospect.phone===conflictAddition.phone,
+    'La décision humaine peut remplacer seulement le téléphone choisi');
+  const keepOld=await request('POST',`/sourcing/device/prospects/${prospectId}/resolve-conflict`,{
+    conflictId:websiteConflict.id,decision:'keep_existing',
+  },token);
+  check(keepOld.status===200&&keepOld.body.prospect.website===siteAddition.website&&
+    keepOld.body.prospect.sourceDetails?.crossSource?.conflicts?.length===0&&
+    keepOld.body.prospect.sourceDetails?.crossSource?.resolutions?.length===2,
+    'La décision humaine conserve la valeur voulue et archive le choix');
+  const forgedChoice=await request('POST',`/sourcing/device/prospects/${prospectId}/resolve-conflict`,{
+    conflictId:phoneConflict.id,decision:'use_incoming',
+  },token);
+  check(forgedChoice.status===404,'Une résolution de conflit ne peut pas être rejouée');
   const directInvalid=await request('POST','/sourcing/device/import-prospects',{
     verified:[],drafts:[{...directDraft,id:'draft_empty_01',address:null,phone:null,website:null}],
   },token);

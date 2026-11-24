@@ -55,7 +55,7 @@ export default function SourcingJobPage() {
       setJob(jobInfo);
       setResults(resultInfo.data || []);
       setSelected(previous => previous.filter(siren => resultInfo.data?.some(
-        candidate => (candidate.id || candidate.siren) === siren && !candidate.imported,
+        candidate => (candidate.id || candidate.siren) === siren,
       )));
       const pending=new Set(jobInfo.params.draftEnrichment?.pendingItems.map(item=>item.id)||[]);
       setSelectedDrafts(previous=>previous.filter(draftId=>pending.has(draftId)&&
@@ -76,7 +76,7 @@ export default function SourcingJobPage() {
   }, [job?.status, reload]);
 
   const candidateKey = (candidate: Candidate) => candidate.id || candidate.siren;
-  const available = results.filter(candidate => !candidate.imported);
+  const available = results; // Une fiche existante peut également apporter des données manquantes.
   const allSelected = available.length > 0 && available.every(candidate => selected.includes(candidateKey(candidate)));
   const pendingDraftIds=new Set(job?.params.draftEnrichment?.pendingItems.map(item=>item.id)||[]);
   const incompleteDrafts=(job?.params.deviceDrafts||[]).filter(draft=>pendingDraftIds.has(draft.id));
@@ -90,10 +90,13 @@ export default function SourcingJobPage() {
     if (!id || !selected.length || importing) return;
     setImporting(true);
     try {
-      const result = await apiClient.post<{ imported: number; skipped: number }>(
+      const result = await apiClient.post<{ imported: number; enriched:number;conflicts:number;skipped: number }>(
         `/sourcing/jobs/${id}/import`, { ids: selected },
       );
-      toast.success(`${result.imported} entreprise(s) ajoutée(s) au CRM${result.skipped ? ` · ${result.skipped} doublon(s) ignoré(s)` : ''}`);
+      toast.success(`${result.imported} créée(s) · ${result.enriched||0} fiche(s) enrichie(s)`+
+        `${result.conflicts?` · ${result.conflicts} conflit(s) à vérifier dans les fiches prospects`:''}`+
+        `${result.skipped?` · ${result.skipped} sans nouvelle donnée`:''}`);
+      setSelected([]);
       await reload();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Import impossible');
@@ -320,7 +323,7 @@ export default function SourcingJobPage() {
               </button>}
               <button onClick={importSelection} disabled={!selected.length || importing || enrichingSelection || job.status !== 'completed'}
                 style={{ background: 'var(--color-primary)', color: '#fff', opacity: selected.length && !importing && job.status === 'completed' ? 1 : .5, padding: '9px 14px', border: 0, borderRadius: 10, cursor: selected.length ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
-                {importing ? 'Import en cours…' : job.status !== 'completed' ? 'Import disponible après la recherche' : `Importer ${selected.length} entreprise(s) dans le CRM`}
+                {importing ? 'Import en cours…' : job.status !== 'completed' ? 'Import disponible après la recherche' : `Importer / enrichir ${selected.length} entreprise(s)`}
               </button></div>
             </div>
             {results.length === 0 ? (
@@ -333,7 +336,7 @@ export default function SourcingJobPage() {
                   <thead style={{ background: 'var(--body-bg)', color: 'var(--text-muted)' }}>
                     <tr>
                       <th style={{ textAlign: 'left', padding: 12 }}>
-                        <input aria-label="Sélectionner toutes les entreprises non importées" type="checkbox" checked={allSelected} disabled={!available.length} onChange={toggleAll} />
+                        <input aria-label="Sélectionner les entreprises à créer ou enrichir" type="checkbox" checked={allSelected} disabled={!available.length} onChange={toggleAll} />
                       </th>
                       {['Entreprise / source', 'Adresse locale', 'Code postal', 'SIREN', 'SIRET', 'Téléphone', 'Site', 'CRM'].map(label =>
                         <th key={label} style={{ textAlign: 'left', padding: 12 }}>{label}</th>)}
@@ -343,7 +346,7 @@ export default function SourcingJobPage() {
                     <tr key={candidateKey(candidate)} style={{ borderTop: '1px solid var(--card-border)' }}>
                       <td style={{ padding: 12 }}>
                         <input type="checkbox" aria-label={`Sélectionner ${candidate.company || candidate.siren}`}
-                          disabled={candidate.imported} checked={candidate.imported || selected.includes(candidateKey(candidate))}
+                          checked={selected.includes(candidateKey(candidate))}
                           onChange={() => setSelected(previous => previous.includes(candidateKey(candidate))
                             ? previous.filter(id => id !== candidateKey(candidate)) : [...previous, candidateKey(candidate)])} />
                       </td>

@@ -19,6 +19,7 @@ export default function ConnectorImportPage(){
   const [error,setError]=useState('');
   const [extension,setExtension]=useState('');
   const [lastResult,setLastResult]=useState('');
+  const [reviews,setReviews]=useState<Array<{prospectId:string;company:string;fields:string[];type:string}>>([]);
   const reload=useCallback(async()=>{
     setLoading(true);setError('');
     try{
@@ -53,9 +54,11 @@ export default function ConnectorImportPage(){
       const result=await apiClient.post('/sourcing/device/import-prospects',{
         verified:selectedItems.filter(item=>!item.incomplete),
         drafts:selectedItems.filter(item=>item.incomplete),
-      }) as {imported:number;skipped:number;processedIds:string[]};
-      setLastResult(`${result.imported} prospect(s) ajouté(s) · ${result.skipped} doublon(s) ou fiche(s) ignorée(s).`);
-      toast.success('Import terminé dans Prospects');
+      }) as {imported:number;enriched:number;conflicts:number;skipped:number;processedIds:string[];
+        reviews:Array<{prospectId:string;company:string;fields:string[];type:string}>};
+      setLastResult(`${result.imported} créé(s) · ${result.enriched} fiche(s) existante(s) enrichie(s) · ${result.skipped} sans nouvelle donnée · ${result.conflicts} désaccord(s) à vérifier.`);
+      setReviews(result.reviews||[]);
+      toast.success('Fiches enregistrées ou enrichies dans Prospects');
       try{if(result.processedIds.length)await acknowledgeLocalImport(result.processedIds);}catch{
         toast.warning('Prospects enregistrés. Rechargez l’extension pour synchroniser la sélection locale.');
       }
@@ -86,6 +89,13 @@ export default function ConnectorImportPage(){
         <div className="rounded-xl bg-amber-50 p-3"><div className="text-xl font-bold text-amber-700">{incomplete}</div><div className="text-xs text-amber-700">À compléter plus tard</div></div>
       </div>
       {lastResult&&<div className="mt-4 rounded-xl bg-green-50 p-3 text-sm text-green-800 flex gap-2"><CheckCircle2 size={18}/>{lastResult}</div>}
+      {reviews.length>0&&<div className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
+        <strong>Vérifications nécessaires</strong>
+        {reviews.map((review,index)=><div key={`${review.company}-${index}`} className="flex justify-between gap-3 mt-2">
+          <span>{review.company} · {review.type==='ambiguous'?'Plusieurs correspondances possibles':review.fields.join(', ')}</span>
+          {review.prospectId&&<button type="button" className="underline text-teal-700" onClick={()=>navigate(`/prospects/${review.prospectId}`)}>Comparer les valeurs</button>}
+        </div>)}
+      </div>}
       {error&&<div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700 flex gap-2"><AlertTriangle className="shrink-0" size={18}/>{error}</div>}
     </div>
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -96,7 +106,7 @@ export default function ConnectorImportPage(){
           <button type="button" onClick={()=>setSelected([])} className="text-gray-500">Tout désélectionner</button>
         </div>
       </div>
-      <p className="px-4 py-3 text-xs text-gray-600 bg-blue-50">Les fiches incomplètes sont importables si elles ont au moins une coordonnée utile (téléphone, site ou adresse partielle). Aucun code postal, SIREN ou SIRET n’est inventé. Les doublons déjà présents dans le CRM sont ignorés.</p>
+      <p className="px-4 py-3 text-xs text-gray-600 bg-blue-50">Les fiches incomplètes sont importables si elles ont au moins une coordonnée utile (téléphone, site ou adresse partielle). Aucun code postal, SIREN ou SIRET n’est inventé. Les doublons enrichissent les champs vides du CRM ; les contradictions sont signalées pour validation manuelle.</p>
       <div className="max-h-[56vh] overflow-y-auto divide-y">
         {items.map(item=><label key={item.id} className="flex gap-3 items-start px-4 py-3 hover:bg-gray-50 cursor-pointer">
           <input type="checkbox" className="mt-1 accent-teal-600" checked={selected.includes(item.id)} disabled={!importable(item)||(!selected.includes(item.id)&&selected.length>=25)} onChange={()=>toggle(item.id)}/>

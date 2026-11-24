@@ -1,6 +1,12 @@
-# Connecter GrowthOS à son navigateur — connecteur multisource 0.5.0
+# Connecter GrowthOS à son navigateur — connecteur multisource 0.7.0
 
 Ce connecteur fonctionne avec **Chrome ou Edge sur ordinateur**. Il garde les recherches et les éventuelles sessions des sites consultés **dans votre propre navigateur**, sans transmettre de mot de passe ni de cookie à GrowthOS. Il ne modifie ni DockPanel ni les autres conteneurs.
+
+## Import direct et fusion des sources
+
+Depuis le connecteur Chrome, ouvrez **Sélectionner et importer dans Prospects** (page `/prospects/connecteur`). Après confirmation explicite, GrowthOS compare les fiches au CRM : une entreprise nouvelle est créée, tandis qu'un doublon confirmé enrichit uniquement les champs vides du prospect existant. Le téléphone, le site, l'adresse, les identifiants légaux et la provenance sont conservés par source. Si une source contredit une valeur CRM non vide, aucun remplacement automatique n'a lieu : la fiche prospect affiche une comparaison avec les actions **Conserver le CRM** et **Utiliser la nouvelle valeur**. Chaque source et décision est historisée. Les fiches sans adresse exacte peuvent être importées comme incomplètes sans code postal fictif.
+
+Cette fusion fonctionne également lorsqu'une recherche multisource est importée depuis « Trouver des entreprises ». La même entreprise doit être identifiée par un élément fiable (SIRET identique, lien de fiche propre, ou nom + rue / numéro de téléphone et ville). Un simple site web partagé par plusieurs agences ne suffit pas.
 
 ## Mise à jour automatique : Chrome Web Store
 
@@ -18,7 +24,7 @@ Ce connecteur fonctionne avec **Chrome ou Edge sur ordinateur**. Il garde les re
 6. Ouvrir [GrowthOS – Trouver des entreprises](https://agile.le-publicitaire.fr/sourcing), **actualiser la page**.
 7. Cliquer sur **Connecter cet appareil**. L'indicateur devient **Connecté** si l'extension répond.
 
-> Pour notre installation locale actuelle : remplacez tous les fichiers du dossier de l'extension, cliquez sur **Actualiser** sous l’extension dans `chrome://extensions`, vérifiez la version **0.6.0**, puis actualisez GrowthOS. Le Chrome Web Store reste une option ultérieure.
+> Pour notre installation locale actuelle : remplacez tous les fichiers du dossier de l'extension, cliquez sur **Actualiser** sous l’extension dans `chrome://extensions`, vérifiez la version **0.7.0**, puis actualisez GrowthOS. Le Chrome Web Store reste une option ultérieure. La fusion des doublons concerne uniquement les images web/API et ne nécessite pas de nouvelle installation de l'extension 0.7.0.
 
 ### Utilisation multisource
 

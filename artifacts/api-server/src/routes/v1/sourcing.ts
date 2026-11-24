@@ -2,7 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { sourcingJobsTable, prospectsTable } from "@workspace/db";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, or, ilike } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
 import { DEPARTMENT_TO_REGION, departmentFromPostalCode, REGION_NAMES, DEPARTMENT_NAMES } from "../../lib/france-geo";
@@ -397,6 +398,135 @@ const deviceDraftSchema = z.object({
 type DeviceDraft = z.infer<typeof deviceDraftSchema>;
 const deviceDraftsSchema = z.array(deviceDraftSchema).max(75);
 
+type ImportCapture = {
+  id:string;source:string;company:string;address?:string|null;codePostal?:string|null;
+  city?:string|null;phone?:string|null;email?:string|null;website?:string|null;siret?:string|null;
+  siren?:string|null;sourceUrl?:string|null;capturedAt?:number;
+  sourceDetails?:Record<string,unknown>|null;
+};
+type EnrichmentField = 'address'|'postalCode'|'city'|'phone'|'email'|'website'|'siret'|'siren';
+type EnrichmentConflict = {
+  id:string;field:EnrichmentField;existing:string;incoming:string;
+  source:string;sourceUrl:string|null;capturedAt:string;
+};
+const FIELDS:EnrichmentField[]=['address','postalCode','city','phone','email','website','siret','siren'];
+const stringOrEmpty=(value:unknown)=>typeof value==='string'?value.trim():'';
+function normalizedField(field:EnrichmentField,value:unknown):string{
+  const raw=stringOrEmpty(value);
+  if(field==='phone')return normalizedPhone(raw);
+  if(field==='website'){
+    try{const u=new URL(raw);return u.hostname.replace(/^www\./,'').toLowerCase()+u.pathname.replace(/\/$/,'').toLowerCase();}
+    catch{return raw.toLowerCase();}
+  }
+  return normalizedIdentity(raw);
+}
+function jsonRecord(value:unknown):Record<string,unknown>{
+  return value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
+}
+function captureProfileUrl(value:string|null|undefined):string|null{
+  try{
+    const url=new URL(value||'');
+    return /^\/maps\/place\//.test(url.pathname) || /^\/company\/[a-z0-9_-]+\/?$/i.test(url.pathname)
+      || (['pagesjaunes.fr','www.pagesjaunes.fr'].includes(url.hostname)&&/^\/pros\/\d{4,20}\/?$/.test(url.pathname))
+      ? url.href:null;
+  }catch{return null;}
+}
+function incomingFields(item:ImportCapture,incomplete:boolean):Partial<Record<EnrichmentField,string>>{
+  const fields:Partial<Record<EnrichmentField,string>>={};
+  for(const field of ['address','city','phone','email','website'] as const){
+    const value=stringOrEmpty(item[field]);if(value)fields[field]=value;
+  }
+  if(!incomplete){
+    if(item.codePostal)fields.postalCode=item.codePostal;
+    if(item.siret){fields.siret=item.siret;fields.siren=item.siren||item.siret.slice(0,9);}
+    else if(item.siren)fields.siren=item.siren;
+  }
+  return fields;
+}
+function sameEstablishment(record:{company:string|null;address:string|null;city:string|null;
+  phone:string|null;website:string|null;siret:string|null;sourceUrl:string|null},
+  incoming:ImportCapture,incomplete:boolean):boolean{
+  const siret=!incomplete?incoming.siret:null;
+  if(siret&&record.siret&&record.siret!==siret)return false; // Deux identités juridiques contradictoires.
+  if(siret&&record.siret===siret)return true;
+  const profile=captureProfileUrl(incoming.sourceUrl);
+  if(profile&&record.sourceUrl===profile)return true;
+  if(normalizedIdentity(record.company||'')!==normalizedIdentity(incoming.company))return false;
+  const city=normalizedIdentity(incoming.city||''),recordCity=normalizedIdentity(record.city||'');
+  if(city&&recordCity&&city!==recordCity)return false;
+  const address=normalizedIdentity(incoming.address||'');
+  if(address.length>=9 && address===normalizedIdentity(record.address||''))return true;
+  const phone=normalizedPhone(incoming.phone);
+  if(phone.length>=9&&phone===normalizedPhone(record.phone)&&city&&recordCity&&city===recordCity)return true;
+  // Un site web peut être commun à toutes les agences d'un réseau : jamais une preuve d'identité seule.
+  return false;
+}
+async function mergeProspectCapture(
+  existing:typeof prospectsTable.$inferSelect,item:ImportCapture,incomplete:boolean,
+  tenantId:string,
+):Promise<{updated:boolean;filled:string[];conflicts:number;newConflicts:EnrichmentConflict[]}>{
+  const oldDetails=jsonRecord(existing.sourceDetails);
+  const oldMerge=jsonRecord(oldDetails.crossSource);
+  const oldConflicts=Array.isArray(oldMerge.conflicts)
+    ? oldMerge.conflicts as EnrichmentConflict[]:[];
+  const priorResolutions=Array.isArray(oldMerge.resolutions)
+    ? oldMerge.resolutions as Array<EnrichmentConflict & {decision:string}>:[];
+  const oldObservations=Array.isArray(oldMerge.observations)
+    ? oldMerge.observations as Array<{captureId:string;source:string;sourceUrl:string|null;capturedAt:string;
+      fieldsFilled?:string[]}>:[];
+  const fieldSources=jsonRecord(oldMerge.fieldSources);
+  const updates:Partial<Record<EnrichmentField,string>>={};
+  const filled:string[]=[],newConflicts:EnrichmentConflict[]=[];
+  const now=new Date(item.capturedAt||Date.now()).toISOString();
+  const fields=incomingFields(item,incomplete);
+  for(const field of FIELDS){
+    const incoming=fields[field];if(!incoming)continue;
+    const current=stringOrEmpty(existing[field]);
+    if(!current){
+      updates[field]=incoming;filled.push(field);
+      fieldSources[field]={source:item.source,sourceUrl:item.sourceUrl,capturedAt:now};
+    }else if(normalizedField(field,current)!==normalizedField(field,incoming)){
+      const repeated=[...oldConflicts,...priorResolutions].some(c=>c.field===field&&c.incoming===incoming&&
+        c.existing===current&&c.source===item.source);
+      if(!repeated)newConflicts.push({id:randomUUID(),field,existing:current,incoming,
+        source:item.source,sourceUrl:item.sourceUrl||null,capturedAt:now});
+    }
+  }
+  const alreadyObserved=oldObservations.some(o=>o.captureId===item.id);
+  const sources=new Set(String(existing.source||'').split(',').map(x=>x.trim()).filter(Boolean));
+  const incomingSources=item.source.split(',').map(s=>s.trim()).filter(Boolean);
+  const sourceAdded=incomingSources.some(source=>!sources.has(source));
+  for(const source of incomingSources)sources.add(source);
+  if(!filled.length&&!newConflicts.length&&!sourceAdded&&alreadyObserved)
+    return {updated:false,filled,conflicts:0,newConflicts:[]};
+  const observation={captureId:item.id,source:item.source,sourceUrl:item.sourceUrl||null,
+    capturedAt:now,fieldsFilled:filled};
+  const incomingDetails=jsonRecord(item.sourceDetails);
+  const combinedDetails={...oldDetails};
+  for(const [source,details] of Object.entries(incomingDetails)){
+    if(!(source in combinedDetails))combinedDetails[source]=details;
+    else if(details&&typeof details==='object'&&!Array.isArray(details)){
+      const oldSource=jsonRecord(combinedDetails[source]);
+      const merged={...oldSource};
+      for(const [key,value] of Object.entries(jsonRecord(details)))
+        if(merged[key]==null||merged[key]==='')merged[key]=value;
+      combinedDetails[source]=merged;
+    }
+  }
+  const updatedDetails={...combinedDetails,crossSource:{...oldMerge,
+    fieldSources,
+    observations:(alreadyObserved?oldObservations:[...oldObservations,observation]).slice(-60),
+    conflicts:[...oldConflicts,...newConflicts].slice(-60),
+  }};
+  await db.update(prospectsTable).set({
+    ...updates,
+    source:[...sources].join(','),
+    sourceUrl:existing.sourceUrl||captureProfileUrl(item.sourceUrl),
+    sourceDetails:updatedDetails,updatedAt:new Date(),
+  }).where(and(eq(prospectsTable.id,existing.id),eq(prospectsTable.tenantId,tenantId)));
+  return {updated:true,filled,conflicts:newConflicts.length,newConflicts};
+}
+
 // Entrée directe des captures de l'extension vers Prospects, sans job sourcing.
 // Aucun identifiant, code postal ou adresse n'est déduit d'une requête Google.
 router.post('/device/import-prospects',requireAuth,async(req,res)=>{
@@ -406,7 +536,8 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
   }).strict().refine(data=>data.verified.length+data.drafts.length>0 &&
     data.verified.length+data.drafts.length<=25).safeParse(req.body);
   if(!parsed.success){res.status(400).json({error:'Sélection invalide (25 fiches maximum)',details:parsed.error.issues});return;}
-  let imported=0,skipped=0;
+  let imported=0,enriched=0,skipped=0,conflicts=0;
+  const reviews:{prospectId:string;company:string;fields:string[];type:'conflict'|'ambiguous'}[]=[];
   const processedIds:string[]=[];
   const usedIds=new Set<string>();
   for(const entry of [...parsed.data.verified.map(value=>({item:value,incomplete:false})),
@@ -421,39 +552,79 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
     const website=String(item.website||'').toLowerCase();
     if(incomplete && !phone && !website && !address){skipped++;continue;}
     const siret=!incomplete && 'siret' in item ? item.siret : null;
-    const prior=await db.select({id:prospectsTable.id,company:prospectsTable.company,
-      address:prospectsTable.address,city:prospectsTable.city,phone:prospectsTable.phone,
-      website:prospectsTable.website,siret:prospectsTable.siret,sourceUrl:prospectsTable.sourceUrl})
-      .from(prospectsTable).where(and(eq(prospectsTable.tenantId,req.auth!.tenantId),
-        eq(prospectsTable.company,item.company))).limit(100);
-    const isProfileLink=(()=>{try{return new URL(item.sourceUrl||'').pathname.startsWith('/maps/place/');}
-      catch{return false;}})();
-    const duplicate=prior.find(record=>(siret && record.siret===siret) ||
-      (isProfileLink && record.sourceUrl===item.sourceUrl) ||
-      (normalizedIdentity(record.company||'')===company && (
-        (address.length>=9 && normalizedIdentity(record.address||'')===address) ||
-        (phone.length>=9 && normalizedPhone(record.phone)===phone &&
-          (!city || !record.city || normalizedIdentity(record.city)===city)) ||
-        (website && String(record.website||'').toLowerCase()===website &&
-          (!city || !record.city || normalizedIdentity(record.city)===city))
-      )));
-    if(duplicate){skipped++;processedIds.push(item.id);continue;}
+    const profileUrl=captureProfileUrl(item.sourceUrl);
+    const where=[ilike(prospectsTable.company,item.company)];
+    if(siret)where.push(eq(prospectsTable.siret,siret));
+    if(profileUrl)where.push(eq(prospectsTable.sourceUrl,profileUrl));
+    const prior=await db.select().from(prospectsTable).where(and(
+      eq(prospectsTable.tenantId,req.auth!.tenantId),or(...where),
+    )).limit(100);
+    const matches=prior.filter(record=>sameEstablishment(record,item,incomplete));
+    if(matches.length>1){
+      skipped++;reviews.push({prospectId:'',company:item.company,fields:[],type:'ambiguous'});continue;
+    }
+    if(matches.length===1){
+      const merged=await mergeProspectCapture(matches[0],item,incomplete,req.auth!.tenantId);
+      if(merged.filled.length)enriched++;else skipped++;
+      conflicts+=merged.conflicts;
+      if(merged.newConflicts.length)reviews.push({prospectId:matches[0].id,company:item.company,
+        fields:merged.newConflicts.map(c=>c.field),type:'conflict'});
+      processedIds.push(item.id);continue;
+    }
     const [created]=await db.insert(prospectsTable).values({
       company:item.company,address:item.address||null,
       postalCode:!incomplete && 'codePostal' in item ? item.codePostal : null,
       city:item.city||null,phone:item.phone||null,website:item.website||null,
       email:null,siren:null,siret:siret||null,
-      source:item.source,sourceUrl:isProfileLink?item.sourceUrl:null,
+      source:item.source,sourceUrl:profileUrl,
       sourceDetails:{browserCapture:{source:item.source,sourceUrl:item.sourceUrl,
         incomplete,capturedAt:new Date(item.capturedAt||Date.now()).toISOString(),
         postalCodeVerified:!incomplete,localCaptureId:item.id},
         ...(incomplete?{browserDraft:{incomplete:true,source:item.source,
-          sourceUrl:item.sourceUrl,postalCodeVerified:false}}:{})},
+          sourceUrl:item.sourceUrl,postalCodeVerified:false}}:{}),
+        crossSource:{fieldSources:Object.fromEntries(Object.keys(incomingFields(item,incomplete))
+          .map(field=>[field,{source:item.source,sourceUrl:item.sourceUrl||null,
+            capturedAt:new Date(item.capturedAt||Date.now()).toISOString()}])),
+          observations:[{captureId:item.id,source:item.source,sourceUrl:item.sourceUrl||null,
+            capturedAt:new Date(item.capturedAt||Date.now()).toISOString(),
+            fieldsFilled:Object.keys(incomingFields(item,incomplete))}],conflicts:[]}},
       status:'new',tenantId:req.auth!.tenantId,createdBy:req.auth!.userId,
     }).onConflictDoNothing().returning({id:prospectsTable.id});
     if(created){imported++;processedIds.push(item.id);}else skipped++;
   }
-  res.json({imported,skipped,selected:usedIds.size,processedIds});
+  res.json({imported,enriched,skipped,conflicts,reviews,selected:usedIds.size,processedIds});
+});
+
+// Chaque désaccord reste en attente jusqu'au choix explicite d'un utilisateur du tenant.
+router.post('/device/prospects/:id/resolve-conflict',requireAuth,async(req,res)=>{
+  const parsed=z.object({conflictId:z.string().uuid(),decision:z.enum(['keep_existing','use_incoming'])})
+    .strict().safeParse(req.body);
+  if(!parsed.success){res.status(400).json({error:'Décision de fusion invalide'});return;}
+  const [prospect]=await db.select().from(prospectsTable).where(and(
+    eq(prospectsTable.id,String(req.params.id)),eq(prospectsTable.tenantId,req.auth!.tenantId),
+  )).limit(1);
+  if(!prospect){res.status(404).json({error:'Prospect introuvable'});return;}
+  const details=jsonRecord(prospect.sourceDetails),crossSource=jsonRecord(details.crossSource);
+  const conflicts=Array.isArray(crossSource.conflicts)?crossSource.conflicts as EnrichmentConflict[]:[];
+  const found=conflicts.find(c=>c.id===parsed.data.conflictId&&FIELDS.includes(c.field));
+  if(!found){res.status(404).json({error:'Conflit déjà résolu ou introuvable'});return;}
+  if(stringOrEmpty(prospect[found.field])!==found.existing){
+    res.status(409).json({error:'La valeur CRM a changé. Rechargez la fiche avant de trancher.'});return;
+  }
+  const fieldSources=jsonRecord(crossSource.fieldSources);
+  if(parsed.data.decision==='use_incoming')
+    fieldSources[found.field]={source:found.source,sourceUrl:found.sourceUrl,capturedAt:found.capturedAt,
+      resolvedAt:new Date().toISOString()};
+  const resolutions=Array.isArray(crossSource.resolutions)?crossSource.resolutions as unknown[]:[];
+  const nextDetails={...details,crossSource:{...crossSource,fieldSources,
+    conflicts:conflicts.filter(c=>c.id!==found.id),
+    resolutions:[...resolutions,{...found,decision:parsed.data.decision,
+      resolvedAt:new Date().toISOString()}].slice(-80)}};
+  const update=parsed.data.decision==='use_incoming'?{[found.field]:found.incoming}:{};
+  const [updated]=await db.update(prospectsTable).set({...update,sourceDetails:nextDetails,
+    updatedAt:new Date()}).where(and(eq(prospectsTable.id,prospect.id),
+    eq(prospectsTable.tenantId,req.auth!.tenantId))).returning();
+  res.json({prospect:updated});
 });
 
 const distinctiveDraft = (company: string) => {
@@ -1035,33 +1206,34 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
     return;
   }
 
-  let imported = 0;
+  let imported = 0,enriched=0,conflicts=0;
   let skipped = 0;
   for (const candidate of eligible) {
-    if (/^\d{9}$/.test(candidate.siren)) {
-      const [bySiren] = await db.select({ id: prospectsTable.id }).from(prospectsTable).where(and(
-        eq(prospectsTable.tenantId, req.auth!.tenantId), eq(prospectsTable.siren, candidate.siren),
-      )).limit(1);
-      if (bySiren) { skipped++; continue; }
+    const incoming:ImportCapture={
+      id:candidate.id||candidate.siret||candidate.siren,
+      source:candidate.sources?.map(s=>s==='entreprises'?'annuaire-entreprises':s).join(',')
+        || (candidate.source==='entreprises'?'annuaire-entreprises':candidate.source||'annuaire-entreprises'),
+      company:candidate.company,address:candidate.address,codePostal:candidate.codePostal,
+      city:candidate.city,phone:candidate.phone,email:candidate.email,website:candidate.website,
+      siren:/^\d{9}$/.test(candidate.siren)?candidate.siren:null,
+      siret:candidate.siret,sourceUrl:candidate.sourceUrl,sourceDetails:candidate.sourceDetails,
+    };
+    const alternatives=[ilike(prospectsTable.company,candidate.company)];
+    if(candidate.siret)alternatives.push(eq(prospectsTable.siret,candidate.siret));
+    if(/^\d{9}$/.test(candidate.siren))alternatives.push(eq(prospectsTable.siren,candidate.siren));
+    const profile=captureProfileUrl(candidate.sourceUrl);
+    if(profile)alternatives.push(eq(prospectsTable.sourceUrl,profile));
+    const existing=await db.select().from(prospectsTable).where(and(
+      eq(prospectsTable.tenantId,req.auth!.tenantId),or(...alternatives),
+    )).limit(100);
+    const matches=existing.filter(prospect=>sameEstablishment(prospect,incoming,false));
+    if(matches.length>1){skipped++;continue;}
+    if(matches.length===1){
+      const outcome=await mergeProspectCapture(matches[0],incoming,false,req.auth!.tenantId);
+      if(outcome.filled.length)enriched++;else skipped++;
+      conflicts+=outcome.conflicts;
+      continue;
     }
-    if (candidate.siret && /^\d{14}$/.test(candidate.siret)) {
-      const [bySiret] = await db.select({ id: prospectsTable.id }).from(prospectsTable).where(and(
-        eq(prospectsTable.tenantId, req.auth!.tenantId), eq(prospectsTable.siret, candidate.siret),
-      )).limit(1);
-      if (bySiret) { skipped++; continue; }
-    }
-    if (candidate.sourceUrl) {
-      const [byUrl] = await db.select({ id: prospectsTable.id }).from(prospectsTable).where(and(
-        eq(prospectsTable.tenantId, req.auth!.tenantId), eq(prospectsTable.sourceUrl, candidate.sourceUrl),
-      )).limit(1);
-      if (byUrl) { skipped++; continue; }
-    }
-    const [legacy] = candidate.address ? await db.select({ id: prospectsTable.id }).from(prospectsTable).where(and(
-      eq(prospectsTable.tenantId, req.auth!.tenantId),
-      eq(prospectsTable.company, candidate.company),
-      eq(prospectsTable.address, candidate.address),
-    )).limit(1) : [];
-    if (legacy) { skipped++; continue; }
 
     const [insertedRow] = await db.insert(prospectsTable).values({
       siren: /^\d{9}$/.test(candidate.siren) ? candidate.siren : null,
@@ -1081,7 +1253,7 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
     }).onConflictDoNothing().returning({ id: prospectsTable.id });
     if (insertedRow) imported++; else skipped++;
   }
-  res.json({ imported, skipped, selected: requested.length });
+  res.json({ imported,enriched,conflicts,skipped,selected: requested.length });
 });
 
 router.patch("/jobs/:id", requireAuth, async (req, res) => {
