@@ -1,4 +1,4 @@
-# Connecter GrowthOS à son navigateur — connecteur multisource 0.7.0
+# Connecter GrowthOS à son navigateur — connecteur multisource 0.8.0
 
 Ce connecteur fonctionne avec **Chrome ou Edge sur ordinateur**. Il garde les recherches et les éventuelles sessions des sites consultés **dans votre propre navigateur**, sans transmettre de mot de passe ni de cookie à GrowthOS. Il ne modifie ni DockPanel ni les autres conteneurs.
 
@@ -24,7 +24,7 @@ Cette fusion fonctionne également lorsqu'une recherche multisource est importé
 6. Ouvrir [GrowthOS – Trouver des entreprises](https://agile.le-publicitaire.fr/sourcing), **actualiser la page**.
 7. Cliquer sur **Connecter cet appareil**. L'indicateur devient **Connecté** si l'extension répond.
 
-> Pour notre installation locale actuelle : remplacez tous les fichiers du dossier de l'extension, cliquez sur **Actualiser** sous l’extension dans `chrome://extensions`, vérifiez la version **0.7.0**, puis actualisez GrowthOS. Le Chrome Web Store reste une option ultérieure. La fusion des doublons concerne uniquement les images web/API et ne nécessite pas de nouvelle installation de l'extension 0.7.0.
+> Pour notre installation locale actuelle : remplacez tous les fichiers du dossier de l'extension, cliquez sur **Actualiser** sous l’extension dans `chrome://extensions`, vérifiez la version **0.8.0**, puis actualisez GrowthOS. Le Chrome Web Store reste une option ultérieure.
 
 ### Utilisation multisource
 
@@ -32,14 +32,14 @@ Cette fusion fonctionne également lorsqu'une recherche multisource est importé
 | --- | --- | --- |
 | Annuaire des entreprises | API publique GrowthOS | Recherche directe par zone, sans extension |
 | PagesJaunes.fr | Lecture automatique depuis le navigateur local | Maximum 8 zones ; enrichissement des fiches existant |
-| Google Maps | **Clic de capture** sur la fiche visible | Adresse complète et code postal obligatoires |
+| Google Maps | **Capturer les fiches** depuis la liste | Parcours automatique des fiches détaillées disponibles |
 | Google Search | **Clic de capture** sur une fiche locale visible | Les liens et extraits génériques ne constituent pas des fiches vérifiées |
 | Bing Search | **Clic de capture** sur une fiche locale visible | Les liens et extraits génériques ne constituent pas des fiches vérifiées |
 | LinkedIn | **Saisie manuelle uniquement** | Il faut vérifier l’entreprise, ses coordonnées et son URL LinkedIn ; pas de scraping LinkedIn |
 
 1. Dans GrowthOS, **Trouver des entreprises → Nouvelle recherche**, sélectionnez autant de sources que souhaité et vos régions/départements/codes postaux.
 2. Pour Google Maps, Google Search ou Bing : cliquez sur l'icône **GrowthOS** dans les extensions Chrome, choisissez le moteur, indiquez **activité et localisation**, cliquez sur **Ouvrir une recherche**.
-3. Naviguez normalement sur le moteur ; ouvrez une **fiche entreprise**. Cliquez à nouveau sur l'icône GrowthOS puis sur **Capturer les fiches visibles**. Les cartes avec nom et téléphone, mais sans adresse complète, sont enregistrées comme **brouillons à enrichir**. GrowthOS tente ensuite un rapprochement automatique avec les établissements officiels et les autres sources vérifiées. Les fiches restant ambiguës peuvent être complétées manuellement depuis l'extension. N'inventez aucune donnée.
+3. Sur Maps, laissez la liste de résultats ouverte. Cliquez à nouveau sur l'icône GrowthOS puis sur **Capturer les fiches**. Les cartes avec nom et téléphone, mais sans adresse complète, sont enregistrées comme **brouillons à enrichir**. GrowthOS tente ensuite un rapprochement automatique avec les établissements officiels et les autres sources vérifiées. Les fiches restant ambiguës peuvent être complétées manuellement depuis l'extension. N'inventez aucune donnée.
 4. Pour LinkedIn, connectez-vous à votre compte sur le site si besoin, ouvrez manuellement la fiche entreprise, puis renseignez les informations vérifiées dans le formulaire de l'extension. L'extension ne lit pas automatiquement LinkedIn.
 5. Revenez dans le formulaire GrowthOS et cliquez sur **Vérifier mes captures**. Lancez la recherche : les fiches vérifiées et les brouillons récupérés depuis votre navigateur sont rapprochés des sources officielles. Dans la page de résultats, le bouton **Enrichir automatiquement mes fiches** permet de réessayer le lot. Les fiches sans identité unique vérifiable restent non importables, avec une explication.
 6. Sélectionnez explicitement les entreprises désirées dans les résultats avant l'import CRM. Les doublons compatibles sont rapprochés, les identifiants légaux ne sont jamais inventés.

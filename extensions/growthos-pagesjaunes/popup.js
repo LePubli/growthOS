@@ -35,7 +35,7 @@ function selectSource(value){
   $('sourceHint').textContent=isLinkedin
     ? 'Connectez-vous normalement à LinkedIn. Son règlement interdit le scraping par extension : utilisez seulement la saisie manuelle d’une entreprise que vous avez vérifiée.'
     : isPagesjaunes ? 'PagesJaunes est collecté automatiquement depuis le formulaire GrowthOS. Vous pouvez aussi ouvrir les résultats ici.'
-    : 'Ouvrez les résultats, choisissez une vraie fiche d’établissement puis cliquez sur l’icône GrowthOS pour capturer les données visibles.';
+    : 'Ouvrez les résultats puis cliquez sur Capturer. Sur une liste Maps, les fiches détaillées seront ouvertes successivement.';
   $('manualPanel').open=isLinkedin;
   $('sourceUrl').value=sourceFromUrl(currentUrl)===value?currentUrl:'';
 }
@@ -53,7 +53,7 @@ async function refresh(){
   $('draftCount').textContent=String(drafts.length);
   const draftsBox=$('drafts');draftsBox.replaceChildren();
   if(!drafts.length){const p=document.createElement('p');p.className='empty';p.textContent='Aucune fiche à compléter';draftsBox.append(p);}
-  for(const draft of [...drafts].reverse().slice(0,35)){
+  for(const draft of [...drafts].reverse()){
     const row=document.createElement('div');row.className='draft-row';
     const info=document.createElement('div');info.className='info';
     const title=document.createElement('strong');title.textContent=draft.company;
@@ -88,7 +88,7 @@ async function refresh(){
   }
   const box=$('queue');box.replaceChildren();
   if(!queue.length){const p=document.createElement('p');p.className='empty';p.textContent='Aucune fiche capturée';box.append(p);return;}
-  for(const item of [...queue].reverse().slice(0,40)){
+  for(const item of [...queue].reverse()){
     const row=document.createElement('div');row.className='item';
     const content=document.createElement('div');const title=document.createElement('strong');title.textContent=item.company;
     const small=document.createElement('small');small.textContent=(labels[item.source]||item.source)+' · '+item.codePostal+' · '+item.city;
@@ -120,8 +120,8 @@ $('open').addEventListener('click',async()=>{
 });
 $('capture').addEventListener('click',async()=>{
   $('capture').disabled=true;
-  try{const r=await message('capture-tab');await refresh();
-    notice((r.added||r.draftAdded)
+  try{const r=await message('capture-tab',{query:$('query').value.trim(),area:$('area').value.trim()});await refresh();
+    notice(r.checked!==undefined ? `${r.checked} fiche(s) Maps examinée(s) · ${r.added} ajoutée(s).` : (r.added||r.draftAdded)
       ? `${r.added||0} fiche(s) prêtes · ${r.draftAdded||0} fiche(s) à compléter ci-dessous · ${(r.ignored||0)+(r.draftIgnored||0)} doublon(s)`
       : r.warning||'Aucune nouvelle fiche');
   }catch(e){notice(e.message,true);}
@@ -147,7 +147,7 @@ $('resetMaps').addEventListener('click',async()=>{
 });
 $('autoEnrich').addEventListener('click',async()=>{
   const button=$('autoEnrich');button.disabled=true;
-  button.textContent='Enrichissement en cours (12 fiches maximum)…';
+  button.textContent='Enrichissement en cours…';
   try{
     const result=await message('enrich-local-drafts',{area:$('area').value.trim()});
     await refresh();

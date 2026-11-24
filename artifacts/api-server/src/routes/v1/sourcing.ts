@@ -389,6 +389,9 @@ const deviceCandidateSchema = z.object({
   website: z.string().url().max(500).refine(url=>['https:','http:'].includes(new URL(url).protocol)).nullable().optional(),
   sourceUrl: z.string().url().max(500).nullable().optional(),
   siret: z.string().regex(/^\d{14}$/).nullable().optional(),
+  apeCode: z.string().regex(/^\d{2}\.\d{2}[A-Z]$/).nullable().optional(),
+  nafLabel: z.string().trim().max(250).nullable().optional(),
+  nafVersion: z.string().trim().max(32).nullable().optional(),
   collectionMode: z.enum(['manual','visible']).optional(),
   capturedAt: z.number().int().positive().optional(),
 }).strict().superRefine((item, context) => {
@@ -606,7 +609,7 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
       company:item.company,address:item.address||null,
       postalCode:!incomplete && 'codePostal' in item ? item.codePostal : null,
       city:item.city||null,phone:item.phone||null,website:item.website||null,
-      email:null,siren:null,siret:siret||null,
+      ...incomingFields(item,incomplete),
       source:item.source,sourceUrl:profileUrl,
       sourceDetails:{browserCapture:{source:item.source,sourceUrl:item.sourceUrl,
         incomplete,capturedAt:new Date(item.capturedAt||Date.now()).toISOString(),

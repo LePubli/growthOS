@@ -36,12 +36,12 @@
     </section>
     <section>
       <h2>3. Collecter</h2>
-      <button type="button" class="primary teal" id="capture">⤓ Capturer les fiches visibles</button>
-      <button type="button" class="secondary" id="autoMaps">▣ Examiner les 5 fiches Maps suivantes</button>
+      <button type="button" class="primary teal" id="capture">⤓ Capturer les fiches</button>
+      <button type="button" class="secondary" id="autoMaps">▣ Lancer une recherche Maps par activité</button>
       <button type="button" class="link" id="resetMaps">Repartir du premier résultat Maps</button>
-      <p class="hint">Le connecteur mémorise les fiches Maps déjà ouvertes pour cette activité et cette zone, fait défiler les résultats et passe aux suivantes par lots de 5. Rouvrez l'extension pour vérifier le bilan.</p>
+      <p class="hint">Le connecteur mémorise les fiches Maps déjà ouvertes pour cette activité et cette zone, fait défiler les résultats et parcourt les nouvelles fiches. Rouvrez l'extension pour vérifier le bilan.</p>
       <p id="mapProgress" class="map-progress" role="status" aria-live="polite" hidden></p>
-      <p class="hint">Pour Maps, ouvrez une entreprise dans la liste pour afficher sa fiche complète, puis capturez. Les cartes de liste peuvent ne pas afficher le code postal.</p>
+      <p class="hint">Sur une liste Maps, Capturer ouvre automatiquement chaque fiche pour lire ses coordonnées.</p>
       <div class="draft-title"><strong>Fiches à vérifier <span class="count amber" id="draftCount">0</span></strong><span>Adresse manquante</span></div>
       <button type="button" class="secondary enrich" id="autoEnrich">✦ Vérifier les adresses (BAN + annuaire officiel)</button>
       <p class="hint">Le numéro et la rue réellement affichés peuvent être vérifiés auprès de la Base Adresse Nationale. Sans rue, seule une correspondance d’entreprise officielle certaine est acceptée. Aucun import automatique.</p>

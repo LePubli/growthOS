@@ -96,10 +96,10 @@ const chrome={
     query:async()=>[{id:42,url:activeTabUrl}],
     get:async()=>({id:42,url:activeTabUrl,status:'complete'}),
     update:async (_id,data)=>{activeTabUrl=data.url;return{id:42,url:activeTabUrl,status:'complete'};}},
-  scripting:{executeScript:async options=>[{result:options.func?mapLinks:injectedResult}]},
+  scripting:{executeScript:async options=>[{result:options.func?mapLinks:(typeof injectedResult==='function'?injectedResult():injectedResult)}]},
 };
 vm.runInNewContext(readFileSync(new URL('background.js',root),'utf8'),
-  {chrome,URL,crypto:webcrypto,Date,setTimeout,clearTimeout,Promise,console,AbortController,
+  {chrome,URL,crypto:webcrypto,Date,setTimeout:(fn,ms)=>setTimeout(fn,ms>=4500?ms:0),clearTimeout,Promise,console,AbortController,
     fetch:async url=>{
       const request=new URL(url);
       if(request.hostname==='data.geopf.fr'){
@@ -151,7 +151,7 @@ injectedResult={source:'google_maps',results:[],drafts:[{
 }]};
 assert.equal((await send('capture-tab')).draftAdded,1);
 const officialSite={adresse:'35 AVENUE JEAN LEBAS 59100 ROUBAIX',code_postal:'59100',
-  libelle_commune:'ROUBAIX',siret:'12345678901234'};
+  libelle_commune:'ROUBAIX',siret:'12345678901234',activite_principale:'43.22A'};
 officialResults=[{nom_complet:'ENTREPRISE TEST VÉRIFIÉE',matching_etablissements:[officialSite,
   {...officialSite,siret:'12345678905678'}]}];
 assert.equal((await send('enrich-local-drafts',{area:'Roubaix'})).ok,false,
@@ -171,6 +171,7 @@ assert.equal((await send('list-drafts')).drafts.length,0);
 const verified=(await send('get-captures',null,growthos)).results.find(r=>r.company==='Entreprise Test Vérifiée');
 assert.equal(verified.address,'35 AVENUE JEAN LEBAS 59100 ROUBAIX');
 assert.equal(verified.siret,'12345678901234');
+assert.equal(verified.apeCode,'43.22A');
 assert.ok(officialRequests.every(url=>new URL(url).searchParams.get('code_postal')==='59100'));
 injectedResult={source:'google_search',results:[],drafts:[{
   source:'google_search',company:'Boulangerie Exemple',address:'18 rue de Lille',
@@ -218,6 +219,16 @@ assert.equal((await send('ack-import',{ids:[newItem.id]},growthos)).ok,true);
 assert.equal((await send('get-captures',null,growthos)).results.some(item=>item.id===newItem.id),false,
   'Après import CRM confirmé, la capture doit disparaître de la file locale');
 assert.equal((await send('reset-maps-progress')).ok,true);
+activeTabUrl='https://www.google.com/maps/search/plombiers+Roubaix';
+mapLinks=Array.from({length:35},(_,i)=>'https://www.google.com/maps/place/Test-'+i);
+injectedResult=()=>({source:'google_maps',drafts:[],results:[{
+  source:'google_maps',company:'Entreprise '+activeTabUrl.split('/').pop(),
+  address:'14 rue Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',sourceUrl:activeTabUrl,
+}]});
+const continuous=await send('capture-tab',{});
+assert.equal(continuous.checked,35,'Un clic de capture parcourt tous les résultats Maps');
+assert.equal(continuous.added,35);
+assert.equal(activeTabUrl,'https://www.google.com/maps/search/plombiers+Roubaix');
 for(const item of storage.growthos_verified_captures_v1)item.capturedAt=Date.now()-25*60*60*1000;
 assert.equal((await send('get-captures',null,growthos)).results.length,0,
   'Les captures expirées ne sortent pas de l’extension');

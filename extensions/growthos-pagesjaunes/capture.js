@@ -10,6 +10,7 @@
   const clean = value => String(value || '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
   const visible = node => !!(node && node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden');
   const safeUrl = value => {
+    if (!value) return null;
     try { const u = new URL(value, location.href); return /^https?:$/.test(u.protocol) ? u.href.slice(0, 500) : null; }
     catch { return null; }
   };
@@ -76,14 +77,15 @@
     // l'adresse d'une autre. Le panneau de fiche doit être identifiable.
     const isDetail=/^\/maps\/place\//.test(location.pathname) ||
       (placeTitle?.matches?.('h1.DUwDvf') === true);
-    if(isDetail && placeTitle && visible(placeTitle) && addressValue){
-      const placeLink=main.querySelector('a[href*="/maps/place/"]');
+    if(isDetail && placeTitle && visible(placeTitle) ){
       const phoneNode=main.querySelector('button[data-item-id^="phone"],a[href^="tel:"]');
       const phoneLabel=clean(phoneNode?.getAttribute('aria-label')||phoneNode?.innerText);
       const websiteNode=main.querySelector('a[data-item-id="authority"],a[aria-label^="Site web"]');
       read(main,placeTitle.innerText,addressValue,websiteNode?.href||null,
-        phoneLabel,safeUrl(placeLink?.href)||location.href);
+        phoneLabel,location.href,true);
     }
+    if(isDetail && (placeTitle || !document.querySelector('[role="feed"]')))
+      return {source,results:candidates,drafts};
   }
   // JSON-LD quand la page publie explicitement un établissement local (pas de données devinées).
   for (const script of [...document.querySelectorAll('script[type="application/ld+json"]')].slice(0,25)) {
@@ -106,7 +108,7 @@
     : source==='google_search' ? ['#rhs','.kp-wholepage','[data-attrid*="address"]',
       '.VkpGBb','.rllt__details','[data-cid]','.cXedhc']
     : ['#b_context','.b_entityTP','.b_ans','.b_vList li'];
-  const nodes = [...new Set(selectors.flatMap(selector=>[...document.querySelectorAll(selector)]))].filter(visible).slice(0,80);
+  const nodes = [...new Set(selectors.flatMap(selector=>[...document.querySelectorAll(selector)]))].filter(visible);
   for (const node of nodes) {
     const panel = node.closest('[role="article"],.kp-wholepage,.b_entityTP') || node;
     let sourceLink = null;
@@ -119,15 +121,14 @@
     const text=(panel.innerText||'').slice(0,1300);
     const localCard = source==='google_maps' || /(?:itin[eé]raire|directions|site web)/i.test(text);
     read(panel,null,null,null,null,sourceLink,localCard && text.length<1300);
-    if(candidates.length+drafts.length>=50)break;
   }
   // Sur les SERP Google, chaque résultat local porte un bouton « Itinéraire ».
   // Rechercher son petit conteneur parent capte les cartes quand Google renomme
   // ses classes CSS. Pas de défilement ni de clic automatique.
-  if(source==='google_search' && candidates.length+drafts.length<25){
+  if(source==='google_search'){
     const root=document.querySelector('#search')||document.body;
     const controls=[...root.querySelectorAll('a,button,[role="button"]')].filter(visible)
-      .filter(el=>/^(?:itin[eé]raire|directions)\b/i.test(clean(el.innerText||el.textContent).slice(0,40))).slice(0,30);
+      .filter(el=>/^(?:itin[eé]raire|directions)\b/i.test(clean(el.innerText||el.textContent).slice(0,40)));
     for(const control of controls){
       let parent=control.parentElement;
       for(let depth=0;parent && depth<7;depth++,parent=parent.parentElement){
@@ -141,6 +142,6 @@
       }
     }
   }
-  return {source,results:candidates.slice(0,25),drafts:drafts.slice(0,25),scanned:nodes.length,
+  return {source,results:candidates,drafts,scanned:nodes.length,
     warning:candidates.length||drafts.length ? null : 'Aucune fiche locale identifiable sur cette page. Ouvrez le détail d’un établissement puis réessayez.'};
 })();

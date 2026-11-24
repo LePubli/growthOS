@@ -10,6 +10,7 @@ type Capture = (LocalCompany & {incomplete?:false}) | (LocalDraft & {incomplete:
 const LABELS:Record<string,string> = {
   google_maps:'Google Maps',google_search:'Google Search',bing:'Bing',linkedin:'LinkedIn',pagesjaunes:'PagesJaunes',
 };
+const importable=(item:Capture)=>!item.incomplete || Boolean(item.phone||item.website||item.address);
 export default function ConnectorImportPage(){
   const [,navigate]=useLocation();
   const [items,setItems]=useState<Capture[]>([]);
@@ -28,13 +29,12 @@ export default function ConnectorImportPage(){
       ]);
       setExtension(`${ping.version||'?'} · ${ping.extensionId||'identifiant indisponible'}`);
       const verified:Capture[]=captures.map(c=>({...c,incomplete:false}));
-      const complete=verified.map(v=>v.id);
       const merged=[...verified,...drafts.filter(d=>!verified.some(v=>
         v.source===d.source && v.company.toLocaleLowerCase('fr')===d.company.toLocaleLowerCase('fr') &&
         Boolean(v.phone && d.phone && v.phone.replace(/\D/g,'')===d.phone.replace(/\D/g,''))))
         .map(d=>({...d,incomplete:true as const}))];
       setItems(merged);
-      setSelected(complete.slice(0,25));
+      setSelected(merged.filter(importable).map(item=>item.id));
       if((ping.results.length||ping.drafts.length) && !merged.length)
         setError('Des captures sont présentes dans le pont, mais leur source ne correspond pas au type attendu. Rechargez l’extension puis cette page.');
       if(!merged.length && !ping.results.length && !ping.drafts.length)
@@ -43,27 +43,36 @@ export default function ConnectorImportPage(){
     finally{setLoading(false);}
   },[]);
   useEffect(()=>{void reload();},[reload]);
-  const toggle=(id:string)=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):s.length>=25?s:[...s,id]);
-  const importable=(item:Capture)=>!item.incomplete || Boolean(item.phone||item.website||item.address);
+  const toggle=(id:string)=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const submit=async()=>{
     const selectedItems=items.filter(item=>selected.includes(item.id)&&importable(item));
     if(!selectedItems.length){toast.error('Sélectionnez au moins une fiche');return;}
-    if(selectedItems.length>25){toast.error('Importez par lots de 25 fiches maximum');return;}
-    setImporting(true);setError('');
+    setImporting(true);setError('');setLastResult('');setReviews([]);
+    const totals={imported:0,enriched:0,skipped:0,conflicts:0};
     try{
-      const result=await apiClient.post('/sourcing/device/import-prospects',{
-        verified:selectedItems.filter(item=>!item.incomplete),
-        drafts:selectedItems.filter(item=>item.incomplete),
-      }) as {imported:number;enriched:number;conflicts:number;skipped:number;processedIds:string[];
-        reviews:Array<{prospectId:string;company:string;fields:string[];type:string}>};
-      setLastResult(`${result.imported} créé(s) · ${result.enriched} fiche(s) existante(s) enrichie(s) · ${result.skipped} sans nouvelle donnée · ${result.conflicts} désaccord(s) à vérifier.`);
-      setReviews(result.reviews||[]);
-      toast.success('Fiches enregistrées ou enrichies dans Prospects');
-      try{if(result.processedIds.length)await acknowledgeLocalImport(result.processedIds);}catch{
-        toast.warning('Prospects enregistrés. Rechargez l’extension pour synchroniser la sélection locale.');
+      for(let start=0;start<selectedItems.length;start+=25){
+        const batch=selectedItems.slice(start,start+25);
+        const result=await apiClient.post('/sourcing/device/import-prospects',{
+          verified:batch.filter(item=>!item.incomplete).map(({incomplete,...capture})=>capture),
+          drafts:batch.filter(item=>item.incomplete).map(({incomplete,...capture})=>capture),
+        }) as {imported:number;enriched:number;conflicts:number;skipped:number;processedIds:string[];
+          reviews:Array<{prospectId:string;company:string;fields:string[];type:string}>};
+        totals.imported+=result.imported;
+        totals.enriched+=result.enriched;
+        totals.skipped+=result.skipped;
+        totals.conflicts+=result.conflicts;
+        setLastResult(`${totals.imported} créé(s) · ${totals.enriched} enrichi(s) · ${totals.skipped} ignoré(s) · ${totals.conflicts} désaccord(s).`);
+        setReviews(previous=>[...previous,...result.reviews]);
+        if(result.processedIds.length){
+          const confirmed=new Set(result.processedIds);
+          setSelected(previous=>previous.filter(id=>!confirmed.has(id)));
+          setItems(previous=>previous.filter(item=>!confirmed.has(item.id)));
+          try{await acknowledgeLocalImport(result.processedIds);}
+          catch{toast.warning('Import enregistré. La sélection locale doit être resynchronisée.');}
+        }
       }
-      await reload();
-    }catch(e:any){setError(e.message||'Import impossible');}
+      toast.success('Sélection traitée');
+    }catch(e:any){setError(e.message||'Import interrompu. Les fiches restantes peuvent être relancées.');}
     finally{setImporting(false);}
   };
   const verified=items.filter(item=>!item.incomplete).length;
@@ -100,16 +109,16 @@ export default function ConnectorImportPage(){
     </div>
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 border-b">
-        <h2 className="font-semibold">Sélection manuelle · {selected.length}/25</h2>
+        <h2 className="font-semibold">Fiches sélectionnées · {selected.length}</h2>
         <div className="flex gap-3 text-sm">
-          <button type="button" onClick={()=>setSelected(items.filter(importable).slice(0,25).map(item=>item.id))} className="text-teal-700">Tout sélectionner</button>
-          <button type="button" onClick={()=>setSelected([])} className="text-gray-500">Tout désélectionner</button>
+          <button type="button" disabled={importing} onClick={()=>setSelected(items.filter(importable).map(item=>item.id))} className="text-teal-700">Tout sélectionner</button>
+          <button type="button" disabled={importing} onClick={()=>setSelected([])} className="text-gray-500">Tout désélectionner</button>
         </div>
       </div>
       <p className="px-4 py-3 text-xs text-gray-600 bg-blue-50">Les fiches incomplètes sont importables si elles ont au moins une coordonnée utile (téléphone, site ou adresse partielle). Aucun code postal, SIREN ou SIRET n’est inventé. Les doublons enrichissent les champs vides du CRM ; les contradictions sont signalées pour validation manuelle.</p>
       <div className="max-h-[56vh] overflow-y-auto divide-y">
         {items.map(item=><label key={item.id} className="flex gap-3 items-start px-4 py-3 hover:bg-gray-50 cursor-pointer">
-          <input type="checkbox" className="mt-1 accent-teal-600" checked={selected.includes(item.id)} disabled={!importable(item)||(!selected.includes(item.id)&&selected.length>=25)} onChange={()=>toggle(item.id)}/>
+          <input type="checkbox" className="mt-1 accent-teal-600" checked={selected.includes(item.id)} disabled={importing||!importable(item)} onChange={()=>toggle(item.id)}/>
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap gap-2 items-center"><strong className="text-sm text-gray-900 break-words">{item.company}</strong>
               <span className={`text-xs rounded-full px-2 py-0.5 ${item.incomplete?'bg-amber-100 text-amber-800':'bg-green-100 text-green-800'}`}>
