@@ -903,6 +903,54 @@ try {
   check(directInvalid.status===200 && directInvalid.body.imported===0 && directInvalid.body.processedIds.length===0,
     'Une fiche sans coordonnées utiles ne peut pas entrer dans le CRM');
 
+  const generalNote = await request('POST','/activities',{type:'note',title:'Appeler le matin',prospectId:importedId},token);
+  const dealNote = await request('POST','/activities',{type:'note',title:'Devis envoyé',dealId:linkedDeal.body.id},token);
+  const historyPath = `/activities?prospectId=${importedId}&scope=history`;
+  const history = await request('GET',historyPath,undefined,token);
+  check(history.status === 200 && history.body.filter(a=>a.id===dealNote.body.id).length === 1 &&
+    history.body.find(a=>a.id===dealNote.body.id)?.dealTitle===linkedDeal.body.title &&
+    history.body.some(a=>a.id===generalNote.body.id),'Notes du prospect et du deal visibles une seule fois avec leur origine');
+  const secondHistory = await request('GET',`/activities?dealId=${convertedDeal.body.id}`,undefined,token);
+  const generalPath = `/activities?dealId=${convertedDeal.body.id}&scope=prospect-notes`;
+  const sharedNotes = await request('GET',generalPath,undefined,token);
+  check(secondHistory.status===200 && !secondHistory.body.some(a=>a.id===dealNote.body.id) &&
+    sharedNotes.body.some(a=>a.id===generalNote.body.id) && !sharedNotes.body.some(a=>a.id===dealNote.body.id),
+    'Deux affaires du même prospect gardent des historiques distincts');
+  await request('PATCH',`/activities/${generalNote.body.id}`,{description:'À partir de 9 h'},token);
+  for (const path of [historyPath,generalPath]) {
+    const edited = await request('GET',path,undefined,token);
+    check(edited.body.find(a=>a.id===generalNote.body.id)?.description==='À partir de 9 h','Édition de la même note relue sur '+path.split('?')[0]);
+  }
+  const byEdition = await request('POST','/prospects',{company:'Test secteur 2025',apeCode:'43.22G',nafVersion:'NAF 2025'},token);
+  check(byEdition.status===201 && byEdition.body.nafLabel?.includes('eau et de gaz'),'Intitulé NAF 2025 résolu à partir du seul code');
+  const wrongEdition = await request('PATCH',`/prospects/${byEdition.body.id}`,{nafVersion:'NAFRev2'},token);
+  check(wrongEdition.status===200 && !wrongEdition.body.nafLabel,'Changement de nomenclature sans correspondance : ancien libellé effacé');
+  const sources = {
+    linkedin:'https://www.linkedin.com/company/atelier-recette/',
+    societe_com:'https://www.societe.com/societe/atelier-recette-999000001.html',
+    facebook:'https://www.facebook.com/atelier.recette/',
+    instagram:'https://www.instagram.com/atelier.recette/',
+    bing:'https://www.bing.com/search?q=atelier+recette',
+  };
+  for (const [source,sourceUrl] of Object.entries(sources)) {
+    const record = {...directCapture,id:'recette_'+source,company:'Recette '+source,source,sourceUrl,
+      collectionMode:source==='bing'?'visible':'manual'};
+    const payload={verified:[record]};
+    const first=await request('POST','/sourcing/device/import-prospects',payload,token);
+    const replay=await request('POST','/sourcing/device/import-prospects',payload,token);
+    check(first.status===200 && first.body.imported===1 && replay.body.imported===0 && replay.body.skipped===1,
+      source+' : création puis réimport sans doublon');
+    if (source==='societe_com') {
+      const forged=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,siret:'88800000100012',sourceUrl:sourceUrl+'?fake=-888000001.html'}]},token);
+      const homonym = await request('POST','/sourcing/device/import-prospects',{verified:[{...record,
+        id:'second_site_same_company',address:'8 rue des Fleurs 59000 Lille',codePostal:'59000',city:'Lille',phone:null}]},token);
+      check(homonym.status===200 && homonym.body.imported===0 && homonym.body.enriched===0 &&
+        homonym.body.reviews[0]?.type==='ambiguous' && !homonym.body.processedIds.length,
+        'Deux établissements possibles pour une société : aucune fusion et sélection conservée');
+      check(forged.status===400,'SIRET et SIREN de la fiche Societe.com doivent correspondre');
+    }
+  }
+
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
 } catch (error) {
   process.exitCode = 1;

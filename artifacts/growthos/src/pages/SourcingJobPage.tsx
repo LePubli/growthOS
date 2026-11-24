@@ -1,3 +1,4 @@
+import { activityLabel } from '../../../../lib/db/src/naf';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { ArrowLeft, Building2, Download, ExternalLink, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
@@ -19,10 +20,10 @@ type Candidate = {
   id?: string; siren: string; source?: string; sources?: string[]; siret?: string | null; company: string | null; address: string | null;
   apeCode?:string|null;nafLabel?:string|null;nafVersion?:string|null;
   phone?: string | null; email?: string | null; website?: string | null; sourceUrl?: string | null;
-  sourceDetails?: {pagesjaunes?:{description?:string;openingHours?:string;services?:string;rating?:number;reviewCount?:number}};
+  sourceDetails?: {annuaire?:{apeScope?:string};pagesjaunes?:{description?:string;openingHours?:string;services?:string;rating?:number;reviewCount?:number}};
   codePostal: string; city: string | null; imported: boolean; prospectId: string | null;
 };
-const SOURCE_LABELS:Record<string,string>={entreprises:'Annuaire des entreprises',pagesjaunes:'PagesJaunes.fr',google_maps:'Google Maps',google_search:'Google Search',bing:'Bing Search',linkedin:'LinkedIn · saisie manuelle'};
+const SOURCE_LABELS:Record<string,string>={entreprises:'Annuaire des entreprises',pagesjaunes:'PagesJaunes.fr',google_maps:'Google Maps',google_search:'Google Search',bing:'Bing Search',linkedin:'LinkedIn · saisie manuelle',societe_com:'Societe.com',facebook:'Facebook Pages',instagram:'Instagram professionnel'};
 
 function csvCell(value: unknown): string {
   const raw = String(value ?? '');
@@ -357,7 +358,7 @@ export default function SourcingJobPage() {
                       </td>
                       <td style={{ padding: 12, color: 'var(--text-secondary)' }}>
                         <strong>{candidate.apeCode || '—'}</strong>
-                        {candidate.nafLabel && <div className="text-xs mt-1" title={candidate.nafLabel}>{candidate.nafLabel}</div>}
+                        {candidate.apeCode && <div className="text-xs mt-1">{candidate.sourceDetails?.annuaire?.apeScope === 'unite_legale' && 'Activité de l’entreprise · '}{activityLabel(candidate.apeCode, candidate.nafVersion) || candidate.nafLabel || 'Libellé à vérifier'}</div>}
                       </td>
                       <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.address || 'Non renseignée'}</td>
                       <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.codePostal || '—'}</td>

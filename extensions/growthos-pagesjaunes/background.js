@@ -373,7 +373,7 @@ async function enrichProfile(payload) {
   }
 }
 
-const CAPTURE_SOURCES = ['google_maps','google_search','bing','linkedin'];
+const CAPTURE_SOURCES = ['google_maps','google_search','bing','linkedin','societe_com','facebook','instagram'];
 const QUEUE_KEY = 'growthos_verified_captures_v1';
 const DRAFTS_KEY = 'growthos_unverified_drafts_v1';
 const ENRICH_CURSOR_KEY = 'growthos_enrich_cursor_v1';
@@ -388,6 +388,9 @@ function hostMatches(source,url) {
     if(source==='google_maps')return ['google.com','www.google.com','maps.google.com','google.fr','www.google.fr'].includes(u.hostname) && u.pathname.startsWith('/maps');
     if(source==='google_search')return ['google.com','www.google.com','google.fr','www.google.fr'].includes(u.hostname);
     if(source==='bing')return ['www.bing.com','bing.com'].includes(u.hostname);
+    if(source==='societe_com')return ['societe.com','www.societe.com'].includes(u.hostname) && /^\/societe\/[a-z0-9-]+-\d{9}\.html\/?$/i.test(u.pathname);
+    if(source==='facebook')return ['facebook.com','www.facebook.com'].includes(u.hostname) && /^\/[a-z0-9.\-]+\/?$/i.test(u.pathname) && !/^\/(?:home.php|profile.php|groups|events|watch|marketplace|login|share|search|reel|stories|gaming|people|pages)\/?$/i.test(u.pathname);
+    if(source==='instagram')return ['instagram.com','www.instagram.com'].includes(u.hostname) && /^\/[a-z0-9._]+\/?$/i.test(u.pathname) && !/^\/(?:p|reels?|stories|accounts|explore|direct|about|developer|legal)\/?$/i.test(u.pathname);
     if(source==='linkedin')return ['www.linkedin.com','linkedin.com'].includes(u.hostname) && /^\/company\/[a-z0-9_-]+\/?/i.test(u.pathname);
   }catch{}
   return false;
@@ -461,13 +464,16 @@ function validCaptured(item,manual=false,verifiedSiret=false){
     || !address.includes(codePostal))throw new Error('Nom, adresse complète et code postal obligatoires');
   const sourceUrl=String(item.sourceUrl||'').trim();
   if(!hostMatches(item.source,sourceUrl))throw new Error('Lien de source invalide pour '+item.source);
+  const inputSiret = manual && item.source==='societe_com' ? String(item.siret || '').trim() : '';
+  if (inputSiret && (!/^\d{14}$/.test(inputSiret) || !new URL(sourceUrl).pathname.replace(/\/$/,'').endsWith('-'+inputSiret.slice(0,9)+'.html')))
+    throw new Error('Le SIRET doit correspondre au SIREN de la fiche Societe.com.');
   const cleanUrl=raw=>{try{const url=new URL(String(raw||''));return /^https?:$/.test(url.protocol)?url.href.slice(0,500):null;}catch{return null;}};
   const phone=String(item.phone||'').trim().slice(0,40)||null;
   const city=String(item.city||'').trim().slice(0,120)||null;
   return {id:'local_'+crypto.randomUUID().replace(/-/g,'').slice(0,32),source:item.source,
     company,address,codePostal,city,phone,website:cleanUrl(item.website),sourceUrl,
-    siret:verifiedSiret && /^\d{14}$/.test(String(item.siret||'')) ? item.siret : null,
-    ...(verifiedSiret && item.apeCode ? {apeCode:item.apeCode,nafLabel:item.nafLabel||null,nafVersion:item.nafVersion||null} : {}),
+    siret:inputSiret || (verifiedSiret && /^\d{14}$/.test(String(item.siret||'')) ? item.siret : null),
+    ...(verifiedSiret && item.apeCode ? {apeCode:item.apeCode,nafLabel:item.nafLabel||null,nafVersion:item.nafVersion||null,...(item.apeScope ? {apeScope:item.apeScope} : {})} : {}),
     collectionMode:manual?'manual':'visible',capturedAt:Date.now()};
 }
 function addToQueue(items,manual=false,verifiedSiret=false){
@@ -480,7 +486,7 @@ async function storeNewCaptures(items, manual, verifiedSiret){
     const key=[item.source,item.company,item.address,item.codePostal].join('|').toLocaleLowerCase('fr');
     const existing=queue.find(q=>[q.source,q.company,q.address,q.codePostal].join('|').toLocaleLowerCase('fr')===key);
     if(existing){
-      for(const field of ['phone','website','city','siret','apeCode','nafLabel','nafVersion']){
+      for(const field of ['phone','website','city','siret','apeCode','nafLabel','nafVersion','apeScope']){
         if(item[field] && !existing[field] && (!existing.siret || !item.siret || existing.siret===item.siret))
           existing[field]=item[field];
       }
@@ -586,7 +592,7 @@ function verifiedOfficialMatch(draft,records,postal){
       const code=String(activity.activite_principale||'').toUpperCase();
       const metadata=/^\d{2}\.\d{2}[A-Z]$/.test(code) ? {
         apeCode:code,nafLabel:activity.libelle_activite_principale||null,
-        nafVersion:activity.nomenclature_activite_principale||null,
+        nafVersion:activity.nomenclature_activite_principale||null,apeScope:activity===site?'etablissement':'unite_legale',
       } : {};
       matches.push({address,codePostal:postal,city:city||null,siret,...metadata});
     }
@@ -836,6 +842,9 @@ async function popupAction(message){
     if(source==='google_maps')url='https://www.google.com/maps/search/'+encodeURIComponent([activity,location].filter(Boolean).join(' '));
     else if(source==='google_search')url='https://www.google.com/search?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
     else if(source==='bing')url='https://www.bing.com/search?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
+    else if(source==='societe_com')url='https://www.societe.com/cgi-bin/search?champs='+encodeURIComponent(activity);
+    else if(source==='facebook')url='https://www.facebook.com/search/pages/?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
+    else if(source==='instagram')url='https://www.instagram.com/explore/search/keyword/?q='+encodeURIComponent(activity);
     else if(source==='linkedin')url='https://www.linkedin.com/search/results/companies/?keywords='+encodeURIComponent(activity);
     else url='https://www.pagesjaunes.fr/annuaire/chercherlespros?quoiqui='+encodeURIComponent(activity)+'&ou='+encodeURIComponent(location);
     await chrome.tabs.create({url,active:true});return {ok:true,url};

@@ -1,3 +1,4 @@
+import { EditNote } from '@/components/EditNote';
 import { useState, useEffect } from 'react';
 import { useParams, useLocation } from 'wouter';
 import {
@@ -21,7 +22,7 @@ const STAGES = [
   { value:'lost',        label:'Perdu',       color:'#EF4444', prob:0   },
 ];
 
-type Activity = { id:string; type:'email'|'call'|'meeting'|'note'|'task'; description:string; user:string; date:string; done?:boolean };
+type Activity = { id:string; type:'email'|'call'|'meeting'|'note'|'task'; description:string; body?:string; user:string; date:string; done?:boolean };
 
 const ACTIVITY_CONFIG: Record<string,{icon:React.ReactNode;c:string;bg:string;label:string}> = {
   email:   { icon:<Mail size={12}/>,        c:'#2563EB', bg:'#EFF6FF', label:'Email' },
@@ -93,6 +94,20 @@ export default function DealDetailPage() {
   const [form, setForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [generalNotes, setGeneralNotes] = useState<{id:string;title:string;description?:string}[]>([]);
+  const [notesError, setNotesError] = useState(false);
+  const [notesRevision, setNotesRevision] = useState(0);
+  useEffect(() => {
+    let current = true;
+    setGeneralNotes([]);
+    setNotesError(false);
+    if (deal?.prospectId && deal.id === params.id) {
+      apiClient.get<typeof generalNotes>('/activities', { params: { dealId: deal.id, scope: 'prospect-notes' } })
+        .then(rows => { if (current) setGeneralNotes(rows); })
+        .catch(() => { if (current) setNotesError(true); });
+    }
+    return () => { current = false; };
+  }, [params.id, deal?.id, deal?.prospectId, notesRevision]);
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [activeTab, setActiveTab] = useState<'details'|'activities'|'comments'>('activities');
 
@@ -101,7 +116,7 @@ export default function DealDetailPage() {
       const data = await apiClient.get('/activities', { params: { dealId: params.id } }) as any[];
       setActivities(Array.isArray(data) ? data.map(a => ({
         id: a.id, type: a.type, description: a.title || a.description || '',
-        user: a.createdBy || '—', date: a.createdAt, done: a.status === 'done',
+        body: a.description, user: a.createdBy || '—', date: a.createdAt, done: a.status === 'done',
       })) : []);
     } catch {}
   };
@@ -250,11 +265,20 @@ export default function DealDetailPage() {
                 </button>
               </div>
 
+              {deal.prospectId && <section className="mb-4 rounded-xl border p-3">
+                <h3 className="text-sm font-semibold">Notes du prospect</h3>
+                {notesError ? <button onClick={()=>setNotesRevision(n=>n+1)}>Réessayer le chargement</button>
+                  : generalNotes.length === 0 && <p className="text-xs">Aucune note générale.</p>}
+                {generalNotes.map(note => <div key={note.id} className="mt-2 text-sm">
+                  <strong>{note.title}</strong><p>{note.description}</p>
+                  <EditNote note={note} onSaved={()=>setNotesRevision(n=>n+1)} />
+                </div>)}
+              </section>}
               {upcoming.length>0 && (
                 <div style={{ marginBottom:16 }}>
                   <div style={{ fontSize:12, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:8 }}>À faire ({upcoming.length})</div>
                   {upcoming.map(a=>{
-                    const ac = ACTIVITY_CONFIG[a.type];
+                    const ac = ACTIVITY_CONFIG[a.type] || ACTIVITY_CONFIG.note;
                     return (
                       <div key={a.id} style={{ display:'flex', gap:10, padding:'11px 14px', borderRadius:12, border:`1.5px solid ${ac.c}30`, background:ac.bg, marginBottom:8 }}>
                         <div style={{ width:30, height:30, borderRadius:8, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', color:ac.c, flexShrink:0, boxShadow:'0 1px 3px rgba(0,0,0,.1)' }}>{ac.icon}</div>
@@ -278,7 +302,7 @@ export default function DealDetailPage() {
                 <div style={{ position:'relative', paddingLeft:22 }}>
                   <div style={{ position:'absolute', left:10, top:0, bottom:0, width:1, background:'var(--card-border)' }}/>
                   {past.map(a=>{
-                    const ac = ACTIVITY_CONFIG[a.type];
+                    const ac = ACTIVITY_CONFIG[a.type] || ACTIVITY_CONFIG.note;
                     return (
                       <div key={a.id} style={{ position:'relative', marginBottom:12 }}>
                         <div style={{ position:'absolute', left:-16, top:5, width:18, height:18, borderRadius:6, background:ac.bg, color:ac.c, display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid var(--card-bg)', flexShrink:0 }}>{ac.icon}</div>
@@ -286,9 +310,10 @@ export default function DealDetailPage() {
                           <div style={{ display:'flex', alignItems:'flex-start', gap:8 }}>
                             <span style={{ fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:5, background:ac.bg, color:ac.c, flexShrink:0 }}>{ac.label}</span>
                             <span style={{ fontSize:13, color:'var(--text-primary)', lineHeight:1.5 }}>{a.description}</span>
+                            {a.type === 'note' && <EditNote note={{id:a.id,title:a.description,description:a.body}} onSaved={fetchActivities} />}
                           </div>
                           <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:5 }}>
-                            {new Date(a.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})} · {a.user}
+                            {a.body && <p>{a.body}</p>}{new Date(a.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})} · {a.user}
                           </div>
                         </div>
                       </div>
@@ -391,7 +416,7 @@ export default function DealDetailPage() {
                 Aucune tâche planifiée
               </div>
             ) : upcoming.map(a=>{
-              const ac = ACTIVITY_CONFIG[a.type];
+              const ac = ACTIVITY_CONFIG[a.type] || ACTIVITY_CONFIG.note;
               return (
                 <div key={a.id} style={{ display:'flex', gap:8, padding:'8px 0', borderBottom:'1px solid var(--card-border)' }}>
                   <div style={{ color:ac.c, flexShrink:0, marginTop:2 }}>{ac.icon}</div>

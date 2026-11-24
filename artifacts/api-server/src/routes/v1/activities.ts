@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { activitiesTable } from "@workspace/db";
-import { eq, and, desc, or } from "drizzle-orm";
+import { activitiesTable, dealsTable } from "@workspace/db";
+import { eq, and, desc, or, getTableColumns, isNull, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -21,6 +21,29 @@ router.get("/", async (req, res) => {
   const { prospectId, dealId, type } = req.query as Record<string, string>;
   const tenantId = req.auth!.tenantId;
 
+  if (req.query.scope === "history" && prospectId) {
+    const rows = await db.select({ ...getTableColumns(activitiesTable), dealTitle: dealsTable.title })
+      .from(activitiesTable)
+      .leftJoin(dealsTable, and(eq(activitiesTable.dealId, dealsTable.id), eq(dealsTable.tenantId, tenantId)))
+      .where(and(eq(activitiesTable.tenantId, tenantId), or(
+        and(isNull(activitiesTable.dealId), eq(activitiesTable.prospectId, prospectId)),
+        and(eq(dealsTable.prospectId, prospectId), eq(activitiesTable.type, "note")),
+        and(eq(dealsTable.prospectId, prospectId), eq(activitiesTable.prospectId, prospectId)),
+      )))
+      .orderBy(desc(activitiesTable.createdAt), desc(activitiesTable.id)).limit(100);
+    res.json(rows);
+    return;
+  }
+  if (req.query.scope === "prospect-notes" && dealId) {
+    const linkedProspect = db.select({ id: dealsTable.prospectId }).from(dealsTable)
+      .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId)));
+    const rows = await db.select().from(activitiesTable).where(and(
+      eq(activitiesTable.tenantId, tenantId), eq(activitiesTable.type, "note"),
+      isNull(activitiesTable.dealId), inArray(activitiesTable.prospectId, linkedProspect),
+    )).orderBy(desc(activitiesTable.createdAt), desc(activitiesTable.id)).limit(100);
+    res.json(rows);
+    return;
+  }
   const conditions: any[] = [eq(activitiesTable.tenantId, tenantId)];
   if (prospectId) conditions.push(eq(activitiesTable.prospectId, prospectId));
   if (dealId) conditions.push(eq(activitiesTable.dealId, dealId));

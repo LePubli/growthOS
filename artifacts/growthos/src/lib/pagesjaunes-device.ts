@@ -2,7 +2,7 @@
    Le serveur GrowthOS et l'extension ne partagent ni mot de passe ni token. */
 export type LocalCompany = {
   id: string;
-  source?: 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin';
+  source?: 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin' | 'societe_com' | 'facebook' | 'instagram';
   company: string;
   address: string;
   codePostal: string;
@@ -11,6 +11,10 @@ export type LocalCompany = {
   website: string | null;
   sourceUrl: string | null;
   siret: string | null;
+  apeCode?: string | null;
+  apeScope?: 'etablissement' | 'unite_legale';
+  nafLabel?: string | null;
+  nafVersion?: string | null;
   collectionMode?: 'manual' | 'visible';
   capturedAt?: number;
 };
@@ -81,7 +85,7 @@ export function acknowledgeLocalImport(ids:string[]) { return askExtension('ack-
 /** Les fiches restent sur l'appareil jusqu'à la recherche : aucun token CRM dans l'extension. */
 export async function getLocalCaptures(): Promise<LocalCompany[]> {
   const response=await askExtension('get-captures');
-  return response.results.filter(item=>['google_maps','google_search','bing','linkedin'].includes(item.source||''));
+  return response.results.filter(item=>['google_maps','google_search','bing','linkedin','societe_com','facebook','instagram'].includes(item.source||''));
 }
 /** Brouillons locaux (jamais importables tant qu'une adresse n'est pas vérifiée). */
 export async function getLocalDrafts(): Promise<LocalDraft[]> {

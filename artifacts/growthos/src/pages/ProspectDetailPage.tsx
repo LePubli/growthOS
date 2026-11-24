@@ -1,3 +1,4 @@
+import { EditNote } from '@/components/EditNote';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation } from 'wouter';
 import {
@@ -352,7 +353,7 @@ export default function ProspectDetailPage() {
 
   const fetchActivities = async () => {
     try {
-      const data = await apiClient.get('/activities', { params: { prospectId: id } }) as any[];
+      const data = await apiClient.get('/activities', { params: { prospectId: id, scope: 'history' } }) as any[];
       setActivities(Array.isArray(data) ? data : []);
     } catch { setActivities([]); }
   };
@@ -1064,11 +1065,13 @@ export default function ProspectDetailPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{act.title}</div>
+                      {act.dealId && act.dealTitle && <button className="text-xs text-teal-700 underline" onClick={() => navigate(`/pipeline/${act.dealId}`)}>Deal · {act.dealTitle}</button>}
                       {act.description && <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{act.description}</div>}
                       <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                         {new Date(act.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </div>
                     </div>
+                    {act.type === 'note' && <EditNote note={act} onSaved={fetchActivities} />}
                     <button onClick={() => deleteActivity(act.id)} className="text-red-400 hover:text-red-600 flex-shrink-0">
                       <Trash2 size={13} />
                     </button>

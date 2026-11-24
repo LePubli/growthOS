@@ -1,6 +1,7 @@
 /* Aucune connexion directe au serveur GrowthOS ; toutes les fiches restent dans Chrome. */
 const $ = id => document.getElementById(id);
-const labels = {google_maps:'Maps',google_search:'Google',bing:'Bing',linkedin:'LinkedIn',pagesjaunes:'PagesJaunes'};
+const labels = {google_maps:'Maps',google_search:'Google',bing:'Bing',linkedin:'LinkedIn',societe_com:'Societe.com',facebook:'Facebook Pages',instagram:'Instagram professionnel',pagesjaunes:'PagesJaunes'};
+const manualSources = new Set(['linkedin','societe_com','facebook','instagram']);
 let source='google_maps';
 let currentUrl='';
 let pendingDraftId=null;
@@ -19,6 +20,9 @@ function sourceFromUrl(value){
     const u=new URL(value),host=u.hostname;
     if(/(^|\.)bing\.com$/.test(host))return 'bing';
     if(/(^|\.)google\.(?:com|fr)$/.test(host))return u.pathname.startsWith('/maps')?'google_maps':'google_search';
+    if(['societe.com','www.societe.com'].includes(host))return 'societe_com';
+    if(['facebook.com','www.facebook.com'].includes(host))return 'facebook';
+    if(['instagram.com','www.instagram.com'].includes(host))return 'instagram';
     if(/(^|\.)linkedin\.com$/.test(host))return 'linkedin';
     if(/(^|\.)pagesjaunes\.fr$/.test(host))return 'pagesjaunes';
   }catch{}
@@ -28,15 +32,18 @@ function selectSource(value){
   source=value;
   pendingDraftId=null;
   for(const btn of document.querySelectorAll('[data-source]'))btn.setAttribute('aria-pressed',String(btn.dataset.source===value));
-  const isLinkedin=value==='linkedin',isPagesjaunes=value==='pagesjaunes';
-  $('capture').disabled=isLinkedin||isPagesjaunes;
+  const isManual=manualSources.has(value),isPagesjaunes=value==='pagesjaunes';
+  $('legalIdentity').hidden=value!=='societe_com';
+  $('siret').disabled=value!=='societe_com';
+  $('siret').value='';
+  $('capture').disabled=isManual||isPagesjaunes;
   $('autoMaps').disabled=!['google_maps','google_search'].includes(sourceFromUrl(currentUrl));
   $('manualPanel').hidden=isPagesjaunes;
-  $('sourceHint').textContent=isLinkedin
-    ? 'Connectez-vous normalement à LinkedIn. Son règlement interdit le scraping par extension : utilisez seulement la saisie manuelle d’une entreprise que vous avez vérifiée.'
+  $('sourceHint').textContent=isManual
+    ? 'Ouvrez la page professionnelle de l’entreprise. Confirmez son identité et renseignez les coordonnées affichées avant de valider la fiche.'
     : isPagesjaunes ? 'PagesJaunes est collecté automatiquement depuis le formulaire GrowthOS. Vous pouvez aussi ouvrir les résultats ici.'
     : 'Ouvrez les résultats puis cliquez sur Capturer. Sur une liste Maps, les fiches détaillées seront ouvertes successivement.';
-  $('manualPanel').open=isLinkedin;
+  $('manualPanel').open=isManual;
   $('sourceUrl').value=sourceFromUrl(currentUrl)===value?currentUrl:'';
 }
 async function refresh(){
@@ -125,7 +132,7 @@ $('capture').addEventListener('click',async()=>{
       ? `${r.added||0} fiche(s) prêtes · ${r.draftAdded||0} fiche(s) à compléter ci-dessous · ${(r.ignored||0)+(r.draftIgnored||0)} doublon(s)`
       : r.warning||'Aucune nouvelle fiche');
   }catch(e){notice(e.message,true);}
-  finally{$('capture').disabled=source==='linkedin'||source==='pagesjaunes';}
+  finally{$('capture').disabled=manualSources.has(source)||source==='pagesjaunes';}
 });
 $('autoMaps').addEventListener('click',async()=>{
   const query=$('query').value.trim(),area=$('area').value.trim();
@@ -172,7 +179,7 @@ $('manualForm').addEventListener('submit',async e=>{
   e.preventDefault();
   const form={source,company:$('company').value,address:$('address').value,codePostal:$('postal').value,
     city:$('city').value,phone:$('phone').value,website:$('website').value,sourceUrl:$('sourceUrl').value,
-    draftId:pendingDraftId};
+    siret:source==='societe_com'?$('siret').value.trim():undefined,draftId:pendingDraftId};
   try{const result=await message('manual-add',form);$('manualForm').reset();
     pendingDraftId=null;
     await refresh();notice(result.added?'Fiche ajoutée. Vérifiez-la dans GrowthOS avant import.':'Fiche déjà présente.');
