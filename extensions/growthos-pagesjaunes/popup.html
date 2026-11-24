@@ -22,6 +22,9 @@
         <button type="button" data-source="google_search">🔎 Google</button>
         <button type="button" data-source="bing">🟦 Bing</button>
         <button type="button" data-source="linkedin">💼 LinkedIn</button>
+        <button type="button" data-source="societe_com">Societe.com</button>
+        <button type="button" data-source="facebook">Facebook Pages</button>
+        <button type="button" data-source="instagram">Instagram pro</button>
         <button type="button" data-source="pagesjaunes">📒 PagesJaunes</button>
       </div>
     </section>
@@ -54,6 +57,7 @@
           <label for="address">Adresse complète (avec CP) *</label><input id="address" placeholder="8 rue Exemple 59100 Roubaix" required maxlength="320"/>
           <div class="two"><div><label for="postal">Code postal *</label><input id="postal" placeholder="59100" inputmode="numeric" pattern="[0-9]{5}" required maxlength="5"/></div>
           <div><label for="city">Ville</label><input id="city" placeholder="Roubaix" maxlength="120"/></div></div>
+          <div id="legalIdentity" hidden><label for="siret">SIRET de l’établissement (facultatif)</label><input id="siret" pattern="[0-9]{14}" maxlength="14" inputmode="numeric"/></div>
           <label for="phone">Téléphone (facultatif)</label><input id="phone" placeholder="Numéro affiché et vérifié" maxlength="40"/>
           <label for="website">Site web (facultatif)</label><input id="website" type="url" placeholder="https://…"/>
           <label for="sourceUrl">Lien de la fiche source *</label><input id="sourceUrl" type="url" required placeholder="https://…"/>

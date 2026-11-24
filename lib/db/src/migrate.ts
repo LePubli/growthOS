@@ -1,3 +1,4 @@
+import { nafCatalog } from "./naf";
 import { pool } from "./index";
 
 const SQL = `
@@ -151,6 +152,42 @@ ALTER TABLE prospects ADD COLUMN IF NOT EXISTS siret TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS ape_code TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS naf_label TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS naf_version TEXT;
+
+CREATE TABLE IF NOT EXISTS naf_reference (
+  code TEXT PRIMARY KEY, edition TEXT NOT NULL, label TEXT NOT NULL
+);
+INSERT INTO naf_reference(code, edition, label)
+SELECT item.key, edition.key, item.value
+FROM jsonb_each($naf$${JSON.stringify(nafCatalog)}$naf$::jsonb) edition
+CROSS JOIN LATERAL jsonb_each_text(edition.value) item
+ON CONFLICT (code) DO UPDATE SET edition = excluded.edition, label = excluded.label
+WHERE (naf_reference.edition, naf_reference.label) IS DISTINCT FROM (excluded.edition, excluded.label);
+
+CREATE OR REPLACE FUNCTION growthos_naf_edition(value TEXT) RETURNS TEXT
+LANGUAGE sql IMMUTABLE AS $fn$
+  SELECT translate(lower(trim(coalesce(value, ''))), 'é ._-', 'e')
+$fn$;
+CREATE OR REPLACE FUNCTION growthos_fill_naf_label() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+DECLARE official TEXT;
+BEGIN
+  SELECT label INTO official FROM naf_reference WHERE code = upper(trim(NEW.ape_code))
+    AND growthos_naf_edition(NEW.naf_version) IN ('', edition);
+  IF official IS NOT NULL THEN
+    NEW.naf_label := official;
+  ELSIF TG_OP = 'UPDATE' AND (NEW.ape_code, NEW.naf_version) IS DISTINCT FROM (OLD.ape_code, OLD.naf_version)
+      AND NEW.naf_label IS NOT DISTINCT FROM OLD.naf_label THEN
+    NEW.naf_label := NULL;
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+DROP TRIGGER IF EXISTS growthos_naf_label ON prospects;
+CREATE TRIGGER growthos_naf_label BEFORE INSERT OR UPDATE OF ape_code, naf_version, naf_label ON prospects
+FOR EACH ROW EXECUTE FUNCTION growthos_fill_naf_label();
+UPDATE prospects p SET naf_label = n.label FROM naf_reference n
+WHERE n.code = upper(trim(p.ape_code)) AND growthos_naf_edition(p.naf_version) IN ('', n.edition)
+  AND p.naf_label IS DISTINCT FROM n.label;
 CREATE INDEX IF NOT EXISTS idx_prospects_tenant_ape_code ON prospects(tenant_id, ape_code);
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS postal_code TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS city TEXT;

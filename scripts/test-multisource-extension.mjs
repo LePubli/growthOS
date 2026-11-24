@@ -235,3 +235,18 @@ assert.equal((await send('get-captures',null,growthos)).results.length,0,
 const cleared=await send('clear-captures');
 assert.equal(cleared.results.length,0);
 console.log('✓ MV3, lot Maps navigué/restauré, BAN/INSEE conservateurs, URLs, expiration et isolation GrowthOS');
+
+for (const [source,profile] of Object.entries({
+  facebook:'https://www.facebook.com/atelier.local/',
+  instagram:'https://www.instagram.com/atelier.local/',
+  societe_com:'https://www.societe.com/societe/atelier-local-999000001.html',
+})) {
+  const form={source,company:'Atelier '+source,address:'10 rue de Lille 59100 Roubaix',codePostal:'59100',sourceUrl:profile};
+  const result=await send('manual-add',form);
+  assert.equal(result.added,1,source);
+  assert.equal((await send('manual-add',form)).ignored,1,source);
+  assert.equal((await send('manual-add',{...form,sourceUrl:'https://example.org/atelier/'})).ok,false,source);
+}
+const bingResult=capture('https://www.bing.com/search?q=atelier');
+assert.equal(bingResult.results[0].company,'Atelier Test');
+assert.equal(bingResult.results[0].codePostal,'59100');

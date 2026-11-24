@@ -1,3 +1,4 @@
+import { activityLabel } from '../../../../lib/db/src/naf';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { ArrowLeft, CheckCircle2, DownloadCloud, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
@@ -8,7 +9,7 @@ import { acknowledgeLocalImport, getLocalCaptures, getLocalDrafts, pingLocalPage
 
 type Capture = (LocalCompany & {incomplete?:false}) | (LocalDraft & {incomplete:true});
 const LABELS:Record<string,string> = {
-  google_maps:'Google Maps',google_search:'Google Search',bing:'Bing',linkedin:'LinkedIn',pagesjaunes:'PagesJaunes',
+  google_maps:'Google Maps',google_search:'Google Search',bing:'Bing',linkedin:'LinkedIn',societe_com:'Societe.com',facebook:'Facebook Pages',instagram:'Instagram professionnel',pagesjaunes:'PagesJaunes',
 };
 const importable=(item:Capture)=>!item.incomplete || Boolean(item.phone||item.website||item.address);
 export default function ConnectorImportPage(){
@@ -85,7 +86,7 @@ export default function ConnectorImportPage(){
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Importer depuis le connecteur Chrome</h1>
-          <p className="mt-2 text-sm text-gray-600">Vos captures Google Maps, Google et Bing arrivent directement dans le CRM, sans recherche de sourcing intermédiaire.</p>
+          <p className="mt-2 text-sm text-gray-600">Vérifiez les coordonnées et les liens des entreprises sélectionnées avant de les importer dans le CRM.</p>
           <p className="mt-2 text-xs text-gray-400">Connecteur : {extension||'Vérification…'}</p>
         </div>
         <button type="button" onClick={()=>void reload()} disabled={loading||importing} className="flex gap-2 items-center rounded-xl border px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50">
@@ -101,7 +102,7 @@ export default function ConnectorImportPage(){
       {reviews.length>0&&<div className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
         <strong>Vérifications nécessaires</strong>
         {reviews.map((review,index)=><div key={`${review.company}-${index}`} className="flex justify-between gap-3 mt-2">
-          <span>{review.company} · {review.type==='ambiguous'?'Plusieurs correspondances possibles':review.fields.join(', ')}</span>
+          <span>{review.company} · {review.type==='ambiguous'?'Établissement à confirmer':review.fields.join(', ')}</span>
           {review.prospectId&&<button type="button" className="underline text-teal-700" onClick={()=>navigate(`/prospects/${review.prospectId}`)}>Comparer les valeurs</button>}
         </div>)}
       </div>}
@@ -126,6 +127,10 @@ export default function ConnectorImportPage(){
               </span><span className="text-xs text-gray-500">{LABELS[item.source||'']||item.source}</span></div>
             <p className="text-xs text-gray-600 mt-1 break-words">{item.address||'Adresse inconnue'}{!item.incomplete?` · ${item.codePostal}`:''} · {item.city||'Ville inconnue'}</p>
             <p className="text-xs text-gray-500">{item.phone||'Sans téléphone'}{item.website?` · ${item.website}`:''}</p>
+            {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-xs underline">Vérifier la fiche source</a>}
+            {!item.incomplete && item.apeCode && <p className="text-xs text-gray-700">
+              {item.apeScope === 'unite_legale' && 'Activité de l’entreprise · '}{item.apeCode} · {activityLabel(item.apeCode, item.nafVersion) || item.nafLabel || 'Libellé à vérifier'}
+            </p>}
             {!importable(item)&&<p className="text-xs text-orange-700">Pas assez de coordonnées pour créer un prospect utile.</p>}
           </div>
         </label>)}

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { db } from "@workspace/db";
+import { activityLabel, db } from "@workspace/db";
 import { sourcingJobsTable, prospectsTable } from "@workspace/db";
 import { eq, and, desc, inArray, or, ilike } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -72,7 +72,7 @@ type CompanyRecord = {
 };
 type SearchCandidate = {
   id?: string; // Identifiant de source, utile sans SIREN
-  source?: 'entreprises' | 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin';
+  source?: 'entreprises' | 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin' | 'societe_com' | 'facebook' | 'instagram';
   sources?: string[];
   siren: string;
   siret: string | null;
@@ -163,7 +163,7 @@ async function searchFrenchCompanies(params: GeoFilters, timeoutMs = 15000): Pro
       codePostal: local.code_postal!,
       city: local.libelle_commune?.trim() || null,
       apeCode,
-      nafLabel: apeCode ? activitySource.libelle_activite_principale?.trim() || null : null,
+      nafLabel: apeCode ? activityLabel(apeCode, activitySource.nomenclature_activite_principale) || activitySource.libelle_activite_principale?.trim() || null : null,
       nafVersion: apeCode ? activitySource.nomenclature_activite_principale?.trim() || null : null,
       sourceDetails: apeCode ? {annuaire:{apeScope:establishmentApe?'etablissement':'unite_legale'}} : null,
     });
@@ -236,7 +236,7 @@ function isSameCompany(a: SearchCandidate, b: SearchCandidate): boolean {
   const bSiren = /^\d{9}$/.test(b.siren) ? b.siren : null;
   if (aSiren && bSiren && aSiren !== bSiren) return false;
   if (a.siret && b.siret && a.siret !== b.siret) return false;
-  if (aSiren && bSiren && aSiren === bSiren) return true;
+  if (aSiren && bSiren && aSiren === bSiren && ![a.source,b.source].includes('societe_com')) return true;
   if (a.siret && b.siret && a.siret === b.siret) return true;
   const aStreet = normalizedStreet(a);
   const bStreet = normalizedStreet(b);
@@ -269,8 +269,8 @@ function mergeCompany(target: SearchCandidate, other: SearchCandidate): void {
 function candidateKey(c: SearchCandidate): string {
   const normalize = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (/^\d{9}$/.test(c.siren)) return "siren:" + c.siren;
   if (c.siret) return "siret:" + c.siret;
+  if (c.source !== 'societe_com' && /^\d{9}$/.test(c.siren)) return "siren:" + c.siren;
   return "local:" + normalize(c.company) + "|" + normalize(c.address || "") + "|" + c.codePostal;
 }
 
@@ -360,7 +360,7 @@ async function runMultiSearch(jobId: string, tenantId: string, params: MultiPara
 
 // Import des résultats collectés dans le Chrome local, après validation côté serveur.
 // L'extension n'obtient jamais le JWT : c'est la page GrowthOS authentifiée qui poste les données.
-const deviceSources = ['pagesjaunes','google_maps','google_search','bing','linkedin'] as const;
+const deviceSources = ['pagesjaunes','google_maps','google_search','bing','linkedin','societe_com','facebook','instagram'] as const;
 type DeviceSource = typeof deviceSources[number];
 function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
   try {
@@ -373,6 +373,9 @@ function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
         && url.pathname.startsWith('/maps');
       case 'google_search': return ['www.google.com','google.com','www.google.fr','google.fr'].includes(host);
       case 'bing': return ['www.bing.com','bing.com'].includes(host);
+      case 'societe_com': return ['societe.com','www.societe.com'].includes(host) && /^\/societe\/[a-z0-9-]+-\d{9}\.html\/?$/i.test(url.pathname);
+      case 'facebook': return ['facebook.com','www.facebook.com'].includes(host) && /^\/[a-z0-9.\-]+\/?$/i.test(url.pathname) && !/^\/(?:home.php|profile.php|groups|events|watch|marketplace|login|share|search|reel|stories|gaming|people|pages)\/?$/i.test(url.pathname);
+      case 'instagram': return ['instagram.com','www.instagram.com'].includes(host) && /^\/[a-z0-9._]+\/?$/i.test(url.pathname) && !/^\/(?:p|reels?|stories|accounts|explore|direct|about|developer|legal)\/?$/i.test(url.pathname);
       case 'linkedin': return ['www.linkedin.com','linkedin.com'].includes(host)
         && /^\/company\/[a-z0-9_-]+\/?/i.test(url.pathname);
     }
@@ -391,6 +394,7 @@ const deviceCandidateSchema = z.object({
   siret: z.string().regex(/^\d{14}$/).nullable().optional(),
   apeCode: z.string().regex(/^\d{2}\.\d{2}[A-Z]$/).nullable().optional(),
   nafLabel: z.string().trim().max(250).nullable().optional(),
+  apeScope: z.enum(['etablissement','unite_legale']).optional(),
   nafVersion: z.string().trim().max(32).nullable().optional(),
   collectionMode: z.enum(['manual','visible']).optional(),
   capturedAt: z.number().int().positive().optional(),
@@ -398,13 +402,21 @@ const deviceCandidateSchema = z.object({
   if (item.sourceUrl ? !validDeviceSourceUrl(item.source,item.sourceUrl) : item.source!=='pagesjaunes') {
     context.addIssue({code:'custom',path:['sourceUrl'],message:'URL de source obligatoire et conforme à la source'});
   }
+  if (item.source === 'societe_com' && item.siret && (!item.sourceUrl || !validDeviceSourceUrl('societe_com', item.sourceUrl) || !new URL(item.sourceUrl).pathname.replace(/\/$/, '').endsWith('-'+item.siret.slice(0,9)+'.html'))) {
+    context.addIssue({code:'custom',path:['siret'],message:'SIRET incohérent avec la fiche Societe.com'});
+  }
   if (!item.address.includes(item.codePostal)) {
     context.addIssue({code:'custom',path:['address'],message:'Adresse et code postal incohérents'});
   }
-  if (item.source==='linkedin' && item.collectionMode!=='manual') {
-    context.addIssue({code:'custom',path:['collectionMode'],message:'LinkedIn : saisie manuelle uniquement'});
+  if (['linkedin','societe_com','facebook','instagram'].includes(item.source) && item.collectionMode!=='manual') {
+    context.addIssue({code:'custom',path:['collectionMode'],message:'Confirmez la fiche professionnelle en saisie manuelle'});
   }
-});
+}).transform(item => ({
+  ...item,
+  ...(item.apeCode && item.apeScope ? {sourceDetails:{annuaire:{apeScope:item.apeScope}}} : {}),
+  ...(item.source === 'societe_com' && item.sourceUrl
+    ? {siren: new URL(item.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1]} : {}),
+}));
 // Une fiche incomplète n'est JAMAIS considérée comme une entreprise importable.
 // Seul un rapprochement unique à une adresse vérifiée permet de la promouvoir.
 const deviceDraftSchema = z.object({
@@ -471,16 +483,18 @@ function incomingFields(item:ImportCapture,incomplete:boolean):Partial<Record<En
     else if(item.siren)fields.siren=item.siren;
     if(/^\d{2}\.\d{2}[A-Z]$/.test(item.apeCode||'')){
       fields.apeCode=item.apeCode!;
-      if(item.nafLabel)fields.nafLabel=item.nafLabel;
+      const label = activityLabel(item.apeCode, item.nafVersion) || item.nafLabel;
+      if(label)fields.nafLabel=label;
       if(item.nafVersion)fields.nafVersion=item.nafVersion;
     }
   }
   return fields;
 }
 function sameEstablishment(record:{company:string|null;address:string|null;city:string|null;
-  phone:string|null;website:string|null;siret:string|null;sourceUrl:string|null},
+  phone:string|null;website:string|null;siren:string|null;siret:string|null;sourceUrl:string|null},
   incoming:ImportCapture,incomplete:boolean):boolean{
   const siret=!incomplete?incoming.siret:null;
+  if(incoming.siren && record.siren && incoming.siren!==record.siren)return false;
   if(siret&&record.siret&&record.siret!==siret)return false; // Deux identités juridiques contradictoires.
   if(siret&&record.siret===siret)return true;
   const profile=captureProfileUrl(incoming.sourceUrl);
@@ -588,12 +602,19 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
     const siret=!incomplete && 'siret' in item ? item.siret : null;
     const profileUrl=captureProfileUrl(item.sourceUrl);
     const where=[ilike(prospectsTable.company,item.company)];
+    const legalId = !incomplete && 'siren' in item ? item.siren : null;
+    if(legalId)where.push(eq(prospectsTable.siren,legalId));
     if(siret)where.push(eq(prospectsTable.siret,siret));
     if(profileUrl)where.push(eq(prospectsTable.sourceUrl,profileUrl));
     const prior=await db.select().from(prospectsTable).where(and(
       eq(prospectsTable.tenantId,req.auth!.tenantId),or(...where),
     )).limit(100);
     const matches=prior.filter(record=>sameEstablishment(record,item,incomplete));
+    if(!matches.length && legalId && prior.some(record=>record.siren===legalId)){
+      skipped++;
+      reviews.push({prospectId:'',company:item.company,fields:['siren'],type:'ambiguous'});
+      continue;
+    }
     if(matches.length>1){
       skipped++;reviews.push({prospectId:'',company:item.company,fields:[],type:'ambiguous'});continue;
     }
@@ -611,7 +632,7 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
       city:item.city||null,phone:item.phone||null,website:item.website||null,
       ...incomingFields(item,incomplete),
       source:item.source,sourceUrl:profileUrl,
-      sourceDetails:{browserCapture:{source:item.source,sourceUrl:item.sourceUrl,
+      sourceDetails:{...('sourceDetails' in item ? item.sourceDetails : {}),browserCapture:{source:item.source,sourceUrl:item.sourceUrl,
         incomplete,capturedAt:new Date(item.capturedAt||Date.now()).toISOString(),
         postalCodeVerified:!incomplete,localCaptureId:item.id},
         ...(incomplete?{browserDraft:{incomplete:true,source:item.source,
@@ -751,7 +772,7 @@ async function enrichDeviceDrafts(drafts: DeviceDraft[], params: GeoFilters,
 const deviceSearchSchema = z.object({
   name: z.string().trim().min(1).max(120),
   params: z.object({
-    sources: z.array(z.enum(['entreprises',...deviceSources])).min(1).max(6)
+    sources: z.array(z.enum(['entreprises',...deviceSources])).min(1).max(deviceSources.length + 1)
       .refine(items => items.some(source=>source!=='entreprises') && new Set(items).size === items.length),
     query: z.string().trim().min(3).max(120),
     regions: z.array(z.string().regex(/^\d{2}$/)).max(18).default([]),
@@ -787,11 +808,11 @@ router.post("/device/jobs", requireAuth, async (req, res) => {
     if (!matchingGeo({ code_postal: item.codePostal }, params)) continue;
     if((counts[item.source]||0)>=params.limit)continue;
     const candidate: SearchCandidate = {
-      ...item, siren: item.siret?.slice(0, 9) || "", siret: item.siret || null,
+      ...item, siren: item.siret?.slice(0, 9) || item.siren || "", siret: item.siret || null,
       city: item.city || null, phone: item.phone || null,
       website: item.website || null, sourceUrl: item.sourceUrl || null,
       source: item.source, sources: [item.source],
-      sourceDetails: {[item.source]: {
+      sourceDetails: {...item.sourceDetails, [item.source]: {
         sourceUrl:item.sourceUrl || null,
         collectionMode:item.collectionMode || (item.source==='pagesjaunes'?'browser':'visible'),
         capturedAt:new Date().toISOString(),
