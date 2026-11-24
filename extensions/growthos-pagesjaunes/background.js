@@ -396,17 +396,17 @@ async function readQueue(){
   const saved = (await chrome.storage.local.get(QUEUE_KEY))[QUEUE_KEY];
   const queue = Array.isArray(saved) ? saved : [];
   return queue.filter(item=>item && CAPTURE_SOURCES.includes(item.source)
-    && typeof item.capturedAt==='number' && Date.now()-item.capturedAt>=0 && Date.now()-item.capturedAt<AGE_LIMIT).slice(-100);
+    && typeof item.capturedAt==='number' && Date.now()-item.capturedAt>=0 && Date.now()-item.capturedAt<AGE_LIMIT);
 }
-async function storeQueue(queue){await chrome.storage.local.set({[QUEUE_KEY]:queue.slice(-100)});}
+async function storeQueue(queue){await chrome.storage.local.set({[QUEUE_KEY]:queue});}
 async function readDrafts(){
   const saved=(await chrome.storage.local.get(DRAFTS_KEY))[DRAFTS_KEY];
   return (Array.isArray(saved)?saved:[]).filter(item=>
     item && ['google_maps','google_search','bing'].includes(item.source) &&
     typeof item.capturedAt==='number' && Date.now()-item.capturedAt>=0 &&
-    Date.now()-item.capturedAt<AGE_LIMIT).slice(-75);
+    Date.now()-item.capturedAt<AGE_LIMIT);
 }
-async function storeDrafts(items){await chrome.storage.local.set({[DRAFTS_KEY]:items.slice(-75)});}
+async function storeDrafts(items){await chrome.storage.local.set({[DRAFTS_KEY]:items});}
 function sameCaptureIdentity(a,b){
   if(a.source!==b.source || normalizeBusiness(a.company)!==normalizeBusiness(b.company))return false;
   const ap=String(a.phone||'').replace(/\D/g,''),bp=String(b.phone||'').replace(/\D/g,'');
@@ -418,11 +418,20 @@ function sameCaptureIdentity(a,b){
     return left.pathname.startsWith('/maps/place/')&&left.pathname===right.pathname;
   }catch{return false;}
 }
-async function addDrafts(rawDrafts, verified=[]){
+let storageWrites=Promise.resolve();
+function withStorageWrite(operation){
+  const next=storageWrites.then(operation);
+  storageWrites=next.catch(()=>{});
+  return next;
+}
+function addDrafts(rawDrafts,verified=[]){
+  return withStorageWrite(()=>storeNewDrafts(rawDrafts,verified));
+}
+async function storeNewDrafts(rawDrafts, verified=[]){
   const queue=await readQueue();
   const drafts=(await readDrafts()).filter(d=>![...queue,...verified].some(v=>sameCaptureIdentity(d,v)));
   let draftAdded=0,draftIgnored=0;
-  for(const raw of rawDrafts.slice(0,25)){
+  for(const raw of rawDrafts){
     const source=String(raw?.source||'');
     const company=String(raw?.company||'').trim().slice(0,160);
     const sourceUrl=String(raw?.sourceUrl||'');
@@ -458,14 +467,23 @@ function validCaptured(item,manual=false,verifiedSiret=false){
   return {id:'local_'+crypto.randomUUID().replace(/-/g,'').slice(0,32),source:item.source,
     company,address,codePostal,city,phone,website:cleanUrl(item.website),sourceUrl,
     siret:verifiedSiret && /^\d{14}$/.test(String(item.siret||'')) ? item.siret : null,
+    ...(verifiedSiret && item.apeCode ? {apeCode:item.apeCode,nafLabel:item.nafLabel||null,nafVersion:item.nafVersion||null} : {}),
     collectionMode:manual?'manual':'visible',capturedAt:Date.now()};
 }
-async function addToQueue(items, manual=false, verifiedSiret=false){
+function addToQueue(items,manual=false,verifiedSiret=false){
+  return withStorageWrite(()=>storeNewCaptures(items,manual,verifiedSiret));
+}
+async function storeNewCaptures(items, manual, verifiedSiret){
   const queue=await readQueue();let added=0,ignored=0;
-  for(const raw of items.slice(0,25)){
+  for(const raw of items){
     const item=validCaptured(raw,manual,verifiedSiret);
     const key=[item.source,item.company,item.address,item.codePostal].join('|').toLocaleLowerCase('fr');
-    if(queue.some(q=>[q.source,q.company,q.address,q.codePostal].join('|').toLocaleLowerCase('fr')===key)){
+    const existing=queue.find(q=>[q.source,q.company,q.address,q.codePostal].join('|').toLocaleLowerCase('fr')===key);
+    if(existing){
+      for(const field of ['phone','website','city','siret','apeCode','nafLabel','nafVersion']){
+        if(item[field] && !existing[field] && (!existing.siret || !item.siret || existing.siret===item.siret))
+          existing[field]=item[field];
+      }
       ignored++;continue;
     }
     queue.push(item);added++;
@@ -555,7 +573,7 @@ function verifiedOfficialMatch(draft,records,postal){
         .replace(city?new RegExp(city.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'ig'):/a^/g,'').trim();
       if(streetOnly.length<6)continue;
       if(draft.address){
-        const localStreet=normalizeStreet(draft.address.replace(/\b\d{5}\b/g,''));
+        const localStreet=normalizeStreet(draft.address.split(/\b\d{5}\b/)[0]);
         const officialStreet=normalizeStreet(streetOnly);
         if(localStreet.length>=8 && !officialStreet.includes(localStreet) && !localStreet.includes(officialStreet))continue;
       }
@@ -563,21 +581,38 @@ function verifiedOfficialMatch(draft,records,postal){
       if(!/^\d{14}$/.test(siret))continue;
       const address=street.includes(postal)?street:[street,postal,city].filter(Boolean).join(' ');
       if(!address.includes(postal))continue;
-      if(!matches.some(m=>m.siret===siret))matches.push({address,codePostal:postal,city:city||null,siret});
+      if(matches.some(m=>m.siret===siret))continue;
+      const activity=site.activite_principale ? site : company;
+      const code=String(activity.activite_principale||'').toUpperCase();
+      const metadata=/^\d{2}\.\d{2}[A-Z]$/.test(code) ? {
+        apeCode:code,nafLabel:activity.libelle_activite_principale||null,
+        nafVersion:activity.nomenclature_activite_principale||null,
+      } : {};
+      matches.push({address,codePostal:postal,city:city||null,siret,...metadata});
     }
   }
   return matches.length===1?matches[0]:null;
+}
+async function lookupBusiness(draft,postal){
+  const query=draft.company;
+  const url=new URL('https://recherche-entreprises.api.gouv.fr/search');
+  url.searchParams.set('q',query);
+  url.searchParams.set('code_postal',postal);
+  url.searchParams.set('per_page','25');
+  const body=await fetchOfficialJson(url,5000);
+  if(!Array.isArray(body.results))throw new Error('Format de réponse de l’annuaire incorrect');
+  // Résultats tronqués : on ne peut plus prouver l'unicité.
+  const truncated=Number(body.total_results||0)>25||body.results.length>=25;
+  return {truncated,match:truncated?null:verifiedOfficialMatch(draft,body.results,postal)};
 }
 async function enrichLocalDrafts(payload){
   const area=String(payload?.area||'').trim();
   const codes=[...new Set(area.match(/\b\d{5}\b/g)||[])];
   if(codes.length!==1)throw new Error('Pour enrichir, saisissez un code postal unique dans le champ Zone (ex. 59100 Roubaix).');
   const postal=codes[0];
-  const drafts=await readDrafts();
+  const drafts=(await readDrafts()).filter(d=>!payload?.sourceUrl || d.sourceUrl===payload.sourceUrl);
   if(!drafts.length)return {ok:true,checked:0,added:0,already:0,pending:0,skipped:0,errors:[]};
-  const savedCursor=(await chrome.storage.local.get(ENRICH_CURSOR_KEY))[ENRICH_CURSOR_KEY];
-  const start=(Number.isInteger(savedCursor)&&savedCursor>=0?savedCursor:0)%drafts.length;
-  const batch=[...drafts.slice(start),...drafts.slice(0,start)].slice(0,12);
+  const batch=drafts;
   const matched=[];const errors=[],details=[];let fromDirectory=0,fromGeocoder=0;
   let already=0;
   for(const draft of batch){
@@ -596,19 +631,11 @@ async function enrichLocalDrafts(payload){
         errors.push(query+' : '+reason);
       }
     }
-    if(result){matched.push({...draft,...result});continue;}
+
     try{
-      const url=new URL('https://recherche-entreprises.api.gouv.fr/search');
-      url.searchParams.set('q',query);
-      url.searchParams.set('code_postal',postal);
-      url.searchParams.set('per_page','25');
-      const body=await fetchOfficialJson(url,5000);
-      if(!Array.isArray(body.results))throw new Error('Format de réponse de l’annuaire incorrect');
-      // Résultats tronqués : on ne peut plus prouver l'unicité.
-      const truncated=Number(body.total_results||0)>25||body.results.length>=25;
-      const match=truncated?null:verifiedOfficialMatch(draft,body.results,postal);
+      const {match,truncated}=await lookupBusiness(draft,postal);
       if(match){matched.push({...draft,...match});fromDirectory++;}
-      else details.push({company:query,reason:truncated?'Trop de résultats officiels : identité ambiguë':
+      else if(!result)details.push({company:query,reason:truncated?'Trop de résultats officiels : identité ambiguë':
         reason||(!visibleStreetNumber(draft.address)
           ? 'Google ne montre pas de rue numérotée ; aucun nom légal unique confirmé'
           : 'Nom commercial absent de l’annuaire ou plusieurs sociétés possibles')});
@@ -616,18 +643,18 @@ async function enrichLocalDrafts(payload){
       errors.push(query+' : '+String(error?.message||error).slice(0,90));
       details.push({company:query,reason:reason||'Annuaire indisponible : '+String(error?.message||error).slice(0,70)});
     }
+    if(result && !matched.some(item=>item.id===draft.id))matched.push({...draft,...result});
     await wait(300);
   }
   const saved=matched.length?await addToQueue(matched,false,true):{added:0,ignored:0};
   already=saved.ignored||0;
   if(saved.added||already){
     const promoted=new Set(matched.map(item=>item.id));
-    await storeDrafts((await readDrafts()).filter(draft=>!promoted.has(draft.id)));
+    await withStorageWrite(async()=>storeDrafts((await readDrafts()).filter(draft=>!promoted.has(draft.id))));
   }
-  await chrome.storage.local.set({[ENRICH_CURSOR_KEY]:(start+batch.length)%drafts.length});
   return {ok:true,checked:batch.length,added:saved.added||0,already,
     pending:batch.length-matched.length,skipped:Math.max(0,drafts.length-batch.length),
-    fromDirectory,fromGeocoder,details:details.slice(0,12),errors};
+    fromDirectory,fromGeocoder,details,errors};
 }
 // Fonction exécutée dans l'onglet Maps : ne lit que des résultats chargés dans le navigateur.
 async function readMapBusinessLinks(){
@@ -636,7 +663,9 @@ async function readMapBusinessLinks(){
   let scroller=feed;
   for(let level=0;scroller&&level<5&&scroller.scrollHeight<=scroller.clientHeight+16;level++)
     scroller=scroller.parentElement;
-  for(let page=0;page<12;page++){
+  let idle=0;
+  while(idle<4){
+    const count=links.length;
     const anchors=[...document.querySelectorAll('.Nv2PK a[href*="/maps/place/"],a.hfpxzc[href*="/maps/place/"],a[href*="/maps/place/"]')];
     for(const anchor of anchors){
       if(!anchor.getClientRects().length)continue;
@@ -648,32 +677,33 @@ async function readMapBusinessLinks(){
         seen.add(link.pathname);links.push(url);
       }catch{}
     }
-    if(!scroller || links.length>=65)break;
+    if(!scroller)break;
     const before=scroller.scrollTop;
     scroller.scrollBy({top:650,behavior:'instant'});
     await new Promise(resolve=>setTimeout(resolve,500));
-    if(page>=2 && scroller.scrollTop===before)break;
+    idle=scroller.scrollTop===before && links.length===count ? idle+1 : 0;
   }
   return links;
 }
 async function captureMapBatch(payload){
   const tabs=await chrome.tabs.query({active:true,currentWindow:true});
   const tab=tabs[0];
-  if(!tab?.id || !hostMatches('google_search',tab.url||''))
+  if(!tab?.id || !(hostMatches('google_search',tab.url)||hostMatches('google_maps',tab.url)))
     throw new Error('Ouvrez d’abord un onglet Google ou Maps, puis lancez la lecture du lot.');
   const original=new URL(tab.url);
   const query=String(payload?.query||'').trim(),area=String(payload?.area||'').trim();
-  if(query.length<3||query.length>120||!area||area.length>100)
+  const currentList=hostMatches('google_maps',tab.url) && !original.pathname.startsWith('/maps/place/');
+  if(!currentList && (query.length<3||query.length>120||area.length>100))
     throw new Error('Indiquez une activité et une zone avant la lecture automatique.');
-  const searchUrl=original.origin+'/maps/search/'+encodeURIComponent(query+' '+area);
-  const searchKey=normalizeBusiness(query)+'|'+normalizeBusiness(area);
+  const searchUrl=currentList?tab.url:original.origin+'/maps/search/'+encodeURIComponent(query+' '+area);
+  const searchKey=currentList ? searchUrl : normalizeBusiness(query)+'|'+normalizeBusiness(area);
   const tabId=tab.id;
   let state={status:'running',checked:0,total:0,added:0,errors:[],startedAt:Date.now()};
   const save=async()=>chrome.storage.local.set({[MAP_BATCH_KEY]:state});
   await save();
   const targets=new Set([searchUrl]);
   try{
-    await chrome.tabs.update(tabId,{url:searchUrl});
+    if(!currentList)await chrome.tabs.update(tabId,{url:searchUrl});
     await waitTab(tabId,20000);
     let links=[];
     // Google Maps peut dessiner les cartes après la fin du chargement HTML.
@@ -685,13 +715,14 @@ async function captureMapBatch(payload){
     if(!links.length)throw new Error('Aucun lien de fiche Maps visible : ouvrez manuellement une entreprise, puis capturez-la.');
     const savedSeen=(await chrome.storage.local.get(MAP_SEEN_KEY))[MAP_SEEN_KEY]||{};
     const done=new Set(Array.isArray(savedSeen[searchKey])?savedSeen[searchKey]:[]);
-    links=links.filter(url=>!done.has(new URL(url).pathname)).slice(0,5);
+    links=links.filter(url=>!done.has(new URL(url).pathname));
     if(!links.length)throw new Error('Toutes les fiches Maps chargées ont déjà été examinées. Faites défiler les résultats ou réinitialisez le parcours Maps.');
     state={...state,total:links.length};await save();
     for(const url of links){
+      const current=new URL((await chrome.tabs.get(tabId)).url);
+      if(current.origin!==original.origin || !current.pathname.startsWith('/maps/'))
+        throw new Error('Lecture arrêtée après un changement de page.');
       targets.add(url);
-      done.add(new URL(url).pathname);
-      await chrome.storage.local.set({[MAP_SEEN_KEY]:{...savedSeen,[searchKey]:[...done].slice(-300)}});
       try{
         await chrome.tabs.update(tabId,{url});
         await waitTab(tabId,20000);
@@ -699,15 +730,28 @@ async function captureMapBatch(payload){
         const injected=await chrome.scripting.executeScript({target:{tabId},files:['capture.js']});
         const captured=injected?.[0]?.result;
         if(!captured||captured.error)throw new Error(captured?.error||'Fiche inaccessible');
-        const verified=(captured.results||[]).filter(item=>item.source==='google_maps' &&
+        const identity=new URL(url).pathname;
+        const isTarget=item=>{try{return new URL(item.sourceUrl).pathname===identity;}catch{return false;}};
+        const verified=(captured.results||[]).filter(isTarget).filter(item=>item.source==='google_maps' &&
           item.company && item.address && item.codePostal && item.address.includes(item.codePostal));
         if(verified.length){
-          const stored=await addToQueue(verified.slice(0,1));
+          const item=verified[0];
+          let official=null;
+          try{official=(await lookupBusiness(item,item.codePostal)).match;}
+          catch{state.errors.push(item.company+' : annuaire indisponible');}
+          const stored=await addToQueue([{...item,...official}],false,Boolean(official));
           state={...state,added:state.added+stored.added};
         }else{
-          await addDrafts((captured.drafts||[]).filter(item=>item.source==='google_maps'));
-          state.errors.push('Adresse complète non affichée : fiche conservée à compléter');
+          const partial=(captured.drafts||[]).filter(item=>item.source==='google_maps' && isTarget(item));
+          if(!partial.length)throw new Error('Fiche Maps non chargée, à réessayer');
+          await addDrafts(partial);
+          if((area.match(/\b\d{5}\b/g)||[]).length===1){
+            const result=await enrichLocalDrafts({area,sourceUrl:partial[0].sourceUrl});
+            state.added+=result.added;
+          }
         }
+        done.add(new URL(url).pathname);
+        await chrome.storage.local.set({[MAP_SEEN_KEY]:{...savedSeen,[searchKey]:[...done]}});
       }catch(error){state.errors.push(String(error?.message||error).slice(0,100));}
       state={...state,checked:state.checked+1};await save();
       await wait(400);
@@ -739,13 +783,15 @@ async function popupAction(message){
   if(action==='ack-import'){
     const ids=new Set((Array.isArray(message.payload?.ids)?message.payload.ids:[])
       .filter(id=>typeof id==='string'&&id.length<=64).slice(0,50));
-    await Promise.all([storeQueue((await readQueue()).filter(item=>!ids.has(item.id))),
-      storeDrafts((await readDrafts()).filter(item=>!ids.has(item.id)))]);
+    await withStorageWrite(async()=>{
+      await storeQueue((await readQueue()).filter(item=>!ids.has(item.id)));
+      await storeDrafts((await readDrafts()).filter(item=>!ids.has(item.id)));
+    });
     return {ok:true};
   }
   if(action==='auto-capture-status'){
     const saved=(await chrome.storage.local.get(MAP_BATCH_KEY))[MAP_BATCH_KEY];
-    if(saved?.status==='running' && Date.now()-Number(saved.startedAt||0)>150000)
+    if(saved?.status==='running' && !busy)
       return {ok:true,status:{...saved,status:'interrupted',errors:[...(saved.errors||[]),
         'Lecture interrompue, vous pouvez relancer le lot.']}};
     return {ok:true,status:saved||{status:'idle',checked:0,total:0,added:0,errors:[]}};
@@ -799,13 +845,25 @@ async function popupAction(message){
     const tab=tabs[0];
     if(!tab?.id || !tab.url || !['google_maps','google_search','bing'].some(s=>hostMatches(s,tab.url)))
       throw new Error('Ouvrez un résultat Google Maps, Google Search ou Bing puis recliquez sur l’extension.');
+    const url=new URL(tab.url);
+    if(hostMatches('google_maps',tab.url) && !url.pathname.startsWith('/maps/place/')){
+      return popupAction({action:'auto-capture-maps',payload:message.payload});
+    }
     const injected=await chrome.scripting.executeScript({target:{tabId:tab.id},files:['capture.js']});
     const result=injected?.[0]?.result;
     if(!result || result.error)throw new Error(result?.error||'Page illisible');
     const stored=result.results?.length ? await addToQueue(result.results)
       : {ok:true,results:await readQueue(),added:0,ignored:0};
     const drafts=await addDrafts(result.drafts||[],stored.results||[]);
-    return {...stored,...drafts,warning:result.warning};
+    const query=url.searchParams.get('q') || message.payload?.query;
+    const area=String(message.payload?.area||'');
+    const canEnrich=result.drafts?.length && (area.match(/\b\d{5}\b/g)||[]).length===1;
+    const enrichment=canEnrich ? await enrichLocalDrafts({area,sourceUrl:tab.url}) : {added:0};
+    if(message.payload && result.source==='google_search' && result.drafts?.length && query?.length>=3){
+      const run=await popupAction({action:'auto-capture-maps',payload:{query,area:message.payload?.area}});
+      return {...run,added:stored.added+enrichment.added+run.added,draftAdded:drafts.draftAdded};
+    }
+    return {...stored,...drafts,added:stored.added+enrichment.added,warning:result.warning};
   }
   throw new Error('Action non autorisée');
 }

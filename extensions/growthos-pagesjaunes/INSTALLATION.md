@@ -1,4 +1,4 @@
-# Connecteur multisource GrowthOS — version 0.7.0
+# Connecteur multisource GrowthOS — version 0.8.0
 
 L'extension fonctionne dans **Chrome sur l'appareil de l'utilisateur** (ordinateur).
 Les images Docker de GrowthOS sont construites par GitHub Actions, pas sur le VPS.
@@ -28,7 +28,7 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 
 1. Récupérer **le dossier complet** `extensions/growthos-pagesjaunes` depuis la branche `fix/growthos-functional-redesign`, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`.
 2. Remplacer le contenu de votre dossier d'extension Chrome local (sans changer le chemin du dossier chargé dans Chrome).
-3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.7.0** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Gardez le même dossier local et évitez une deuxième installation : chaque extension Chrome possède ses propres captures locales.
+3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.8.0** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Gardez le même dossier local et évitez une deuxième installation : chaque extension Chrome possède ses propres captures locales.
 4. Garder Chrome et l'onglet `https://agile.le-publicitaire.fr` ouverts.
 5. Dans GrowthOS, ouvrir **Trouver des entreprises**, cliquer sur **Connecter cet appareil** si nécessaire, puis choisir les sources. Pour Google et Bing, le nouvel onglet doit être ouvert manuellement depuis le panneau de l'extension.
 6. Pour les fiches déjà importées depuis PagesJaunes, **Compléter depuis PagesJaunes** reste opérationnel.
@@ -37,19 +37,12 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 
 #### Lecture par lot des fiches Maps
 
-Dans un onglet `google.com`, indiquez l'activité et la zone dans l'extension puis cliquez sur **Ouvrir et lire 5 fiches Maps automatiquement**. Après ce clic explicite, le connecteur :
-
-1. Ouvre la recherche correspondante **dans l'onglet Google actuel** et récupère au maximum cinq liens de fiches Maps visibles.
-2. Ouvre successivement ces cinq fiches sur le même domaine, lit les données rendues et place les fiches à adresse complète dans la sélection locale.
-3. Enregistre un bilan consultable en rouvrant l'extension, puis revient à l'URL de départ, sauf si vous avez navigué manuellement entre-temps.
-
-La lecture peut être interrompue par Google (page non chargée, résultat non exposé, demande de vérification) et ne contourne aucune restriction du site. **Ne changez pas d'onglet pendant l'opération.** Les adresses absentes restent non confirmées.
+Dans la liste des résultats Google Maps, cliquez sur **Capturer les fiches**. Le connecteur fait défiler la liste jusqu’à ce que Maps cesse de charger des résultats, puis ouvre chaque nouvelle fiche dans l’onglet. Laissez cet onglet sur la recherche pendant la lecture. Vous pouvez rouvrir l’extension pour consulter le bilan. Un nouveau passage permet de reprendre les fiches qui ont échoué.
 
 #### Enrichissement et prospects provisoires
 
-- Dans Google Maps, **ouvrez d'abord une fiche entreprise précise** dans la liste : le panneau détaillé expose souvent l'adresse postale complète. Cliquez ensuite sur **Capturer les fiches visibles**.
 - Pour les cartes sans adresse complète, l'extension conserve le nom, le téléphone et la rue partielle réellement affichés dans **Fiches à vérifier**.
-- Saisissez un code postal unique dans le champ **Ville, département ou code postal** du popup, puis cliquez sur **Vérifier les adresses (BAN + annuaire officiel)**. L'extension recherche au plus 12 fiches par clic et essaie deux vérifications distinctes :
+- Saisissez un code postal unique dans le champ **Ville, département ou code postal** du popup, puis cliquez sur **Vérifier les adresses (BAN + annuaire officiel)**. L'extension recherche les fiches en attente et essaie deux vérifications distinctes :
   1. Si Google fournit **une rue et un numéro**, la Géoplateforme confirme leur correspondance avec une adresse de la Base Adresse Nationale (BAN). Cette méthode ne prouve pas l'identité légale et ne fournit pas de SIRET.
   2. Sinon, l'Annuaire des entreprises doit confirmer **une unique entreprise au nom correspondant exactement** et une adresse dans la zone indiquée. Ici le SIRET peut être récupéré.
   Les fiches confirmées passent dans **Sélection locale** ; aucun prospect n'est importé automatiquement. Pour les autres, ouvrez **Pourquoi certaines fiches restent à vérifier ?** afin de voir les blocages.
@@ -62,9 +55,9 @@ La lecture peut être interrompue par Google (page non chargée, résultat non e
 
 ## Données traitées
 
-**Import direct (0.7.0) :** Après la collecte, cliquez sur **Sélectionner et importer dans Prospects** dans l'extension. La page `/prospects/connecteur` lit les captures locales de cet appareil, affiche les adresses vérifiées et les fiches incomplètes, puis vous laisse confirmer au plus 25 importations. Les champs absents restent vides, les doublons sont ignorés, et les captures confirmées sont retirées de la file locale. Le module « Trouver des entreprises » reste disponible séparément pour les recherches multisources avec l'annuaire public.
+**Import direct (0.8.0) :** Après la collecte, cliquez sur **Sélectionner et importer dans Prospects** dans l'extension. La page `/prospects/connecteur` lit les captures locales de cet appareil, affiche les adresses vérifiées et les fiches incomplètes, puis vous laisse confirmer toute la sélection en un clic. Les champs absents restent vides, les doublons confirmés complètent les champs vides du CRM, et les captures confirmées sont retirées de la file locale. Le module « Trouver des entreprises » reste disponible séparément pour les recherches multisources avec l'annuaire public.
 
-**Lecture Maps :** Cliquez sur **Examiner les 5 fiches Maps suivantes** ; le connecteur mémorise les liens Maps déjà examinés pour la recherche courante et défile les résultats. S'il n'existe plus de nouveau lien chargé, il l'indique ; le bouton « Repartir du premier résultat Maps » permet une relecture volontaire. Il ne peut pas garantir que Google chargera toutes les entreprises ni obtenir un code postal absent de la fiche.
+**Lecture Maps :** Cliquez sur **Capturer les fiches** ; le connecteur mémorise les liens Maps déjà examinés pour la recherche courante et défile les résultats. S'il n'existe plus de nouveau lien chargé, il l'indique ; le bouton « Repartir du premier résultat Maps » permet une relecture volontaire. Il ne peut pas garantir que Google chargera toutes les entreprises ni obtenir un code postal absent de la fiche.
 
 Le navigateur parcourt les onglets de la fiche source : **Présentation, Horaires, Avis, Contact, INSEE**.
 Il envoie uniquement les valeurs visibles et vérifiables : coordonnées, site web, éventuels SIREN/SIRET effectivement affichés, horaires structurés par jour, note et nombre d'avis, avis clients explicitement délimités et prestations.
