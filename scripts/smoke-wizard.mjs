@@ -574,8 +574,9 @@ try {
   check(pjRepeat.status === 200 && pjRepeat.body.imported === 0 && pjRepeat.body.skipped === 1,
     "PagesJaunes : un deuxième import est reconnu comme doublon");
   const pjCrm = await request("GET", "/prospects?search=Plomberie", undefined, token);
-  const legacyPj = pjCrm.body.data?.find(row => row.company === "Plomberie Lille");
-  check(legacyPj?.source === "pagesjaunes" && legacyPj.siren === null &&
+  const legacyPj = pjCrm.body.data?.find(row => row.company === "Plomberie Lille" &&
+    String(row.sourceUrl||'').endsWith('/pros/123'));
+  check(legacyPj?.source?.split(',').includes('pagesjaunes') && legacyPj.siren === null &&
     legacyPj.sourceUrl.endsWith("/pros/123"),
     "CRM : provenance conservée et aucun identifiant légal fictif");
   const multi = await request("POST", "/sourcing/jobs", {
