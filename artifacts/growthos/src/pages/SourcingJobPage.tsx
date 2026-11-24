@@ -17,6 +17,7 @@ type SourcingJob = {
 };
 type Candidate = {
   id?: string; siren: string; source?: string; sources?: string[]; siret?: string | null; company: string | null; address: string | null;
+  apeCode?:string|null;nafLabel?:string|null;nafVersion?:string|null;
   phone?: string | null; email?: string | null; website?: string | null; sourceUrl?: string | null;
   sourceDetails?: {pagesjaunes?:{description?:string;openingHours?:string;services?:string;rating?:number;reviewCount?:number}};
   codePostal: string; city: string | null; imported: boolean; prospectId: string | null;
@@ -169,8 +170,8 @@ export default function SourcingJobPage() {
   function exportCsv() {
     if (!results.length) return;
     const lines = [
-      ['Sources', 'SIREN', 'SIRET', 'Entreprise', 'Adresse', 'Code postal', 'Ville', 'Téléphone', 'Email', 'Site web', 'Fiche source', 'Présentation', 'Horaires', 'Prestations', 'Note', 'Avis', 'Déjà importée'],
-      ...results.map(p => [(p.sources || [p.source]).filter(Boolean).join(', '), p.siren, p.siret, p.company, p.address, p.codePostal, p.city, p.phone, p.email, p.website, p.sourceUrl,
+      ['Sources', 'SIREN', 'SIRET', 'Entreprise', 'Code APE / NAF', 'Libellé NAF', 'Nomenclature', 'Adresse', 'Code postal', 'Ville', 'Téléphone', 'Email', 'Site web', 'Fiche source', 'Présentation', 'Horaires', 'Prestations', 'Note', 'Avis', 'Déjà importée'],
+      ...results.map(p => [(p.sources || [p.source]).filter(Boolean).join(', '), p.siren, p.siret, p.company, p.apeCode, p.nafLabel,p.nafVersion,p.address, p.codePostal, p.city, p.phone, p.email, p.website, p.sourceUrl,
         p.sourceDetails?.pagesjaunes?.description, p.sourceDetails?.pagesjaunes?.openingHours,p.sourceDetails?.pagesjaunes?.services,p.sourceDetails?.pagesjaunes?.rating,p.sourceDetails?.pagesjaunes?.reviewCount,p.imported ? 'Oui' : 'Non']),
     ];
     const csv = '\uFEFF' + lines.map(line => line.map(csvCell).join(';')).join('\r\n');
@@ -338,7 +339,7 @@ export default function SourcingJobPage() {
                       <th style={{ textAlign: 'left', padding: 12 }}>
                         <input aria-label="Sélectionner les entreprises à créer ou enrichir" type="checkbox" checked={allSelected} disabled={!available.length} onChange={toggleAll} />
                       </th>
-                      {['Entreprise / source', 'Adresse locale', 'Code postal', 'SIREN', 'SIRET', 'Téléphone', 'Site', 'CRM'].map(label =>
+                      {['Entreprise / source', 'Activité APE / NAF', 'Adresse locale', 'Code postal', 'SIREN', 'SIRET', 'Téléphone', 'Site', 'CRM'].map(label =>
                         <th key={label} style={{ textAlign: 'left', padding: 12 }}>{label}</th>)}
                     </tr>
                   </thead>
@@ -353,6 +354,10 @@ export default function SourcingJobPage() {
                       <td style={{ padding: 12, color: 'var(--text-primary)', fontWeight: 650 }}>
                         <Building2 size={14} style={{ display: 'inline', marginRight: 7 }}/>{candidate.company || 'Inconnue'}
                          <div className="text-xs text-teal-700 mt-1">{(candidate.sources || [candidate.source]).filter(Boolean).map(source => SOURCE_LABELS[source!]||source).join(' + ')}</div>
+                      </td>
+                      <td style={{ padding: 12, color: 'var(--text-secondary)' }}>
+                        <strong>{candidate.apeCode || '—'}</strong>
+                        {candidate.nafLabel && <div className="text-xs mt-1" title={candidate.nafLabel}>{candidate.nafLabel}</div>}
                       </td>
                       <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.address || 'Non renseignée'}</td>
                       <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.codePostal || '—'}</td>

@@ -306,6 +306,7 @@ export default function ProspectDetailPage() {
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [enrichingPagesJaunes, setEnrichingPagesJaunes] = useState(false);
+  const [enrichingActivity, setEnrichingActivity] = useState(false);
   const [lastEnrichedAt, setLastEnrichedAt] = useState<Date | null>(null);
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [convertLoading, setConvertLoading] = useState(false);
@@ -335,6 +336,18 @@ export default function ProspectDetailPage() {
     } catch (error: any) {
       toast.error(error.message || 'Enrichissement PagesJaunes impossible', {duration:10000});
     } finally {setEnrichingPagesJaunes(false);}
+  };
+
+  const enrichOfficialActivity = async () => {
+    setEnrichingActivity(true);
+    try {
+      const updated = await apiClient.post<any>(`/prospects/${id}/activity-enrich`, {});
+      setProspect(updated);
+      setForm(updated);
+      toast.success('Code APE / NAF complété depuis l’Annuaire officiel.');
+    } catch (error:any) {
+      toast.error(error.message || 'Activité officielle indisponible');
+    } finally {setEnrichingActivity(false);}
   };
 
   const fetchActivities = async () => {
@@ -540,7 +553,8 @@ export default function ProspectDetailPage() {
       captureId:string;source:string;sourceUrl?:string|null;capturedAt:string;fieldsFilled?:string[];
     }> : [];
   const conflictLabels:Record<string,string>={address:'Adresse',postalCode:'Code postal',city:'Ville',
-    phone:'Téléphone',email:'Email',website:'Site web',siret:'SIRET',siren:'SIREN'};
+    phone:'Téléphone',email:'Email',website:'Site web',siret:'SIRET',siren:'SIREN',
+    apeCode:'Code APE / NAF',nafLabel:'Libellé NAF',nafVersion:'Nomenclature'};
   const resolveConflict=async(conflictId:string,decision:'keep_existing'|'use_incoming')=>{
     try{
       const result=await apiClient.post(`/sourcing/device/prospects/${id}/resolve-conflict`,{conflictId,decision}) as {prospect:any};
@@ -708,7 +722,14 @@ export default function ProspectDetailPage() {
           <section className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex flex-wrap gap-3 justify-between items-center mb-4">
               <h2 className="font-semibold text-base flex items-center gap-2" style={{ color: 'var(--text-primary)' }}><Building2 size={17} className="text-teal-600"/>Identité de l’entreprise</h2>
-              {prospect.siren && <a href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${prospect.siren}`} target="_blank" rel="noreferrer" className="text-xs inline-flex items-center gap-1 text-teal-700 hover:underline"><ExternalLink size={12}/>Annuaire officiel</a>}
+              <div className="flex items-center gap-2 flex-wrap">
+                {(prospect.siren || prospect.siret) && <button type="button" onClick={()=>void enrichOfficialActivity()} disabled={enrichingActivity}
+                  className="text-xs inline-flex items-center gap-1 px-3 py-2 border border-teal-200 rounded-lg text-teal-700 disabled:opacity-50">
+                  {enrichingActivity ? <Loader2 size={12} className="animate-spin"/> : <RefreshCw size={12}/>}
+                  {enrichingActivity ? 'Vérification APE…' : 'Compléter l’activité (INSEE)'}
+                </button>}
+                {prospect.siren && <a href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${prospect.siren}`} target="_blank" rel="noreferrer" className="text-xs inline-flex items-center gap-1 text-teal-700 hover:underline"><ExternalLink size={12}/>Annuaire officiel</a>}
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {editing ? (
@@ -717,6 +738,9 @@ export default function ProspectDetailPage() {
                     { key: 'company', label: 'Raison sociale', maxLength: 160 },
                     { key: 'siren', label: 'SIREN (9 chiffres)', maxLength: 9 },
                     { key: 'siret', label: 'SIRET de l’établissement (14 chiffres)', maxLength: 14 },
+                    { key: 'apeCode', label: 'Code APE / NAF (ex. 43.22A)', maxLength: 6 },
+                    { key: 'nafLabel', label: 'Secteur d’activité · libellé NAF', maxLength: 250 },
+                    { key: 'nafVersion', label: 'Nomenclature (ex. NAFRev2)', maxLength: 32 },
                     { key: 'postalCode', label: 'Code postal (5 chiffres)', maxLength: 5 },
                     { key: 'city', label: 'Ville', maxLength: 120 },
                   ].map(field => <div key={field.key}>
@@ -730,6 +754,9 @@ export default function ProspectDetailPage() {
                     { key: 'company', label: 'Raison sociale', value: prospect.company },
                     { key: 'siren', label: 'SIREN', value: prospect.siren },
                     { key: 'siret', label: 'SIRET de l’établissement', value: prospect.siret },
+                    { key: 'apeCode', label: 'Code APE / NAF', value: prospect.apeCode },
+                    { key: 'nafLabel', label: 'Secteur d’activité · libellé NAF', value: prospect.nafLabel },
+                    { key: 'nafVersion', label: 'Nomenclature', value: prospect.nafVersion },
                     { key: 'postalCode', label: 'Code postal', value: prospect.postalCode },
                     { key: 'city', label: 'Ville', value: prospect.city },
                   ].map(field => <div key={field.key} className="min-w-0">
@@ -742,6 +769,9 @@ export default function ProspectDetailPage() {
                 </>
               )}
             </div>
+            {!editing && prospect.sourceDetails?.annuaire?.apeScope === 'unite_legale' && prospect.apeCode &&
+              <p className="text-xs text-amber-700 mt-3">Code APE de l’unité légale : l’activité propre à cet établissement n’a pas été confirmée.</p>}
+            {!editing && !prospect.apeCode && <p className="text-xs text-gray-500 mt-3">Code APE non communiqué par la source. Renseignez-le après vérification ou lors d’un enrichissement officiel.</p>}
             {!editing && (!prospect.siren || !prospect.siret) && <p className="text-xs text-amber-700 mt-4 bg-amber-50 rounded-lg p-2.5">Identifiant absent de cette fiche. GrowthOS ne l’invente pas : vous pouvez le renseigner après vérification.</p>}
           </section>
 

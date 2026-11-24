@@ -135,9 +135,10 @@ const companies = createServer((req, res) => {
   }
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ results: [
-    { siren: "100000001", nom_complet: "Entreprise test A", siege: { siret: "10000000100012", adresse: "10 rue Nationale, 59000 Lille", code_postal: "59000", libelle_commune: "Lille" } },
-    { siren: "100000002", nom_complet: "Entreprise test B", siege: { adresse: "Paris, France", code_postal: "75001", libelle_commune: "Paris" },
-      matching_etablissements: [{ siret: "10000000200015", adresse: "20 rue du Molinel, 59000 Lille", code_postal: "59000", libelle_commune: "Lille" }] },
+    { siren: "100000001", nom_complet: "Entreprise test A", activite_principale:"43.22A",libelle_activite_principale:"Travaux d'installation d'eau et de gaz", nomenclature_activite_principale:"NAFRev2",
+      siege: { siret: "10000000100012", adresse: "10 rue Nationale, 59000 Lille", code_postal: "59000", libelle_commune: "Lille",activite_principale:"43.22A",libelle_activite_principale:"Travaux d'installation d'eau et de gaz",nomenclature_activite_principale:"NAFRev2" } },
+    { siren: "100000002", nom_complet: "Entreprise test B", activite_principale:"70.10Z",libelle_activite_principale:"Activités des sièges sociaux",siege: { adresse: "Paris, France", code_postal: "75001", libelle_commune: "Paris" },
+      matching_etablissements: [{ siret: "10000000200015", adresse: "20 rue du Molinel, 59000 Lille", code_postal: "59000", libelle_commune: "Lille",activite_principale:"43.21A",libelle_activite_principale:"Travaux d'installation électrique",nomenclature_activite_principale:"NAFRev2" }] },
     { siren: "100000003", nom_complet: "Entreprise hors zone", siege: { adresse: "Paris, France", code_postal: "75001", libelle_commune: "Paris" } },
     { siren: "100000004", nom_complet: "Entreprise Roubaix", siege: { siret: "10000000400018", adresse: "4 rue de Roubaix, 59100 Roubaix", code_postal: "59100", libelle_commune: "Roubaix" } },
   ] }));
@@ -280,6 +281,9 @@ try {
   check(results.status === 200 && results.body.total === 2 &&
     results.body.data.every(r => r.codePostal === "59000" && !r.address.includes("Paris")),
     "Géographie stricte : le siège parisien est remplacé par son établissement lillois");
+  check(results.body.data.find(r => r.siren === '100000002')?.apeCode === '43.21A' &&
+    results.body.data.find(r => r.siren === '100000001')?.nafLabel?.includes('eau et de gaz'),
+    'Annuaire : code APE et libellé NAF de l’établissement local transmis au sourcing');
   const multipleZones = await request("POST", "/sourcing/jobs", {
     type: "entreprises", name: "Lille et Roubaix", params: {
       query: "plombier", regions: ["32"], departements: ["59", "62"], codesPostaux: ["59000", "59100"], limit: 5,
@@ -323,6 +327,28 @@ try {
   check(crm.status === 200 && crm.body.total === 2 &&
     crm.body.data.some(p => p.siren === "100000001" && p.siret === "10000000100012" && p.postalCode === "59000" && p.city === "Lille"),
     "Les prospects importés conservent leur SIREN, SIRET, code postal et ville");
+  check(crm.body.data.some(p=>p.siren==='100000001' && p.apeCode==='43.22A' && p.nafLabel?.includes('eau et de gaz')) &&
+    crm.body.data.some(p=>p.siren==='100000002' && p.apeCode==='43.21A' && p.nafLabel?.includes('électrique')),
+    'APE et libellé NAF enregistrés sur chaque prospect, sans confondre siège et établissement');
+  const filteredActivity = await request('GET','/prospects?apeCode=43.21&sortBy=apeCode&sortDir=asc',undefined,token);
+  const activityLabel = await request('GET','/prospects?activitySearch=%C3%A9lectrique',undefined,token);
+  check(filteredActivity.status===200 && filteredActivity.body.total===1 && filteredActivity.body.data[0].siren==='100000002' &&
+    activityLabel.status===200 && activityLabel.body.total===1,
+    'Filtrage serveur des prospects par code APE partiel et libellé d’activité');
+  const orderedActivities = await request('GET','/prospects?apeCode=43&sortBy=apeCode&sortDir=asc',undefined,token);
+  check(orderedActivities.status===200 && orderedActivities.body.total===2 &&
+    orderedActivities.body.data.map(p=>p.apeCode).join(',')==='43.21A,43.22A',
+    'Tri croissant des codes APE réellement effectué en base');
+  const legacyActivityId = crm.body.data.find(p=>p.siren==='100000001').id;
+  const clearedActivity = await request('PATCH',`/prospects/${legacyActivityId}`,{
+    apeCode:'',nafLabel:'',nafVersion:''},token);
+  const refreshedActivity = await request('POST',`/prospects/${legacyActivityId}/activity-enrich`,{},token);
+  check(clearedActivity.status===200 && refreshedActivity.status===200 &&
+    refreshedActivity.body.apeCode==='43.22A' && refreshedActivity.body.nafLabel?.includes('eau et de gaz') &&
+    refreshedActivity.body.sourceDetails?.annuaire?.apeScope==='etablissement',
+    'Une ancienne fiche sans APE peut récupérer le code et le libellé de son établissement officiel');
+  check((await request('PATCH',`/prospects/${legacyActivityId}`,{apeCode:'code inventé'},token)).status===400,
+    'Un faux code APE est refusé par la validation serveur');
   const noMockActivity = await request("GET", `/activities?prospectId=${crm.body.data[0].id}`, undefined, token);
   check(noMockActivity.status === 200 && noMockActivity.body.length === 0,
     "Une fiche prospect importée démarre sans activités ni commentaires");

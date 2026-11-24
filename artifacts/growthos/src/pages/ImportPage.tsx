@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 interface ParsedRow {
   firstName: string; lastName: string; email: string;
   company: string; phone: string; linkedin: string; status: string;
+  apeCode:string;nafLabel:string;nafVersion:string;
   _valid: boolean; _errors: string[]; _duplicate?: boolean;
 }
 
@@ -45,6 +46,9 @@ function parseCSV(text: string): ParsedRow[] {
     phone: ['téléphone','telephone','phone','tel','mobile'],
     linkedin: ['linkedin','profil linkedin','linkedin url'],
     status: ['statut','status','étape'],
+    apeCode: ['code ape / naf','code ape','code naf','ape','naf','ape_code'],
+    nafLabel: ['libellé naf','libelle naf','libellé activité','libelle activite','secteur d’activité','secteur d activite'],
+    nafVersion: ['nomenclature','naf version','naf_version'],
   };
   const colMap: Record<string,number> = {};
   for (const [name, aliases] of Object.entries(map)) {
@@ -64,17 +68,21 @@ function parseCSV(text: string): ParsedRow[] {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('Email invalide');
     if (!firstName && !lastName) errors.push('Nom manquant');
     if (!allowed.has(status)) errors.push('Statut invalide');
+    const apeCode=get(cells,'apeCode').toUpperCase();
+    if (apeCode && !/^\d{2}\.\d{2}[A-Z]$/.test(apeCode)) errors.push('Code APE / NAF invalide');
     return { firstName, lastName, email, company:get(cells,'company'),
       phone:get(cells,'phone'), linkedin:get(cells,'linkedin'), status,
+      apeCode,nafLabel:get(cells,'nafLabel'),nafVersion:get(cells,'nafVersion'),
       _valid: errors.length === 0, _errors: errors };
   });
 }
 
-const SAMPLE_CSV = `prénom,nom,email,entreprise,téléphone,statut
-Alice,Durand,alice.growthos@example.com,Entreprise Test A,,new
-Bob,Martin,bob.growthos@example.com,Entreprise Test B,,contacted
-Alice,Durand,alice.growthos@example.com,Entreprise Test A,,new
-Erreur,Email,adresse-invalide,Entreprise Test,,new`;
+const SAMPLE_CSV = `prénom,nom,email,entreprise,téléphone,statut,code ape / naf,libellé naf,nomenclature
+Alice,Durand,alice.growthos@example.com,Entreprise Test A,,new,43.22A,Travaux d'installation d'eau et de gaz,NAFRev2
+Bob,Martin,bob.growthos@example.com,Entreprise Test B,,contacted,,,
+Alice,Durand,alice.growthos@example.com,Entreprise Test A,,new,43.22A,Travaux d'installation d'eau et de gaz,NAFRev2
+Erreur,Email,adresse-invalide,Entreprise Test,,new,,,
+`;
 
 type Step = 'upload'|'preview'|'mapping'|'importing'|'done';
 
@@ -135,6 +143,7 @@ export default function ImportPage() {
           prospects: validRows.map(r => ({
             firstName:r.firstName, lastName:r.lastName, email:r.email,
             company:r.company, phone:r.phone, status:r.status,
+            apeCode:r.apeCode,nafLabel:r.nafLabel,nafVersion:r.nafVersion,
           })),
           duplicateMode,
         },
@@ -376,7 +385,7 @@ export default function ImportPage() {
             <div style={{ fontSize:12, fontWeight:700, color:'var(--text-muted)', marginBottom:12, textTransform:'uppercase', letterSpacing:'0.05em' }}>Format attendu</div>
             <div style={{ fontSize:12, color:'var(--text-secondary)', lineHeight:1.8 }}>
               <p style={{ margin:'0 0 6px', fontWeight:600, color:'var(--text-primary)' }}>Colonnes reconnues :</p>
-              {[['prénom / firstname','✓ Prénom'],['nom / lastname','✓ Nom'],['email / mail','✓ Email (requis)'],['entreprise / company','✓ Entreprise'],['téléphone / phone','✓ Téléphone'],['linkedin','✓ LinkedIn URL'],['statut / status','✓ Statut CRM']].map(([k,v])=>(
+              {[['prénom / firstname','✓ Prénom'],['nom / lastname','✓ Nom'],['email / mail','✓ Email (requis)'],['entreprise / company','✓ Entreprise'],['téléphone / phone','✓ Téléphone'],['linkedin','✓ LinkedIn URL'],['statut / status','✓ Statut CRM'],['code ape / naf','✓ Code activité'],['libellé naf','✓ Activité'],['nomenclature','✓ Version NAF']].map(([k,v])=>(
                 <div key={k} style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
                   <code style={{ fontSize:11, color:'var(--color-primary)' }}>{k}</code>
                   <span style={{ fontSize:11, color:'#059669', fontWeight:500 }}>{v}</span>

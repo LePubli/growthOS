@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { prospectsTable } from "@workspace/db";
-import { eq, and, or, ilike, desc, count, isNull, isNotNull, inArray, sql } from "drizzle-orm";
+import { eq, and, or, ilike, asc, desc, count, isNull, isNotNull, inArray, sql } from "drizzle-orm";
 
 import { actionLogger } from "../../lib/ActionLogger";
 
@@ -49,6 +49,9 @@ const prospectSchema = z.object({
   company: z.string().optional(),
   siren: z.string().regex(/^\d{9}$/).optional().or(z.literal("")),
   siret: z.string().regex(/^\d{14}$/).optional().or(z.literal("")),
+  apeCode: z.string().trim().toUpperCase().regex(/^\d{2}\.\d{2}[A-Z]$/).optional().or(z.literal("")),
+  nafLabel: z.string().trim().max(250).optional(),
+  nafVersion: z.string().trim().max(32).optional(),
   postalCode: z.string().regex(/^\d{5}$/).optional().or(z.literal("")),
   city: z.string().max(120).optional(),
   linkedinUrl: z.string().optional(),
@@ -65,7 +68,7 @@ const prospectSchema = z.object({
 /* ─── Routes ─── */
 
 router.get("/", async (req, res) => {
-  const { search, status, page = "1", limit = "50", geo, noGeo } = req.query as Record<string, string>;
+  const { search, status, page = "1", limit = "50", geo, noGeo, apeCode, activitySearch, sortBy, sortDir } = req.query as Record<string, string>;
   const tenantId = req.auth!.tenantId;
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -79,8 +82,12 @@ router.get("/", async (req, res) => {
       ilike(prospectsTable.lastName, `%${search}%`),
       ilike(prospectsTable.email, `%${search}%`),
       ilike(prospectsTable.company, `%${search}%`),
+      ilike(prospectsTable.apeCode, `%${search}%`),
+      ilike(prospectsTable.nafLabel, `%${search}%`),
     )!);
   }
+  if (apeCode?.trim()) conditions.push(ilike(prospectsTable.apeCode, `${apeCode.trim()}%`));
+  if (activitySearch?.trim()) conditions.push(ilike(prospectsTable.nafLabel, `%${activitySearch.trim()}%`));
   // ?noGeo=true → only prospects with an address but no coordinates yet
   if (noGeo === "true") {
     conditions.push(isNotNull(prospectsTable.address));
@@ -89,8 +96,17 @@ router.get("/", async (req, res) => {
 
   const where = and(...conditions);
 
+  const sortColumns = {
+    createdAt: prospectsTable.createdAt,
+    company: prospectsTable.company,
+    apeCode: prospectsTable.apeCode,
+    nafLabel: prospectsTable.nafLabel,
+  } as const;
+  const sortColumn = sortColumns[(sortBy || 'createdAt') as keyof typeof sortColumns] || prospectsTable.createdAt;
+  const ordering = sortDir === 'asc' ? asc(sortColumn) : desc(sortColumn);
   const rows = await db.select().from(prospectsTable).where(where)
-    .orderBy(desc(prospectsTable.createdAt)).limit(parseInt(limit)).offset(offset);
+    .orderBy(ordering, desc(prospectsTable.createdAt), desc(prospectsTable.id))
+    .limit(parseInt(limit)).offset(offset);
   const [{ total }] = await db.select({ total: count() }).from(prospectsTable).where(where);
 
   // When ?geo=1 is requested, also return a geoOnly list (prospects with coords, up to 500)
@@ -145,6 +161,61 @@ router.get("/:id", async (req, res) => {
   res.json(prospect);
 });
 
+// Complète une ancienne fiche (ou une fiche PagesJaunes) via un SIREN/SIRET
+// existant. Jamais d'attribution d'activité par simple proximité de nom.
+router.post('/:id/activity-enrich', async (req, res) => {
+  const [prospect] = await db.select().from(prospectsTable).where(and(
+    eq(prospectsTable.id, String(req.params.id)),
+    eq(prospectsTable.tenantId, req.auth!.tenantId),
+  )).limit(1);
+  if (!prospect) { res.status(404).json({ error: 'Prospect introuvable' }); return; }
+  const siren = /^\d{9}$/.test(prospect.siren || '') ? prospect.siren! :
+    /^\d{14}$/.test(prospect.siret || '') ? prospect.siret!.slice(0, 9) : null;
+  if (!siren) { res.status(422).json({ error: 'Un SIREN ou SIRET vérifié est nécessaire pour identifier l’activité.' }); return; }
+
+  try {
+    const url = new URL(process.env.COMPANY_DIRECTORY_API_URL || 'https://recherche-entreprises.api.gouv.fr/search');
+    url.searchParams.set('q', siren);
+    url.searchParams.set('per_page', '10');
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': 'GrowthOS/1.0 (public company directory)' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error(`Annuaire HTTP ${response.status}`);
+    type ActivityRecord = { siren?:string; activite_principale?:string;libelle_activite_principale?:string;
+      nomenclature_activite_principale?:string; siege?:ActivityLocation; matching_etablissements?:ActivityLocation[] };
+    type ActivityLocation = { siret?:string;activite_principale?:string;libelle_activite_principale?:string;nomenclature_activite_principale?:string };
+    const json = await response.json() as {results?:ActivityRecord[]};
+    const legal = json.results?.find(item => item.siren === siren);
+    if (!legal) { res.status(404).json({ error: 'Entreprise introuvable dans l’Annuaire officiel.' }); return; }
+    const location = prospect.siret ? [...(legal.matching_etablissements||[]),...(legal.siege?[legal.siege]:[])]
+      .find(item => item.siret === prospect.siret && item.activite_principale) : undefined;
+    const value = location || legal;
+    const apeCode = String(value.activite_principale || '').trim().toUpperCase();
+    if (!/^\d{2}\.\d{2}[A-Z]$/.test(apeCode)) {
+      res.status(404).json({ error: 'L’Annuaire ne fournit pas de code APE vérifiable pour cet établissement.' }); return;
+    }
+    if (prospect.apeCode && prospect.apeCode !== apeCode) {
+      res.status(409).json({error:'Code APE différent de la fiche actuelle : vérifiez manuellement avant de remplacer.',
+        existing:prospect.apeCode,incoming:apeCode});return;
+    }
+    const previous = (prospect.sourceDetails || {}) as Record<string,unknown>;
+    const previousDirectory = previous.annuaire && typeof previous.annuaire === 'object' ?
+      previous.annuaire as Record<string,unknown> : {};
+    const [updated] = await db.update(prospectsTable).set({
+      apeCode,
+      nafLabel:prospect.nafLabel || value.libelle_activite_principale?.trim() || null,
+      nafVersion:prospect.nafVersion || value.nomenclature_activite_principale?.trim() || null,
+      sourceDetails:{...previous,annuaire:{...previousDirectory,
+        apeScope:location?'etablissement':'unite_legale',activityVerifiedAt:new Date().toISOString()}},
+      updatedAt:new Date(),
+    }).where(and(eq(prospectsTable.id,prospect.id),eq(prospectsTable.tenantId,req.auth!.tenantId))).returning();
+    res.json(updated);
+  } catch {
+    res.status(502).json({ error:'Impossible de consulter l’Annuaire officiel pour le moment.' });
+  }
+});
+
 router.post("/", async (req, res) => {
   const parse = prospectSchema.safeParse(req.body);
   if (!parse.success) {
@@ -152,7 +223,7 @@ router.post("/", async (req, res) => {
     return;
   }
   const { email, address, lat, lng, ...rest } = parse.data;
-  for (const key of ['siren', 'siret', 'postalCode'] as const) {
+  for (const key of ['siren', 'siret', 'postalCode', 'apeCode'] as const) {
     if (rest[key] === '') rest[key] = null as never;
   }
 
@@ -198,6 +269,9 @@ router.post("/bulk", async (req, res) => {
     company: p.company?.trim() || null,
     jobTitle: p.jobTitle?.trim() || null,
     website: p.website?.trim() || null,
+    apeCode: p.apeCode?.trim() || null,
+    nafLabel: p.nafLabel?.trim() || null,
+    nafVersion: p.nafVersion?.trim() || null,
     address: p.address?.trim() || null,
     lat: p.lat ?? null,
     lng: p.lng ?? null,
@@ -248,6 +322,10 @@ router.post("/bulk", async (req, res) => {
         firstName: data.firstName, lastName: data.lastName, phone: data.phone,
         company: data.company, jobTitle: data.jobTitle, website: data.website,
         address: data.address, lat: data.lat, lng: data.lng, status: data.status,
+        // Un CSV incomplet ne doit pas effacer une activité APE/NAF déjà fiable.
+        ...(data.apeCode ? { apeCode: data.apeCode } : {}),
+        ...(data.nafLabel ? { nafLabel: data.nafLabel } : {}),
+        ...(data.nafVersion ? { nafVersion: data.nafVersion } : {}),
         updatedAt: new Date(),
       }).where(and(eq(prospectsTable.id, id), eq(prospectsTable.tenantId, tenantId)));
     }
@@ -281,7 +359,7 @@ router.patch("/:id", async (req, res) => {
   }
   const { email, address, lat, lng, ...rest } = parse.data;
   const updateData: any = { ...rest, updatedAt: new Date() };
-  for (const key of ["siren", "siret", "postalCode"] as const) {
+  for (const key of ["siren", "siret", "postalCode", "apeCode"] as const) {
     if (updateData[key] === "") updateData[key] = null;
   }
   if (email !== undefined) updateData.email = email || null;

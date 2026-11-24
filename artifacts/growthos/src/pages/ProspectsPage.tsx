@@ -22,7 +22,7 @@ const STATUS_COLORS: Record<string,string> = {
 };
 
 function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void }) {
-  const [form, setForm] = useState({ firstName:'', lastName:'', email:'', phone:'', company:'', jobTitle:'', website:'', address:'', status:'new' });
+  const [form, setForm] = useState({ firstName:'', lastName:'', email:'', phone:'', company:'', jobTitle:'', website:'', address:'', status:'new', apeCode:'', nafLabel:'', nafVersion:'' });
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string|null>(null);
@@ -46,8 +46,8 @@ function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void })
           <button onClick={onClose}><X className="w-5 h-5 text-gray-400"/></button>
         </div>
         <div className="grid grid-cols-2 gap-3 mb-4">
-          {[{k:'firstName',l:'Prénom'},{k:'lastName',l:'Nom'},{k:'email',l:'Email'},{k:'phone',l:'Téléphone'},{k:'company',l:'Entreprise'},{k:'jobTitle',l:'Poste'},{k:'website',l:'Site web'}].map(f=>(
-            <div key={f.k} className={f.k==='website'?'col-span-2':''}>
+          {[{k:'firstName',l:'Prénom'},{k:'lastName',l:'Nom'},{k:'email',l:'Email'},{k:'phone',l:'Téléphone'},{k:'company',l:'Entreprise'},{k:'jobTitle',l:'Poste'},{k:'website',l:'Site web'},{k:'apeCode',l:'Code APE / NAF'},{k:'nafLabel',l:'Libellé d’activité NAF'},{k:'nafVersion',l:'Nomenclature'}].map(f=>(
+            <div key={f.k} className={['website','nafLabel'].includes(f.k)?'col-span-2':''}>
               <label className="block text-xs font-medium text-gray-500 mb-1">{f.l}</label>
               <input value={(form as any)[f.k]} onChange={e=>set(f.k,e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
             </div>
@@ -116,6 +116,10 @@ export default function ProspectsPage() {
   const [status, setStatus] = useState('all');
   const [noGeo, setNoGeo] = useState(false);
   const [search, setSearch] = useState('');
+  const [apeFilter, setApeFilter] = useState('');
+  const [activitySearch, setActivitySearch] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDir, setSortDir] = useState('desc');
   const [showCreate, setShowCreate] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -130,6 +134,10 @@ export default function ProspectsPage() {
       const params: Record<string,string> = { page: String(page), limit: '50' };
       if (status !== 'all') params.status = status;
       if (search) params.search = search;
+      if (apeFilter.trim()) params.apeCode = apeFilter.trim();
+      if (activitySearch.trim()) params.activitySearch = activitySearch.trim();
+      params.sortBy = sortBy;
+      params.sortDir = sortDir;
       if (noGeo) params.noGeo = 'true';
       const result = await apiClient.get('/prospects', { params });
       const data = Array.isArray(result) ? result : (result as any).data || [];
@@ -143,8 +151,8 @@ export default function ProspectsPage() {
     window.addEventListener('growthos:nouveau', onNouveau);
     return () => window.removeEventListener('growthos:nouveau', onNouveau);
   }, []);
-  useEffect(()=>{ fetchProspects(); },[status, page, noGeo]);
-  useEffect(()=>{ const t=setTimeout(fetchProspects,400); return()=>clearTimeout(t); },[search]);
+  useEffect(()=>{ fetchProspects(); },[status, page, noGeo, sortBy, sortDir]);
+  useEffect(()=>{ const t=setTimeout(fetchProspects,400); return()=>clearTimeout(t); },[search,apeFilter,activitySearch]);
 
   const geocodeAll = async () => {
     const targets = prospects.filter(p => p.address && !p.lat);
@@ -186,12 +194,16 @@ export default function ProspectsPage() {
   const clearSelection = () => setSelected(new Set());
 
   const exportCSV = () => {
-    const headers = ['Prénom','Nom','Email','Téléphone','Entreprise','Poste','Site','Statut','Score'];
+    const headers = ['Prénom','Nom','Email','Téléphone','Entreprise','Poste','Site','Code APE / NAF','Libellé NAF','Nomenclature','Statut','Score'];
     const rows = prospects.map(p => [
       p.firstName||'', p.lastName||'', p.email||'', p.phone||'',
-      p.company||'', p.jobTitle||'', p.website||'', p.status||'', p.score||0,
+      p.company||'', p.jobTitle||'', p.website||'', p.apeCode||'', p.nafLabel||'', p.nafVersion||'', p.status||'', p.score||0,
     ]);
-    const csv = [headers, ...rows].map(r => r.map((v: any) => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const csv = [headers, ...rows].map(r => r.map((v: any) => {
+      const raw = String(v);
+      const safe = /^[\s]*[=+\-@]/.test(raw) ? "'" + raw : raw;
+      return `"${safe.replace(/"/g,'""')}"`;
+    }).join(',')).join('\n');
     const blob = new Blob(['\uFEFF'+csv], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -335,8 +347,36 @@ export default function ProspectsPage() {
       {/* Recherche */}
       <div className="relative mb-4 max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher par nom, email, entreprise..."
+        <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="Nom, entreprise, email, activité…"
           className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+      </div>
+      <div className="flex gap-2 mb-5 flex-wrap items-end" aria-label="Filtres par secteur d’activité">
+        <label className="text-xs text-gray-600 flex flex-col gap-1">
+          Code APE / NAF (préfixe accepté)
+          <input value={apeFilter} onChange={e=>{setApeFilter(e.target.value);setPage(1);}}
+            placeholder="Ex. 43 ou 43.22A" className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-48"/>
+        </label>
+        <label className="text-xs text-gray-600 flex flex-col gap-1">
+          Activité / libellé NAF
+          <input value={activitySearch} onChange={e=>{setActivitySearch(e.target.value);setPage(1);}}
+            placeholder="Ex. plomberie" className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-56"/>
+        </label>
+        <label className="text-xs text-gray-600 flex flex-col gap-1">
+          Trier par
+          <select value={sortBy} onChange={e=>{setSortBy(e.target.value);setPage(1);}} className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
+            <option value="createdAt">Date d’ajout</option>
+            <option value="company">Entreprise</option>
+            <option value="apeCode">Code APE / NAF</option>
+            <option value="nafLabel">Libellé NAF</option>
+          </select>
+        </label>
+        <label className="text-xs text-gray-600 flex flex-col gap-1">
+          Ordre
+          <select value={sortDir} onChange={e=>{setSortDir(e.target.value);setPage(1);}} className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
+            <option value="asc">Croissant</option><option value="desc">Décroissant</option>
+          </select>
+        </label>
+        {(apeFilter || activitySearch) && <button onClick={()=>{setApeFilter('');setActivitySearch('');setPage(1);}} className="text-sm text-teal-700 px-2 py-2.5">Effacer les filtres</button>}
       </div>
 
       {/* Bulk action bar */}
@@ -360,7 +400,7 @@ export default function ProspectsPage() {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -373,19 +413,19 @@ export default function ProspectsPage() {
                     : <Square className="w-4 h-4 text-gray-300"/>}
                 </button>
               </th>
-              {['','Nom','Entreprise','Email / Tél','Statut','Score','Actions'].map(h=>(
+              {['','Nom','Entreprise','APE / NAF','Email / Tél','Statut','Score','Actions'].map(h=>(
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading && prospects.length===0 && (
-              <tr><td colSpan={8} className="text-center py-16">
+              <tr><td colSpan={9} className="text-center py-16">
                 <Loader2 className="w-8 h-8 animate-spin text-teal-600 mx-auto"/>
               </td></tr>
             )}
             {!loading && prospects.length===0 && (
-              <tr><td colSpan={8} className="text-center py-16">
+              <tr><td colSpan={9} className="text-center py-16">
                 <Building2 className="w-10 h-10 text-gray-200 mx-auto mb-3"/>
                 <p className="text-gray-400">Aucun prospect</p>
                 <div className="flex gap-3 justify-center mt-3">
@@ -422,6 +462,10 @@ export default function ProspectsPage() {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-700">{p.company||'—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700 max-w-56">
+                  <div className="font-semibold text-teal-700">{p.apeCode || '—'}</div>
+                  {p.nafLabel && <div className="text-xs text-gray-500 truncate" title={p.nafLabel}>{p.nafLabel}</div>}
+                </td>
                 <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
                   <div className="flex flex-col gap-0.5">
                     {p.email && <a href={`mailto:${p.email}`} className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700"><Mail className="w-3 h-3"/>{p.email}</a>}

@@ -56,6 +56,9 @@ type DirectoryAddress = {
   siret?: string;
   code_departement?: string;
   code_region?: string;
+  activite_principale?: string;
+  libelle_activite_principale?: string;
+  nomenclature_activite_principale?: string;
 };
 type CompanyRecord = {
   siren?: string;
@@ -63,6 +66,9 @@ type CompanyRecord = {
   nom_raison_sociale?: string;
   siege?: DirectoryAddress;
   matching_etablissements?: DirectoryAddress[];
+  activite_principale?: string;
+  libelle_activite_principale?: string;
+  nomenclature_activite_principale?: string;
 };
 type SearchCandidate = {
   id?: string; // Identifiant de source, utile sans SIREN
@@ -70,6 +76,9 @@ type SearchCandidate = {
   sources?: string[];
   siren: string;
   siret: string | null;
+  apeCode?: string | null;
+  nafLabel?: string | null;
+  nafVersion?: string | null;
   company: string;
   address: string | null;
   codePostal: string;
@@ -140,6 +149,12 @@ async function searchFrenchCompanies(params: GeoFilters, timeoutMs = 15000): Pro
       .find(est => matchingGeo(est, params));
     if (!local) continue;
     seen.add(siren);
+    // L'établissement local peut exercer une activité différente du siège.
+    // La donnée de l'unité légale n'est utilisée qu'en repli, avec sa provenance.
+    const establishmentApe = local.activite_principale?.trim();
+    const rawApe = establishmentApe || result.activite_principale?.trim() || '';
+    const apeCode = /^\d{2}\.\d{2}[A-Z]$/.test(rawApe.toUpperCase()) ? rawApe.toUpperCase() : null;
+    const activitySource = establishmentApe ? local : result;
     found.push({
       siren,
       siret: /^\d{14}$/.test(local.siret || "") ? local.siret! : null,
@@ -147,6 +162,10 @@ async function searchFrenchCompanies(params: GeoFilters, timeoutMs = 15000): Pro
       address: local.adresse?.trim() || null,
       codePostal: local.code_postal!,
       city: local.libelle_commune?.trim() || null,
+      apeCode,
+      nafLabel: apeCode ? activitySource.libelle_activite_principale?.trim() || null : null,
+      nafVersion: apeCode ? activitySource.nomenclature_activite_principale?.trim() || null : null,
+      sourceDetails: apeCode ? {annuaire:{apeScope:establishmentApe?'etablissement':'unite_legale'}} : null,
     });
     if (found.length >= params.limit) break;
   }
@@ -234,6 +253,12 @@ function mergeCompany(target: SearchCandidate, other: SearchCandidate): void {
   target.phone ||= other.phone;
   target.email ||= other.email;
   target.website ||= other.website;
+  const matchingActivity = !target.apeCode || !other.apeCode || target.apeCode === other.apeCode;
+  target.apeCode ||= other.apeCode;
+  if (matchingActivity) {
+    target.nafLabel ||= other.nafLabel;
+    target.nafVersion ||= other.nafVersion;
+  }
   // Une fiche PagesJaunes détaillée doit rester accessible même si Google/Bing
   // a été capturé en premier. Les URLs de toutes les sources restent dans sourceDetails.
   if(other.source==='pagesjaunes' && other.sourceUrl)target.sourceUrl=other.sourceUrl;
@@ -402,14 +427,15 @@ type ImportCapture = {
   id:string;source:string;company:string;address?:string|null;codePostal?:string|null;
   city?:string|null;phone?:string|null;email?:string|null;website?:string|null;siret?:string|null;
   siren?:string|null;sourceUrl?:string|null;capturedAt?:number;
+  apeCode?:string|null;nafLabel?:string|null;nafVersion?:string|null;
   sourceDetails?:Record<string,unknown>|null;
 };
-type EnrichmentField = 'address'|'postalCode'|'city'|'phone'|'email'|'website'|'siret'|'siren';
+type EnrichmentField = 'address'|'postalCode'|'city'|'phone'|'email'|'website'|'siret'|'siren'|'apeCode'|'nafLabel'|'nafVersion';
 type EnrichmentConflict = {
   id:string;field:EnrichmentField;existing:string;incoming:string;
   source:string;sourceUrl:string|null;capturedAt:string;
 };
-const FIELDS:EnrichmentField[]=['address','postalCode','city','phone','email','website','siret','siren'];
+const FIELDS:EnrichmentField[]=['address','postalCode','city','phone','email','website','siret','siren','apeCode','nafLabel','nafVersion'];
 const stringOrEmpty=(value:unknown)=>typeof value==='string'?value.trim():'';
 function normalizedField(field:EnrichmentField,value:unknown):string{
   const raw=stringOrEmpty(value);
@@ -440,6 +466,11 @@ function incomingFields(item:ImportCapture,incomplete:boolean):Partial<Record<En
     if(item.codePostal)fields.postalCode=item.codePostal;
     if(item.siret){fields.siret=item.siret;fields.siren=item.siren||item.siret.slice(0,9);}
     else if(item.siren)fields.siren=item.siren;
+    if(/^\d{2}\.\d{2}[A-Z]$/.test(item.apeCode||'')){
+      fields.apeCode=item.apeCode!;
+      if(item.nafLabel)fields.nafLabel=item.nafLabel;
+      if(item.nafVersion)fields.nafVersion=item.nafVersion;
+    }
   }
   return fields;
 }
@@ -1215,6 +1246,7 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
         || (candidate.source==='entreprises'?'annuaire-entreprises':candidate.source||'annuaire-entreprises'),
       company:candidate.company,address:candidate.address,codePostal:candidate.codePostal,
       city:candidate.city,phone:candidate.phone,email:candidate.email,website:candidate.website,
+      apeCode:candidate.apeCode,nafLabel:candidate.nafLabel,nafVersion:candidate.nafVersion,
       siren:/^\d{9}$/.test(candidate.siren)?candidate.siren:null,
       siret:candidate.siret,sourceUrl:candidate.sourceUrl,sourceDetails:candidate.sourceDetails,
     };
@@ -1245,6 +1277,9 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
       phone: candidate.phone || null,
       email: candidate.email || null,
       website: candidate.website || null,
+      apeCode: candidate.apeCode || null,
+      nafLabel: candidate.nafLabel || null,
+      nafVersion: candidate.nafVersion || null,
       sourceDetails: candidate.sourceDetails || {},
       source: candidate.sources?.map(item => item === "entreprises" ? "annuaire-entreprises" : item).join(",")
         || (candidate.source === "pagesjaunes" || job.type === "pagesjaunes" ? "pagesjaunes" : "annuaire-entreprises"),
