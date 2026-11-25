@@ -24,7 +24,7 @@ Cette fusion fonctionne également lorsqu'une recherche multisource est importé
 6. Ouvrir [GrowthOS – Trouver des entreprises](https://agile.le-publicitaire.fr/sourcing), **actualiser la page**.
 7. Cliquer sur **Connecter cet appareil**. L'indicateur devient **Connecté** si l'extension répond.
 
-> Pour notre installation locale actuelle : remplacez tous les fichiers du dossier de l'extension, cliquez sur **Actualiser** sous l’extension dans `chrome://extensions`, vérifiez la version **0.8.0**, puis actualisez GrowthOS. Le Chrome Web Store reste une option ultérieure.
+> Pour notre installation locale actuelle : remplacez tous les fichiers du dossier de l'extension, cliquez sur **Actualiser** sous l’extension dans `chrome://extensions`, vérifiez la version **0.10.1.11**, puis actualisez GrowthOS. Le Chrome Web Store reste une option ultérieure.
 
 ### Utilisation multisource
 
@@ -70,7 +70,7 @@ La sélection locale reste sur votre appareil **24 heures**. Le menu de l'extens
 - « Connecteur non détecté » : vérifier l'extension activée, le bon profil Chrome, puis actualiser GrowthOS.
 - « Aucun bloc entreprise détecté » : ouvrir PagesJaunes directement, vérifier que les résultats sont visibles et qu'aucun CAPTCHA ne les masque. Les sélecteurs HTML devront peut-être être adaptés.
 - « Aucune fiche avec adresse postale complète » : ouvrez le panneau détaillé de l'établissement puis réessayez la capture. Une page de liens de recherche sans adresse vérifiée ne peut pas être importée comme entreprise.
-- « 0 capture » sur GrowthOS : vérifiez que vous avez bien l'extension en version **0.6.0** (ou une version Store plus récente) et que les sources sont cochées. La commande **Ouvrir et lire 5 fiches Maps automatiquement** tente de visiter les fiches dans l'onglet Google où l'extension a été activée ; réouvrez l'extension pour voir le bilan. Les brouillons sont comptés séparément et ne deviennent importables en tant qu'entreprises vérifiées qu'après une adresse confirmée. L'extension propose aussi **Vérifier les adresses (BAN + annuaire officiel)** ; consultez son diagnostic par fiche si aucun rapprochement n'aboutit.
+- « 0 capture » sur GrowthOS : vérifiez que vous avez bien l'extension en version **0.10.1.11** (ou une version plus récente) et que les sources sont cochées. La commande **Ouvrir et lire 5 fiches Maps automatiquement** tente de visiter les fiches dans l'onglet Google où l'extension a été activée ; réouvrez l'extension pour voir le bilan. Les brouillons sont comptés séparément et ne deviennent importables en tant qu'entreprises vérifiées qu'après une adresse confirmée. L'extension propose aussi **Vérifier les adresses (BAN + annuaire officiel)** ; consultez son diagnostic par fiche si aucun rapprochement n'aboutit.
 - Un brouillon sans adresse peut désormais être **importé volontairement en tant que prospect incomplet** depuis la page de résultats GrowthOS : au moins une coordonnée ou rue réellement visible est nécessaire. Les champs absents ne sont jamais inventés, et la fiche CRM affiche un avertissement de complétude. Pour cette fonctionnalité web/API, il faut aussi redéployer les images Docker de préproduction.
 - N'installez pas l'extension dans un dossier temporaire : Chrome doit pouvoir retrouver les fichiers au redémarrage.
 
@@ -110,3 +110,17 @@ La capture Societe.com 0.10.0 conserve les rubriques professionnelles affichées
 Cocher **Surveiller les changements de ce prospect** active un contrôle automatique quotidien. La fréquence peut être réglée à trois jours ou une semaine. Le serveur conserve la prochaine échéance et l’historique, et ajoute une notification GrowthOS lorsque les données observées changent. Cette veille fonctionne pendant que l’API est en service, y compris lorsque Chrome est fermé.
 
 En cas d’indisponibilité de la source, la fiche conserve son dernier résultat et affiche l’erreur de vérification. Le traitement automatique réessaie après quinze minutes. Les informations de l’Annuaire et les captures Societe.com affichent chacune leur provenance.
+
+## Relire les liens sur une fiche prospect
+
+Après l’import, ouvrir le prospect et consulter **Sources et réseaux professionnels**, sous les coordonnées. LinkedIn, Bing, Facebook, Instagram et TikTok affichent les liens effectivement collectés et leur provenance. La date apparaît lorsqu’elle a été enregistrée par la capture. Les champs manquants restent indiqués comme absents.
+
+Pour vérifier LinkedIn pas à pas :
+
+1. Depuis la fiche prospect, rechercher le nom sur Google à l’aide du lien LinkedIn. Ouvrir la bonne page entreprise.
+2. Dans l’extension, choisir **LinkedIn**, puis confirmer les informations visibles dans le formulaire de saisie assistée. La page entreprise ou sa rubrique « À propos » conviennent ; un profil personnel ou une publication ne conviennent pas.
+3. Revenir dans **Comparer et importer les captures du connecteur**, comparer l’entreprise et ses coordonnées, puis confirmer l’import.
+4. Ouvrir le prospect et recharger la page. Le champ LinkedIn vide est complété ; les liens collectés sont visibles dans le bloc des sources.
+5. Si une autre URL LinkedIn était déjà enregistrée, trancher le désaccord sur la fiche. Sans décision, la valeur actuelle est conservée. Un réimport identique ne crée pas une nouvelle fiche.
+
+Une page LinkedIn d’entreprise peut être partagée par plusieurs établissements. GrowthOS utilise aussi les éléments d’identité de l’établissement ; une même page ne suffit pas à fusionner deux villes différentes. Un cas ambigu reste dans la sélection pour vérification.

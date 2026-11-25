@@ -1,0 +1,95 @@
+import {
+  professionalSourceUrl,
+  type ProfessionalSource,
+} from "../../../../lib/api-zod/src/professional-sources";
+
+type RecordValue = Record<string, unknown>;
+const record = (value: unknown): RecordValue =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as RecordValue)
+    : {};
+export type ProspectSourceLink = {
+  source: ProfessionalSource;
+  url: string;
+  origins: string[];
+  capturedAt: string | null;
+  current: boolean;
+};
+export type SourceLinkedProspect = {
+  linkedinUrl?: string | null;
+  source?: string | null;
+  sourceUrl?: string | null;
+  sourceDetails?: unknown;
+};
+function date(value: unknown): string | null {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+/** Collected links retain their origins; they are not promoted to verified data. */
+export function prospectSourceLinks(
+  prospect: SourceLinkedProspect,
+): ProspectSourceLink[] {
+  const links = new Map<string, ProspectSourceLink>();
+  const currentLinkedin = professionalSourceUrl(
+    "linkedin",
+    prospect.linkedinUrl,
+  );
+  const add = (
+    source: unknown,
+    value: unknown,
+    origin: string,
+    capturedAt?: unknown,
+  ) => {
+    const url = professionalSourceUrl(source, value);
+    if (!url) return;
+    const key = source + ":" + url;
+    const existing = links.get(key);
+    const captured = date(capturedAt);
+    if (existing) {
+      if (!existing.origins.includes(origin)) existing.origins.push(origin);
+      if (captured && (!existing.capturedAt || captured > existing.capturedAt))
+        existing.capturedAt = captured;
+      return;
+    }
+    links.set(key, {
+      source: source as ProfessionalSource,
+      url,
+      origins: [origin],
+      capturedAt: captured,
+      current: source === "linkedin" && url === currentLinkedin,
+    });
+  };
+  add("linkedin", prospect.linkedinUrl, "Champ LinkedIn du CRM");
+  for (const source of (prospect.source || "")
+    .split(",")
+    .map((source) => source.trim()))
+    add(source, prospect.sourceUrl, "Fiche source du CRM");
+  const details = record(prospect.sourceDetails);
+  const crossSource = record(details.crossSource);
+  const observations = Array.isArray(crossSource.observations)
+    ? crossSource.observations
+    : [];
+  for (const value of observations) {
+    const observation = record(value);
+    if (typeof observation.source !== "string") continue;
+    for (const source of observation.source
+      .split(",")
+      .map((source) => source.trim()))
+      add(
+        source,
+        observation.sourceUrl,
+        "Capture du connecteur",
+        observation.capturedAt,
+      );
+  }
+  const pagesjaunes = record(details.pagesjaunes);
+  for (const [source, url] of Object.entries(record(pagesjaunes.socials)))
+    add(source, url, "Relevé sur PagesJaunes", pagesjaunes.capturedAt);
+  return [...links.values()].sort(
+    (a, b) =>
+      Number(b.current) - Number(a.current) ||
+      (b.capturedAt || "").localeCompare(a.capturedAt || ""),
+  );
+}

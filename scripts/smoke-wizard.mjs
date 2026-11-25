@@ -176,6 +176,18 @@ async function importIdentityRace(kind,token,example) {
   });
 }
 
+async function storeTestSourcingJob(prospectId,candidates) {
+  const code=String.raw`import {pool} from '@workspace/db';
+    const [id,raw]=process.argv.slice(1);
+    const result=await pool.query("INSERT INTO sourcing_jobs (type,name,status,params,tenant_id) SELECT 'multi','Recette liens professionnels','completed',$1,tenant_id FROM prospects WHERE id=$2 RETURNING id",[JSON.stringify({results:JSON.parse(raw)}),id]);
+    console.log(result.rows[0].id);await pool.end();`;
+  return await new Promise((resolve,reject)=>{
+    const child=spawn('node',['--import','tsx','--input-type=module','-e',code,prospectId,JSON.stringify(candidates)],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
+    let output='',errors='';child.stdout.on('data',chunk=>{output+=String(chunk);});child.stderr.on('data',chunk=>{errors+=String(chunk);});
+    child.on('error',reject);child.on('exit',status=>status===0?resolve(output.trim().split('\n').at(-1)):reject(new Error('Recherche de test : '+errors.slice(-1000))));
+  });
+}
+
 async function awaitApi(timeoutMs = 90000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -1047,6 +1059,58 @@ try {
     check(saved.body.data.length===1 && saved.body.data[0].website===newWebsite &&
       saved.body.data[0].sourceDetails.crossSource.observations.some(item=>item.sourceUrl===sourceUrl),
       source+' : données enrichies et provenance relues dans le CRM');
+    if(source==='linkedin') {
+      const target=saved.body.data[0];
+      check(target.linkedinUrl===sourceUrl && target.sourceDetails.crossSource.fieldSources.linkedinUrl.source==='linkedin',
+        'LinkedIn : lien entreprise enregistré dans le champ CRM avec provenance');
+      const alternate='https://www.linkedin.com/company/atelier-recette-autre/';
+      const alternative={...record,id:'linkedin_conflict_profile',sourceUrl:alternate};
+      const disputed=await request('POST','/sourcing/device/import-prospects',{verified:[alternative]},token);
+      const current=await request('GET',`/prospects/${target.id}`,undefined,token);
+      const conflict=current.body.sourceDetails.crossSource.conflicts.find(c=>c.field==='linkedinUrl');
+      check(disputed.body.imported===0 && disputed.body.conflicts===1 && current.body.linkedinUrl===sourceUrl && conflict?.incoming===alternate,
+        'LinkedIn : autre lien signalé sans remplacement du profil CRM');
+      const kept=await request('POST',`/sourcing/device/prospects/${target.id}/resolve-conflict`,{conflictId:conflict.id,decision:'keep_existing'},token);
+      check(kept.status===200 && kept.body.prospect.linkedinUrl===sourceUrl,
+        'LinkedIn : conserver le profil CRM résout le désaccord');
+      const repeated=await request('POST','/sourcing/device/import-prospects',{verified:[{...alternative,id:'linkedin_conflict_replay'}]},token);
+      check(repeated.body.conflicts===0,'LinkedIn : désaccord déjà tranché non recréé au réimport');
+      const chosen='https://www.linkedin.com/company/atelier-recette-confirme/';
+      await request('POST','/sourcing/device/import-prospects',{verified:[{...record,id:'linkedin_chosen_profile',sourceUrl:chosen}]},token);
+      const toChoose=await request('GET',`/prospects/${target.id}`,undefined,token);
+      const chosenConflict=toChoose.body.sourceDetails.crossSource.conflicts.find(c=>c.field==='linkedinUrl');
+      const accepted=await request('POST',`/sourcing/device/prospects/${target.id}/resolve-conflict`,{conflictId:chosenConflict.id,decision:'use_incoming'},token);
+      check(accepted.status===200 && accepted.body.prospect.linkedinUrl===chosen && accepted.body.prospect.sourceDetails.crossSource.fieldSources.linkedinUrl.sourceUrl===chosen,
+        'LinkedIn : profil choisi enregistré avec sa provenance après décision');
+      const equivalent=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,id:'linkedin_about_equivalent',sourceUrl:chosen+'about/?trk=test'}]},token);
+      check(equivalent.status===200 && equivalent.body.imported===0 && equivalent.body.conflicts===0,
+        'LinkedIn : page À propos et paramètres de suivi ne créent pas un faux conflit');
+      const sharedPage=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,
+        id:'linkedin_shared_company_page',sourceUrl:chosen,address:'24 rue des Ateliers 59000 Lille',codePostal:'59000',city:'Lille',phone:null}]},token);
+      check(sharedPage.status===200 && sharedPage.body.imported===1 && sharedPage.body.enriched===0,
+        'LinkedIn : même page entreprise dans deux villes, établissements conservés distincts');
+      const uncertainPage=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,
+        id:'linkedin_ambiguous_same_city',sourceUrl:chosen,address:'12 rue des Autres Ateliers 59100 Roubaix',phone:null}]},token);
+      check(uncertainPage.status===200 && uncertainPage.body.imported===0 && uncertainPage.body.enriched===0 && uncertainPage.body.reviews[0]?.type==='ambiguous' && uncertainPage.body.reviews[0]?.prospectId===target.id && !uncertainPage.body.processedIds.length,
+        'LinkedIn : même page sans preuve d’établissement suffisante, sélection conservée pour vérification');
+      const renamedPage=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,
+        id:'linkedin_changed_company_name',company:'Nouvelle dénomination LinkedIn',sourceUrl:chosen,phone:null}]},token);
+      check(renamedPage.status===200 && renamedPage.body.imported===0 && renamedPage.body.reviews[0]?.type==='ambiguous' && renamedPage.body.reviews[0]?.prospectId===target.id,
+        'LinkedIn : nom différent sur le profil déjà enregistré, vérification demandée sans nouvelle fiche');
+      const jobRecord={...record,id:'linkedin_job_profile',company:'Entreprise LinkedIn du sourcing',siren:'',siret:null,source:'linkedin',sourceUrl:'https://www.linkedin.com/company/atelier-sourcing/'};
+      const jobId=await storeTestSourcingJob(target.id,[jobRecord]);
+      const jobImported=await request('POST',`/sourcing/jobs/${jobId}/import`,{ids:[jobRecord.id]},token);
+      const jobSaved=await request('GET','/prospects?search='+encodeURIComponent(jobRecord.company),undefined,token);
+      check(jobImported.status===200 && jobImported.body.imported===1 && jobSaved.body.data.length===1 && jobSaved.body.data[0].linkedinUrl===jobRecord.sourceUrl && jobSaved.body.data[0].source==='linkedin',
+        'LinkedIn : import d’une recherche conserve le lien et la vraie source LinkedIn');
+      const jobReplay=await request('POST',`/sourcing/jobs/${jobId}/import`,{ids:[jobRecord.id]},token);
+      check(jobReplay.status===200 && jobReplay.body.imported===0 && jobReplay.body.skipped===1,
+        'LinkedIn : réimport de la recherche sans création supplémentaire');
+      for(const sourceUrl of ['https://www.linkedin.com/company/atelier-recette/posts/123','https://www.linkedin.com/in/dirigeant-test/','https://www.linkedin.com.evil.example/company/atelier/']) {
+        const rejected=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,sourceUrl}]},token);
+        check(rejected.status===400,'LinkedIn : seule une page entreprise conforme est importable');
+      }
+    }
     if (source!=='societe_com') {
       const otherCity=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,
         id:'homonym_'+source,sourceUrl:source==='bing'?sourceUrl+'+Lille':sourceUrl.replace(/\/$/,'')+(source==='linkedin'?'-lille/':'.lille/'),
