@@ -1,4 +1,4 @@
-# Connecter GrowthOS à son navigateur — connecteur multisource 0.8.0
+# Connecter GrowthOS à son navigateur — connecteur multisource 0.9.1
 
 Ce connecteur fonctionne avec **Chrome ou Edge sur ordinateur**. Il garde les recherches et les éventuelles sessions des sites consultés **dans votre propre navigateur**, sans transmettre de mot de passe ni de cookie à GrowthOS. Il ne modifie ni DockPanel ni les autres conteneurs.
 
@@ -85,3 +85,17 @@ Le connecteur lit d'abord les entreprises depuis la liste de résultats. Les don
 - Si le site refuse l'accès ou modifie sa structure, certains champs restent vides. Vérifiez toujours la fiche source.
 
 Pour les installations Chrome Web Store, **Chrome récupère la nouvelle version publiée automatiquement**. La mise à jour manuelle des fichiers ne concerne que l'ancienne extension locale non empaquetée.
+
+
+## Sources professionnelles et enrichissement Societe.com
+
+La sélection couvre Societe.com, LinkedIn, Bing, Facebook Pages, Instagram professionnel et TikTok professionnel. Bing conserve sa capture de résultats visibles. LinkedIn et les réseaux sociaux proposent la saisie assistée de la page entreprise vérifiée dans Chrome.
+
+Sur une fiche prospect, le bouton **Enrichir via Societe.com** propose les recherches disponibles selon les données connues.
+
+1. Utiliser le nom ou le SIRET/SIREN pour ouvrir Societe.com. Pour l’adresse, le téléphone ou le domaine, le lien ouvre Bing avec un filtre sur les fiches Societe.com. Vérifier ensuite le résultat sur Societe.com.
+2. Sur la fiche société, cliquer sur l’extension puis sur **Capturer la fiche Societe.com**. Le nom, l’adresse, le SIRET et le code APE sont lus dans les champs affichés. Le téléphone et le site restent absents s’ils sont masqués ou manquants.
+3. Revenir dans GrowthOS et charger les fiches Societe.com du connecteur. Choisir celle à comparer au prospect courant.
+4. Lire les deux colonnes, confirmer l’entreprise et l’établissement, puis confirmer l’enrichissement. Les champs vides sont complétés. Les divergences apparaissent dans les désaccords de la fiche, où une décision peut être prise.
+
+Un SIREN différent ou un autre SIRET déjà connu déclenche un refus de fusion. La provenance et la date de capture sont conservées. L’installation de cette version du connecteur et la version web/API correspondante sont nécessaires pour ce parcours.

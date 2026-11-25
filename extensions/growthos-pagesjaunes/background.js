@@ -373,7 +373,7 @@ async function enrichProfile(payload) {
   }
 }
 
-const CAPTURE_SOURCES = ['google_maps','google_search','bing','linkedin','societe_com','facebook','instagram'];
+const CAPTURE_SOURCES = ['google_maps','google_search','bing','linkedin','societe_com','facebook','instagram','tiktok'];
 const QUEUE_KEY = 'growthos_verified_captures_v1';
 const DRAFTS_KEY = 'growthos_unverified_drafts_v1';
 const ENRICH_CURSOR_KEY = 'growthos_enrich_cursor_v1';
@@ -390,6 +390,7 @@ function hostMatches(source,url) {
     if(source==='bing')return ['www.bing.com','bing.com'].includes(u.hostname);
     if(source==='societe_com')return ['societe.com','www.societe.com'].includes(u.hostname) && /^\/societe\/[a-z0-9-]+-\d{9}\.html\/?$/i.test(u.pathname);
     if(source==='facebook')return ['facebook.com','www.facebook.com'].includes(u.hostname) && /^\/[a-z0-9.\-]+\/?$/i.test(u.pathname) && !/^\/(?:home.php|profile.php|groups|events|watch|marketplace|login|share|search|reel|stories|gaming|people|pages)\/?$/i.test(u.pathname);
+    if(source==='tiktok')return ['tiktok.com','www.tiktok.com'].includes(u.hostname) && /^\/@[a-z0-9_](?:[a-z0-9_.]{0,22}[a-z0-9_])?\/?$/i.test(u.pathname);
     if(source==='instagram')return ['instagram.com','www.instagram.com'].includes(u.hostname) && /^\/[a-z0-9._]+\/?$/i.test(u.pathname) && !/^\/(?:p|reels?|stories|accounts|explore|direct|about|developer|legal)\/?$/i.test(u.pathname);
     if(source==='linkedin')return ['www.linkedin.com','linkedin.com'].includes(u.hostname) && /^\/company\/[a-z0-9_-]+\/?/i.test(u.pathname);
   }catch{}
@@ -844,6 +845,7 @@ async function popupAction(message){
     else if(source==='bing')url='https://www.bing.com/search?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
     else if(source==='societe_com')url='https://www.societe.com/cgi-bin/search?champs='+encodeURIComponent(activity);
     else if(source==='facebook')url='https://www.facebook.com/search/pages/?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
+    else if(source==='tiktok')url='https://www.tiktok.com/search/user?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
     else if(source==='instagram')url='https://www.instagram.com/explore/search/keyword/?q='+encodeURIComponent(activity);
     else if(source==='linkedin')url='https://www.linkedin.com/search/results/companies/?keywords='+encodeURIComponent(activity);
     else url='https://www.pagesjaunes.fr/annuaire/chercherlespros?quoiqui='+encodeURIComponent(activity)+'&ou='+encodeURIComponent(location);
@@ -852,6 +854,12 @@ async function popupAction(message){
   if(action==='capture-tab'){
     const tabs=await chrome.tabs.query({active:true,currentWindow:true});
     const tab=tabs[0];
+    if(tab?.id && tab.url && hostMatches('societe_com',tab.url)){
+      const injected=await chrome.scripting.executeScript({target:{tabId:tab.id},files:['societe.js']});
+      const result=injected?.[0]?.result;
+      if(!result?.results?.length || result.error)throw new Error(result?.error||'Fiche Societe.com illisible');
+      return addToQueue(result.results,false,true);
+    }
     if(!tab?.id || !tab.url || !['google_maps','google_search','bing'].some(s=>hostMatches(s,tab.url)))
       throw new Error('Ouvrez un résultat Google Maps, Google Search ou Bing puis recliquez sur l’extension.');
     const url=new URL(tab.url);

@@ -45,6 +45,7 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
   },
   societe_com: { name:'Societe.com', icon:'🏢', desc:'Fiche légale confirmée par son SIREN', color:'#1E3A5F', fields:[] },
   facebook: { name:'Facebook Pages', icon:'📘', desc:'Page professionnelle confirmée dans Chrome', color:'#1877F2', fields:[] },
+  tiktok: { name:'TikTok professionnel', icon:'🎵', desc:'Profil d’entreprise confirmé dans Chrome', color:'#111827', fields:[] },
   instagram: { name:'Instagram professionnel', icon:'📷', desc:'Profil d’entreprise confirmé dans Chrome', color:'#C13584', fields:[] },
   societe_info: {
     name:'Societe.info', icon:'🏢', desc:'Données légales entreprises françaises', color:'#1E3A5F',
@@ -84,8 +85,8 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
     ],
   },
 };
-const SUPPORTED_TYPES = new Set(['entreprises','pagesjaunes','google_maps','google_search','bing','linkedin','societe_com','facebook','instagram']);
-const CAPTURE_TYPES = new Set(['google_maps','google_search','bing','linkedin','societe_com','facebook','instagram']);
+const SUPPORTED_TYPES = new Set(['entreprises','pagesjaunes','google_maps','google_search','bing','linkedin','societe_com','facebook','instagram','tiktok']);
+const CAPTURE_TYPES = new Set(['google_maps','google_search','bing','linkedin','societe_com','facebook','instagram','tiktok']);
 
 const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:string}> = {
   completed:{ label:'Terminé',  color:'#065F46', bg:'#ECFDF5', dot:'#10B981' },
@@ -265,7 +266,7 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
                 {sources.includes('pagesjaunes') && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">{deviceConnected ? '✓ Connecteur de cet appareil actif. PagesJaunes sera consulté depuis votre navigateur actuel. Gardez cet onglet ouvert jusqu’à la fin.' : '⚠ Connecteur non activé. La recherche passera par le navigateur du VPS, qui peut être bloqué par PagesJaunes (HTTP 403). Utilisez « Connecter cet appareil » sur la page précédente.'}</p>}
                 {sources.some(source=>CAPTURE_TYPES.has(source)) && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
                   <p className="text-xs font-semibold text-blue-900">Collecte multisource sur votre ordinateur</p>
-                  <p className="text-xs text-blue-800">1. Cliquez sur l’extension GrowthOS dans Chrome. 2. Ouvrez les recherches souhaitées ; pour Google/Bing, cliquez sur « Capturer les fiches visibles ». Pour LinkedIn, Societe.com, Facebook et Instagram, confirmez manuellement la fiche entreprise. 3. Revenez ici et lancez la recherche. Vos comptes restent dans Chrome.</p>
+                  <p className="text-xs text-blue-800">1. Cliquez sur l’extension GrowthOS dans Chrome. 2. Ouvrez les recherches souhaitées ; pour Google/Bing, cliquez sur « Capturer les fiches visibles ». Pour LinkedIn, Societe.com, Facebook, Instagram et TikTok, confirmez manuellement la fiche entreprise. 3. Revenez ici et lancez la recherche. Vos comptes restent dans Chrome.</p>
                   <div className="flex gap-2 flex-wrap items-center">
                     <button type="button" onClick={()=>void checkCaptures()} disabled={checkingCaptures || !deviceConnected}
                       className="border border-blue-300 px-3 py-1.5 rounded-lg text-xs text-blue-900 disabled:opacity-50">{checkingCaptures?'Vérification…':'↻ Vérifier mes captures'}</button>

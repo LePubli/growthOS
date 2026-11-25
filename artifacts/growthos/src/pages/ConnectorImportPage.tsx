@@ -9,7 +9,7 @@ import { acknowledgeLocalImport, getLocalCaptures, getLocalDrafts, pingLocalPage
 
 type Capture = (LocalCompany & {incomplete?:false}) | (LocalDraft & {incomplete:true});
 const LABELS:Record<string,string> = {
-  google_maps:'Google Maps',google_search:'Google Search',bing:'Bing',linkedin:'LinkedIn',societe_com:'Societe.com',facebook:'Facebook Pages',instagram:'Instagram professionnel',pagesjaunes:'PagesJaunes',
+  google_maps:'Google Maps',google_search:'Google Search',bing:'Bing',linkedin:'LinkedIn',societe_com:'Societe.com',facebook:'Facebook Pages',instagram:'Instagram professionnel',tiktok:'TikTok professionnel',pagesjaunes:'PagesJaunes',
 };
 const importable=(item:Capture)=>!item.incomplete || Boolean(item.phone||item.website||item.address);
 export default function ConnectorImportPage(){
