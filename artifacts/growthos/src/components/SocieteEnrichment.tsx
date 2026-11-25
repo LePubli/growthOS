@@ -26,9 +26,9 @@ export function SocieteEnrichment({ prospect, onSaved }: { prospect: Prospect; o
   const methods = [
     { label: 'SIRET', value: prospect.siret }, { label: 'SIREN', value: prospect.siren },
     { label: 'Nom et ville', value: [prospect.company, prospect.city].filter(Boolean).join(' ') },
-    { label: 'Adresse · Bing vers Societe.com', value: prospect.address, inverse: true },
-    { label: 'Téléphone · Bing vers Societe.com', value: prospect.phone, inverse: true },
-    { label: 'Domaine · Bing vers Societe.com', value: domain(prospect.website), inverse: true },
+    { label: 'Adresse · Google vers Societe.com', value: prospect.address, inverse: true },
+    { label: 'Téléphone · Google vers Societe.com', value: prospect.phone, inverse: true },
+    { label: 'Domaine · Google vers Societe.com', value: domain(prospect.website), inverse: true },
   ].filter(method => method.value);
   const capture = captures.find(item => item.id === selected);
   const load = async () => {
@@ -43,7 +43,7 @@ export function SocieteEnrichment({ prospect, onSaved }: { prospect: Prospect; o
       puis capturez la fiche Societe.com dans l’extension Chrome et revenez ici.</p>
     <div className="flex flex-wrap gap-2">
       {methods.map(method => <a key={method.label} className="text-sm underline text-teal-700" target="_blank" rel="noreferrer"
-        href={method.inverse ? 'https://www.bing.com/search?q=' + encodeURIComponent('site:societe.com/societe/ "' + method.value + '"')
+        href={method.inverse ? 'https://www.google.com/search?q=' + encodeURIComponent('site:societe.com/societe/ "' + method.value + '"')
           : 'https://www.societe.com/cgi-bin/search?champs=' + encodeURIComponent(method.value!)}>{method.label}</a>)}
     </div>
     <button type="button" className="border rounded-lg px-3 py-2 mt-3 text-sm" disabled={busy} onClick={() => void load()}>

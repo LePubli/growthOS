@@ -93,7 +93,7 @@ La sélection couvre Societe.com, LinkedIn, Bing, Facebook Pages, Instagram prof
 
 Sur une fiche prospect, le bouton **Enrichir via Societe.com** propose les recherches disponibles selon les données connues.
 
-1. Utiliser le nom ou le SIRET/SIREN pour ouvrir Societe.com. Pour l’adresse, le téléphone ou le domaine, le lien ouvre Bing avec un filtre sur les fiches Societe.com. Vérifier ensuite le résultat sur Societe.com.
+1. Utiliser le nom ou le SIRET/SIREN pour ouvrir Societe.com. Pour l’adresse, le téléphone ou le domaine, le lien ouvre Google avec un filtre sur les fiches Societe.com. Vérifier ensuite le résultat sur Societe.com.
 2. Sur la fiche société, cliquer sur l’extension puis sur **Capturer la fiche Societe.com**. Le nom, l’adresse, le SIRET et le code APE sont lus dans les champs affichés. Le téléphone et le site restent absents s’ils sont masqués ou manquants.
 3. Revenir dans GrowthOS et charger les fiches Societe.com du connecteur. Choisir celle à comparer au prospect courant.
 4. Lire les deux colonnes, confirmer l’entreprise et l’établissement, puis confirmer l’enrichissement. Les champs vides sont complétés. Les divergences apparaissent dans les désaccords de la fiche, où une décision peut être prise.
