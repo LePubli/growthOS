@@ -7,6 +7,7 @@ import { eq, and, desc, inArray, or, ilike } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
+import { isProspectIdentityDuplicate } from "../../lib/prospect-identity";
 import { DEPARTMENT_TO_REGION, departmentFromPostalCode, REGION_NAMES, DEPARTMENT_NAMES } from "../../lib/france-geo";
 import { searchPagesJaunes } from "../../lib/pagesjaunes-scraper";
 
@@ -681,7 +682,11 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
       if(siret && matches[0].siret===siret && matches[0].company && normalizedIdentity(matches[0].company)!==company){
         skipped++;reviews.push({prospectId:matches[0].id,company:item.company,fields:['company','siret'],type:'identity'});continue;
       }
-      const merged=await mergeProspectCapture(matches[0],item,incomplete,req.auth!.tenantId);
+      const merged=await mergeProspectCapture(matches[0],item,incomplete,req.auth!.tenantId).catch((error:unknown)=>{
+        if(isProspectIdentityDuplicate(error))return null;
+        throw error;
+      });
+      if(!merged){skipped++;continue;}
       if(merged.filled.length)enriched++;else skipped++;
       conflicts+=merged.conflicts;
       if(merged.newConflicts.length)reviews.push({prospectId:matches[0].id,company:item.company,
@@ -706,7 +711,12 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
             capturedAt:new Date(item.capturedAt||Date.now()).toISOString(),
             fieldsFilled:Object.keys(incomingFields(item,incomplete))}],conflicts:[]}},
       status:'new',tenantId:req.auth!.tenantId,createdBy:req.auth!.userId,
-    }).onConflictDoNothing().returning({id:prospectsTable.id});
+     }).onConflictDoNothing().returning({id:prospectsTable.id}).catch((error:unknown)=>{
+      // A BEFORE INSERT trigger can raise before ON CONFLICT is evaluated.
+      // Keep prior processedIds and continue the remaining selection.
+      if(isProspectIdentityDuplicate(error))return [];
+      throw error;
+    });
     if(created){imported++;processedIds.push(item.id);}else skipped++;
   }
   res.json({imported,enriched,skipped,conflicts,reviews,selected:usedIds.size,processedIds});
@@ -1348,7 +1358,11 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
     const matches=existing.filter(prospect=>sameEstablishment(prospect,incoming,false));
     if(matches.length>1){skipped++;continue;}
     if(matches.length===1){
-      const outcome=await mergeProspectCapture(matches[0],incoming,false,req.auth!.tenantId);
+      const outcome=await mergeProspectCapture(matches[0],incoming,false,req.auth!.tenantId).catch((error:unknown)=>{
+        if(isProspectIdentityDuplicate(error))return null;
+        throw error;
+      });
+      if(!outcome){skipped++;continue;}
       if(outcome.filled.length)enriched++;else skipped++;
       conflicts+=outcome.conflicts;
       continue;
@@ -1372,7 +1386,10 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
         || (candidate.source === "pagesjaunes" || job.type === "pagesjaunes" ? "pagesjaunes" : "annuaire-entreprises"),
       sourceUrl: candidate.sourceUrl || null,
       status: "new", tenantId: req.auth!.tenantId, createdBy: req.auth!.userId,
-    }).onConflictDoNothing().returning({ id: prospectsTable.id });
+     }).onConflictDoNothing().returning({ id: prospectsTable.id }).catch((error:unknown)=>{
+      if(isProspectIdentityDuplicate(error))return [];
+      throw error;
+    });
     if (insertedRow) imported++; else skipped++;
   }
   res.json({ imported,enriched,conflicts,skipped,selected: requested.length });
