@@ -386,6 +386,13 @@ function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
 const companyDetailsSchema = z.object({
   fields:z.record(z.string().max(100),z.string().max(1000)).refine(value=>Object.keys(value).length<=30),
   managers:z.array(z.string().max(150)).max(50),
+  managerContacts:z.array(z.object({
+    name:z.string().trim().min(2).max(150),role:z.string().max(150).nullable(),
+    phone:z.string().max(40).nullable(),email:z.string().email().max(254).nullable(),
+    profileUrl:z.string().url().max(500).refine(value=>{
+      const url=new URL(value);return url.protocol==='https:' && ['societe.com','www.societe.com'].includes(url.hostname) && /^\/dirigeants?\//i.test(url.pathname);
+    }).nullable(),
+  }).strict()).max(50).optional(),
   establishments:z.array(z.object({siret:z.string().regex(/^\d{14}$/),address:z.string().max(320).nullable()}).strict()).max(30),
   links:z.array(z.object({label:z.string().max(180),url:z.string().url().max(500).refine(value=>{
     const url=new URL(value);return url.protocol==='https:' && ['societe.com','www.societe.com'].includes(url.hostname);
@@ -637,7 +644,7 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
     data.verified.length+data.drafts.length<=25).safeParse(req.body);
   if(!parsed.success){res.status(400).json({error:'Sélection invalide (25 fiches maximum)',details:parsed.error.issues});return;}
   let imported=0,enriched=0,skipped=0,conflicts=0;
-  const reviews:{prospectId:string;company:string;fields:string[];type:'conflict'|'ambiguous'}[]=[];
+  const reviews:{prospectId:string;company:string;fields:string[];type:'conflict'|'ambiguous'|'identity'}[]=[];
   const processedIds:string[]=[];
   const usedIds=new Set<string>();
   for(const entry of [...parsed.data.verified.map(value=>({item:value,incomplete:false})),
@@ -671,6 +678,9 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
       skipped++;reviews.push({prospectId:'',company:item.company,fields:[],type:'ambiguous'});continue;
     }
     if(matches.length===1){
+      if(siret && matches[0].siret===siret && matches[0].company && normalizedIdentity(matches[0].company)!==company){
+        skipped++;reviews.push({prospectId:matches[0].id,company:item.company,fields:['company','siret'],type:'identity'});continue;
+      }
       const merged=await mergeProspectCapture(matches[0],item,incomplete,req.auth!.tenantId);
       if(merged.filled.length)enriched++;else skipped++;
       conflicts+=merged.conflicts;

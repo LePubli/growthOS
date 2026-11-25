@@ -112,6 +112,13 @@ async function monitoringMaintenance(action,id) {
     const [action,id]=process.argv.slice(1);
     if(action==='expire') await pool.query("UPDATE prospect_monitoring SET last_attempt_at=NOW()-INTERVAL '2 minutes',checked_at=NOW()-INTERVAL '2 minutes',next_check_at=NOW()-INTERVAL '1 second' WHERE prospect_id=$1",[id]);
     if(action==='cron') await runProspectWatch();
+    if(action==='legacy-identity') {
+      await pool.query("BEGIN; DROP INDEX idx_prospects_tenant_siret; ALTER TABLE prospects DISABLE TRIGGER growthos_prospect_identity;");
+      await pool.query("INSERT INTO prospects (company,tenant_id,siret) SELECT 'Ancien doublon',tenant_id,siret FROM prospects WHERE id=$1",[id]);
+      await pool.query("ALTER TABLE prospects ENABLE TRIGGER growthos_prospect_identity; COMMIT;");
+      const {runMigrations}=await import('../../lib/db/src/migrate.ts');
+      await runMigrations(1); await runMigrations(1);
+    }
     await pool.end();`;
   await new Promise((resolve,reject)=>{
     const child=spawn('node',['--import','tsx','--input-type=module','-e',code,action,id],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
@@ -1017,6 +1024,7 @@ try {
     siret:'99900000200017',address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',
     phone:'03 20 44 55 66',email:'contact@atelier-enrichissement.example.org',website:'https://atelier-enrichissement.example.org',apeCode:'43.22A',
     collectionMode:'visible',capturedAt:Date.now(),companyDetails:{fields:{'Forme juridique':'Entrepreneur individuel','Capital social':'1000 €'},managers:['Alice Test'],establishments:[],links:[]}};
+  societeCapture.companyDetails.managerContacts=[{name:'Denis LIQUARD',role:'Gérant',phone:null,email:'denis@atelier-recette.example.org',profileUrl:'https://www.societe.com/dirigeant/denis-liquard.html'}];
   const enrichPath = `/sourcing/device/prospects/${societeTarget.body.id}/societe-enrich`;
   const noConfirm = await request('POST',enrichPath,{capture:societeCapture,confirmed:false},token);
   check(noConfirm.status===400,'Societe.com : confirmation exigée avant enrichissement');
@@ -1031,6 +1039,7 @@ try {
   const repeatedEnrich = await request('POST',enrichPath,{capture:societeCapture,confirmed:true},token);
   check(repeatedEnrich.status===200 && !repeatedEnrich.body.enriched && repeatedEnrich.body.conflicts===0,
     'Societe.com : répéter l’enrichissement ne duplique pas les conflits');
+  check(reread.body.sourceDetails.societe_com.companyDetails.managerContacts[0].email==='denis@atelier-recette.example.org','Coordonnées du dirigeant conservées et relues après enrichissement');
   check(reread.body.sourceDetails.societe_com.companyDetails.fields['Forme juridique']==='Entrepreneur individuel',
     'Societe.com : les informations détaillées sont relues sur la fiche prospect');
   await request('POST',enrichPath,{confirmed:true,capture:{...societeCapture,capturedAt:societeCapture.capturedAt+1000,
@@ -1126,6 +1135,36 @@ try {
   const siteStatus=await request('POST',`/prospects/${absentSite.body.id}/verify-company`,{},token);
   check(siteStatus.body.snapshot.fields['État de l’entreprise']==='Active' && siteStatus.body.snapshot.fields['État de l’établissement']===null,
     'Établissement absent de la réponse : état non vérifié, aucune activité déduite du siège');
+
+  const identity=await request('POST','/prospects',{company:'Identité principale',siret:'981 075 252 00016'},token);
+  check(identity.status===201 && identity.body.siret==='98107525200016','SIRET avec espaces normalisé à la création');
+  const duplicateIdentity=await request('POST','/prospects',{company:'Autre nom et entité',siret:'98107525200016'},token);
+  check(duplicateIdentity.status===409 && duplicateIdentity.body.message.includes('SIRET'),'Même SIRET et nom différent : création refusée avec message explicite');
+  const otherIdentity=await request('POST','/prospects',{company:'Autre prospect'},token);
+  const patchIdentity=await request('PATCH',`/prospects/${otherIdentity.body.id}`,{siret:'98107525200016'},token);
+  check(patchIdentity.status===409,'Modification vers un SIRET existant refusée');
+  const mismatchIdentity=await request('POST','/prospects',{company:'Identifiants incohérents',siren:'981075253',siret:'98107525200024'},token);
+  check(mismatchIdentity.status===409,'SIREN et SIRET de sociétés différentes refusés');
+  const concurrentIdentity=await Promise.all(['Nom A','Nom B'].map(company=>request('POST','/prospects',{company,siret:'98107525400012'},token)));
+  check(concurrentIdentity.map(r=>r.status).sort().join(',')==='201,409','Deux créations simultanées : une seule fiche autorisée par SIRET');
+  const bulkIdentity=await request('POST','/prospects/bulk',{duplicateMode:'create',prospects:[{firstName:'Test',email:'doublon-siret@example.org',company:'Autre entité CSV',siret:'98107525200016'}]},token);
+  check(bulkIdentity.status===409,'CSV en mode créer : le même SIRET reste bloqué');
+  const differentEstablishment=await request('POST','/prospects',{company:'Autre établissement',siret:'98107525200024'},token);
+  check(differentEstablishment.status===201,'Deux SIRET distincts du même SIREN restent possibles');
+  const identityCapture={...societeCapture,id:'identity_capture',company:'Autre nom de société',siret:'98107525200016',sourceUrl:'https://www.societe.com/societe/identite-981075252.html'};
+  const importIdentity=await request('POST','/sourcing/device/import-prospects',{verified:[identityCapture]},token);
+  check(importIdentity.status===200 && importIdentity.body.imported===0 && importIdentity.body.enriched===0 && importIdentity.body.reviews.some(r=>r.type==='identity' && r.prospectId===identity.body.id) && !importIdentity.body.processedIds.includes(identityCapture.id),'Import : même SIRET sous autre nom signalé pour confirmation, capture conservée');
+  await monitoringMaintenance('legacy-identity',identity.body.id);
+  const legacyIdentity=await request('GET',`/prospects/${identity.body.id}`,undefined,token);
+  check(legacyIdentity.body.identityConflicts.length===1 && legacyIdentity.body.identityConflicts[0].company==='Ancien doublon','Migration répétable : anciennes fiches conservées et doublon signalé');
+  const legacyIdentityEdit=await request('PATCH',`/prospects/${identity.body.id}`,{phone:'03 20 11 22 33'},token);
+  check(legacyIdentityEdit.status===200 && legacyIdentityEdit.body.identityConflicts.length===1,'Ancien doublon : modification hors identité possible et alerte conservée');
+  const legacyId=legacyIdentity.body.identityConflicts[0].id;
+  await request('DELETE',`/prospects/${identity.body.id}`,undefined,token);
+  check((await request('POST','/prospects',{company:'Encore un doublon',siret:'98107525200016'},token)).status===409,'Protection maintenue quand seule une ancienne fiche en double subsiste');
+  const repaired=await request('PATCH',`/prospects/${legacyId}`,{siret:'98107525200032'},token);
+  check(repaired.status===200 && repaired.body.identityConflicts.length===0,'Correction manuelle du SIRET : alerte levée sans supprimer de fiche');
+  check((await request('POST','/prospects',{company:'SIRET corrigé déjà utilisé',siret:'98107525200032'},token)).status===409,'Fiche ancienne corrigée : unicité active sur son nouveau SIRET');
 
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
 } catch (error) {

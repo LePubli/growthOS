@@ -63,6 +63,25 @@ export function CompanyDetailsView({ details }: { details: CompanyDetails }) {
           ))}
         </div>
       )}
+      {!!details.managerContacts?.length && (
+        <div className="space-y-2">
+          {details.managerContacts.map((contact, index) => (
+            <div key={index} className="border rounded-lg p-2">
+              <p className="font-medium">
+                {contact.name}
+                {contact.role ? " · " + contact.role : ""}
+              </p>
+              {contact.phone && <p>{contact.phone}</p>}
+              {contact.email && <p>{contact.email}</p>}
+              {!contact.phone && !contact.email && (
+                <p className="text-xs">
+                  Coordonnées directes non publiées sur la fiche capturée.
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {!!details.establishments.length && (
         <div>
           <h4 className="font-medium">Établissements relevés</h4>
@@ -165,6 +184,13 @@ export function ProspectCompanyProfile({ prospect }: Props) {
         history?: { capturedAt?: number; companyDetails: CompanyDetails }[];
       }
     | undefined;
+  const contacts = profile?.companyDetails?.managerContacts || [];
+  const names = [
+    ...new Set([
+      ...(profile?.companyDetails?.managers || []),
+      ...(snapshot?.managers || []),
+    ]),
+  ];
   return (
     <section
       className="rounded-2xl border p-5 space-y-4"
@@ -231,6 +257,80 @@ export function ProspectCompanyProfile({ prospect }: Props) {
           )}
         </p>
       )}
+      <div className="border-t pt-3 space-y-2 text-sm">
+        <h3 className="font-semibold">Dirigeants et contacts professionnels</h3>
+        {contacts.map((contact, index) => (
+          <div key={index} className="rounded-lg border p-3 space-y-1">
+            <p className="font-medium">
+              {contact.name}
+              {contact.role ? " · " + contact.role : ""}
+            </p>
+            {contact.phone && (
+              <p>
+                <a href={"tel:" + contact.phone.replace(/[^+0-9]/g, "")}>
+                  {contact.phone}
+                </a>
+              </p>
+            )}
+            {contact.email && (
+              <p>
+                <a href={"mailto:" + contact.email}>{contact.email}</a>
+              </p>
+            )}
+            {contact.profileUrl && (
+              <a
+                className="underline text-teal-700"
+                href={contact.profileUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Fiche du dirigeant sur Societe.com
+              </a>
+            )}
+            {!contact.phone && !contact.email && (
+              <p className="text-xs text-gray-500">
+                Coordonnées directes non publiées sur la fiche capturée.
+              </p>
+            )}
+          </div>
+        ))}
+        {names
+          .filter(
+            (name) =>
+              !contacts.some(
+                (contact) =>
+                  name === contact.name ||
+                  name.startsWith(contact.name + " · "),
+              ),
+          )
+          .map((name) => (
+            <p key={name}>{name}</p>
+          ))}
+        {!contacts.length && !names.length && (
+          <p>
+            Nom du dirigeant non relevé. Capturez la fiche Societe.com détaillée
+            puis confirmez l’enrichissement.
+          </p>
+        )}
+        {profile?.sourceUrl && (
+          <p className="text-xs">
+            <a
+              className="underline text-teal-700"
+              href={profile.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Source Societe.com
+            </a>{" "}
+            · capture du{" "}
+            {date(
+              profile.capturedAt
+                ? new Date(profile.capturedAt).toISOString()
+                : null,
+            )}
+          </p>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-3 text-sm border-t pt-3">
         <label className="flex gap-2">
           <input

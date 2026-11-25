@@ -1,9 +1,8 @@
 import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { SocieteEnrichment } from '@/components/SocieteEnrichment';
+import { SocieteEnrichmentDialog } from '@/components/SocieteEnrichment';
 import { EditNote } from '@/components/EditNote';
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useLocation } from 'wouter';
+import { Link, useParams, useLocation } from 'wouter';
 import {
   ArrowLeft, Edit2, Save, X, Star, Mail, Phone, Globe, Building2,
   Briefcase, Loader2, Plus, Trash2, CheckCircle, AlertCircle,
@@ -576,13 +575,15 @@ export default function ProspectDetailPage() {
 
   return (
     <div className="min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
-      <Dialog key={id} open={showSocieteEnrichment} onOpenChange={setShowSocieteEnrichment}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogTitle>Enrichir via Societe.com</DialogTitle>
-          <DialogDescription>Recherchez par nom, SIRET/SIREN ou adresse, puis comparez la fiche avant de confirmer.</DialogDescription>
-          <SocieteEnrichment prospect={prospect} onSaved={() => void fetchProspect()} />
-        </DialogContent>
-      </Dialog>
+      {!!prospect.identityConflicts?.length && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 text-amber-950 p-4 mb-4">
+        <p className="font-semibold">SIRET déjà utilisé sur une autre fiche prospect</p>
+        <p className="text-sm">Vérifiez ces fiches avant de poursuivre l’enrichissement.</p>
+        {prospect.identityConflicts.map((other:any) => <Link key={other.id} className="block underline mt-1" to={'/prospects/' + other.id}>{other.company || 'Prospect sans nom'} · {other.siret}</Link>)}
+      </div>}
+      {prospect.identityMismatch && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 text-red-900 p-4 mb-4">Le SIREN et le SIRET de cette fiche ne correspondent pas. Vérifiez les identifiants avant de poursuivre.</p>}
+      <SocieteEnrichmentDialog key={id} open={showSocieteEnrichment} onOpenChange={setShowSocieteEnrichment}
+        prospect={prospect} onSaved={() => void fetchProspect()}/>
+
       {showAddActivity && (
         <AddActivityModal prospectId={id} onClose={() => setShowAddActivity(false)} onSaved={fetchActivities} />
       )}
