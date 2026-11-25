@@ -176,6 +176,27 @@ async function importIdentityRace(kind,token,example) {
   });
 }
 
+async function storeLegacyLinkedinProfiles(prospectId) {
+  const code=String.raw`import {pool} from '@workspace/db';
+    const [id]=process.argv.slice(1),result=[];
+    for(const [name,sourceUrl,linkedinUrl] of [
+      ['Ancienne enseigne source','https://linkedin.com/company/ancienne-source',null],
+      ['Ancienne enseigne champ',null,'https://linkedin.com/company/ancien-champ/about/?trk=old'],
+    ]) {
+      const saved=await pool.query("INSERT INTO prospects (company,tenant_id,source,source_url,linkedin_url,city,address) SELECT $1,tenant_id,'linkedin',$2,$3,'Roubaix','8 rue du Test 59100 Roubaix' FROM prospects WHERE id=$4 RETURNING id",[name,sourceUrl,linkedinUrl,id]);
+      result.push(saved.rows[0].id);
+    }
+    console.log(JSON.stringify(result));await pool.end();`;
+  return await new Promise((resolve,reject)=>{
+    const child=spawn('node',['--import','tsx','--input-type=module','-e',code,prospectId],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
+    let output='',errors='';child.stdout.on('data',chunk=>{output+=String(chunk);});child.stderr.on('data',chunk=>{errors+=String(chunk);});
+    child.on('error',reject);child.on('exit',status=>{
+      if(status!==0){reject(new Error('Anciennes fiches de test : '+errors.slice(-1000)));return;}
+      try{resolve(JSON.parse(output.trim().split('\n').at(-1)));}catch(error){reject(error);}
+    });
+  });
+}
+
 async function storeTestSourcingJob(prospectId,candidates) {
   const code=String.raw`import {pool} from '@workspace/db';
     const [id,raw]=process.argv.slice(1);
@@ -1106,6 +1127,17 @@ try {
       const jobReplay=await request('POST',`/sourcing/jobs/${jobId}/import`,{ids:[jobRecord.id]},token);
       check(jobReplay.status===200 && jobReplay.body.imported===0 && jobReplay.body.skipped===1,
         'LinkedIn : réimport de la recherche sans création supplémentaire');
+      const legacyLinks=await storeLegacyLinkedinProfiles(target.id);
+      const legacyDevice=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,
+        id:'legacy_linkedin_device',company:'Nouvelle enseigne source',sourceUrl:'https://www.linkedin.com/company/ancienne-source/'}]},token);
+      check(legacyDevice.status===200 && legacyDevice.body.imported===0 && legacyDevice.body.reviews[0]?.type==='ambiguous' && legacyDevice.body.reviews[0]?.prospectId===legacyLinks[0] && !legacyDevice.body.processedIds.length,
+        'LinkedIn historique : URL sans www ni barre finale retrouvée malgré un nouveau nom');
+      const legacyJobRecord={...jobRecord,id:'legacy_linkedin_job',company:'Nouvelle enseigne champ',sourceUrl:'https://www.linkedin.com/company/ancien-champ/'};
+      const legacyJobId=await storeTestSourcingJob(target.id,[legacyJobRecord]);
+      const legacyJob=await request('POST',`/sourcing/jobs/${legacyJobId}/import`,{ids:[legacyJobRecord.id]},token);
+      const legacyUnchanged=await request('GET',`/prospects/${legacyLinks[1]}`,undefined,token);
+      check(legacyJob.status===200 && legacyJob.body.imported===0 && legacyJob.body.skipped===1 && legacyUnchanged.body.linkedinUrl==='https://linkedin.com/company/ancien-champ/about/?trk=old',
+        'Recherche LinkedIn historique : ancien champ avec À propos et paramètres reconnu sans réécriture ni nouvelle fiche');
       for(const sourceUrl of ['https://www.linkedin.com/company/atelier-recette/posts/123','https://www.linkedin.com/in/dirigeant-test/','https://www.linkedin.com.evil.example/company/atelier/']) {
         const rejected=await request('POST','/sourcing/device/import-prospects',{verified:[{...record,sourceUrl}]},token);
         check(rejected.status===400,'LinkedIn : seule une page entreprise conforme est importable');

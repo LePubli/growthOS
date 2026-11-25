@@ -4,7 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { activityLabel, db } from "@workspace/db";
 import { sourcingJobsTable, prospectsTable } from "@workspace/db";
-import { eq, and, desc, inArray, or, ilike } from "drizzle-orm";
+import { eq, and, desc, inArray, or, ilike, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
@@ -538,6 +538,16 @@ function sameEstablishment(record:{company:string|null;address:string|null;city:
   // Un site web peut être commun à toutes les agences d'un réseau : jamais une preuve d'identité seule.
   return false;
 }
+// Existing captures may predate canonical storage (no www, no final slash,
+// an About URL or tracking parameters). Match them before deciding ambiguity.
+function linkedinProfilePredicate(profile:string) {
+  const pattern='^https://(www[.])?linkedin[.]com(:443)?/company/([a-z0-9_-]+)(/about)?/?([?#].*)?$';
+  const replacement='https://www.linkedin.com/company/\\3/';
+  return sql`(
+    regexp_replace(lower(trim(${prospectsTable.sourceUrl})), ${pattern}, ${replacement}) = ${profile}
+    OR regexp_replace(lower(trim(${prospectsTable.linkedinUrl})), ${pattern}, ${replacement}) = ${profile}
+  )`;
+}
 function ambiguousLinkedinProfiles(records: (typeof prospectsTable.$inferSelect)[], incoming:ImportCapture) {
   const profile=professionalSourceUrl('linkedin',incoming.sourceUrl);
   if(!profile)return [];
@@ -685,7 +695,7 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
     if(siret)where.push(eq(prospectsTable.siret,siret));
     if(profileUrl)where.push(eq(prospectsTable.sourceUrl,profileUrl));
     const linkedinProfile=professionalSourceUrl('linkedin',item.sourceUrl);
-    if(linkedinProfile)where.push(eq(prospectsTable.linkedinUrl,linkedinProfile));
+    if(linkedinProfile)where.push(linkedinProfilePredicate(linkedinProfile));
     const prior=await db.select().from(prospectsTable).where(and(
       eq(prospectsTable.tenantId,req.auth!.tenantId),or(...where),
     )).limit(100);
@@ -1379,7 +1389,7 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
     const profile=captureProfileUrl(candidate.sourceUrl);
     if(profile)alternatives.push(eq(prospectsTable.sourceUrl,profile));
     const linkedinProfile=professionalSourceUrl('linkedin',incoming.sourceUrl);
-    if(linkedinProfile)alternatives.push(eq(prospectsTable.linkedinUrl,linkedinProfile));
+    if(linkedinProfile)alternatives.push(linkedinProfilePredicate(linkedinProfile));
     const existing=await db.select().from(prospectsTable).where(and(
       eq(prospectsTable.tenantId,req.auth!.tenantId),or(...alternatives),
     )).limit(100);

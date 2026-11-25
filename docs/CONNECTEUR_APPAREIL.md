@@ -124,3 +124,5 @@ Pour vérifier LinkedIn pas à pas :
 5. Si une autre URL LinkedIn était déjà enregistrée, trancher le désaccord sur la fiche. Sans décision, la valeur actuelle est conservée. Un réimport identique ne crée pas une nouvelle fiche.
 
 Une page LinkedIn d’entreprise peut être partagée par plusieurs établissements. GrowthOS utilise aussi les éléments d’identité de l’établissement ; une même page ne suffit pas à fusionner deux villes différentes. Un cas ambigu reste dans la sélection pour vérification.
+
+Les anciens liens LinkedIn sans `www`, sans barre finale ou comportant une rubrique « À propos » et des paramètres de suivi sont reconnus au rapprochement. Une différence de nom demande vérification au lieu de créer une nouvelle fiche sur ce seul changement.
