@@ -127,6 +127,55 @@ async function monitoringMaintenance(action,id) {
   });
 }
 
+// Hold the import just before the production identity trigger. A second HTTP
+// request then creates the same SIRET, reproducing a real lookup/insert race.
+async function importIdentityRace(kind,token,example) {
+  const code = String.raw`import {pool} from '@workspace/db';
+    const [base,token,kind,raw]=process.argv.slice(1);
+    const example=JSON.parse(raw),tenantId=JSON.parse(Buffer.from(token.split('.')[1],'base64url')).tenantId;
+    const prefix=kind==='device'?'9847001':'9847002';
+    const records=[1,2,3].map((n)=>({...example,id:'race_'+kind+'_'+n,company:'Course '+kind+' '+n,
+      siret:prefix+String(n).padStart(2,'0')+'00016',sourceUrl:'https://www.societe.com/societe/course-'+prefix+String(n).padStart(2,'0')+'.html'}));
+    const raced=records[1],client=await pool.connect();let locked=false;
+    const request=async(path,body)=>{const response=await fetch(base+path,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});return{status:response.status,body:await response.json()};};
+    try {
+      await client.query('SELECT pg_advisory_lock(885102)');locked=true;
+      await pool.query("CREATE OR REPLACE FUNCTION smoke_identity_race() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.siret='"+raced.siret+"' AND NEW.company='"+raced.company+"' THEN PERFORM pg_advisory_xact_lock(885102); END IF; RETURN NEW; END $$; CREATE TRIGGER aaa_smoke_identity_race BEFORE INSERT ON prospects FOR EACH ROW EXECUTE FUNCTION smoke_identity_race();");
+      let path='/sourcing/device/import-prospects',payload={verified:records};
+      if(kind==='job') {
+        const results=records.map(record=>({...record,siren:record.siret.slice(0,9),source:'entreprises'}));
+        const job=await pool.query("INSERT INTO sourcing_jobs (type,name,status,params,tenant_id) VALUES ('entreprises','Course import','completed',$1,$2) RETURNING id",[JSON.stringify({results}),tenantId]);
+        path='/sourcing/jobs/'+job.rows[0].id+'/import';payload={ids:records.map(record=>record.id)};
+      }
+      const pending=request(path,payload);
+      let waiting=false;
+      for(let attempt=0;attempt<250;attempt++) {
+        const state=await pool.query("SELECT 1 FROM pg_locks WHERE locktype='advisory' AND objid=885102 AND NOT granted");
+        if(state.rows.length){waiting=true;break;}
+        await new Promise(resolve=>setTimeout(resolve,20));
+      }
+      if(!waiting)throw new Error('Import non bloqué avant le contrôle SIRET');
+      const simultaneous=await request('/prospects',{company:'Nom concurrent '+kind,siret:raced.siret});
+      if(simultaneous.status!==201)throw new Error('Création concurrente non réussie : '+JSON.stringify(simultaneous));
+      await client.query('SELECT pg_advisory_unlock(885102)');locked=false;
+      const result=await pending;
+      const rows=await pool.query('SELECT siret FROM prospects WHERE tenant_id=$1 AND siret=ANY($2::text[])',[tenantId,records.map(record=>record.siret)]);
+      console.log(JSON.stringify({...result,rows:rows.rows,records}));
+    } finally {
+      if(locked)await client.query('SELECT pg_advisory_unlock(885102)');
+      await pool.query('DROP TRIGGER IF EXISTS aaa_smoke_identity_race ON prospects; DROP FUNCTION IF EXISTS smoke_identity_race();');
+      client.release();await pool.end();
+    }`;
+  return await new Promise((resolve,reject)=>{
+    const child=spawn('node',['--import','tsx','--input-type=module','-e',code,base,token,kind,JSON.stringify(example)],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
+    let output='',errors='';child.stdout.on('data',chunk=>{output+=String(chunk);});child.stderr.on('data',chunk=>{errors+=String(chunk);});
+    child.on('error',reject);child.on('exit',status=>{
+      if(status!==0){reject(new Error('Course import : '+errors.slice(-1400)));return;}
+      try{resolve(JSON.parse(output.trim().split('\n').at(-1)));}catch(error){reject(error);}
+    });
+  });
+}
+
 async function awaitApi(timeoutMs = 90000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -1165,6 +1214,14 @@ try {
   const repaired=await request('PATCH',`/prospects/${legacyId}`,{siret:'98107525200032'},token);
   check(repaired.status===200 && repaired.body.identityConflicts.length===0,'Correction manuelle du SIRET : alerte levée sans supprimer de fiche');
   check((await request('POST','/prospects',{company:'SIRET corrigé déjà utilisé',siret:'98107525200032'},token)).status===409,'Fiche ancienne corrigée : unicité active sur son nouveau SIRET');
+
+  if(realPostgresUrl) for(const kind of ['device','job']) {
+    const race=await importIdentityRace(kind,token,societeCapture);
+    check(race.status===200 && race.body.imported===2 && race.body.skipped===1 && race.rows.length===3,
+      'Course import '+kind+' : doublon sauté, fiches avant/après importées sans interruption');
+    if(kind==='device')check(race.body.processedIds.includes(race.records[0].id) && race.body.processedIds.includes(race.records[2].id) && !race.body.processedIds.includes(race.records[1].id),
+      'Course connecteur : identifiants déjà traités renvoyés, capture en conflit conservée');
+  }
 
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
 } catch (error) {
