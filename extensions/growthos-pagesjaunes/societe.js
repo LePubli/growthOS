@@ -73,7 +73,9 @@
   };
   const headings=typeof root.querySelectorAll==='function'?[...root.querySelectorAll('h2, h3')].filter(visible):[];
   const heading=headings.find(element=>/^dirigeants?(?:\s|$)/i.test(clean(element.innerText)));
-  const nextHeading=heading ? headings[headings.indexOf(heading)+1] : null;
+  const nextSection = heading => heading ? headings.slice(headings.indexOf(heading)+1)
+    .find(candidate => Number(candidate.tagName?.slice(1) || 2) <= Number(heading.tagName?.slice(1) || 2)) : null;
+  const nextHeading=nextSection(heading);
   // Limiter les liens à la rubrique de cette société, avant les recommandations.
   const managerAnchors=anchors.filter(link => managerLink(link) && heading && (
     (typeof heading.compareDocumentPosition==='function' && (heading.compareDocumentPosition(link)&4) &&
@@ -112,7 +114,7 @@
   // Les coordonnées d'un dirigeant restent attachées à sa carte. Les coordonnées
   // générales sont lues dans la rubrique Contact de l'entreprise uniquement.
   const contactHeading=headings.find(element=>/^contacter?\s/i.test(clean(element.innerText)));
-  const nextContactHeading=contactHeading?headings[headings.indexOf(contactHeading)+1]:null;
+  const nextContactHeading=nextSection(contactHeading);
   const companyLinks=contactHeading?anchors.filter(link=>
     (contactHeading.compareDocumentPosition(link)&4) && (!nextContactHeading || (nextContactHeading.compareDocumentPosition(link)&2)) &&
     ![...managerCards].some(card=>card.contains?.(link))):[];
