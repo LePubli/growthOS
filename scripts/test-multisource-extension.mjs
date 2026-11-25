@@ -285,3 +285,12 @@ assert.ok(societeCapture(societeText.replace('999 000 002\n','888 000 002\n')).e
 assert.ok(societeCapture(societeText.replace('59100','')).error);
 assert.ok(societeCapture(societeText,'https://example.com/societe/atelier-recette-999000002.html').error);
 console.log('✓ Societe.com : lecture des champs affichés, adresse et SIREN cohérents, données masquées absentes');
+const richSociete=societeCapture(societeText+'\nFORME JURIDIQUE\nEntrepreneur individuel\nDATE DE CREATION\n14 octobre 2013\nNUMÉRO DE TVA\nFR00999000002\nCONVENTION COLLECTIVE\nConvention de test\nMail de contact\ncontact@atelier-recette.example.org');
+assert.equal(richSociete.results[0].companyDetails.fields['Forme juridique'],'Entrepreneur individuel');
+assert.equal(richSociete.results[0].companyDetails.fields['Numéro de TVA'],'FR00999000002');
+assert.equal(richSociete.results[0].email,'contact@atelier-recette.example.org');
+activeTabUrl='https://www.societe.com/societe/atelier-recette-999000002.html';
+injectedResult=richSociete;
+const richStored=await send('capture-tab');
+assert.ok(richStored.results.some(item=>item.source==='societe_com' && item.companyDetails?.fields['Forme juridique']==='Entrepreneur individuel'));
+console.log('✓ Societe.com : informations légales et convention collective conservées dans la capture Chrome');

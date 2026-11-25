@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { Router } from "express";
 import { z } from "zod";
 import { activityLabel, db } from "@workspace/db";
@@ -382,6 +383,14 @@ function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
     }
   } catch { return false; }
 }
+const companyDetailsSchema = z.object({
+  fields:z.record(z.string().max(100),z.string().max(1000)).refine(value=>Object.keys(value).length<=30),
+  managers:z.array(z.string().max(150)).max(50),
+  establishments:z.array(z.object({siret:z.string().regex(/^\d{14}$/),address:z.string().max(320).nullable()}).strict()).max(30),
+  links:z.array(z.object({label:z.string().max(180),url:z.string().url().max(500).refine(value=>{
+    const url=new URL(value);return url.protocol==='https:' && ['societe.com','www.societe.com'].includes(url.hostname);
+  })}).strict()).max(20),
+}).strict();
 const deviceCandidateSchema = z.object({
   id: z.string().trim().min(3).max(64),
   source: z.enum(deviceSources).default('pagesjaunes'), // compatibilité extension 0.3
@@ -389,6 +398,7 @@ const deviceCandidateSchema = z.object({
   address: z.string().trim().min(5).max(320),
   codePostal: z.string().regex(/^\d{5}$/),
   city: z.string().trim().max(120).nullable().optional(),
+  email:z.string().email().max(254).nullable().optional(),
   phone: z.string().trim().max(40).nullable().optional(),
   website: z.string().url().max(500).refine(url=>['https:','http:'].includes(new URL(url).protocol)).nullable().optional(),
   sourceUrl: z.string().url().max(500).nullable().optional(),
@@ -397,6 +407,7 @@ const deviceCandidateSchema = z.object({
   nafLabel: z.string().trim().max(250).nullable().optional(),
   apeScope: z.enum(['etablissement','unite_legale']).optional(),
   nafVersion: z.string().trim().max(32).nullable().optional(),
+  companyDetails: companyDetailsSchema.optional(),
   collectionMode: z.enum(['manual','visible']).optional(),
   capturedAt: z.number().int().positive().optional(),
 }).strict().superRefine((item, context) => {
@@ -414,7 +425,10 @@ const deviceCandidateSchema = z.object({
   }
 }).transform(item => ({
   ...item,
-  ...(item.apeCode && item.apeScope ? {sourceDetails:{annuaire:{apeScope:item.apeScope}}} : {}),
+  sourceDetails:{
+    ...(item.apeCode && item.apeScope ? {annuaire:{apeScope:item.apeScope}} : {}),
+    ...(item.source==='societe_com' && item.companyDetails ? {societe_com:{companyDetails:item.companyDetails,sourceUrl:item.sourceUrl,capturedAt:item.capturedAt}} : {}),
+  },
   ...(item.source === 'societe_com' && item.sourceUrl
     ? {siren: new URL(item.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1]} : {}),
 }));
@@ -546,7 +560,8 @@ async function mergeProspectCapture(
   const incomingSources=item.source.split(',').map(s=>s.trim()).filter(Boolean);
   const sourceAdded=incomingSources.some(source=>!sources.has(source));
   for(const source of incomingSources)sources.add(source);
-  if(!filled.length&&!newConflicts.length&&!sourceAdded&&alreadyObserved)
+  if(!filled.length&&!newConflicts.length&&!sourceAdded&&alreadyObserved &&
+    !jsonRecord(item.sourceDetails).societe_com)
     return {updated:false,filled,conflicts:0,newConflicts:[]};
   const observation={captureId:item.id,source:item.source,sourceUrl:item.sourceUrl||null,
     capturedAt:now,fieldsFilled:filled};
@@ -560,6 +575,16 @@ async function mergeProspectCapture(
       for(const [key,value] of Object.entries(jsonRecord(details)))
         if(merged[key]==null||merged[key]==='')merged[key]=value;
       combinedDetails[source]=merged;
+    }
+  }
+  if(item.source==='societe_com' && incomingDetails.societe_com){
+    const incomingProfile=jsonRecord(incomingDetails.societe_com);
+    const oldProfile=jsonRecord(oldDetails.societe_com);
+    if(incomingProfile.companyDetails && Number(incomingProfile.capturedAt||0)>=Number(oldProfile.capturedAt||0)){
+      const changed=!isDeepStrictEqual(oldProfile.companyDetails,incomingProfile.companyDetails);
+      const history=Array.isArray(oldProfile.history)?oldProfile.history:[];
+      combinedDetails.societe_com={...oldProfile,...incomingProfile,
+        history:changed && oldProfile.companyDetails ? [...history,{capturedAt:oldProfile.capturedAt,companyDetails:oldProfile.companyDetails}].slice(-10) : history};
     }
   }
   const updatedDetails={...combinedDetails,crossSource:{...oldMerge,
@@ -840,6 +865,7 @@ router.post("/device/jobs", requireAuth, async (req, res) => {
       website: item.website || null, sourceUrl: item.sourceUrl || null,
       source: item.source, sources: [item.source],
       sourceDetails: {...item.sourceDetails, [item.source]: {
+        ...jsonRecord(jsonRecord(item.sourceDetails)[item.source]),
         sourceUrl:item.sourceUrl || null,
         collectionMode:item.collectionMode || (item.source==='pagesjaunes'?'browser':'visible'),
         capturedAt:new Date().toISOString(),

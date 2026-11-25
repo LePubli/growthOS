@@ -1,4 +1,4 @@
-# Connecter GrowthOS à son navigateur — connecteur multisource 0.9.1
+# Connecter GrowthOS à son navigateur — connecteur multisource 0.10.0
 
 Ce connecteur fonctionne avec **Chrome ou Edge sur ordinateur**. Il garde les recherches et les éventuelles sessions des sites consultés **dans votre propre navigateur**, sans transmettre de mot de passe ni de cookie à GrowthOS. Il ne modifie ni DockPanel ni les autres conteneurs.
 
@@ -99,3 +99,14 @@ Sur une fiche prospect, le bouton **Enrichir via Societe.com** propose les reche
 4. Lire les deux colonnes, confirmer l’entreprise et l’établissement, puis confirmer l’enrichissement. Les champs vides sont complétés. Les divergences apparaissent dans les désaccords de la fiche, où une décision peut être prise.
 
 Un SIREN différent ou un autre SIRET déjà connu déclenche un refus de fusion. La provenance et la date de capture sont conservées. L’installation de cette version du connecteur et la version web/API correspondante sont nécessaires pour ce parcours.
+
+
+## Fiche complète et veille
+
+La capture Societe.com 0.10.0 conserve les rubriques professionnelles affichées sur la page. Les informations supplémentaires apparaissent dans la comparaison avant enrichissement puis dans la fiche prospect. Refaire une capture permet de compléter une ancienne fiche. Les versions précédentes sont consultables dans les informations détaillées Societe.com.
+
+À l’ouverture d’un prospect identifié par SIREN/SIRET, GrowthOS contrôle ses données auprès de l’Annuaire des Entreprises. Le résultat indique l’état de l’entreprise et, lorsque la source retourne le SIRET exact, celui de l’établissement. Un résultat récent est réutilisé pendant une minute. L’heure du contrôle et la date des données de la source permettent d’en apprécier la fraîcheur.
+
+Cocher **Surveiller les changements de ce prospect** active un contrôle automatique quotidien. La fréquence peut être réglée à trois jours ou une semaine. Le serveur conserve la prochaine échéance et l’historique, et ajoute une notification GrowthOS lorsque les données observées changent. Cette veille fonctionne pendant que l’API est en service, y compris lorsque Chrome est fermé.
+
+En cas d’indisponibilité de la source, la fiche conserve son dernier résultat et affiche l’erreur de vérification. Le traitement automatique réessaie après quinze minutes. Les informations de l’Annuaire et les captures Societe.com affichent chacune leur provenance.

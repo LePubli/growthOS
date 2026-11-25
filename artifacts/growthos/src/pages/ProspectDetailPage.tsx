@@ -1,3 +1,4 @@
+import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { SocieteEnrichment } from '@/components/SocieteEnrichment';
 import { EditNote } from '@/components/EditNote';
@@ -403,13 +404,19 @@ export default function ProspectDetailPage() {
   const save = async () => {
     setSaving(true);
     try {
-      const payload = { ...form, ...(geoCoords ?? {}) };
+      const editableFields = ['firstName','lastName','email','phone','company','siren','siret','apeCode',
+        'nafLabel','nafVersion','postalCode','city','linkedinUrl','jobTitle','website','address','lat','lng','status','score','isStarred'];
+      const changedFields = Object.fromEntries(editableFields
+        .filter(field => form[field] !== undefined && !Object.is(form[field],prospect[field]))
+        .map(field => [field,form[field]]));
+      const payload = { ...changedFields, ...(geoCoords ?? {}) };
       const updated = await apiClient.patch(`/prospects/${id}`, payload);
       setProspect(updated);
+      setForm(updated);
       setGeoCoords(null);
       setEditing(false);
       toast.success('Prospect mis à jour');
-    } catch { toast.error('Erreur lors de la mise à jour'); }
+    } catch (error:any) { toast.error(error.message || 'Erreur lors de la mise à jour'); }
     finally { setSaving(false); }
   };
 
@@ -732,6 +739,7 @@ export default function ProspectDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left — Info */}
         <div className="lg:col-span-2 space-y-4">
+          <ProspectCompanyProfile key={id} prospect={prospect} />
           {/* Informations légales structurées, accessibles sans enrichissement */}
           <section className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex flex-wrap gap-3 justify-between items-center mb-4">

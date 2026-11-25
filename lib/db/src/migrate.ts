@@ -146,6 +146,30 @@ CREATE TABLE IF NOT EXISTS webhooks (
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS prospect_monitoring (
+  prospect_id UUID PRIMARY KEY REFERENCES prospects(id) ON DELETE CASCADE,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  interval_hours INTEGER NOT NULL DEFAULT 24 CHECK(interval_hours IN (24,72,168)),
+  snapshot JSONB,
+  checked_at TIMESTAMPTZ,
+  last_attempt_at TIMESTAMPTZ,
+  next_check_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_error TEXT,
+  lease_token UUID,
+  lease_until TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS prospect_monitoring_due ON prospect_monitoring(next_check_at) WHERE enabled;
+CREATE TABLE IF NOT EXISTS prospect_changes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_id UUID NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  changes JSONB NOT NULL,
+  source_url TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS prospect_changes_lookup ON prospect_changes(tenant_id,prospect_id,detected_at DESC);
+
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS siren TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS siret TEXT;

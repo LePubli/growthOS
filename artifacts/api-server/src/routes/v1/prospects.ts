@@ -65,6 +65,29 @@ const prospectSchema = z.object({
   isStarred: z.boolean().optional(),
 });
 
+const patchProspectSchema = prospectSchema.partial().extend({
+  firstName: prospectSchema.shape.firstName.nullable(),
+  lastName: prospectSchema.shape.lastName.nullable(),
+  email: prospectSchema.shape.email.nullable(),
+  phone: prospectSchema.shape.phone.nullable(),
+  company: prospectSchema.shape.company.nullable(),
+  siren: prospectSchema.shape.siren.nullable(),
+  siret: prospectSchema.shape.siret.nullable(),
+  apeCode: prospectSchema.shape.apeCode.nullable(),
+  nafLabel: prospectSchema.shape.nafLabel.nullable(),
+  nafVersion: prospectSchema.shape.nafVersion.nullable(),
+  postalCode: prospectSchema.shape.postalCode.nullable(),
+  city: prospectSchema.shape.city.nullable(),
+  linkedinUrl: prospectSchema.shape.linkedinUrl.nullable(),
+  jobTitle: prospectSchema.shape.jobTitle.nullable(),
+  website: prospectSchema.shape.website.nullable(),
+  address: prospectSchema.shape.address.nullable(),
+  lat: prospectSchema.shape.lat.nullable(),
+  lng: prospectSchema.shape.lng.nullable(),
+  score: prospectSchema.shape.score.nullable(),
+  isStarred: prospectSchema.shape.isStarred.nullable(),
+});
+
 /* ─── Routes ─── */
 
 router.get("/", async (req, res) => {
@@ -352,7 +375,7 @@ router.post("/bulk", async (req, res) => {
 
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
-  const parse = prospectSchema.partial().safeParse(req.body);
+  const parse = patchProspectSchema.safeParse(req.body);
   if (!parse.success) {
     res.status(400).json({ error: "Données invalides" });
     return;

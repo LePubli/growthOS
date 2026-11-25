@@ -473,8 +473,10 @@ function validCaptured(item,manual=false,verifiedSiret=false){
   const city=String(item.city||'').trim().slice(0,120)||null;
   return {id:'local_'+crypto.randomUUID().replace(/-/g,'').slice(0,32),source:item.source,
     company,address,codePostal,city,phone,website:cleanUrl(item.website),sourceUrl,
+    ...(item.source==='societe_com' && item.email ? {email:String(item.email).trim().slice(0,254)} : {}),
     siret:inputSiret || (verifiedSiret && /^\d{14}$/.test(String(item.siret||'')) ? item.siret : null),
     ...(verifiedSiret && item.apeCode ? {apeCode:item.apeCode,nafLabel:item.nafLabel||null,nafVersion:item.nafVersion||null,...(item.apeScope ? {apeScope:item.apeScope} : {})} : {}),
+    ...(item.source==='societe_com' && item.companyDetails ? {companyDetails:item.companyDetails} : {}),
     collectionMode:manual?'manual':'visible',capturedAt:Date.now()};
 }
 function addToQueue(items,manual=false,verifiedSiret=false){
@@ -487,7 +489,8 @@ async function storeNewCaptures(items, manual, verifiedSiret){
     const key=[item.source,item.company,item.address,item.codePostal].join('|').toLocaleLowerCase('fr');
     const existing=queue.find(q=>[q.source,q.company,q.address,q.codePostal].join('|').toLocaleLowerCase('fr')===key);
     if(existing){
-      for(const field of ['phone','website','city','siret','apeCode','nafLabel','nafVersion','apeScope']){
+      if(item.companyDetails){existing.companyDetails=item.companyDetails;existing.capturedAt=item.capturedAt;}
+      for(const field of ['phone','email','website','city','siret','apeCode','nafLabel','nafVersion','apeScope']){
         if(item[field] && !existing[field] && (!existing.siret || !item.siret || existing.siret===item.siret))
           existing[field]=item[field];
       }

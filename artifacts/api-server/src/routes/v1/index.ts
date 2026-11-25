@@ -1,3 +1,4 @@
+import prospectMonitoringRouter from './prospect-monitoring';
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth";
 import { requireTenant } from "../../middlewares/tenantIsolation";
@@ -76,7 +77,7 @@ mount("/plans",           plansPublicRouter);
 mount("/setup",           setupRouter);
 
 // ── ROUTES PROTÉGÉES (requireAuth + requireTenant au niveau mount) ────────
-mount("/prospects",          requireAuth, requireTenant, prospectsRouter);
+mount("/prospects",          requireAuth, requireTenant, prospectMonitoringRouter, prospectsRouter);
 mount("/assistant",          requireAuth, requireTenant, assistantRouter);
 mount("/seo-audit",          requireAuth, requireTenant, seoAuditRouter);
 mount("/pipeline",           requireAuth, requireTenant, pipelineRouter);

@@ -1,5 +1,7 @@
 /* Communication limitée à l'extension navigateur installée sur cet appareil.
    Le serveur GrowthOS et l'extension ne partagent ni mot de passe ni token. */
+export type CompanyDetails = {fields:Record<string,string>;managers:string[];
+  establishments:{siret:string;address:string|null}[];links:{label:string;url:string}[]};
 export type LocalCompany = {
   id: string;
   source?: 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin' | 'societe_com' | 'facebook' | 'instagram' | 'tiktok';
@@ -8,6 +10,7 @@ export type LocalCompany = {
   codePostal: string;
   city: string | null;
   phone: string | null;
+  email?: string | null;
   website: string | null;
   sourceUrl: string | null;
   siret: string | null;
@@ -15,6 +18,7 @@ export type LocalCompany = {
   apeScope?: 'etablissement' | 'unite_legale';
   nafLabel?: string | null;
   nafVersion?: string | null;
+  companyDetails?: CompanyDetails;
   collectionMode?: 'manual' | 'visible';
   capturedAt?: number;
 };
