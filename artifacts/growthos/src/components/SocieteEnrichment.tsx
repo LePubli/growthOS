@@ -1,3 +1,4 @@
+import { CompanyDetailsView } from './ProspectCompanyProfile';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
@@ -5,12 +6,12 @@ import { getLocalCaptures, type LocalCompany } from '@/lib/pagesjaunes-device';
 
 type Prospect = {
   id: string; company?: string | null; siren?: string | null; siret?: string | null;
-  city?: string | null; phone?: string | null; website?: string | null;
+  city?: string | null; phone?: string | null; email?:string|null; website?: string | null;
   address?: string | null; postalCode?: string | null; apeCode?: string | null; nafLabel?: string | null;
 };
 const comparison = [
   ['SIREN', 'siren'], ['SIRET', 'siret'], ['Adresse', 'address'], ['Code postal', 'codePostal'],
-  ['Ville', 'city'], ['Téléphone', 'phone'], ['Site web', 'website'], ['Code APE', 'apeCode'],
+  ['Ville', 'city'], ['Téléphone', 'phone'], ['Email','email'], ['Site web', 'website'], ['Code APE', 'apeCode'],
   ['Activité', 'nafLabel'],
 ] as const;
 
@@ -68,6 +69,7 @@ export function SocieteEnrichment({ prospect, onSaved }: { prospect: Prospect; o
           return <tr key={key}><th className="py-1 font-normal">{label}</th><td>{current || '—'}</td><td>{incoming || '—'}</td></tr>;
         })}</tbody>
       </table></div>
+      {capture.companyDetails && <details className="my-3"><summary>Autres informations capturées sur Societe.com</summary><CompanyDetailsView details={capture.companyDetails}/></details>}
       <p className="text-xs">Les champs vides seront complétés. Les valeurs différentes seront proposées dans les désaccords de la fiche.</p>
       <label className="flex gap-2 text-sm my-3"><input type="checkbox" checked={confirmed} disabled={busy}
         onChange={event => setConfirmed(event.target.checked)} />Je confirme que cette société et cet établissement correspondent au prospect.</label>

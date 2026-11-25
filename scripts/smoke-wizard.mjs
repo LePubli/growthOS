@@ -13,7 +13,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHmac } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 const root = resolve(fileURLToPath(import.meta.url), "../..");
@@ -106,6 +106,20 @@ async function awaitSourcingJob(id, token, timeoutMs = 40000) {
   throw new Error('La recherche multisource n’a pas terminé dans le délai imparti');
 }
 
+async function monitoringMaintenance(action,id) {
+  const code = `import {pool} from '@workspace/db';
+    import {runProspectWatch} from './src/services/prospect-monitoring.ts';
+    const [action,id]=process.argv.slice(1);
+    if(action==='expire') await pool.query("UPDATE prospect_monitoring SET last_attempt_at=NOW()-INTERVAL '2 minutes',checked_at=NOW()-INTERVAL '2 minutes',next_check_at=NOW()-INTERVAL '1 second' WHERE prospect_id=$1",[id]);
+    if(action==='cron') await runProspectWatch();
+    await pool.end();`;
+  await new Promise((resolve,reject)=>{
+    const child=spawn('node',['--import','tsx','--input-type=module','-e',code,action,id],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
+    let errors='';child.stderr.on('data',chunk=>{errors+=String(chunk);});
+    child.on('error',reject);child.on('exit',status=>status===0?resolve():reject(new Error('Maintenance de test : '+errors.slice(-1000))));
+  });
+}
+
 async function awaitApi(timeoutMs = 90000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -118,9 +132,25 @@ async function awaitApi(timeoutMs = 90000) {
   throw new Error("API did not start (check database migrations and startup logs)");
 }
 
+let watchVersion=0,watchDown=false,watchWrongIdentity=false,watchRequests=0;
 const companies = createServer((req, res) => {
   if (!req.url?.startsWith("/search?")) { res.writeHead(404).end(); return; }
   const directoryQuery = new URL(req.url, 'http://localhost').searchParams.get("q");
+  if (directoryQuery?.startsWith('777000001')) {
+    watchRequests++;
+    if(watchDown){res.writeHead(503).end();return;}
+    res.setHeader('Content-Type','application/json');
+    res.end(JSON.stringify({results:[{siren:watchWrongIdentity?'777000002':'777000001',nom_complet:'Entreprise de veille',
+      etat_administratif:watchVersion===1?'C':'A',nature_juridique:'1000',date_creation:'2013-10-14',
+      date_fermeture:watchVersion===1?'2026-11-01':null,date_mise_a_jour:'2026-11-25',nombre_etablissements:1,
+      nombre_etablissements_ouverts:watchVersion===1?0:1,activite_principale:'43.22A',
+      tranche_effectif_salarie:'01',annee_tranche_effectif_salarie:'2024',categorie_entreprise:'PME',
+      dirigeants:[{nom:'Test',prenoms:watchVersion===0?'Alice':'Basma',qualite:'Gérante'}],
+      finances:{2025:{ca:100000,resultat_net:0}},
+      siege:{siret:'77700000100019',etat_administratif:watchVersion===1?'F':'A',activite_principale:'43.22A',
+        adresse:watchVersion===0?'8 rue du Test 59100 Roubaix':'10 rue du Test 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix'},
+    }]}));return;
+  }
   if (directoryQuery === "official-down") {
     res.writeHead(503).end(); return;
   }
@@ -985,8 +1015,8 @@ try {
   const societeCapture = {id:'societe_enrich_01',source:'societe_com',company:'Atelier Enrichissement',
     sourceUrl:'https://www.societe.com/societe/atelier-enrichissement-999000002.html',
     siret:'99900000200017',address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',
-    phone:'03 20 44 55 66',website:'https://atelier-enrichissement.example.org',apeCode:'43.22A',
-    collectionMode:'visible',capturedAt:Date.now()};
+    phone:'03 20 44 55 66',email:'contact@atelier-enrichissement.example.org',website:'https://atelier-enrichissement.example.org',apeCode:'43.22A',
+    collectionMode:'visible',capturedAt:Date.now(),companyDetails:{fields:{'Forme juridique':'Entrepreneur individuel','Capital social':'1000 €'},managers:['Alice Test'],establishments:[],links:[]}};
   const enrichPath = `/sourcing/device/prospects/${societeTarget.body.id}/societe-enrich`;
   const noConfirm = await request('POST',enrichPath,{capture:societeCapture,confirmed:false},token);
   check(noConfirm.status===400,'Societe.com : confirmation exigée avant enrichissement');
@@ -995,12 +1025,21 @@ try {
     'Societe.com : champs absents complétés et téléphone divergent signalé');
   const reread = await request('GET',`/prospects/${societeTarget.body.id}`,undefined,token);
   check(reread.body.siret===societeCapture.siret && reread.body.website===societeCapture.website &&
-    reread.body.phone==='03 20 11 22 33' && reread.body.nafLabel?.includes('eau et de gaz') &&
+    reread.body.phone==='03 20 11 22 33' && reread.body.email===societeCapture.email && reread.body.nafLabel?.includes('eau et de gaz') &&
     reread.body.sourceDetails.crossSource.observations.some(o=>o.sourceUrl===societeCapture.sourceUrl),
     'Societe.com : enrichissement relu avec libellé, provenance et téléphone initial conservé');
   const repeatedEnrich = await request('POST',enrichPath,{capture:societeCapture,confirmed:true},token);
   check(repeatedEnrich.status===200 && !repeatedEnrich.body.enriched && repeatedEnrich.body.conflicts===0,
     'Societe.com : répéter l’enrichissement ne duplique pas les conflits');
+  check(reread.body.sourceDetails.societe_com.companyDetails.fields['Forme juridique']==='Entrepreneur individuel',
+    'Societe.com : les informations détaillées sont relues sur la fiche prospect');
+  await request('POST',enrichPath,{confirmed:true,capture:{...societeCapture,capturedAt:societeCapture.capturedAt+1000,
+    companyDetails:{...societeCapture.companyDetails,fields:{...societeCapture.companyDetails.fields,'Capital social':'2000 €'}}}},token);
+  await request('POST',enrichPath,{confirmed:true,capture:societeCapture},token);
+  const metadataUpdated=await request('GET',`/prospects/${societeTarget.body.id}`,undefined,token);
+  check(metadataUpdated.body.sourceDetails.societe_com.companyDetails.fields['Capital social']==='2000 €' &&
+    metadataUpdated.body.sourceDetails.societe_com.history.length===1,
+    'Societe.com : une nouvelle capture conserve l’historique, une ancienne capture ne remplace pas la nouvelle');
   const differentSiren = await request('POST',enrichPath,{confirmed:true,capture:{...societeCapture,
     sourceUrl:'https://www.societe.com/societe/autre-entreprise-999000003.html',siret:'99900000300017'}},token);
   check(differentSiren.status===409,'Societe.com : une identité juridique différente est refusée');
@@ -1008,6 +1047,85 @@ try {
   check(differentSite.status===409,'Societe.com : un autre établissement ne remplace pas celui du prospect');
   const wrongSource = await request('POST',enrichPath,{confirmed:true,capture:directCapture},token);
   check(wrongSource.status===400,'Societe.com : la route refuse une capture d’une autre source');
+
+  const legacyEdit=await request('POST','/prospects',{company:'Fiche importée sans identité',status:'converted'},token);
+  const fullRecordEdit=await request('PATCH',`/prospects/${legacyEdit.body.id}`,{
+    ...legacyEdit.body,postalCode:'59100',city:'Roubaix',firstName:null,lat:null,lng:null,
+  },token);
+  const editedRecord=await request('GET',`/prospects/${legacyEdit.body.id}`,undefined,token);
+  check(fullRecordEdit.status===200 && editedRecord.body.postalCode==='59100' && editedRecord.body.city==='Roubaix' &&
+    editedRecord.body.status==='converted' && editedRecord.body.siren===null,
+    'Régression corrigée : enregistrer une fiche importée avec champs nuls, puis relire code postal et ville');
+  const partialEdit=await request('PATCH',`/prospects/${legacyEdit.body.id}`,{phone:'03 20 11 22 33'},token);
+  check(partialEdit.status===200 && partialEdit.body.status==='converted' && partialEdit.body.postalCode==='59100',
+    'Modification partielle : statut et autres champs conservés');
+  const missingIdentity=await request('POST',`/prospects/${legacyEdit.body.id}/verify-company`,{},token);
+  check(missingIdentity.status===422,'Une entreprise sans SIREN ou SIRET reste non vérifiée');
+  const watched=await request('POST','/prospects',{company:'Entreprise de veille',siren:'777000001',siret:'77700000100019'},token);
+  const watchId=watched.body.id,watchPath=`/prospects/${watchId}`;
+  const initialWatch=await request('POST',watchPath+'/verify-company',{},token);
+  check(initialWatch.status===200 && initialWatch.body.snapshot.fields['État de l’entreprise']==='Active' &&
+    initialWatch.body.snapshot.fields['État de l’établissement']==='Active' && initialWatch.body.changes.length===0,
+    'À la consultation : état officiel de l’entreprise et de son établissement, premier état sans fausse alerte');
+  check(initialWatch.body.snapshot.managers[0].includes('Alice') && initialWatch.body.snapshot.financials[0].includes('0 €') &&
+    initialWatch.body.snapshot.fields['Activité de l’entreprise'].includes('eau et de gaz'),
+    'Fiche complète : dirigeants, résultat nul et activité issus de la source');
+  const beforeCached=watchRequests;
+  await request('POST',watchPath+'/verify-company',{},token);
+  check(watchRequests===beforeCached,'Réouverture immédiate : contrôle récent réutilisé sans appel fournisseur supplémentaire');
+  const enabledWatch=await request('PATCH',watchPath+'/monitoring',{enabled:true,intervalHours:24},token);
+  check(enabledWatch.status===200 && enabledWatch.body.enabled && enabledWatch.body.nextCheckAt,
+    'Veille activée et prochaine échéance persistée');
+  const rescheduled=await request('PATCH',watchPath+'/monitoring',{enabled:true,intervalHours:72},token);
+  check(rescheduled.body.intervalHours===72 && new Date(rescheduled.body.nextCheckAt)-new Date(rescheduled.body.checkedAt)===72*3600000,
+    'Changer la fréquence recalcule la prochaine échéance depuis le dernier contrôle');
+  await monitoringMaintenance('expire',watchId);watchVersion=1;
+  await monitoringMaintenance('cron',watchId);
+  const closedWatch=await request('GET',watchPath+'/monitoring',undefined,token);
+  check(closedWatch.body.snapshot.fields['État de l’entreprise']==='Cessée' &&
+    closedWatch.body.snapshot.fields['État de l’établissement']==='Fermé' && closedWatch.body.changes.length===1,
+    'Veille en arrière-plan : cessation, fermeture et changement de dirigeant historisés');
+  const notices=await request('GET','/notifications',undefined,token);
+  check(notices.body.some(item=>item.payload?.prospectId===watchId),
+    'Le changement du prospect déclenche une notification GrowthOS');
+  const afterCronRequests=watchRequests;
+  await monitoringMaintenance('cron',watchId);
+  const sameWatch=await request('GET',watchPath+'/monitoring',undefined,token);
+  check(sameWatch.body.changes.length===1 && watchRequests===afterCronRequests,
+    'Redémarrage du traitement : échéance conservée et aucune alerte en double');
+  await monitoringMaintenance('expire',watchId);watchDown=true;
+  const failedWatch=await request('POST',watchPath+'/verify-company',{force:true},token);
+  check(failedWatch.status===200 && failedWatch.body.error && failedWatch.body.snapshot.fields['État de l’entreprise']==='Cessée' &&
+    failedWatch.body.changes.length===1,'Source indisponible : dernier état et historique conservés, erreur visible');
+  watchDown=false;watchWrongIdentity=true;
+  await monitoringMaintenance('expire',watchId);
+  const wrongIdentity=await request('POST',watchPath+'/verify-company',{force:true},token);
+  check(wrongIdentity.body.error && wrongIdentity.body.snapshot.siren==='777000001',
+    'Une réponse portant un autre SIREN ne remplace jamais le prospect');
+  watchWrongIdentity=false;watchVersion=2;
+  await monitoringMaintenance('expire',watchId);
+  const beforeConcurrent=watchRequests;
+  await Promise.all([request('POST',watchPath+'/verify-company',{force:true},token),request('POST',watchPath+'/verify-company',{force:true},token)]);
+  const openAgain=await request('GET',watchPath+'/monitoring',undefined,token);
+  check(watchRequests===beforeConcurrent+1,'Vérifications concurrentes : un seul appel fournisseur et un seul changement');
+  check(!openAgain.body.error && openAgain.body.snapshot.fields['État de l’entreprise']==='Active' && openAgain.body.changes.length===2,
+    'Reprise après erreur : retour au statut actif détecté et historisé');
+  await request('PATCH',watchPath+'/monitoring',{enabled:false,intervalHours:72},token);
+  await monitoringMaintenance('expire',watchId);
+  const beforeStopped=watchRequests;await monitoringMaintenance('cron',watchId);
+  check(watchRequests===beforeStopped,'Veille désactivée : aucun appel automatique supplémentaire');
+  const tokenPayload=JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString());
+  const foreignPayload=Buffer.from(JSON.stringify({...tokenPayload,tenantId:'00000000-0000-4000-8000-000000000099'})).toString('base64url');
+  const foreignUnsigned=token.split('.')[0]+'.'+foreignPayload;
+  const foreignToken=foreignUnsigned+'.'+createHmac('sha256',testEnv.JWT_SECRET).update(foreignUnsigned).digest('base64url');
+  for(const [method,path,body] of [['GET','/monitoring',undefined],['POST','/verify-company',{force:true}],['PATCH','/monitoring',{enabled:true}]]) {
+    const foreign=await request(method,watchPath+path,body,foreignToken);
+    check(foreign.status===404,'Isolation agence : '+method+' '+path+' refuse le prospect d’une autre agence');
+  }
+  const absentSite=await request('POST','/prospects',{company:'Autre établissement',siret:'77700000100027'},token);
+  const siteStatus=await request('POST',`/prospects/${absentSite.body.id}/verify-company`,{},token);
+  check(siteStatus.body.snapshot.fields['État de l’entreprise']==='Active' && siteStatus.body.snapshot.fields['État de l’établissement']===null,
+    'Établissement absent de la réponse : état non vérifié, aucune activité déduite du siège');
 
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
 } catch (error) {

@@ -1,3 +1,4 @@
+import { startProspectWatch } from './services/prospect-monitoring';
 import app from "./app";
 import { logger } from "./lib/logger";
 import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration, runProviderKeysMigration, runAutopilotMigration, runDealProspectLinkMigration, runSignalEnhanceMigration } from "@workspace/db";
@@ -75,6 +76,7 @@ runMigrations()
 
       // ── Démarrer le cron de génération de signaux (toutes les 2h)
       startSignalCron();
+      startProspectWatch();
 
       // ── Démarrer l'AgentWorker (Autopilot IA)
       startAgentWorker();

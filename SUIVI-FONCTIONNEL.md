@@ -1,8 +1,8 @@
 # GrowthOS — suivi fonctionnel
 
-Mis à jour le **24 novembre 2026**. Ce registre suit le parcours d’une agence qui cherche des entreprises, les qualifie, propose un site ou une prestation SEO, puis suit l’affaire dans le CRM.
+Mis à jour le **25 novembre 2026**. Ce registre suit le parcours d’une agence qui cherche des entreprises, les qualifie, propose un site ou une prestation SEO, puis suit l’affaire dans le CRM.
 
-**Prochain contrôle en préproduction** — sur une fiche prospect, utiliser « Enrichir via Societe.com », rechercher par nom, SIRET ou adresse, capturer la fiche trouvée dans Chrome et comparer les valeurs avant confirmation. La PR 29 a été fusionnée en `ff53c7b`. Le lot suivant est sur `feat/sources-societe-enrich`.
+**Prochain contrôle en préproduction** — ouvrir une fiche importée incomplète, modifier sa ville ou son code postal, enregistrer puis recharger. Vérifier ensuite le statut entreprise/établissement sur une fiche identifiée par SIREN/SIRET, puis activer sa surveillance. Le lot est sur `feat/prospect-profile-watch`. Les versions précédentes ont été fusionnées avec les PR 29 et 30.
 
 ## Comment tenir ce fichier
 
@@ -31,7 +31,7 @@ Mis à jour le **24 novembre 2026**. Ce registre suit le parcours d’une agence
 | 10 · TikTok professionnel | Saisie assistée du profil professionnel dans Chrome, import et enrichissement du CRM testés en isolation. | Confirmer un profil réel, contrôler le réimport, un homonyme et le rejet des liens de vidéos. |
 | 11 · Secteur APE / NAF | Référentiels Insee intégrés. Résolution du libellé dans les aperçus et le CRM, recalcul des fiches existantes. Tri et recherche par activité couverts côté API. | Sur une ancienne fiche puis sur un nouvel import, comparer le libellé à l’Insee. Vérifier le filtre par mots du libellé et le cas d’un code inconnu. |
 | 12 · Doublons et conflits | Tests de fusion de champs absents, conservation des valeurs en conflit et arbitrage. | Vérifier les homonymes, les établissements d’un même SIREN, puis deux imports simultanés du même prospect. |
-| 13 · Prospect et pipeline | **Validé en usage le 24/11** pour l’enregistrement d’une note et la persistance du changement d’étape. | Élargir la recette aux contacts, aux comptes, aux modifications et aux droits d’un second utilisateur. |
+| 13 · Prospect et pipeline | **Validé en usage le 24/11** pour l’enregistrement d’une note et la persistance du changement d’étape. | Régression d’enregistrement corrigée le 25/11 pour les champs nuls des fiches importées. Refaire une modification puis relecture sur la préproduction. Élargir ensuite aux contacts, comptes et droits du second utilisateur. |
 | 14 · Historique des notes | Test sur un prospect et deux deals. Note générale consultable depuis les deux affaires ; note d’affaire liée à son deal dans l’historique du prospect ; édition du même enregistrement. | Rejouer création et édition dans les écrans de préproduction, puis contrôler les deux affaires après actualisation. |
 | 15 · Import CSV, carte et export | Cas de doublons CSV couverts dans le test d’installation. | Vérifier les colonnes, les accents, la pagination de l’export et les adresses sans coordonnées. |
 | 16 · Ergonomie de sourcing | Sélection de sources, régions, départements et codes postaux présente. | Tester retour/reprise, absence de résultats, source indisponible et import direct sans perdre les autres sources du lot. |
@@ -57,6 +57,16 @@ Mis à jour le **24 novembre 2026**. Ce registre suit le parcours d’une agence
 | 31 · Exploitation et reprise | Images de préproduction déjà publiées pour la PR 28. | Restaurer une sauvegarde sur une base isolée, mesurer la reprise et vérifier la persistance et la version après relance. |
 | 32 · Navigation, mobile et accessibilité | Recette visuelle incomplète. | Tester chaque parcours exposé sur ordinateur et mobile, au clavier, puis en état vide, lent et en erreur. |
 
+## Fiche complète et veille des prospects
+
+| Point | Fait et preuve | Reste à vérifier pour clôturer |
+|---|---|---|
+| 33 · Enregistrement des fiches importées | Correction de la validation des champs nuls par l’API. Le formulaire envoie les champs modifiés. Tests de sauvegarde puis relecture d’une ville et d’un code postal en conservant le statut converti. | Modifier la fiche qui affichait « Erreur lors de la mise à jour », enregistrer et recharger. |
+| 34 · Informations détaillées Societe.com | Capture des renseignements visibles, notamment forme juridique, TVA, date de création, activité déclarée, effectif, convention collective, dirigeants, établissements et liens de documents. Les captures successives conservent jusqu’à dix versions précédentes. | Avec l’extension 0.10.0, recapturer une fiche réelle. Comparer les rubriques puis confirmer l’enrichissement et relire la fiche. Les rubriques absentes de la source restent non renseignées. |
+| 35 · Contrôle du statut à la consultation | Contrôle à l’ouverture par SIREN/SIRET exact via l’Annuaire officiel. Entreprise et établissement ont chacun leur état. Dernière vérification et date de mise à jour de la source affichées. Cache d’une minute. | Ouvrir une entreprise active et une entreprise cessée. Vérifier aussi une entreprise active avec un établissement fermé. |
+| 36 · Veille et changements | Activation par prospect et fréquence quotidienne par défaut, réglable à trois jours ou une semaine. Échéances, états et historique en PostgreSQL. Traitement en arrière-plan dans l’API. Notification GrowthOS lors d’un changement des données retournées, notamment statut, adresse, activité, dirigeants, effectif et finances publiées. | Activer la veille, vérifier la persistance après relance de l’API, puis consulter une notification et sa fiche liée. La veille utilise les données de l’Annuaire officiel ; les captures Societe.com restent effectuées dans Chrome. |
+| 37 · Fiabilité de la veille | Tests de cessation et réactivation, erreur fournisseur, autre SIREN, établissement absent, contrôles concurrents, reprise du traitement, arrêt de la veille et isolation entre agences. | Refaire l’essai d’une source indisponible en préproduction et contrôler la mention du dernier statut connu. |
+
 ## Journal des preuves
 
 - **22/11/2026** — audits initiaux et limites détaillées. [État de validation](AUDIT_STATUS.md) · [Remise en état de la préproduction](docs/PREPROD-REMISE-EN-ETAT.md).
@@ -68,3 +78,5 @@ Mis à jour le **24 novembre 2026**. Ce registre suit le parcours d’une agence
 - **Limite de recette de ce lot** — le navigateur Chromium de cet environnement ne démarre pas, car ses sockets sont interdits. Le rendu de la fenêtre, les boutons de recherche et la collecte sur les sites réels restent à vérifier dans Chrome. Les vérifications TypeScript, les builds et les simulations du lecteur et de l’API constituent les preuves techniques.
 
 - **Résultat du lot sources et Societe.com** — 171 contrôles d’intégration réussis sur PostgreSQL 16.14 isolé. Pour Societe.com, LinkedIn, Bing, Facebook, Instagram et TikTok, les tests relisent les données enrichies, la provenance et le comportement face à un homonyme. Le lecteur Societe.com est testé sur une page simulée. TypeScript web/API et builds réussis. La recette Chrome réelle reste ouverte.
+
+- **25/11/2026 · fiche complète, veille et sauvegarde** — 193 contrôles d’intégration réussis sur PostgreSQL 16.14 isolé. La régression d’enregistrement est reproduite avec une fiche importée contenant des champs nuls et corrigée. La veille est exécutée par le vrai traitement d’arrière-plan sur une source locale simulée. Les tests couvrent les notifications, l’absence de doublon d’alerte, une panne et les états distincts de l’entreprise et de l’établissement. TypeScript web/API, builds et tests du connecteur réussis. La recette visuelle sur la préproduction reste ouverte.
