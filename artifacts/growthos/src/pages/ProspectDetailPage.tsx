@@ -1,3 +1,4 @@
+import { ProspectProfessionalSources } from '@/components/ProspectProfessionalSources';
 import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
 import { SocieteEnrichmentDialog } from '@/components/SocieteEnrichment';
 import { EditNote } from '@/components/EditNote';
@@ -563,7 +564,7 @@ export default function ProspectDetailPage() {
       captureId:string;source:string;sourceUrl?:string|null;capturedAt:string;fieldsFilled?:string[];
     }> : [];
   const conflictLabels:Record<string,string>={address:'Adresse',postalCode:'Code postal',city:'Ville',
-    phone:'Téléphone',email:'Email',website:'Site web',siret:'SIRET',siren:'SIREN',
+    phone:'Téléphone',email:'Email',website:'Site web',linkedinUrl:'LinkedIn',siret:'SIRET',siren:'SIREN',
     apeCode:'Code APE / NAF',nafLabel:'Libellé NAF',nafVersion:'Nomenclature'};
   const resolveConflict=async(conflictId:string,decision:'keep_existing'|'use_incoming')=>{
     try{
@@ -668,7 +669,7 @@ export default function ProspectDetailPage() {
         </div>}
       {sourceHistory.length>0&&<details className="mb-5 rounded-xl border border-gray-200 bg-white p-4">
         <summary className="cursor-pointer text-sm font-semibold text-gray-800">
-          Historique des enrichissements · {sourceHistory.length} source(s) consultée(s)
+          Historique des enrichissements · {sourceHistory.length} capture(s)
         </summary>
         <div className="mt-3 space-y-2">
           {[...sourceHistory].reverse().map((entry,index)=><div key={`${entry.captureId}-${index}`}
@@ -1021,6 +1022,8 @@ export default function ProspectDetailPage() {
               )}
             </div>
           </div>
+
+          {!editing && <ProspectProfessionalSources prospect={prospect} />}
 
           {/* Mini-map — only when geocoded and not editing */}
           {!editing && prospect.lat && prospect.lng && (

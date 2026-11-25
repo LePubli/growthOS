@@ -1,9 +1,10 @@
+import { professionalSourceUrl } from '@workspace/api-zod';
 import { isDeepStrictEqual } from 'node:util';
 import { Router } from "express";
 import { z } from "zod";
 import { activityLabel, db } from "@workspace/db";
 import { sourcingJobsTable, prospectsTable } from "@workspace/db";
-import { eq, and, desc, inArray, or, ilike } from "drizzle-orm";
+import { eq, and, desc, inArray, or, ilike, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../lib/logger";
@@ -374,13 +375,10 @@ function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
       case 'google_maps': return ['www.google.com','maps.google.com','google.com','www.google.fr','google.fr'].includes(host)
         && url.pathname.startsWith('/maps');
       case 'google_search': return ['www.google.com','google.com','www.google.fr','google.fr'].includes(host);
-      case 'bing': return ['www.bing.com','bing.com'].includes(host);
+      case 'bing': return professionalSourceUrl(source,value)!==null;
       case 'societe_com': return ['societe.com','www.societe.com'].includes(host) && /^\/societe\/[a-z0-9-]+-\d{9}\.html\/?$/i.test(url.pathname);
-      case 'facebook': return ['facebook.com','www.facebook.com'].includes(host) && /^\/[a-z0-9.\-]+\/?$/i.test(url.pathname) && !/^\/(?:home.php|profile.php|groups|events|watch|marketplace|login|share|search|reel|stories|gaming|people|pages)\/?$/i.test(url.pathname);
-      case 'tiktok': return ['tiktok.com','www.tiktok.com'].includes(host) && /^\/@[a-z0-9_](?:[a-z0-9_.]{0,22}[a-z0-9_])?\/?$/i.test(url.pathname);
-      case 'instagram': return ['instagram.com','www.instagram.com'].includes(host) && /^\/[a-z0-9._]+\/?$/i.test(url.pathname) && !/^\/(?:p|reels?|stories|accounts|explore|direct|about|developer|legal)\/?$/i.test(url.pathname);
-      case 'linkedin': return ['www.linkedin.com','linkedin.com'].includes(host)
-        && /^\/company\/[a-z0-9_-]+\/?/i.test(url.pathname);
+      case 'facebook': case 'tiktok': case 'instagram': case 'linkedin':
+        return professionalSourceUrl(source, value)!==null;
     }
   } catch { return false; }
 }
@@ -468,16 +466,17 @@ type ImportCapture = {
   apeCode?:string|null;nafLabel?:string|null;nafVersion?:string|null;
   sourceDetails?:Record<string,unknown>|null;
 };
-type EnrichmentField = 'address'|'postalCode'|'city'|'phone'|'email'|'website'|'siret'|'siren'|'apeCode'|'nafLabel'|'nafVersion';
+type EnrichmentField = 'linkedinUrl'|'address'|'postalCode'|'city'|'phone'|'email'|'website'|'siret'|'siren'|'apeCode'|'nafLabel'|'nafVersion';
 type EnrichmentConflict = {
   id:string;field:EnrichmentField;existing:string;incoming:string;
   source:string;sourceUrl:string|null;capturedAt:string;
 };
-const FIELDS:EnrichmentField[]=['address','postalCode','city','phone','email','website','siret','siren','apeCode','nafLabel','nafVersion'];
+const FIELDS:EnrichmentField[]=['linkedinUrl','address','postalCode','city','phone','email','website','siret','siren','apeCode','nafLabel','nafVersion'];
 const stringOrEmpty=(value:unknown)=>typeof value==='string'?value.trim():'';
 function normalizedField(field:EnrichmentField,value:unknown):string{
   const raw=stringOrEmpty(value);
   if(field==='phone')return normalizedPhone(raw);
+  if(field==='linkedinUrl')return professionalSourceUrl('linkedin',raw) || raw;
   if(field==='website'){
     try{const u=new URL(raw);return u.hostname.replace(/^www\./,'').toLowerCase()+u.pathname.replace(/\/$/,'').toLowerCase();}
     catch{return raw.toLowerCase();}
@@ -490,7 +489,10 @@ function jsonRecord(value:unknown):Record<string,unknown>{
 function captureProfileUrl(value:string|null|undefined):string|null{
   try{
     const url=new URL(value||'');
-    return /^\/maps\/place\//.test(url.pathname) || /^\/company\/[a-z0-9_-]+\/?$/i.test(url.pathname)
+    if(url.protocol!=='https:')return null;
+    const linkedin=professionalSourceUrl('linkedin',value);
+    if(linkedin)return linkedin;
+    return (['www.google.com','google.com','maps.google.com','www.google.fr','google.fr'].includes(url.hostname) && /^\/maps\/place\//.test(url.pathname))
       || (['pagesjaunes.fr','www.pagesjaunes.fr'].includes(url.hostname)&&/^\/pros\/\d{4,20}\/?$/.test(url.pathname))
       ? url.href:null;
   }catch{return null;}
@@ -500,6 +502,8 @@ function incomingFields(item:ImportCapture,incomplete:boolean):Partial<Record<En
   for(const field of ['address','city','phone','email','website'] as const){
     const value=stringOrEmpty(item[field]);if(value)fields[field]=value;
   }
+  const linkedinUrl=item.source.split(',').includes('linkedin') ? professionalSourceUrl('linkedin',item.sourceUrl) : null;
+  if(linkedinUrl)fields.linkedinUrl=linkedinUrl;
   if(!incomplete){
     if(item.codePostal)fields.postalCode=item.codePostal;
     if(item.siret){fields.siret=item.siret;fields.siren=item.siren||item.siret.slice(0,9);}
@@ -521,7 +525,9 @@ function sameEstablishment(record:{company:string|null;address:string|null;city:
   if(siret&&record.siret&&record.siret!==siret)return false; // Deux identités juridiques contradictoires.
   if(siret&&record.siret===siret)return true;
   const profile=captureProfileUrl(incoming.sourceUrl);
-  if(profile&&record.sourceUrl===profile)return true;
+  // A company LinkedIn page can serve several establishments. It must never
+  // override the address/city evidence used to identify an establishment.
+  if(profile && !professionalSourceUrl('linkedin',profile) && record.sourceUrl===profile)return true;
   if(normalizedIdentity(record.company||'')!==normalizedIdentity(incoming.company))return false;
   const city=normalizedIdentity(incoming.city||''),recordCity=normalizedIdentity(record.city||'');
   if(city&&recordCity&&city!==recordCity)return false;
@@ -531,6 +537,28 @@ function sameEstablishment(record:{company:string|null;address:string|null;city:
   if(phone.length>=9&&phone===normalizedPhone(record.phone)&&city&&recordCity&&city===recordCity)return true;
   // Un site web peut être commun à toutes les agences d'un réseau : jamais une preuve d'identité seule.
   return false;
+}
+// Existing captures may predate canonical storage (no www, no final slash,
+// an About URL or tracking parameters). Match them before deciding ambiguity.
+function linkedinProfilePredicate(profile:string) {
+  const pattern='^https://(www[.])?linkedin[.]com(:443)?/company/([a-z0-9_-]+)(/about)?/?([?#].*)?$';
+  const replacement='https://www.linkedin.com/company/\\3/';
+  return sql`(
+    regexp_replace(lower(trim(${prospectsTable.sourceUrl})), ${pattern}, ${replacement}) = ${profile}
+    OR regexp_replace(lower(trim(${prospectsTable.linkedinUrl})), ${pattern}, ${replacement}) = ${profile}
+  )`;
+}
+function ambiguousLinkedinProfiles(records: (typeof prospectsTable.$inferSelect)[], incoming:ImportCapture) {
+  const profile=professionalSourceUrl('linkedin',incoming.sourceUrl);
+  if(!profile)return [];
+  return records.filter(record=>{
+    const known=[record.linkedinUrl,record.sourceUrl].map(value=>professionalSourceUrl('linkedin',value));
+    if(!known.includes(profile))return false;
+    const city=normalizedIdentity(incoming.city||''), existingCity=normalizedIdentity(record.city||'');
+    // A clearly different city identifies a separate establishment; otherwise
+    // require review when the usual identity evidence did not produce a match.
+    return !(city && existingCity && city!==existingCity);
+  });
 }
 async function mergeProspectCapture(
   existing:typeof prospectsTable.$inferSelect,item:ImportCapture,incomplete:boolean,
@@ -666,6 +694,8 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
     if(legalId)where.push(eq(prospectsTable.siren,legalId));
     if(siret)where.push(eq(prospectsTable.siret,siret));
     if(profileUrl)where.push(eq(prospectsTable.sourceUrl,profileUrl));
+    const linkedinProfile=professionalSourceUrl('linkedin',item.sourceUrl);
+    if(linkedinProfile)where.push(linkedinProfilePredicate(linkedinProfile));
     const prior=await db.select().from(prospectsTable).where(and(
       eq(prospectsTable.tenantId,req.auth!.tenantId),or(...where),
     )).limit(100);
@@ -674,6 +704,12 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
       skipped++;
       reviews.push({prospectId:'',company:item.company,fields:['siren'],type:'ambiguous'});
       continue;
+    }
+    if(!matches.length){
+      const ambiguousProfiles=ambiguousLinkedinProfiles(prior,item);
+      if(ambiguousProfiles.length){
+        skipped++;reviews.push({prospectId:ambiguousProfiles.length===1?ambiguousProfiles[0].id:'',company:item.company,fields:['linkedinUrl','address'],type:'ambiguous'});continue;
+      }
     }
     if(matches.length>1){
       skipped++;reviews.push({prospectId:'',company:item.company,fields:[],type:'ambiguous'});continue;
@@ -1340,7 +1376,7 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
     const incoming:ImportCapture={
       id:candidate.id||candidate.siret||candidate.siren,
       source:candidate.sources?.map(s=>s==='entreprises'?'annuaire-entreprises':s).join(',')
-        || (candidate.source==='entreprises'?'annuaire-entreprises':candidate.source||'annuaire-entreprises'),
+        || (candidate.source==='entreprises'?'annuaire-entreprises':candidate.source||(job.type==='pagesjaunes'?'pagesjaunes':'annuaire-entreprises')),
       company:candidate.company,address:candidate.address,codePostal:candidate.codePostal,
       city:candidate.city,phone:candidate.phone,email:candidate.email,website:candidate.website,
       apeCode:candidate.apeCode,nafLabel:candidate.nafLabel,nafVersion:candidate.nafVersion,
@@ -1352,10 +1388,13 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
     if(/^\d{9}$/.test(candidate.siren))alternatives.push(eq(prospectsTable.siren,candidate.siren));
     const profile=captureProfileUrl(candidate.sourceUrl);
     if(profile)alternatives.push(eq(prospectsTable.sourceUrl,profile));
+    const linkedinProfile=professionalSourceUrl('linkedin',incoming.sourceUrl);
+    if(linkedinProfile)alternatives.push(linkedinProfilePredicate(linkedinProfile));
     const existing=await db.select().from(prospectsTable).where(and(
       eq(prospectsTable.tenantId,req.auth!.tenantId),or(...alternatives),
     )).limit(100);
     const matches=existing.filter(prospect=>sameEstablishment(prospect,incoming,false));
+    if(!matches.length && ambiguousLinkedinProfiles(existing,incoming).length){skipped++;continue;}
     if(matches.length>1){skipped++;continue;}
     if(matches.length===1){
       const outcome=await mergeProspectCapture(matches[0],incoming,false,req.auth!.tenantId).catch((error:unknown)=>{
@@ -1378,12 +1417,12 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
       phone: candidate.phone || null,
       email: candidate.email || null,
       website: candidate.website || null,
+      linkedinUrl: incomingFields(incoming,false).linkedinUrl || null,
       apeCode: candidate.apeCode || null,
       nafLabel: candidate.nafLabel || null,
       nafVersion: candidate.nafVersion || null,
       sourceDetails: candidate.sourceDetails || {},
-      source: candidate.sources?.map(item => item === "entreprises" ? "annuaire-entreprises" : item).join(",")
-        || (candidate.source === "pagesjaunes" || job.type === "pagesjaunes" ? "pagesjaunes" : "annuaire-entreprises"),
+      source: incoming.source,
       sourceUrl: candidate.sourceUrl || null,
       status: "new", tenantId: req.auth!.tenantId, createdBy: req.auth!.userId,
      }).onConflictDoNothing().returning({ id: prospectsTable.id }).catch((error:unknown)=>{
