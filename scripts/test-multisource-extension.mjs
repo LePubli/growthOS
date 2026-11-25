@@ -294,3 +294,40 @@ injectedResult=richSociete;
 const richStored=await send('capture-tab');
 assert.ok(richStored.results.some(item=>item.source==='societe_com' && item.companyDetails?.fields['Forme juridique']==='Entrepreneur individuel'));
 console.log('✓ Societe.com : informations légales et convention collective conservées dans la capture Chrome');
+
+const societeSearch=await send('open-source',{source:'societe_com',query:'98107525200016',area:''});
+assert.equal(new URL(societeSearch.url).pathname,'/recherche');
+assert.equal(new URL(societeSearch.url).searchParams.get('q'),'98107525200016');
+assert.equal(new URL(societeSearch.url).searchParams.get('ftStatus'),'0');
+assert.equal(new URL(societeSearch.url).searchParams.has('champs'),false);
+const inlineSociete=societeCapture(societeText.replace('SIREN\n999 000 002','SIREN : 999 000 002').replace('ADRESSE\n','ADRESSE : ')+'\nDirigeant : Denis LIQUARD');
+assert.equal(inlineSociete.results[0].siret,'99900000200017');
+assert.equal(inlineSociete.results[0].companyDetails.managers[0],'Denis LIQUARD');
+// Cartes réelles simulées : séparer les contacts directs du standard et exclure
+// les dirigeants recommandés plus bas ainsi que les liens invisibles.
+const visibleElement=(innerText,order=0)=>({innerText,order,getClientRects:()=>[{}],
+  compareDocumentPosition(other){return this.order<other.order?4:2;}});
+const directorHeading=visibleElement('Dirigeants de ATELIER RECETTE',10);
+const contactHeading=visibleElement('Contacter ATELIER RECETTE',20);
+const relatedHeading=visibleElement('Ces entreprises pourraient vous intéresser',30);
+const director=Object.assign(visibleElement('Denis LIQUARD',12),{href:'https://www.societe.com/dirigeant/denis-liquard.test.html'});
+const directEmail=Object.assign(visibleElement('E-mail professionnel',13),{href:'mailto:denis@atelier-recette.example.org'});
+const directPhone=Object.assign(visibleElement('Téléphone direct',14),{href:'tel:+33 6 11 22 33 44'});
+const card={innerText:'Denis LIQUARD\nGérant\nE-mail professionnel\nTéléphone direct',querySelectorAll:()=>[director,directEmail,directPhone]};
+director.closest=()=>card;
+const standard=Object.assign(visibleElement('Téléphone de l’entreprise',22),{href:'tel:03 20 11 22 33'});
+const unrelated=Object.assign(visibleElement('Autre dirigeant',32),{href:'https://www.societe.com/dirigeant/autre.html'});
+const hidden=Object.assign(visibleElement('Invisible',15),{getClientRects:()=>[],href:'mailto:hidden@example.org'});
+const semanticSiren=Object.assign(visibleElement('SIREN'),{nextElementSibling:visibleElement('999 000 002')});
+const fixtureRoot={innerText:societeText.replace('SIREN\n999 000 002',''),querySelectorAll:selector=>selector==='dt, th'?[semanticSiren]:selector==='h2, h3'?[directorHeading,contactHeading,relatedHeading]:[director,directEmail,directPhone,standard,unrelated,hidden]};
+const structuredSociete=vm.runInNewContext(societeScript,{location:new URL('https://www.societe.com/societe/atelier-recette-999000002.html'),URL,getComputedStyle:()=>({visibility:'visible'}),document:{body:fixtureRoot,querySelector:selector=>selector==='main'?fixtureRoot:selector==='h1'?visibleElement('ATELIER RECETTE'):null}},{timeout:1000});
+const structured=structuredSociete.results[0];
+assert.deepEqual(Array.from(structured.companyDetails.managers),['Denis LIQUARD']);
+assert.equal(structured.companyDetails.managerContacts[0].name,'Denis LIQUARD');
+assert.equal(structured.companyDetails.managerContacts[0].role,'Gérant');
+assert.equal(structured.companyDetails.managerContacts[0].email,'denis@atelier-recette.example.org');
+assert.equal(structured.companyDetails.managerContacts[0].phone,'+33611223344');
+assert.equal(structured.phone,'0320112233');
+assert.equal(structured.email,null,'Le contact direct ne devient pas le contact général');
+assert.ok(!JSON.stringify(structured).includes('hidden@example.org'));
+console.log('✓ Societe.com : URL q/ftStatus, libellés en ligne, dirigeants, rôle et coordonnées visibles séparés du standard');

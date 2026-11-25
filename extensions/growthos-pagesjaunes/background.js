@@ -846,7 +846,7 @@ async function popupAction(message){
     if(source==='google_maps')url='https://www.google.com/maps/search/'+encodeURIComponent([activity,location].filter(Boolean).join(' '));
     else if(source==='google_search')url='https://www.google.com/search?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
     else if(source==='bing')url='https://www.bing.com/search?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
-    else if(source==='societe_com')url='https://www.societe.com/cgi-bin/search?champs='+encodeURIComponent(activity);
+    else if(source==='societe_com')url='https://www.societe.com/recherche?ftStatus=0&q='+encodeURIComponent(activity);
     else if(source==='facebook')url='https://www.facebook.com/search/pages/?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
     else if(source==='tiktok')url='https://www.tiktok.com/search/user?q='+encodeURIComponent([activity,location].filter(Boolean).join(' '));
     else if(source==='instagram')url='https://www.instagram.com/explore/search/keyword/?q='+encodeURIComponent(activity);

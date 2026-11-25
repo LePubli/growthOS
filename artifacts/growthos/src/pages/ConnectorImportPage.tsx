@@ -102,7 +102,7 @@ export default function ConnectorImportPage(){
       {reviews.length>0&&<div className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
         <strong>Vérifications nécessaires</strong>
         {reviews.map((review,index)=><div key={`${review.company}-${index}`} className="flex justify-between gap-3 mt-2">
-          <span>{review.company} · {review.type==='ambiguous'?'Établissement à confirmer':review.fields.join(', ')}</span>
+          <span>{review.company} · {review.type==='identity'?'SIRET déjà présent sous un autre nom · confirmation nécessaire':review.type==='ambiguous'?'Établissement à confirmer':review.fields.join(', ')}</span>
           {review.prospectId&&<button type="button" className="underline text-teal-700" onClick={()=>navigate(`/prospects/${review.prospectId}`)}>Comparer les valeurs</button>}
         </div>)}
       </div>}

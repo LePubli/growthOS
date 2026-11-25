@@ -47,8 +47,8 @@ const prospectSchema = z.object({
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   company: z.string().optional(),
-  siren: z.string().regex(/^\d{9}$/).optional().or(z.literal("")),
-  siret: z.string().regex(/^\d{14}$/).optional().or(z.literal("")),
+  siren: z.string().transform(value => value.replace(/\s/g, "")).pipe(z.string().regex(/^\d{9}$/).or(z.literal(""))).optional(),
+  siret: z.string().transform(value => value.replace(/\s/g, "")).pipe(z.string().regex(/^\d{14}$/).or(z.literal(""))).optional(),
   apeCode: z.string().trim().toUpperCase().regex(/^\d{2}\.\d{2}[A-Z]$/).optional().or(z.literal("")),
   nafLabel: z.string().trim().max(250).optional(),
   nafVersion: z.string().trim().max(32).optional(),
@@ -87,6 +87,15 @@ const patchProspectSchema = prospectSchema.partial().extend({
   score: prospectSchema.shape.score.nullable(),
   isStarred: prospectSchema.shape.isStarred.nullable(),
 });
+
+async function withIdentityConflicts(prospect: typeof prospectsTable.$inferSelect) {
+  const siret = prospect.siret?.replace(/\s/g, '');
+  const identityConflicts = siret ? await db.select({id:prospectsTable.id,company:prospectsTable.company,siret:prospectsTable.siret})
+    .from(prospectsTable).where(and(eq(prospectsTable.tenantId,prospect.tenantId),
+      sql`${prospectsTable.id} <> ${prospect.id}`,
+      sql`regexp_replace(${prospectsTable.siret}, '[[:space:]]', '', 'g') = ${siret}`)) : [];
+  return {...prospect, identityConflicts, identityMismatch: Boolean(siret && prospect.siren && siret.slice(0,9)!==prospect.siren)};
+}
 
 /* ─── Routes ─── */
 
@@ -181,7 +190,7 @@ router.get("/:id", async (req, res) => {
     .where(and(eq(prospectsTable.id, id), eq(prospectsTable.tenantId, req.auth!.tenantId)))
     .limit(1);
   if (!prospect) { res.status(404).json({ error: "Prospect introuvable" }); return; }
-  res.json(prospect);
+  res.json(await withIdentityConflicts(prospect));
 });
 
 // Complète une ancienne fiche (ou une fiche PagesJaunes) via un SIREN/SIRET
@@ -266,7 +275,7 @@ router.post("/", async (req, res) => {
     geocodeAndUpdate(prospect.id, address).catch(() => {});
   }
 
-  res.status(201).json(prospect);
+  res.status(201).json(await withIdentityConflicts(prospect));
 });
 
 router.post("/bulk", async (req, res) => {
@@ -290,6 +299,8 @@ router.post("/bulk", async (req, res) => {
     email: p.email.trim().toLowerCase(),
     phone: p.phone?.trim() || null,
     company: p.company?.trim() || null,
+    siren: p.siren || null, siret: p.siret || null,
+    postalCode: p.postalCode || null, city: p.city?.trim() || null,
     jobTitle: p.jobTitle?.trim() || null,
     website: p.website?.trim() || null,
     apeCode: p.apeCode?.trim() || null,
@@ -346,6 +357,10 @@ router.post("/bulk", async (req, res) => {
         company: data.company, jobTitle: data.jobTitle, website: data.website,
         address: data.address, lat: data.lat, lng: data.lng, status: data.status,
         // Un CSV incomplet ne doit pas effacer une activité APE/NAF déjà fiable.
+        ...(data.siren ? {siren:data.siren} : {}),
+        ...(data.siret ? {siret:data.siret} : {}),
+        ...(data.postalCode ? {postalCode:data.postalCode} : {}),
+        ...(data.city ? {city:data.city} : {}),
         ...(data.apeCode ? { apeCode: data.apeCode } : {}),
         ...(data.nafLabel ? { nafLabel: data.nafLabel } : {}),
         ...(data.nafVersion ? { nafVersion: data.nafVersion } : {}),
@@ -402,7 +417,7 @@ router.patch("/:id", async (req, res) => {
     geocodeAndUpdate(id, address).catch(() => {});
   }
 
-  res.json(updated);
+  res.json(await withIdentityConflicts(updated));
 });
 
 router.delete("/:id", async (req, res) => {

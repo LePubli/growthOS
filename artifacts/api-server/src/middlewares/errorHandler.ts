@@ -13,24 +13,44 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
-  const statusCode = err.statusCode ?? 500;
+  // Drizzle wraps PostgreSQL exceptions in cause. Never expose raw SQL errors.
+  let databaseError: any = err;
+  for (let depth = 0; depth < 4 && databaseError?.cause; depth++)
+    databaseError = databaseError.cause;
+  const identityDuplicate =
+    databaseError?.code === "23505" &&
+    ["idx_prospects_tenant_siret", "idx_prospects_tenant_siren"].includes(
+      databaseError?.constraint,
+    );
+  const identityMismatch =
+    databaseError?.code === "23514" &&
+    databaseError?.constraint === "prospects_identity_consistency";
+  const statusCode =
+    identityDuplicate || identityMismatch ? 409 : (err.statusCode ?? 500);
   const traceId = req.traceId ?? "unknown";
   const timestamp = new Date().toISOString();
 
-  logger.error({
-    traceId,
-    statusCode,
-    method: req.method,
-    path: req.path,
-    error: err.message,
-    stack: err.stack,
-    body: req.body && Object.keys(req.body ?? {}).length ? req.body : undefined,
-  }, "Unhandled error");
+  logger.error(
+    {
+      traceId,
+      statusCode,
+      method: req.method,
+      path: req.path,
+      error: err.message,
+      stack: err.stack,
+      body:
+        req.body && Object.keys(req.body ?? {}).length ? req.body : undefined,
+    },
+    "Unhandled error",
+  );
 
-  const message =
-    statusCode < 500 || err.expose
-      ? err.message
-      : "Une erreur interne est survenue.";
+  const message = identityDuplicate
+    ? `Ce ${databaseError.constraint.endsWith("siret") ? "SIRET" : "SIREN"} est déjà utilisé par une fiche prospect de votre agence. Consultez la fiche existante avant de poursuivre.`
+    : identityMismatch
+      ? "Vérifiez les identifiants : SIREN de 9 chiffres, SIRET de 14 chiffres et 9 premiers chiffres identiques."
+      : statusCode < 500 || err.expose
+        ? err.message
+        : "Une erreur interne est survenue.";
 
   res.status(statusCode).json({
     statusCode,

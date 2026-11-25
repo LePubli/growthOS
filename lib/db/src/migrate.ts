@@ -219,6 +219,51 @@ ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source_url TEXT;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source_details JSONB NOT NULL DEFAULT '{}'::jsonb;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_prospects_tenant_siren ON prospects(tenant_id, siren) WHERE siren IS NOT NULL;
+-- Retenir les anciennes fiches en double sans supprimer leurs données. Une seule
+-- ligne de chaque groupe participe à l'index unique, les autres restent signalées.
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS identity_legacy_duplicate BOOLEAN NOT NULL DEFAULT false;
+DO $identity_index$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname='idx_prospects_tenant_siret') THEN
+    LOCK TABLE prospects IN SHARE ROW EXCLUSIVE MODE;
+    IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname='idx_prospects_tenant_siret') THEN
+    WITH ranked AS (
+      SELECT id, row_number() OVER (
+        PARTITION BY tenant_id, regexp_replace(siret, '[[:space:]]', '', 'g') ORDER BY created_at, id
+      ) AS position FROM prospects WHERE regexp_replace(siret, '[[:space:]]', '', 'g') ~ '^[0-9]{14}$'
+    ) UPDATE prospects p SET identity_legacy_duplicate=(r.position>1) FROM ranked r WHERE p.id=r.id;
+    CREATE UNIQUE INDEX idx_prospects_tenant_siret ON prospects
+      (tenant_id, (regexp_replace(siret, '[[:space:]]', '', 'g')))
+      WHERE NOT identity_legacy_duplicate AND regexp_replace(siret, '[[:space:]]', '', 'g') ~ '^[0-9]{14}$';
+    END IF;
+  END IF;
+END
+$identity_index$;
+CREATE OR REPLACE FUNCTION growthos_guard_prospect_identity() RETURNS trigger LANGUAGE plpgsql AS $identity$
+BEGIN
+  IF TG_OP='UPDATE' AND (NEW.tenant_id, NEW.siret, NEW.siren) IS NOT DISTINCT FROM (OLD.tenant_id, OLD.siret, OLD.siren) THEN
+    RETURN NEW;
+  END IF;
+  NEW.siret := nullif(regexp_replace(NEW.siret, '[[:space:]]', '', 'g'), '');
+  NEW.siren := nullif(regexp_replace(NEW.siren, '[[:space:]]', '', 'g'), '');
+  NEW.identity_legacy_duplicate := false;
+  IF (NEW.siret IS NOT NULL AND NEW.siret !~ '^[0-9]{14}$') OR
+     (NEW.siren IS NOT NULL AND NEW.siren !~ '^[0-9]{9}$') OR
+     (NEW.siret IS NOT NULL AND NEW.siren IS NOT NULL AND left(NEW.siret,9)<>NEW.siren) THEN
+    RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='prospects_identity_consistency', MESSAGE='SIREN/SIRET incohérents';
+  END IF;
+  IF NEW.siret IS NOT NULL AND EXISTS (
+    SELECT 1 FROM prospects p WHERE p.tenant_id=NEW.tenant_id AND p.id<>NEW.id
+      AND regexp_replace(p.siret, '[[:space:]]', '', 'g')=NEW.siret
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE='23505', CONSTRAINT='idx_prospects_tenant_siret', MESSAGE='SIRET déjà présent';
+  END IF;
+  RETURN NEW;
+END
+$identity$;
+DROP TRIGGER IF EXISTS growthos_prospect_identity ON prospects;
+CREATE TRIGGER growthos_prospect_identity BEFORE INSERT OR UPDATE OF tenant_id, siren, siret ON prospects
+FOR EACH ROW EXECUTE FUNCTION growthos_guard_prospect_identity();
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'medium';

@@ -1,6 +1,8 @@
 /* Communication limitée à l'extension navigateur installée sur cet appareil.
    Le serveur GrowthOS et l'extension ne partagent ni mot de passe ni token. */
-export type CompanyDetails = {fields:Record<string,string>;managers:string[];
+export type CompanyDetails = {
+  managerContacts?: {name:string;role:string|null;phone:string|null;email:string|null;profileUrl:string|null}[];
+  fields:Record<string,string>;managers:string[];
   establishments:{siret:string;address:string|null}[];links:{label:string;url:string}[]};
 export type LocalCompany = {
   id: string;

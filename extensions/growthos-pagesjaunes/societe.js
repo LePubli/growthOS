@@ -12,9 +12,18 @@
   const company = clean(title.innerText).slice(0,160);
   const root = document.querySelector('main') || document.body;
   const lines = (root.innerText || '').split(/\n+/).map(clean).filter(Boolean);
+  const semanticRows = typeof root.querySelectorAll === 'function'
+    ? [...root.querySelectorAll('dt, th')].filter(visible).map(label => [clean(label.innerText), clean(label.nextElementSibling?.innerText)]) : [];
   const field = labels => {
-    const index = lines.findIndex(line => labels.includes(normalized(line)));
-    return index >= 0 ? lines[index+1] || '' : '';
+    for (const [label,value] of semanticRows) if(labels.includes(normalized(label)) && value) return value;
+    for (const line of lines) {
+      const key = normalized(line);
+      const label = [...labels].sort((a,b)=>b.length-a.length).find(label => key === label || key.startsWith(label + ':') || key.startsWith(label + ' :'));
+      if (!label) continue;
+      if(key === label) return lines[lines.indexOf(line)+1] || '';
+      return clean(line.slice(label.length).replace(/^\s*:\s*/,''));
+    }
+    return '';
   };
   const shownSiren = field(['siren']).replace(/\s/g,'');
   if (shownSiren !== siren) return {error:'Le SIREN affiché ne correspond pas à l’adresse de cette fiche.'};
@@ -25,9 +34,9 @@
   if (!company || !codePostal) return {error:'Adresse complète ou code postal non visible. Complétez la fiche manuellement.'};
   const city = clean(address.slice(address.indexOf(codePostal)+5)).replace(/^[,\s]+/,'').slice(0,120) || null;
   const phoneValue = field(['telephone','tel','telephone de contact']);
-  const phone = phoneValue.match(/(?:\+33\s?(?:\(0\))?\s?|0)[1-9](?:[ .-]?\d{2}){4}\b/)?.[0] || null;
+  let phone = phoneValue.match(/(?:\+33\s?(?:\(0\))?\s?|0)[1-9](?:[ .-]?\d{2}){4}\b/)?.[0] || null;
   const emailValue=field(['mail de contact','adresse email','email']);
-  const email=emailValue.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)?.[0] || null;
+  let email=emailValue.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)?.[0] || null;
   const websiteValue = field(['site internet','site web','site web de l’entreprise','site internet de l’entreprise']);
   let website = null;
   try {
@@ -59,11 +68,56 @@
   const displayedStatus=header.find(line=>/^(?:Active?|Cess[eé]e?|Radi[eé]e?|Ferm[eé]e?)(?:\s|$)/i.test(line));
   if(displayedStatus)details['Statut affiché']=displayedStatus.slice(0,120);
   const anchors=typeof root.querySelectorAll==='function'?[...root.querySelectorAll('a[href]')].filter(visible):[];
-  const managers=[...new Set(anchors.filter(link=>{
-    try{return /^\/dirigeants?\//i.test(new URL(link.href,url.href).pathname);}catch{return false;}
-  }).map(link=>clean(link.innerText)).filter(name=>name.length>3 && name.length<=120 && !/^voir/i.test(name)))].slice(0,30);
-  const summaryManager=field(['dirigeants']);
-  if(!managers.length && summaryManager && summaryManager.length<=120 && !/voir|obtenir/i.test(summaryManager))managers.push(summaryManager);
+  const managerLink = link => {
+    try { const target=new URL(link.href,url.href);return ['societe.com','www.societe.com'].includes(target.hostname) && /^\/dirigeants?\//i.test(target.pathname); } catch {return false;}
+  };
+  const headings=typeof root.querySelectorAll==='function'?[...root.querySelectorAll('h2, h3')].filter(visible):[];
+  const heading=headings.find(element=>/^dirigeants?(?:\s|$)/i.test(clean(element.innerText)));
+  const nextHeading=heading ? headings[headings.indexOf(heading)+1] : null;
+  // Limiter les liens à la rubrique de cette société, avant les recommandations.
+  const managerAnchors=anchors.filter(link => managerLink(link) && heading && (
+    (typeof heading.compareDocumentPosition==='function' && (heading.compareDocumentPosition(link)&4) &&
+      (!nextHeading || (nextHeading.compareDocumentPosition(link)&2)))));
+  const managers=[...new Set(managerAnchors.map(link=>clean(link.innerText))
+    .filter(name=>name.length>3 && name.length<=120 && !/^(?:voir|consulter|dirigeants? de)/i.test(name)))].slice(0,30);
+  const summaryManager=field(['dirigeant','dirigeants','gerant','president']);
+  if(!managers.length && summaryManager && summaryManager.length<=120 && !/voir|obtenir|afficher|non disponible/i.test(summaryManager))managers.push(summaryManager);
+  const managerContacts=[];
+  const managerCards=new Set();
+  for(const anchor of managerAnchors){
+    const name=clean(anchor.innerText);
+    if(!managers.includes(name) || managerContacts.some(contact=>contact.name===name))continue;
+    let card=typeof anchor.closest==='function'?anchor.closest('article, li, [data-dirigeant], .card'):null;
+    if(!card)card=anchor.parentElement;
+    // Les cartes peuvent être des div sans classe stable. Remonter uniquement
+    // tant que la zone contient un seul dirigeant et aucune autre rubrique.
+    for(let parent=card?.parentElement,depth=0;parent && parent!==root && depth<4;parent=parent.parentElement,depth++){
+      if(typeof parent.querySelectorAll!=='function' || clean(parent.innerText).length>1500)break;
+      const local=[...parent.querySelectorAll('a[href]')].filter(visible);
+      if(local.filter(managerLink).length!==1 || [...parent.querySelectorAll('h2, h3')].some(element=>/^(?:dirigeants?|contacter?|ces entreprises)\b/i.test(clean(element.innerText))))break;
+      card=parent;
+    }
+    const cardLinks=card && card!==root && typeof card.querySelectorAll==='function' ? [...card.querySelectorAll('a[href]')].filter(visible) : [];
+    const isolated=card && card!==root && clean(card.innerText).length<=1500 && cardLinks.filter(managerLink).length<=1;
+    if(isolated)managerCards.add(card);
+    const cardText=isolated?clean(card.innerText):'';
+    const role=cardText.match(/\b(?:Pr[eé]sident(?:e)?(?:-directeur g[eé]n[eé]ral)?|G[eé]rant(?:e)?|Directeur g[eé]n[eé]ral|Administrateur|Associ[eé](?:e)?)\b/i)?.[0] || null;
+    const localLinks=isolated?cardLinks:[];
+    const localPhone=localLinks.find(link=>/^tel:/i.test(link.href));
+    const localEmail=localLinks.find(link=>/^mailto:/i.test(link.href));
+    const phone=localPhone?decodeURIComponent(localPhone.href.slice(4)).replace(/[ .-]/g,'').replace(/^\+33\(0\)/,'+33').match(/^(?:\+33|0)[1-9](?:[ .-]?\d{2}){4}$/)?.[0] || null:null;
+    const email=localEmail?decodeURIComponent(localEmail.href.slice(7).split('?')[0]).match(/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i)?.[0] || null:null;
+    managerContacts.push({name,role,phone,email,profileUrl:new URL(anchor.href,url.href).href});
+  }
+  // Les coordonnées d'un dirigeant restent attachées à sa carte. Les coordonnées
+  // générales sont lues dans la rubrique Contact de l'entreprise uniquement.
+  const contactHeading=headings.find(element=>/^contacter?\s/i.test(clean(element.innerText)));
+  const nextContactHeading=contactHeading?headings[headings.indexOf(contactHeading)+1]:null;
+  const companyLinks=contactHeading?anchors.filter(link=>
+    (contactHeading.compareDocumentPosition(link)&4) && (!nextContactHeading || (nextContactHeading.compareDocumentPosition(link)&2)) &&
+    ![...managerCards].some(card=>card.contains?.(link))):[];
+  if(!phone){const link=companyLinks.find(link=>/^tel:/i.test(link.href));if(link)phone=decodeURIComponent(link.href.slice(4)).replace(/[ .-]/g,'').replace(/^\+33\(0\)/,'+33').match(/^(?:\+33|0)[1-9](?:[ .-]?\d{2}){4}$/)?.[0] || null;}
+  if(!email){const link=companyLinks.find(link=>/^mailto:/i.test(link.href));if(link)email=decodeURIComponent(link.href.slice(7).split('?')[0]).match(/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i)?.[0] || null;}
   const establishments=[];
   for(let index=0;index<lines.length && establishments.length<30;index++){
     if(normalized(lines[index])!=='siret')continue;
@@ -86,7 +140,7 @@
     }catch{ /* Un lien invalide reste absent. */ }
     if(links.length>=20)break;
   }
-  const companyDetails={fields:details,managers,establishments,links};
+  const companyDetails={fields:details,managers,managerContacts,establishments,links};
   return {results:[{source:'societe_com',company,address,codePostal,city,phone,email,website,
     sourceUrl:url.href,siret,companyDetails,...(siret && rawApe ? {apeCode:rawApe,nafLabel:null,nafVersion:null,apeScope:'unite_legale'} : {})}]};
 })();
