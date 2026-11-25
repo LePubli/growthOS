@@ -307,7 +307,8 @@ assert.equal(inlineSociete.results[0].companyDetails.managers[0],'Denis LIQUARD'
 // les dirigeants recommandés plus bas ainsi que les liens invisibles.
 const visibleElement=(innerText,order=0)=>({innerText,order,getClientRects:()=>[{}],
   compareDocumentPosition(other){return this.order<other.order?4:2;}});
-const directorHeading=visibleElement('Dirigeants de ATELIER RECETTE',10);
+const directorHeading=Object.assign(visibleElement('Dirigeants de ATELIER RECETTE',10),{tagName:'H2'});
+const directorSubheading=Object.assign(visibleElement('Denis LIQUARD',11),{tagName:'H3'});
 const contactHeading=visibleElement('Contacter ATELIER RECETTE',20);
 const relatedHeading=visibleElement('Ces entreprises pourraient vous intéresser',30);
 const director=Object.assign(visibleElement('Denis LIQUARD',12),{href:'https://www.societe.com/dirigeant/denis-liquard.test.html'});
@@ -319,7 +320,7 @@ const standard=Object.assign(visibleElement('Téléphone de l’entreprise',22),
 const unrelated=Object.assign(visibleElement('Autre dirigeant',32),{href:'https://www.societe.com/dirigeant/autre.html'});
 const hidden=Object.assign(visibleElement('Invisible',15),{getClientRects:()=>[],href:'mailto:hidden@example.org'});
 const semanticSiren=Object.assign(visibleElement('SIREN'),{nextElementSibling:visibleElement('999 000 002')});
-const fixtureRoot={innerText:societeText.replace('SIREN\n999 000 002',''),querySelectorAll:selector=>selector==='dt, th'?[semanticSiren]:selector==='h2, h3'?[directorHeading,contactHeading,relatedHeading]:[director,directEmail,directPhone,standard,unrelated,hidden]};
+const fixtureRoot={innerText:societeText.replace('SIREN\n999 000 002',''),querySelectorAll:selector=>selector==='dt, th'?[semanticSiren]:selector==='h2, h3'?[directorHeading,directorSubheading,contactHeading,relatedHeading]:[director,directEmail,directPhone,standard,unrelated,hidden]};
 const structuredSociete=vm.runInNewContext(societeScript,{location:new URL('https://www.societe.com/societe/atelier-recette-999000002.html'),URL,getComputedStyle:()=>({visibility:'visible'}),document:{body:fixtureRoot,querySelector:selector=>selector==='main'?fixtureRoot:selector==='h1'?visibleElement('ATELIER RECETTE'):null}},{timeout:1000});
 const structured=structuredSociete.results[0];
 assert.deepEqual(Array.from(structured.companyDetails.managers),['Denis LIQUARD']);
