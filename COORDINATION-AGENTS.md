@@ -45,3 +45,15 @@ Fichiers UX : `artifacts/growthos/src/atlas-orbit.css`, `components/atlas/Prospe
 **Pappers :** la cartographie installée est un instantané **documenté uniquement pour SOLUTION ENR (SIREN 981075252)** ; il n'y a pas encore de clé ni de client API Pappers. Le futur endpoint tenant-aware, les vérifications, sources, quotas, limites légales et tests de recette sont détaillés dans `docs/design/ATLAS-ORBIT-HANDOFF.md`. Les autres SIREN affichent un état d'attente, jamais la carte SOLUTION ENR.
 
 **Ne pas effacer** cette note ni le relais UX avant le lancement final expressément autorisé. Les validations de déploiement de préproduction restent la responsabilité du propriétaire.
+
+
+## Protocole de notification au propriétaire
+
+Demande explicite du propriétaire du 26/11/2026 : **les deux agents doivent le prévenir, dans leur conversation respective, dès qu'un lot est réellement terminé et prêt à être redéployé**.
+
+- Message obligatoire : **« ✅ PRÊT À REDÉPLOYER »**, branche, commit GitHub exact, liste succincte des modifications, résultat de la CI des images, tests à faire dans GrowthOS.
+- Tant que la fusion, la validation ou la publication GHCR n'est pas terminée, annoncer **« ⏳ PAS ENCORE PRÊT À REDÉPLOYER »**. Ne pas faire croire qu'un simple commit de code suffit.
+- En cas de nouveau push concurrent, vérifier le SHA de la branche commune et attendre le dernier workflow vert, pour que le propriétaire ne déploie pas une image intermédiaire.
+- Le propriétaire réalise le déploiement dans DockPanel : **Edit / Save avec pull_policy: always**, pas seulement « Restart » (qui peut garder une ancienne image). Ne toucher ni aux volumes PostgreSQL ni aux secrets.
+- Après redéploiement, le propriétaire teste et fait son retour ; l'agent concerné corrige puis réannonce un nouveau lot prêt.
+- Conserver cette règle et le reste des notes jusqu'à l'autorisation explicite du lancement final de production.
