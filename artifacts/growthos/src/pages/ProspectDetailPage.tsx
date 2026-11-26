@@ -1,6 +1,7 @@
 import { ConnectorEnrichmentReturn } from '@/components/ConnectorEnrichmentReturn';
 import { ProspectProfessionalSources } from '@/components/ProspectProfessionalSources';
 import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
+import { ProspectRelationshipMap, ProspectPappersDossier } from '@/components/atlas/ProspectRelationshipMap';
 import { SocieteEnrichmentDialog } from '@/components/SocieteEnrichment';
 import { EditNote } from '@/components/EditNote';
 import React, { useState, useEffect, useRef } from 'react';
@@ -11,7 +12,7 @@ import {
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
   Archive, RotateCcw, RefreshCw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
   ExternalLink, Navigation, Zap, BadgeCheck, ChevronDown, ChevronUp,
-  Building, Database, BarChart2, Users, Newspaper, GitMerge, Copy,
+  Building, Database, BarChart2, Users, Newspaper, GitMerge, Copy, Network, LayoutGrid,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { enrichLocalPagesJaunes } from '@/lib/pagesjaunes-device';
@@ -301,6 +302,7 @@ export default function ProspectDetailPage() {
   const id = params.id;
   const [, navigate] = useLocation();
   const [prospect, setProspect] = useState<any>(null);
+  const [active360View, setActive360View] = useState<'overview' | 'relations'>('overview');
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -580,7 +582,7 @@ export default function ProspectDetailPage() {
   };
 
   return (
-    <div className="min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
+    <div className="atlas-prospect-360 min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
       <ConnectorEnrichmentReturn prospectId={id!} onSaved={async() => {await fetchProspect();await fetchActivities();}} onBusyChange={setReturnProcessing}/>
       {!!prospect.identityConflicts?.length && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 text-amber-950 p-4 mb-4">
         <p className="font-semibold">SIRET déjà utilisé sur une autre fiche prospect</p>
@@ -745,10 +747,31 @@ export default function ProspectDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <nav className="atlas-360-tabs" aria-label="Navigation de la fiche prospect 360°">
+        <button className={active360View==='overview'?'selected':''} aria-current={active360View==='overview'?'page':undefined}
+          onClick={()=>setActive360View('overview')}><LayoutGrid size={17}/> Vue 360°</button>
+        <button className={active360View==='relations'?'selected':''} aria-current={active360View==='relations'?'page':undefined}
+          onClick={()=>setActive360View('relations')}><Network size={17}/> Cartographie</button>
+        {[
+          {id:'atlas-prospect-contacts',label:'Contacts',icon:<Users size={17}/>},
+          {id:'atlas-prospect-sources',label:'Données & sources',icon:<Database size={17}/>},
+          {id:'atlas-prospect-activities',label:'Activités',icon:<Clock size={17}/>},
+          {id:'atlas-prospect-monitoring',label:'Surveillance',icon:<BadgeCheck size={17}/>},
+        ].map(tab=><button key={tab.id} onClick={()=>{
+          setActive360View('overview');
+          window.setTimeout(()=>document.getElementById(tab.id)?.scrollIntoView({behavior:'smooth',block:'start'}),0);
+        }}>{tab.icon} {tab.label}</button>)}
+      </nav>
+      {active360View==='relations' && <div className="atlas-relationship-view">
+        <ProspectRelationshipMap siren={prospect.siren} siret={prospect.siret} company={prospect.company}/>
+        <ProspectPappersDossier siren={prospect.siren} siret={prospect.siret}/>
+      </div>}
+      {active360View==='overview' && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left — Info */}
         <div className="lg:col-span-2 space-y-4">
-          <ProspectCompanyProfile key={id} prospect={prospect} onUpdated={async()=>{await fetchProspect();await fetchActivities();}} />
+          <div id="atlas-prospect-monitoring" className="atlas-scroll-target">
+            <ProspectCompanyProfile key={id} prospect={prospect} onUpdated={async()=>{await fetchProspect();await fetchActivities();}} />
+          </div>
           {/* Informations légales structurées, accessibles sans enrichissement */}
           <section className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex flex-wrap gap-3 justify-between items-center mb-4">
@@ -893,7 +916,7 @@ export default function ProspectDetailPage() {
             </p>
           </section>}
           {/* Coordonnées */}
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+          <div id="atlas-prospect-contacts" className="atlas-scroll-target rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>CONTACT ET COORDONNÉES</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {editing ? (
@@ -1030,7 +1053,7 @@ export default function ProspectDetailPage() {
             </div>
           </div>
 
-          {!editing && <ProspectProfessionalSources prospect={prospect} />}
+          {!editing && <div id="atlas-prospect-sources" className="atlas-scroll-target"><ProspectProfessionalSources prospect={prospect}/></div>}
 
           {/* Mini-map — only when geocoded and not editing */}
           {!editing && prospect.lat && prospect.lng && (
@@ -1074,7 +1097,7 @@ export default function ProspectDetailPage() {
           <EnrichedDataPanel prospectId={prospect.id} />
 
           {/* Activités */}
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+          <div id="atlas-prospect-activities" className="atlas-scroll-target rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>ACTIVITÉS ({activities.length})</h2>
               <button onClick={() => setShowAddActivity(true)}
@@ -1253,7 +1276,7 @@ export default function ProspectDetailPage() {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -129,14 +129,14 @@ function SidebarContent({
 }) {
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 12px', borderBottom: '1px solid rgba(255,255,255,.06)', flexShrink: 0 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0, background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 14 }}>G</div>
+      <div className="atlas-brand" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 12px', borderBottom: '1px solid rgba(255,255,255,.06)', flexShrink: 0 }}>
+        <div className="atlas-brand-mark" style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0, background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 14 }}>G</div>
         {!collapsed && (
           <div>
             <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--sidebar-text)', lineHeight: 1.2 }}>
               {(tenant?.branding as any)?.companyName || 'GrowthOS'}
             </div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', lineHeight: 1 }}>
+            <div className="atlas-brand-meta" style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', lineHeight: 1 }}>
               {user?.email?.split('@')[1] || 'workspace'}
             </div>
           </div>
@@ -155,7 +155,7 @@ function SidebarContent({
           return (
             <div key={section.label}>
               {!collapsed && (
-                <div style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
+                <div className="atlas-nav-section" style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
                   {section.label}
                 </div>
               )}
@@ -164,6 +164,8 @@ function SidebarContent({
                 return (
                   <Link
                     key={item.href}
+                    className="atlas-nav-link"
+                    data-active={active ? 'true' : 'false'}
                     href={item.href}
                     title={collapsed ? item.label : undefined}
                     onClick={onNavClick}
@@ -199,7 +201,7 @@ function SidebarContent({
         {uploadedExtensions && uploadedExtensions.length > 0 && (
           <div>
             {!collapsed && (
-              <div style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
+              <div className="atlas-nav-section" style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
                 Extensions
               </div>
             )}
@@ -243,7 +245,7 @@ function SidebarContent({
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--sidebar-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.firstName || user?.email?.split('@')[0]}
               </div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>En ligne</div>
+            <div className="atlas-brand-meta" style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>En ligne</div>
             </div>
             <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#28A745', flexShrink: 0 }} />
           </button>
@@ -324,6 +326,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* SIDEBAR — desktop fixed, mobile drawer overlay */}
       <aside
+        className="atlas-sidebar"
         style={{
           width: isMobile ? 240 : (sidebarCollapsed ? 56 : 220),
           display: 'flex',
@@ -372,7 +375,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* MAIN */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         {/* HEADER */}
-        <header style={{
+        <header className="atlas-app-header" style={{
           display: 'flex', alignItems: 'center', gap: 8, padding: isMobile ? '0 12px' : '0 16px',
           height: 48, flexShrink: 0,
           background: 'var(--card-bg)', borderBottom: '1px solid var(--card-border)',
@@ -479,7 +482,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main style={{ flex: 1, overflow: 'auto', background: 'var(--body-bg)' }}>
+        <main className="atlas-app-main" style={{ flex: 1, overflow: 'auto', background: 'var(--body-bg)' }}>
           {children}
         </main>
       </div>
