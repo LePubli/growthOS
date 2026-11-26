@@ -4,6 +4,7 @@ import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
 import { ProspectRelationshipMap, ProspectPappersDossier } from '@/components/atlas/ProspectRelationshipMap';
 import { Prospect360Dashboard, ProspectOrbitBanner } from '@/components/atlas/Prospect360Dashboard';
 import { collectProspectPeople } from '@/lib/prospect-people';
+import { hasValidGeoPosition } from '@/lib/prospect-completeness';
 import { SocieteEnrichmentDialog } from '@/components/SocieteEnrichment';
 import { EditNote } from '@/components/EditNote';
 import React, { useState, useEffect, useRef } from 'react';
@@ -25,10 +26,10 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// Teal custom marker (no image needed)
-const tealIcon = L.divIcon({
+// Marqueur bleu ATLAS, sans image externe.
+const atlasLocationIcon = L.divIcon({
   className: '',
-  html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#0d9488;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);transform:rotate(-45deg)"></div>`,
+  html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#176bee;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);transform:rotate(-45deg)"></div>`,
   iconSize: [22, 22],
   iconAnchor: [11, 22],
   popupAnchor: [0, -24],
@@ -44,13 +45,13 @@ function FlyTo({ lat, lng }: { lat: number; lng: number }) {
   return null;
 }
 
-function ProspectMiniMap({ lat, lng, label, address }: { lat: number; lng: number; label: string; address?: string }) {
+function ProspectMiniMap({ lat, lng, label, address, height = 200 }: { lat: number; lng: number; label: string; address?: string; height?: number }) {
   return (
-    <div style={{ borderRadius: 16, overflow: 'hidden', height: 200, position: 'relative', border: '1px solid var(--card-border)' }}>
-      <MapContainer center={[lat, lng]} zoom={14} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
+    <div style={{ borderRadius: 10, overflow: 'hidden', height, position: 'relative', border: '1px solid var(--card-border)' }}>
+      <MapContainer center={[lat, lng]} zoom={14} style={{ height: '100%', width: '100%' }} zoomControl={false} scrollWheelZoom={true} attributionControl={false}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <FlyTo lat={lat} lng={lng} />
-        <Marker position={[lat, lng]} icon={tealIcon}>
+        <Marker position={[lat, lng]} icon={atlasLocationIcon}>
           <Popup>
             <strong style={{ fontSize: 13 }}>{label}</strong>
             {address && <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{address}</div>}
@@ -535,6 +536,7 @@ export default function ProspectDetailPage() {
   );
   if (!prospect) return null;
   const prospectPeople = collectProspectPeople(prospect,officialManagers);
+  const hasLocationPoint = hasValidGeoPosition(prospect.lat,prospect.lng);
 
   const initials = ((prospect.firstName || prospect.company || '?')[0]).toUpperCase();
   const contactName = [prospect.firstName, prospect.lastName].filter(Boolean).join(' ');
@@ -772,6 +774,15 @@ export default function ProspectDetailPage() {
           onOpenSources={()=>openDetailedSection('atlas-prospect-sources')}
           onOpenMonitoring={()=>openDetailedSection('atlas-prospect-monitoring')}
           onEnrich={()=>navigate('/outils?mode=enrich&prospectId='+id)}
+          onOpenCrmMap={()=>navigate('/crm-map')}
+          locationPreview={prospect.address&&hasLocationPoint
+            ?<ProspectMiniMap lat={prospect.lat} lng={prospect.lng} height={155}
+                label={[prospect.firstName,prospect.lastName].filter(Boolean).join(' ')||prospect.company||'Prospect'} address={prospect.address}/>
+            :<div className="atlas-360-company-geocode"><span>Position GPS non renseignée</span>
+              <button type="button" onClick={geocodeNow} disabled={geocoding}>
+                {geocoding?<Loader2 size={13} className="animate-spin"/>:<MapPin size={13}/>}
+                {geocoding?'Géocodage…':'Localiser l’adresse'}
+              </button></div>}
           onStatusChange={status=>void updateOpportunityStatus(status)}/>
         <details ref={legacyDetailsRef} className="atlas-360-extended-record">
           <summary><FileText size={18}/> Informations détaillées, édition et historique <ChevronDown size={17}/></summary>
@@ -823,7 +834,6 @@ export default function ProspectDetailPage() {
                     { key: 'siret', label: 'SIRET de l’établissement (14 chiffres)', maxLength: 14 },
                     { key: 'apeCode', label: 'Code APE / NAF (ex. 43.22A)', maxLength: 6 },
                     { key: 'nafLabel', label: 'Secteur d’activité · libellé NAF', maxLength: 250 },
-                    { key: 'nafVersion', label: 'Nomenclature (ex. NAFRev2)', maxLength: 32 },
                     { key: 'postalCode', label: 'Code postal (5 chiffres)', maxLength: 5 },
                     { key: 'city', label: 'Ville', maxLength: 120 },
                   ].map(field => <div key={field.key}>
@@ -835,7 +845,6 @@ export default function ProspectDetailPage() {
                 <>
                   {[
                     { key: 'siren', label: 'SIREN', value: prospect.siren },
-                    { key: 'nafVersion', label: 'Nomenclature', value: prospect.nafVersion },
                     { key: 'nafLabel', label: 'Libellé officiel NAF', value: prospect.nafLabel },
                   ].map(field => <div key={field.key} className="min-w-0">
                     <div className="text-xs mb-1 text-gray-500">{field.label}</div>
@@ -1037,51 +1046,6 @@ export default function ProspectDetailPage() {
           </div>
 
           {!editing && <div id="atlas-prospect-sources" className="atlas-scroll-target atlas-360-detail-module atlas-360-professional-sources"><ProspectProfessionalSources prospect={prospect}/></div>}
-
-          {/* Localisation et géocodage : distincts du contact nominatif. */}
-          {!editing && prospect.address && (
-            <div className="atlas-360-detail-module atlas-360-location rounded-2xl border overflow-hidden" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-              <div className="flex items-center justify-between px-5 pt-4 pb-2">
-                <h2 className="font-semibold text-sm flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
-                  <MapPin size={13} />LOCALISATION
-                </h2>
-                <div className="flex items-center gap-3">
-                  <a
-                    href={`/crm-map`}
-                    className="flex items-center gap-1 text-xs font-medium"
-                    style={{ color: 'var(--color-primary)' }}
-                    onClick={e => { e.preventDefault(); navigate('/crm-map'); }}
-                  >
-                    <Navigation size={11} />Voir sur la carte CRM
-                  </a>
-                  {prospect.lat&&prospect.lng&&<a
-                    href={`https://www.google.com/maps?q=${prospect.lat},${prospect.lng}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 text-xs"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    <ExternalLink size={11} />Google Maps
-                  </a>}
-                </div>
-              </div>
-              <div className="px-5 pb-5">
-                <p className="atlas-360-location-address"><MapPin size={15}/>{prospect.address}</p>
-                {prospect.lat&&prospect.lng?<ProspectMiniMap
-                  lat={prospect.lat}
-                  lng={prospect.lng}
-                  label={[prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || prospect.company || 'Prospect'}
-                  address={prospect.address}
-                />:<div className="atlas-360-geocode-prompt">
-                  <span>Adresse renseignée, coordonnées GPS non disponibles.</span>
-                  <button type="button" onClick={geocodeNow} disabled={geocoding}>
-                    {geocoding?<Loader2 size={14} className="animate-spin"/>:<MapPin size={14}/>}
-                    {geocoding?'Géocodage en cours…':'Géocoder cette adresse'}
-                  </button>
-                </div>}
-              </div>
-            </div>
-          )}
 
           {/* Données enrichies */}
           <EnrichedDataPanel prospectId={prospect.id} />

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { collectProspectPeople } from '@/lib/prospect-people';
+import { computeProspectCompleteness, hasValidGeoPosition } from '@/lib/prospect-completeness';
 import {
   Activity, ArrowRight, Bell, Building2, CalendarDays, Check, CheckCircle2,
   ChevronDown, Circle, CircleAlert, ClipboardList, ExternalLink, FileSearch,
   Globe2, Mail, MapPin, MoreHorizontal, Phone, Plus, RefreshCw, ShieldCheck,
-  Sparkles, Target, UserRound, Users, Zap,
+  Sparkles, Target, UserRound, Users, Zap, Navigation,
 } from 'lucide-react';
 
 type Prospect = {
@@ -13,6 +14,7 @@ type Prospect = {
   jobTitle?:string|null; siren?:string|null; siret?:string|null; apeCode?:string|null;
   nafLabel?:string|null; phone?:string|null; email?:string|null; website?:string|null;
   address?:string|null; postalCode?:string|null; city?:string|null;
+  lat?:number|null; lng?:number|null;
   status?:string|null; score?:number|null; source?:string|null;
   sourceDetails?:Record<string,any>|null; createdAt?:string|null; updatedAt?:string|null;
 };
@@ -23,6 +25,7 @@ type Props = {
   onEdit:()=>void; onAddActivity:()=>void; onOpenDeal:()=>void; onOpenContacts:()=>void;
   onOpenActivities:()=>void; onOpenSources:()=>void; onOpenMonitoring:()=>void;
   onEnrich:()=>void; onStatusChange:(status:string)=>void;
+  locationPreview?:ReactNode; onOpenCrmMap:()=>void;
 };
 
 const STATUS = [
@@ -35,10 +38,6 @@ const text = (v?:string|null) => v?.trim() || 'À compléter';
 const frDate=(value?:string|null)=>value && !Number.isNaN(Date.parse(value))
   ? new Date(value).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})
   : 'Non renseignée';
-function isVerified(p:Prospect) {
-  return !!(p.sourceDetails?.annuaire && (p.siret || p.siren));
-}
-
 export function ProspectOrbitBanner({prospect:p,onEdit,onOpenContacts,onCall}:{
   prospect:Prospect;onEdit:()=>void;onOpenContacts:()=>void;onCall:()=>void;
 }) {
@@ -56,26 +55,21 @@ export function ProspectOrbitBanner({prospect:p,onEdit,onOpenContacts,onCall}:{
 
 export function Prospect360Dashboard({
   prospect:p,officialManagers=[],activities,deals,onEdit,onAddActivity,onOpenDeal,onOpenContacts,onOpenActivities,
-  onOpenSources,onOpenMonitoring,onEnrich,onStatusChange,
+  onOpenSources,onOpenMonitoring,onEnrich,onStatusChange,locationPreview,onOpenCrmMap,
 }:Props) {
   const [selectedAction,setSelectedAction]=useState(0);
-  const legal=!!(p.siren||p.siret);
   const people=collectProspectPeople(p,officialManagers);
-  const managers=people.filter(person=>person.isManager);
   const directPhone=p.phone||people.find(person=>person.phone)?.phone;
   const directEmail=p.email||people.find(person=>person.email)?.email;
   const contact=!!(directPhone||directEmail);
-  const location=!!(p.address&&p.postalCode);
-  const company=!!p.company;
-  const criteria=[
-    {label:'Identité (SIRET, raison sociale)',met:company&&legal},
-    {label:'Activité (APE)',met:!!p.apeCode},
-    {label:'Contact (téléphone, email, site)',met:contact||!!p.website},
-    {label:'Adresse (à vérifier)',met:location},
-    {label:'Dirigeant (nominatif)',met:managers.length>0},
-  ];
-  const completeness=Math.round(criteria.filter(c=>c.met).length/criteria.length*100);
-  const verified=isVerified(p);
+  const location=!!(p.address&&p.postalCode&&p.city);
+  const {criteria,percent:completeness,completed,total}=computeProspectCompleteness(p,officialManagers);
+  const hasLocationPoint=hasValidGeoPosition(p.lat,p.lng);
+  const addressParts=[p.address?.trim()||''];
+  if(p.postalCode&&!addressParts[0].includes(p.postalCode))addressParts.push(p.postalCode);
+  if(p.city&&!addressParts.join(' ').toLocaleLowerCase('fr-FR').includes(p.city.toLocaleLowerCase('fr-FR')))addressParts.push(p.city);
+  const displayAddress=addressParts.filter(Boolean).join(', ');
+  const verified=criteria[1].met;
   const sourceName=p.source==='annuaire-entreprises'?'INSEE / Annuaire':p.source==='pagesjaunes'?'PagesJaunes':p.source?.replaceAll('_',' ')||'À préciser';
   const suggestions=[
     {label:!location?'Vérifier l’adresse':'Contrôler l’adresse',description:location?'Adresse renseignée ; contrôler sa source.':'Compléter l’adresse et son code postal.',icon:MapPin,action:onEdit,done:location},
@@ -93,10 +87,18 @@ export function Prospect360Dashboard({
             <div><dt>SIRET</dt><dd><strong>{text(p.siret)}</strong>{verified&&<span className="atlas-360-verified"><Check size={13}/> Vérifié</span>}</dd></div>
             <div><dt>Raison sociale</dt><dd>{text(p.company)}</dd></div>
             <div><dt>Code APE</dt><dd><strong>{text(p.apeCode)}</strong>{p.nafLabel&&<span> — {p.nafLabel}</span>}</dd></div>
-            <div><dt>Téléphone</dt><dd>{p.phone?<a href={'tel:'+p.phone}><Phone size={15}/>{p.phone}<ExternalLink size={13}/></a>:<span className="atlas-360-empty">À compléter</span>}</dd></div>
-            <div><dt>Site web</dt><dd>{p.website?<a href={p.website.startsWith('http')?p.website:'https://'+p.website} target="_blank" rel="noopener noreferrer"><Globe2 size={15}/>{p.website.replace(/^https?:\/\//,'')}<ExternalLink size={13}/></a>:<span className="atlas-360-empty">À compléter</span>}</dd></div>
-            <div><dt>Adresse</dt><dd>{location?<span><MapPin size={15}/>{[p.address,p.postalCode,p.city].filter(Boolean).join(', ')}</span>:<span className="atlas-360-alert"><CircleAlert size={15}/> À vérifier</span>}</dd></div>
+            <div><dt>Téléphone</dt><dd>{p.phone?<a className="atlas-360-legal-action" href={'tel:'+p.phone}><Phone size={14}/>{p.phone}</a>:<span className="atlas-360-empty">À compléter</span>}</dd></div>
+            <div><dt>Site web</dt><dd>{p.website?<a className="atlas-360-legal-action" href={p.website.startsWith('http')?p.website:'https://'+p.website} target="_blank" rel="noopener noreferrer"><Globe2 size={14}/>Ouvrir le site <ExternalLink size={12}/></a>:<span className="atlas-360-empty">À compléter</span>}</dd></div>
+            <div><dt>Adresse</dt><dd>{p.address?<span><MapPin size={15}/>{displayAddress}</span>:<span className="atlas-360-alert"><CircleAlert size={15}/> À vérifier</span>}</dd></div>
           </dl>
+          {p.address&&<div className="atlas-360-company-location">
+            <div className="atlas-360-company-location-toolbar"><span><MapPin size={14}/> Localisation de l'entreprise</span>
+              <div><button type="button" onClick={onOpenCrmMap}><Navigation size={12}/> Carte CRM</button>
+                {hasLocationPoint&&<a href={'https://www.google.com/maps?q='+p.lat+','+p.lng} target="_blank" rel="noopener noreferrer"><ExternalLink size={12}/> Google Maps</a>}
+              </div>
+            </div>
+            {locationPreview}
+          </div>}
         </section>
 
         <section className="atlas-360-card atlas-360-completeness">
@@ -106,9 +108,10 @@ export function Prospect360Dashboard({
               <div><strong>{completeness} %</strong><span>Complétude</span></div>
             </div>
             <ul className="atlas-360-complete-list">
-              {criteria.map(c=><li key={c.label}>{c.met?<CheckCircle2 size={16} className="yes"/>:<Circle size={16} className="no"/>}<span>{c.label}</span></li>)}
+              {criteria.map(c=><li key={c.label} title={c.met?'Critère renseigné':c.missing}>{c.met?<CheckCircle2 size={16} className="yes"/>:<Circle size={16} className="no"/>}<span>{c.label}</span></li>)}
             </ul>
           </div>
+          <p className="atlas-360-complete-rule">{completed}/{total} critères validés · Les informations incomplètes ou non vérifiées ne comptent pas.</p>
           <footer className="atlas-360-source-confidence">
             <div>Confiance des sources <button title="Confiance indicative basée sur les données du dossier"><CircleAlert size={14}/></button></div>
             <div className="atlas-360-source-chips"><span>INSEE <b>{verified?'Identifiée':'À confirmer'}</b></span>
