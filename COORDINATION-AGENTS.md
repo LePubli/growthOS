@@ -50,6 +50,28 @@ Fichiers UX : `artifacts/growthos/src/atlas-orbit.css`, `components/atlas/Prospe
 
 **Ne pas effacer** cette note ni le relais UX avant le lancement final expressément autorisé. Les validations de déploiement de préproduction restent la responsabilité du propriétaire.
 
+**Lot fidélité visuelle ATLAS × ORBIT (26/11/2026)** — branche isolée
+`feat/atlas-orbit-pixel-360-20261126`, cible de fusion
+`fix/growthos-functional-redesign`. La page Prospect 360° affiche désormais en
+premier un **tableau de bord 3 + 4 cartes** inspiré de la maquette validée
+(identité légale, complétude circulaire calculée sur les données existantes,
+copilote contextuel, contacts, chronologie réelle, surveillance et opportunité),
+avec bandeau ORBIT, rail d'actions, hiérarchie visuelle et logo ATLAS.
+Le **dossier historique intégral** reste préservé, dépliable, et les onglets
+ouvrent les sections correspondantes. La cartographie Pappers existante est
+conservée dans son onglet dédié. Aucun nouveau connecteur Pappers ni appel IA
+serveur n'est ajouté : la recommandation est une aide UX déterministe.
+
+Fichiers de ce lot :
+`artifacts/growthos/src/components/atlas/Prospect360Dashboard.tsx` (nouveau),
+`artifacts/growthos/src/atlas-prospect-360.css` (nouveau),
+`artifacts/growthos/src/pages/ProspectDetailPage.tsx`,
+`artifacts/growthos/src/components/layout/AppShell.tsx`,
+`artifacts/growthos/src/index.css`. Conserver les callbacks de veille,
+les enrichissements, les relations, la comparaison des valeurs et les activités
+automatiques de l'agent fonctionnel. Toute future modification simultanée de
+`ProspectDetailPage.tsx` exige une relecture de fusion ciblée.
+
 
 ## Protocole de notification au propriétaire
 

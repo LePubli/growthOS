@@ -2,6 +2,7 @@ import { ConnectorEnrichmentReturn } from '@/components/ConnectorEnrichmentRetur
 import { ProspectProfessionalSources } from '@/components/ProspectProfessionalSources';
 import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
 import { ProspectRelationshipMap, ProspectPappersDossier } from '@/components/atlas/ProspectRelationshipMap';
+import { Prospect360Dashboard, ProspectOrbitBanner } from '@/components/atlas/Prospect360Dashboard';
 import { SocieteEnrichmentDialog } from '@/components/SocieteEnrichment';
 import { EditNote } from '@/components/EditNote';
 import React, { useState, useEffect, useRef } from 'react';
@@ -12,7 +13,7 @@ import {
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
   Archive, RotateCcw, RefreshCw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
   ExternalLink, Navigation, Zap, BadgeCheck, ChevronDown, ChevronUp,
-  Building, Database, BarChart2, Users, Newspaper, GitMerge, Copy, Network, LayoutGrid,
+  Building, Database, BarChart2, Users, Newspaper, GitMerge, Copy, Network, LayoutGrid, MoreHorizontal,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { enrichLocalPagesJaunes } from '@/lib/pagesjaunes-device';
@@ -303,6 +304,7 @@ export default function ProspectDetailPage() {
   const [, navigate] = useLocation();
   const [prospect, setProspect] = useState<any>(null);
   const [active360View, setActive360View] = useState<'overview' | 'relations'>('overview');
+  const legacyDetailsRef = useRef<HTMLDetailsElement>(null);
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -581,6 +583,28 @@ export default function ProspectDetailPage() {
     }catch(error:any){toast.error(error?.message||'Impossible de résoudre ce conflit');}
   };
 
+  const openDetailedSection = (sectionId?:string) => {
+    setActive360View('overview');
+    window.setTimeout(()=>{
+      if(legacyDetailsRef.current)legacyDetailsRef.current.open=true;
+      if(sectionId)window.setTimeout(()=>document.getElementById(sectionId)?.scrollIntoView({behavior:'smooth',block:'start'}),60);
+    },0);
+  };
+  const openEditor = () => {
+    editBaseline.current=prospect;
+    setForm(prospect);
+    setEditing(true);
+    openDetailedSection('atlas-prospect-contacts');
+  };
+  const updateOpportunityStatus = async (status:string) => {
+    try {
+      const updated=await apiClient.patch<any>(`/prospects/${id}`,{status});
+      setProspect(updated);
+      if(!editingRef.current)setForm(updated);
+      toast.success('Statut du prospect mis à jour');
+    }catch{toast.error('Impossible de modifier le statut du prospect');}
+  };
+
   return (
     <div className="atlas-prospect-360 min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
       <ConnectorEnrichmentReturn prospectId={id!} onSaved={async() => {await fetchProspect();await fetchActivities();}} onBusyChange={setReturnProcessing}/>
@@ -692,81 +716,88 @@ export default function ProspectDetailPage() {
         </div>
       </details>}
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
+      <div className="atlas-360-breadcrumb"><button onClick={()=>navigate('/prospects')}>Prospects</button><span>/</span><strong>{fullName}</strong></div>
+      <div className="atlas-360-hero flex flex-wrap items-center gap-3 mb-6">
         <button onClick={() => navigate('/prospects')} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
           <ArrowLeft size={20} style={{ color: 'var(--text-muted)' }} />
         </button>
-        <div className="flex items-center gap-3 flex-1 min-w-[220px]">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-bold"
-            style={{ background: 'var(--color-primary)' }}>{initials}</div>
+        <div className="atlas-360-hero-identity flex items-center gap-3 flex-1 min-w-[220px]">
+          <div className="atlas-360-hero-icon w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-bold"
+            style={{ background: 'var(--color-primary)' }}><Building2 size={31}/></div>
           <div>
-            <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{fullName}</h1>
-            <div className="flex items-center gap-2">
+            <div className="atlas-360-hero-title"><h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{fullName}</h1>
+              {prospect.sourceDetails?.annuaire && <span className="atlas-360-company-active"><CheckCircle size={14}/> Identité vérifiée</span>}</div>
+            <div className="atlas-360-hero-meta flex items-center gap-2">
               {contactName && prospect.jobTitle && <span className="text-sm text-gray-500">{prospect.jobTitle} ·</span>}
               {contactName && prospect.company && <span className="text-sm text-gray-500">{prospect.company}</span>}
               {!contactName && <span className="text-sm text-gray-500">Entreprise prospectée</span>}
               <span className="text-xs px-2 py-0.5 rounded-full text-white font-medium" style={{ background: statusColor }}>
                 {STATUS_OPTIONS.find(s => s.value === prospect.status)?.label}
               </span>
+              {prospect.updatedAt&&<span className="atlas-360-source-caption">Mis à jour le {new Date(prospect.updatedAt).toLocaleDateString('fr-FR')}</span>}
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={editing||returnProcessing} onClick={() => navigate(`/outils?mode=enrich&prospectId=${id}`)} className="px-3 py-2 bg-teal-700 text-white rounded-xl text-sm font-medium disabled:opacity-50">Enrichir</button>
-          <button type="button" disabled={editing||returnProcessing} onClick={() => setShowSocieteEnrichment(true)} className="px-3 py-2 border rounded-xl text-sm font-medium text-teal-700">
-            Enrichir via Societe.com
-          </button>
-          <button onClick={toggleStar} className={`p-2 rounded-xl ${prospect.isStarred ? 'bg-amber-50' : 'hover:bg-gray-100'}`}>
-            <Star size={18} className={prospect.isStarred ? 'fill-amber-400 text-amber-400' : 'text-gray-400'} />
-          </button>
-          <button onClick={archiveProspect} title={prospect.status === 'archived' ? 'Restaurer' : 'Archiver'}
-            className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
-            style={{ color: prospect.status === 'archived' ? '#059669' : 'var(--text-muted)' }}>
-            {prospect.status === 'archived' ? <RotateCcw size={18} /> : <Archive size={18} />}
-          </button>
-          {(
-            <button onClick={() => linkedDeals.length > 0 ? navigate(`/pipeline/${linkedDeals[0].id}`) : openConvertModal()}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors"
-              style={{ background:'#EEF2FF',color:'#6366F1',border:'1px solid #C7D2FE' }}
-              title={linkedDeals.length > 0 ? 'Voir le deal lié à ce prospect' : 'Créer un deal lié à ce prospect'}>
-              <GitMerge size={14}/>{linkedDeals.length > 0 ? 'Voir le deal' : 'Créer un deal'}
-            </button>
-          )}
+        <div className="atlas-360-hero-actions flex flex-wrap gap-2">
+          {prospect.phone?<a href={'tel:'+prospect.phone} className="atlas-360-hero-button"><Phone size={18}/> Appeler</a>
+            :<button className="atlas-360-hero-button" disabled title="Téléphone non renseigné"><Phone size={18}/> Appeler</button>}
+          <button type="button" disabled={editing||returnProcessing} onClick={() => navigate(`/outils?mode=enrich&prospectId=${id}`)}
+            className="atlas-360-hero-button"><Database size={17}/> Enrichir</button>
+          <button onClick={() => linkedDeals.length > 0 ? navigate(`/pipeline/${linkedDeals[0].id}`) : openConvertModal()}
+            className="atlas-360-hero-button primary"><Plus size={20}/>{linkedDeals.length > 0 ? 'Voir le deal' : 'Créer un deal'}</button>
           {editing ? (
             <>
-              <button onClick={() => setEditing(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
-              <button onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50" style={{ background: 'var(--color-primary)' }}>
+              <button onClick={() => setEditing(false)} className="atlas-360-hero-button">Annuler</button>
+              <button onClick={save} disabled={saving} className="atlas-360-hero-button primary">
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}Enregistrer
               </button>
             </>
-          ) : (
-            <button disabled={returnProcessing} onClick={() => {editBaseline.current=prospect;setForm(prospect);setEditing(true);}} className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300 disabled:opacity-50">
-              <Edit2 size={14} />Modifier
-            </button>
-          )}
+          ) : null}
+          <details className="atlas-360-extra-menu">
+            <summary aria-label="Plus d'actions" title="Plus d'actions"><MoreHorizontal size={21}/></summary>
+            <div className="atlas-360-extra-popover">
+              <button type="button" disabled={editing||returnProcessing} onClick={openEditor}><Edit2 size={16}/> Modifier la fiche</button>
+              <button type="button" disabled={editing||returnProcessing} onClick={()=>setShowSocieteEnrichment(true)}><Database size={16}/> Enrichir via Societe.com</button>
+              <button onClick={toggleStar}><Star size={16}/>{prospect.isStarred?'Retirer des favoris':'Ajouter aux favoris'}</button>
+              <button onClick={archiveProspect}><Archive size={16}/>{prospect.status==='archived'?'Restaurer':'Archiver'}</button>
+            </div>
+          </details>
         </div>
       </div>
 
+      {active360View==='overview'&&<ProspectOrbitBanner prospect={prospect} onEdit={openEditor}
+        onOpenContacts={()=>openDetailedSection('atlas-prospect-contacts')}
+        onCall={()=>prospect.phone?window.location.assign('tel:'+prospect.phone):prospect.email
+          ?window.location.assign('mailto:'+prospect.email):openDetailedSection('atlas-prospect-contacts')}/>}
       <nav className="atlas-360-tabs" aria-label="Navigation de la fiche prospect 360°">
         <button className={active360View==='overview'?'selected':''} aria-current={active360View==='overview'?'page':undefined}
           onClick={()=>setActive360View('overview')}><LayoutGrid size={17}/> Vue 360°</button>
-        <button className={active360View==='relations'?'selected':''} aria-current={active360View==='relations'?'page':undefined}
-          onClick={()=>setActive360View('relations')}><Network size={17}/> Cartographie</button>
         {[
           {id:'atlas-prospect-contacts',label:'Contacts',icon:<Users size={17}/>},
           {id:'atlas-prospect-sources',label:'Données & sources',icon:<Database size={17}/>},
           {id:'atlas-prospect-activities',label:'Activités',icon:<Clock size={17}/>},
           {id:'atlas-prospect-monitoring',label:'Surveillance',icon:<BadgeCheck size={17}/>},
-        ].map(tab=><button key={tab.id} onClick={()=>{
-          setActive360View('overview');
-          window.setTimeout(()=>document.getElementById(tab.id)?.scrollIntoView({behavior:'smooth',block:'start'}),0);
-        }}>{tab.icon} {tab.label}</button>)}
+        ].map(tab=><button key={tab.id} onClick={()=>openDetailedSection(tab.id)}>{tab.icon} {tab.label}</button>)}
+        <button className={active360View==='relations'?'selected':''} aria-current={active360View==='relations'?'page':undefined}
+          onClick={()=>setActive360View('relations')}><Network size={17}/> Cartographie</button>
       </nav>
       {active360View==='relations' && <div className="atlas-relationship-view">
         <ProspectRelationshipMap siren={prospect.siren} siret={prospect.siret} company={prospect.company}/>
         <ProspectPappersDossier siren={prospect.siren} siret={prospect.siret}/>
       </div>}
-      {active360View==='overview' && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {active360View==='overview' && <>
+        <Prospect360Dashboard prospect={prospect} activities={activities} deals={linkedDeals}
+          onEdit={openEditor} onAddActivity={()=>setShowAddActivity(true)}
+          onOpenDeal={()=>linkedDeals.length?navigate('/pipeline/'+linkedDeals[0].id):openConvertModal()}
+          onOpenContacts={()=>openDetailedSection('atlas-prospect-contacts')}
+          onOpenActivities={()=>openDetailedSection('atlas-prospect-activities')}
+          onOpenSources={()=>openDetailedSection('atlas-prospect-sources')}
+          onOpenMonitoring={()=>openDetailedSection('atlas-prospect-monitoring')}
+          onEnrich={()=>navigate('/outils?mode=enrich&prospectId='+id)}
+          onStatusChange={status=>void updateOpportunityStatus(status)}/>
+        <details ref={legacyDetailsRef} className="atlas-360-extended-record">
+          <summary><FileText size={18}/> Informations détaillées, édition et historique <ChevronDown size={17}/></summary>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left — Info */}
         <div className="lg:col-span-2 space-y-4">
           <div id="atlas-prospect-monitoring" className="atlas-scroll-target">
@@ -1276,7 +1307,9 @@ export default function ProspectDetailPage() {
             </div>
           </div>
         </div>
-      </div>}
+      </div>
+        </details>
+      </>}
     </div>
   );
 }

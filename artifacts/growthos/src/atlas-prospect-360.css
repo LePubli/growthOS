@@ -1,0 +1,233 @@
+/* ATLAS × ORBIT — Prospect 360° / reproduction de la maquette validée.
+   UI seulement : aucune mutation métier ni donnée fictive. */
+.atlas-brand-symbol,.atlas-brand-version {display:none;}
+html[data-theme-id="atlas-orbit"] .atlas-brand {min-height:62px !important;gap:9px !important;padding:12px 15px !important;}
+html[data-theme-id="atlas-orbit"] .atlas-brand-mark {display:none !important;}
+html[data-theme-id="atlas-orbit"] .atlas-brand-symbol {display:block;flex:0 0 32px;}
+html[data-theme-id="atlas-orbit"] .atlas-brand-name {display:flex;align-items:center;gap:6px;color:#14213a !important;font-size:16px !important;font-weight:850 !important;letter-spacing:-.04em;}
+html[data-theme-id="atlas-orbit"] .atlas-brand-version {display:inline-flex;align-items:center;background:#e5efff;color:#1467e9;border:1px solid #b8d2ff;border-radius:7px;font-size:12px;font-weight:750;letter-spacing:0;padding:1px 5px;}
+html[data-theme-id="atlas-orbit"] .atlas-brand-meta {display:none !important;}
+html[data-theme-id="atlas-orbit"] .atlas-app-header {position:relative;height:57px !important;}
+html[data-theme-id="atlas-orbit"] .atlas-global-search {background:#f8faff !important;min-height:39px;width:min(43vw,730px);border:1px solid #d9e2f0 !important;border-radius:10px !important;box-shadow:0 1px 3px #2b406412;}
+html[data-theme-id="atlas-orbit"] .atlas-global-search span {font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#50617f;}
+html[data-theme-id="atlas-orbit"] .atlas-global-search kbd {margin-left:auto;border-radius:7px !important;padding:3px 7px !important;font-weight:750;}
+@media(min-width:1540px){
+  html[data-theme-id="atlas-orbit"] .atlas-global-search {position:absolute;left:50%;transform:translateX(-50%);width:min(53vw,730px);}
+}
+html[data-theme-id="atlas-orbit"] .atlas-prospect-360 {
+  position:relative;max-width:none;margin:0;
+  padding:0 82px 40px 18px !important;min-height:100vh;
+  background:#f7f9fd !important;color:#14213a;
+}
+.atlas-360-breadcrumb {height:48px;display:flex;align-items:center;gap:14px;font-size:13px;color:#6e7d99;padding:0 8px;}
+.atlas-360-breadcrumb button {color:#60728f;cursor:pointer;background:none;border:0;padding:0;font-weight:500;}
+.atlas-360-breadcrumb button:hover {color:#176bee;}
+.atlas-360-breadcrumb strong {color:#223354;font-weight:700;}
+.atlas-360-hero {min-height:100px;gap:12px !important;margin-bottom:6px !important;padding:0 16px 10px 12px;}
+.atlas-360-hero >button:first-child {display:none;}
+.atlas-360-hero-identity {min-width:0;gap:22px !important;}
+.atlas-360-hero-icon {height:70px !important;width:70px !important;flex:0 0 70px;background:linear-gradient(145deg,#edf5ff,#c9e0ff) !important;border-radius:15px !important;color:#176bee !important;}
+.atlas-360-hero-title {display:flex;align-items:center;flex-wrap:wrap;gap:18px;}
+.atlas-360-hero-title h1 {font-size:32px !important;line-height:1.16;font-weight:850;letter-spacing:-.045em;}
+.atlas-360-company-active {display:inline-flex;align-items:center;gap:6px;border-radius:30px;background:#e5f8ed;border:1px solid #c8efd9;color:#0b863e;font-size:12px;font-weight:750;padding:6px 11px;}
+.atlas-360-hero-meta {font-size:12px !important;color:#7d8ba4 !important;margin-top:11px;flex-wrap:wrap;}
+.atlas-360-hero-meta > span.text-xs.px-2 {background:#eff3fa !important;color:#5f6f88 !important;border:1px solid #e2e9f4;}
+.atlas-360-source-caption {color:#7c8ca4;font-weight:500;}
+.atlas-360-hero-actions {align-items:center;justify-content:flex-end;}
+.atlas-360-hero-button {display:inline-flex;align-items:center;justify-content:center;gap:10px;white-space:nowrap;min-height:43px;padding:10px 17px !important;background:white;color:#1d2945;border:1px solid #cdd7e8;border-radius:10px;cursor:pointer;font-size:13px;font-weight:750;box-shadow:0 3px 8px #28456d0c;}
+.atlas-360-hero-button:hover:not(:disabled) {border-color:#8fbaff;color:#176bee;background:#f9fbff;}
+.atlas-360-hero-button.primary {background:#176bee;color:#fff;border-color:#176bee;box-shadow:0 5px 12px #176bee25;}
+.atlas-360-hero-button.primary:hover:not(:disabled) {background:#105bd6;color:white;}
+.atlas-360-hero-button:disabled {opacity:.45;cursor:not-allowed;}
+.atlas-360-extra-menu {position:relative;}
+.atlas-360-extra-menu > summary {height:42px;width:42px;display:grid;place-items:center;color:#65758e;border:1px solid #dee5f0;border-radius:10px;background:white;cursor:pointer;list-style:none;}
+.atlas-360-extra-menu > summary::-webkit-details-marker {display:none;}
+.atlas-360-extra-menu > summary:hover {background:#edf3ff;color:#176bee;}
+.atlas-360-extra-popover {position:absolute;z-index:31;right:0;top:calc(100% + 7px);width:238px;background:#fff;padding:7px;border:1px solid #dbe3ef;border-radius:12px;box-shadow:0 16px 35px #203b632a;}
+.atlas-360-extra-popover button {width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:10px 11px;border:0;border-radius:8px;background:transparent;color:#435675;font-size:12px;cursor:pointer;}
+.atlas-360-extra-popover button:hover {background:#edf3ff;color:#176bee;}
+.atlas-360-extra-popover button:disabled {opacity:.45;cursor:not-allowed;}
+
+/* Tabulation alignée au contenu, sous le bandeau ORBIT. */
+.atlas-prospect-360 .atlas-360-tabs {order:0;display:flex;gap:14px;margin:15px 0 24px;padding:0;border-bottom:1px solid #d7e1ef;background:transparent;}
+.atlas-prospect-360 .atlas-360-tabs button {min-width:0;padding:13px 17px 15px;color:#2d3c5b;border:0;border-bottom:3px solid transparent;font-size:13px;font-weight:690;gap:9px;}
+.atlas-prospect-360 .atlas-360-tabs button:first-child {color:#176bee;}
+.atlas-prospect-360 .atlas-360-tabs button.selected {background:transparent;border-bottom-color:#176bee;color:#176bee;}
+.atlas-prospect-360 .atlas-360-tabs button:hover {background:#edf3ff;}
+.atlas-360-dashboard {position:relative;display:flex;flex-direction:column;}
+.atlas-360-orbit-banner {order:-1;min-height:59px;padding:10px 18px;display:flex;align-items:center;gap:17px;margin:0 0 0;
+  border:1px solid #eadcff;border-radius:12px;background:linear-gradient(108deg,#f6f2ff 0%,#f1f1ff 50%,#fff2fc 100%);}
+.atlas-360-orbit-spark {color:#8844ff;display:grid;place-items:center;flex:0 0 26px;}
+.atlas-360-orbit-banner p {flex:1;color:#24213f;font-size:13.5px;line-height:1.4;font-weight:450;}
+.atlas-360-orbit-banner strong {font-weight:800;}
+.atlas-360-orbit-banner b {font-weight:700;}
+.atlas-360-orbit-banner button {flex-shrink:0;display:flex;align-items:center;gap:9px;font-size:12px;font-weight:800;color:#6836e6;background:#fff;border:1px solid #ba9bff;border-radius:9px;box-shadow:0 3px 7px #6031dd18;padding:10px 13px;cursor:pointer;}
+.atlas-360-orbit-banner button:hover {background:#efe6ff;}
+.atlas-360-orbit-banner button span {font-size:16px;}
+
+.atlas-360-overview-grid {display:grid;grid-template-columns:minmax(345px,1.36fr) minmax(285px,1fr) minmax(295px,1.04fr);gap:15px;align-items:stretch;}
+.atlas-360-secondary-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px;margin-top:21px;align-items:stretch;}
+.atlas-360-card {min-width:0;background:#fff;border:1px solid #dce5f1;border-radius:16px;box-shadow:0 4px 15px #1b42620b;overflow:hidden;}
+.atlas-360-overview-grid >.atlas-360-card {min-height:306px;}
+.atlas-360-secondary-grid >.atlas-360-card {min-height:257px;}
+.atlas-360-card-header {min-height:55px;border-bottom:1px solid #e8eef7;display:flex;align-items:center;justify-content:space-between;gap:9px;padding:12px 17px;}
+.atlas-360-card-header >div {display:flex;align-items:center;gap:11px;min-width:0;}
+.atlas-360-card-header svg {color:#22375c;flex:0 0 auto;}
+.atlas-360-card-header h2 {font-size:15px;font-weight:820;color:#14213a;letter-spacing:-.015em;white-space:nowrap;}
+.atlas-360-card-header h2 small {font-weight:470;font-size:11px;color:#5e6c85;letter-spacing:0;}
+.atlas-360-text-button {display:inline-flex;align-items:center;gap:5px;white-space:nowrap;background:none;border:0;padding:4px 0;color:#1266f3;font-size:10.5px;font-weight:750;cursor:pointer;}
+.atlas-360-text-button svg {color:inherit;}
+.atlas-360-text-button:hover {text-decoration:underline;}
+
+/* Identité légale, exactement hiérarchisée comme la première carte du visuel. */
+.atlas-360-company .atlas-360-legal-list {padding:4px 13px 14px;}
+.atlas-360-legal-list >div {display:grid;grid-template-columns:36% 64%;align-items:center;min-height:37px;gap:8px;border-bottom:1px solid #edf1f8;padding:6px 8px;}
+.atlas-360-legal-list >div:last-child {border-bottom:0;}
+.atlas-360-legal-list dt {font-size:11px;color:#22304e;font-weight:550;white-space:nowrap;}
+.atlas-360-legal-list dd {display:flex;align-items:center;flex-wrap:wrap;min-width:0;gap:6px;color:#14213a;font-size:11.5px;font-weight:700;line-height:1.4;overflow-wrap:anywhere;}
+.atlas-360-legal-list dd strong {font-weight:800;}
+.atlas-360-legal-list dd >span:not(.atlas-360-verified):not(.atlas-360-alert) {font-weight:490;}
+.atlas-360-legal-list dd a {display:inline-flex;align-items:center;gap:7px;color:#176bee;text-decoration:underline;text-underline-offset:2px;}
+.atlas-360-legal-list dd a >svg:last-child {margin-left:2px;}
+.atlas-360-legal-list dd svg {flex:0 0 auto;}
+.atlas-360-verified,.atlas-360-alert {display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;font-size:10px;font-weight:750;white-space:nowrap;}
+.atlas-360-verified {background:#e8f9ef;color:#069d4f;}
+.atlas-360-alert {background:#fff2e5;color:#b26519;}
+.atlas-360-empty {font-size:11px;font-weight:500;color:#9aa7b9;}
+
+/* Anneau et provenance des données. */
+.atlas-360-completeness {display:flex;flex-direction:column;}
+.atlas-360-complete-body {display:flex;align-items:center;gap:15px;justify-content:center;flex:1;padding:13px 14px 8px;}
+.atlas-360-donut {width:134px;height:134px;flex:0 0 134px;border-radius:50%;display:grid;place-items:center;
+  background:conic-gradient(#176bee var(--atlas-score),#e3e8f1 var(--atlas-score));transform:rotate(-75deg);}
+.atlas-360-donut >div {width:106px;height:106px;display:flex;align-items:center;justify-content:center;flex-direction:column;border-radius:50%;background:#fff;transform:rotate(75deg);}
+.atlas-360-donut strong {font-size:28px;font-weight:850;line-height:1;color:#14213a;letter-spacing:-.045em;}
+.atlas-360-donut span {font-size:11px;color:#52627d;margin-top:7px;}
+.atlas-360-complete-list {flex:1;display:flex;flex-direction:column;gap:9px;}
+.atlas-360-complete-list li {display:flex;align-items:flex-start;gap:8px;font-size:10px;line-height:1.4;color:#263858;}
+.atlas-360-complete-list svg {flex:0 0 16px;}
+.atlas-360-complete-list svg.yes {color:#19af5b;fill:#19af5b;stroke:#fff;}
+.atlas-360-complete-list svg.no {color:#aebbd0;}
+.atlas-360-source-confidence {border-top:1px solid #ecf1f8;padding:9px 13px 12px;}
+.atlas-360-source-confidence >div:first-child {display:flex;align-items:center;gap:9px;font-size:11px;font-weight:800;color:#22304f;}
+.atlas-360-source-confidence button {border:0;background:transparent;color:#91a0b5;padding:0;cursor:help;}
+.atlas-360-source-chips {display:flex;gap:5px;flex-wrap:wrap;margin-top:9px;}
+.atlas-360-source-chips span {display:inline-flex;align-items:center;gap:7px;font-size:10px;padding:5px 7px;background:#eef4ff;border-radius:7px;color:#192e53;font-weight:750;}
+.atlas-360-source-chips b {background:#dcf7e8;color:#008442;font-size:9px;font-weight:700;padding:3px 5px;border-radius:5px;}
+.atlas-360-source-chips span:nth-child(2) b {background:#fff1dd;color:#935720;}
+
+/* ORBIT : suggestions réelles, sélectionnables et actions explicites. */
+.atlas-360-copilot {background:linear-gradient(125deg,#fcfaff,#effaff 60%,#f9f5ff);border-color:#e5d9fb;display:flex;flex-direction:column;}
+.atlas-360-copilot .atlas-360-card-header {border-bottom:0;}
+.atlas-360-copilot .atlas-360-card-header svg {color:#8c48ef;}
+.atlas-360-reco-badge {border:1px solid #b6ebeb;background:#e7fbfc;color:#1594a2;padding:5px 9px;font-size:9px;font-weight:800;border-radius:999px;white-space:nowrap;}
+.atlas-360-copilot-list {display:flex;flex-direction:column;gap:4px;margin:0 11px 10px;}
+.atlas-360-copilot-list >button {display:flex;align-items:center;gap:11px;border:1px solid #e2e6f2;border-radius:10px;padding:10px 11px;background:#ffffffd8;text-align:left;cursor:pointer;min-height:54px;}
+.atlas-360-copilot-list >button:hover,.atlas-360-copilot-list >button.selected {border-color:#bdb5fa;background:#fff;}
+.atlas-360-copilot-list >button >span:nth-child(2) {display:flex;flex:1;min-width:0;flex-direction:column;gap:4px;}
+.atlas-360-copilot-list strong {font-size:11.5px;font-weight:800;line-height:1.2;color:#1b2641;}
+.atlas-360-copilot-list small {font-size:9.5px;line-height:1.25;color:#758199;}
+.atlas-360-copilot-list >button>svg {color:#3f5074;flex:0 0 auto;}
+.atlas-360-reco-icon {width:36px;height:36px;flex:0 0 36px;border-radius:50%;display:grid;place-items:center;background:#f1ecff;color:#8855ff;}
+.atlas-360-reco-icon.reco-1 {background:#e9f4ff;color:#176bee;}
+.atlas-360-reco-icon.reco-2 {background:#dff9ec;color:#00a75a;}
+.atlas-360-orbit-cta {display:flex;align-items:center;justify-content:center;gap:8px;margin:0 11px 7px;padding:10px 8px;background:#f5f8ff;border:1px solid #2675ff;border-radius:9px;color:#0966f5;font-size:11px;font-weight:800;cursor:pointer;}
+.atlas-360-orbit-cta:hover {background:#e4edff;}
+.atlas-360-copilot-footnote {font-size:9px;color:#8c87a7;text-align:center;padding:0 11px 9px;}
+
+/* Second rang : 4 cartes identiques au modèle. */
+.atlas-360-mini {display:flex;flex-direction:column;}
+.atlas-360-mini .atlas-360-card-header {padding:12px 14px;}
+.atlas-360-mini .atlas-360-card-header h2 {font-size:14px;}
+.atlas-360-contact-item {display:flex;align-items:center;gap:10px;padding:11px 13px;min-height:59px;border-bottom:1px solid #edf1f7;}
+.atlas-360-contact-avatar {width:38px;height:38px;flex:0 0 38px;border-radius:50%;display:grid;place-items:center;background:#e9effb;color:#8da1c2;}
+.atlas-360-contact-item>div {display:flex;flex:1;min-width:0;flex-direction:column;gap:5px;}
+.atlas-360-contact-item strong {font-size:12px;font-weight:800;color:#172743;}
+.atlas-360-contact-item div span {font-size:11px;color:#707f98;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.atlas-360-contact-item>button {border:0;background:transparent;color:#61718c;cursor:pointer;}
+.atlas-360-card-footer-link {display:flex;align-items:center;gap:9px;border:0;background:none;color:#176bee;font-size:11px;font-weight:750;padding:12px 16px;text-align:left;margin-top:auto;cursor:pointer;}
+.atlas-360-card-footer-link:hover {text-decoration:underline;}
+.atlas-360-mini-timeline {display:flex;flex-direction:column;flex:1;padding:7px 12px;}
+.atlas-360-mini-timeline>button {display:flex;gap:9px;align-items:flex-start;min-height:54px;padding:8px 1px;border:0;border-bottom:1px solid #eaf0f6;background:transparent;text-align:left;cursor:pointer;}
+.atlas-360-mini-timeline>button:last-child {border:0;}
+.atlas-360-mini-timeline i {flex:0 0 11px;height:11px;margin-top:4px;border-radius:50%;background:#176bee;border:2px solid #cbdcff;}
+.atlas-360-mini-timeline i.success {background:#16a756;border-color:#cbefd9;}
+.atlas-360-mini-timeline>button>div {display:flex;flex:1;min-width:0;flex-direction:column;gap:5px;}
+.atlas-360-mini-timeline strong {font-size:11px;font-weight:800;color:#192844;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.atlas-360-mini-timeline span,.atlas-360-mini-timeline time {font-size:9.5px;color:#7a8aa1;}
+.atlas-360-mini-timeline time {white-space:nowrap;margin-top:3px;}
+.atlas-360-no-events {height:100%;min-height:150px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:11px;color:#99a7ba;font-size:11px;text-align:center;}
+.atlas-360-watch-list {padding:4px 12px;}
+.atlas-360-watch-list>div {display:flex;gap:11px;min-height:56px;padding:10px 2px;border-bottom:1px solid #edf1f8;align-items:flex-start;}
+.atlas-360-watch-list>div:last-child {border:0;}
+.atlas-360-watch-list>div>svg {color:#7186ad;flex:0 0 18px;margin-top:3px;}
+.atlas-360-watch-list>div>div {display:flex;flex-direction:column;gap:5px;min-width:0;}
+.atlas-360-watch-list strong {font-size:11px;font-weight:800;color:#24334e;}
+.atlas-360-watch-list p {font-size:10px;color:#7587a0;line-height:1.3;}
+.atlas-360-watch-dot {width:14px;height:14px;flex:0 0 14px;border-radius:50%;background:#34ba72;border:4px solid #d4f7e3;margin:2px;}
+.atlas-360-opportunity .atlas-360-opportunity-fields {padding:2px 11px 7px;flex:1;}
+.atlas-360-opportunity-fields>div,.atlas-360-opportunity-fields>label {min-height:36px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e9eef7;}
+.atlas-360-opportunity-fields>div:last-child {border:0;}
+.atlas-360-opportunity-fields >div>span,.atlas-360-opportunity-fields >label>span {color:#34435f;font-size:10px;flex:0 0 38%;}
+.atlas-360-opportunity-fields strong {display:inline-flex;align-items:center;gap:7px;color:#1c2d4a;font-size:10px;font-weight:750;line-height:1.3;}
+.atlas-360-opportunity-fields label {position:relative;}
+.atlas-360-opportunity-fields select {flex:1;min-width:0;background:#e4efff;border:0;border-radius:6px;color:#0e61dc;font-size:10px;font-weight:800;padding:5px 21px 5px 8px;appearance:none;cursor:pointer;}
+.atlas-360-opportunity-fields label>svg {position:absolute;right:7px;pointer-events:none;color:#176bee;}
+.atlas-360-potential {display:flex;align-items:center;gap:3px;min-width:0;}
+.atlas-360-potential i {height:12px;width:5px;border-radius:2px;background:#dce4f2;}
+.atlas-360-potential i.filled {background:#176bee;}
+.atlas-360-potential em {font-size:9px;color:#70819c;font-style:normal;white-space:nowrap;margin-left:5px;}
+.atlas-360-create-deal {display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;background:#fff;color:#176bee;border:1px solid #176bee;border-radius:9px;margin:7px 11px 10px;min-height:35px;font-size:11px;font-weight:800;}
+.atlas-360-create-deal:hover {background:#edf3ff;}
+
+/* Rail d'actions de droite : uniquement au-dessus de 1320 px. */
+.atlas-360-action-rail {position:absolute;top:25px;right:-72px;width:54px;display:flex;align-items:center;flex-direction:column;gap:1px;padding:10px 5px;background:#fff;border:1px solid #e0e6f0;border-radius:14px;box-shadow:0 4px 19px #2d476911;}
+.atlas-360-action-rail>button,.atlas-360-action-rail>a {width:42px;height:45px;display:grid;place-items:center;color:#1b3762;border-radius:9px;background:none;border:0;cursor:pointer;}
+.atlas-360-action-rail>button:hover,.atlas-360-action-rail>a:hover {background:#eaf1ff;color:#176bee;}
+.atlas-360-action-rail>button:disabled {opacity:.28;cursor:not-allowed;}
+.atlas-360-action-rail>span {height:1px;width:34px;background:#e0e7f1;margin:7px 0;}
+
+/* Ancien dossier : accessible en un clic, mais n'écrase plus l'écran 360°. */
+.atlas-360-extended-record {margin-top:21px;border:1px solid #dce5f1;border-radius:14px;background:white;overflow:hidden;}
+.atlas-360-extended-record>summary {list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:16px 19px;background:#fff;color:#425574;font-size:13px;font-weight:750;}
+.atlas-360-extended-record>summary::-webkit-details-marker {display:none;}
+.atlas-360-extended-record>summary>svg:first-child {color:#176bee;}
+.atlas-360-extended-record>summary>svg:last-child {margin-left:auto;transition:transform .2s;}
+.atlas-360-extended-record[open]>summary>svg:last-child {transform:rotate(180deg);}
+.atlas-360-extended-record>div {padding:17px;background:#f7f9fd;border-top:1px solid #e5edf6;}
+.atlas-360-extended-record .atlas-scroll-target {scroll-margin-top:65px;}
+
+@media(max-width:1400px){
+  html[data-theme-id="atlas-orbit"] .atlas-prospect-360 {padding-right:24px !important;}
+  .atlas-360-action-rail {display:none;}
+  .atlas-360-overview-grid {grid-template-columns:1.2fr 1fr;}
+  .atlas-360-copilot {grid-column:span 2;}
+  .atlas-360-copilot-list {flex-direction:row;}
+  .atlas-360-copilot-list >button {flex:1;min-width:0;}
+  .atlas-360-secondary-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:960px){
+  .atlas-360-overview-grid {grid-template-columns:1fr;}
+  .atlas-360-copilot {grid-column:auto;}
+  .atlas-360-copilot-list {flex-direction:column;}
+  .atlas-360-hero-title h1 {font-size:26px !important;}
+  .atlas-360-orbit-banner {flex-wrap:wrap;}
+  .atlas-360-orbit-banner button {margin-left:auto;}
+}
+@media(max-width:680px){
+  html[data-theme-id="atlas-orbit"] .atlas-prospect-360 {padding:0 12px 28px !important;}
+  .atlas-360-breadcrumb {height:42px;}
+  .atlas-360-hero {padding:9px 3px;}
+  .atlas-360-hero-icon {width:55px !important;height:55px !important;flex-basis:55px;}
+  .atlas-360-hero-identity {gap:12px !important;}
+  .atlas-360-hero-actions {justify-content:flex-start;width:100%;}
+  .atlas-360-hero-button {padding:9px !important;min-height:39px;font-size:11px;}
+  .atlas-360-orbit-banner {padding:12px;gap:10px;}
+  .atlas-360-orbit-banner p {font-size:12px;}
+  .atlas-360-secondary-grid {grid-template-columns:1fr;}
+  .atlas-360-complete-body {gap:10px;}
+  .atlas-360-donut {height:115px;width:115px;flex-basis:115px;}
+  .atlas-360-donut>div {height:90px;width:90px;}
+  .atlas-360-card-header h2 {font-size:13px;}
+  .atlas-prospect-360 .atlas-360-tabs button {padding:12px;font-size:12px;}
+}
