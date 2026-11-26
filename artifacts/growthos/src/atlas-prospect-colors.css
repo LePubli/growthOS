@@ -1,5 +1,6 @@
-/* ATLAS × ORBIT — couleur fonctionnelle, logos d'origine et repères de lecture.
-   Les nuances indiquent la catégorie ; le vert/ambre signalent la fiabilité. */
+/* ATLAS × ORBIT — Harmony : fonds teintés coordonnés et logos sourcés.
+   Les catégories se distinguent par une couleur de surface, pas un liseré vif.
+   Le vert/ambre garde son sens métier (vérifié / à contrôler). */
 html[data-theme-id="atlas-orbit"] .atlas-prospect-360 {
   --atlas-blue:#176bee;--atlas-teal:#078f85;--atlas-indigo:#5a63d9;
   --atlas-violet:#8249dc;--atlas-emerald:#0c925e;--atlas-amber:#b97718;
@@ -34,27 +35,46 @@ html[data-theme-id="atlas-orbit"] .atlas-prospect-360 {
 /* Le regard identifie une famille de données avant d'en lire le titre. */
 html[data-theme-id="atlas-orbit"] .atlas-360-overview-grid>.atlas-360-card,
 html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card {
-  border-top:3px solid var(--atlas-accent,#176bee);
+  background:linear-gradient(128deg,var(--atlas-harmony-from,#e7f1ff),var(--atlas-harmony-to,#d9eafb));
+  border:1px solid var(--atlas-harmony-border,#c8d9ef);
+  box-shadow:0 5px 18px #344d7210;
 }
-html[data-theme-id="atlas-orbit"] .atlas-360-card-header {background:linear-gradient(105deg,var(--atlas-tint,#f1f6ff),#fff 70%);}
+html[data-theme-id="atlas-orbit"] .atlas-360-card-header {
+  background:linear-gradient(110deg,#ffffff42,#ffffff08 80%);
+  border-bottom-color:#657b9929;
+}
 html[data-theme-id="atlas-orbit"] .atlas-360-card-header>div>svg {
   width:33px;height:33px;padding:7px;border-radius:10px;
-  background:var(--atlas-tint,#eaf3ff);color:var(--atlas-accent,#176bee);
+  background:#ffffff6b;color:var(--atlas-accent,#176bee);
 }
-html[data-theme-id="atlas-orbit"] .atlas-360-card-header h2 {color:var(--atlas-ink,#192d4a);}
-html[data-theme-id="atlas-orbit"] .atlas-360-company {--atlas-accent:#176bee;--atlas-tint:#ecf4ff;--atlas-ink:#1754a3;}
-html[data-theme-id="atlas-orbit"] .atlas-360-completeness {--atlas-accent:#079bb8;--atlas-tint:#e8f9fc;--atlas-ink:#0e7183;}
-html[data-theme-id="atlas-orbit"] .atlas-360-copilot {--atlas-accent:#8449e1;--atlas-tint:#f4eeff;--atlas-ink:#5f33aa;}
-html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(1) {--atlas-accent:#0b9285;--atlas-tint:#e7f8f3;--atlas-ink:#0a7268;}
-html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(2) {--atlas-accent:#5869d8;--atlas-tint:#eeefff;--atlas-ink:#464fac;}
-html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(3) {--atlas-accent:#13a06b;--atlas-tint:#e8f9ef;--atlas-ink:#147a53;}
-html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(4) {--atlas-accent:#bd861e;--atlas-tint:#fff7e7;--atlas-ink:#8d621a;}
+html[data-theme-id="atlas-orbit"] .atlas-360-card-header h2 {color:#192b47;}
+html[data-theme-id="atlas-orbit"] .atlas-360-company {
+  --atlas-accent:#246dd7;--atlas-harmony-from:#e3efff;--atlas-harmony-to:#d2e6ff;--atlas-harmony-border:#c3d9f6;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-completeness {
+  --atlas-accent:#168e9b;--atlas-harmony-from:#e2f7f5;--atlas-harmony-to:#c9eff0;--atlas-harmony-border:#bde4e7;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-copilot {
+  --atlas-accent:#8750d9;--atlas-harmony-from:#f0e5ff;--atlas-harmony-to:#e2d5f9;--atlas-harmony-border:#dac8f1;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(1) {
+  --atlas-accent:#168b79;--atlas-harmony-from:#e5f7f1;--atlas-harmony-to:#d4efe7;--atlas-harmony-border:#c7e6da;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(2) {
+  --atlas-accent:#596bc4;--atlas-harmony-from:#e7eafc;--atlas-harmony-to:#d9def7;--atlas-harmony-border:#d0d7f0;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(3) {
+  --atlas-accent:#249966;--atlas-harmony-from:#e5f5e8;--atlas-harmony-to:#d8edda;--atlas-harmony-border:#c8e3cd;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(4) {
+  --atlas-accent:#a57836;--atlas-harmony-from:#fbf0e4;--atlas-harmony-to:#f2e2d0;--atlas-harmony-border:#e9d9c5;
+}
 html[data-theme-id="atlas-orbit"] .atlas-360-copilot .atlas-360-card-header svg {color:#8449e1;}
 html[data-theme-id="atlas-orbit"] .atlas-360-completeness .atlas-360-donut {
   background:conic-gradient(#079bb8 var(--atlas-score),#e2eaf0 var(--atlas-score));
 }
 html[data-theme-id="atlas-orbit"] .atlas-360-legal-list>div:first-child {
-  border-left:3px solid #5b91eb;background:linear-gradient(90deg,#f0f6ff,#fff 76%);border-radius:6px;
+  border-left:0;background:#ffffff38;border-radius:6px;
 }
 html[data-theme-id="atlas-orbit"] .atlas-360-legal-list>div:first-child dd strong {color:#1556b6;}
 html[data-theme-id="atlas-orbit"] .atlas-360-legal-list>div:nth-child(3) dd strong {
@@ -68,11 +88,28 @@ html[data-theme-id="atlas-orbit"] .atlas-360-legal-list>div:nth-child(5) a.atlas
 }
 html[data-theme-id="atlas-orbit"] .atlas-360-person-preview .atlas-360-contact-avatar {background:#def5ed;color:#0a8c75;}
 html[data-theme-id="atlas-orbit"] .atlas-360-watch-dot {background:#13a06b;}
-html[data-theme-id="atlas-orbit"] .atlas-360-source-chips>span {background:#edf8fc;}
+html[data-theme-id="atlas-orbit"] .atlas-360-source-chips>span {background:#ffffffb4;border:1px solid #ffffffa6;}
 html[data-theme-id="atlas-orbit"] .atlas-360-source-chips .atlas-source-logo {padding:0;gap:0;flex:0 0 21px;}
 html[data-theme-id="atlas-orbit"] .atlas-360-source-chips .atlas-source-logo>span {padding:0;gap:0;background:none;}
+html[data-theme-id="atlas-orbit"] .atlas-360-copilot-list>button {background:#ffffffa5;border-color:#cbbde48a;}
+html[data-theme-id="atlas-orbit"] .atlas-360-copilot-list>button:hover,
+html[data-theme-id="atlas-orbit"] .atlas-360-copilot-list>button.selected {background:#fff;border-color:#bba4e8;}
+html[data-theme-id="atlas-orbit"] .atlas-360-person-preview {background:transparent;border-color:#758d9b24;}
+html[data-theme-id="atlas-orbit"] .atlas-360-person-preview:hover {background:#ffffff7d;}
+html[data-theme-id="atlas-orbit"] .atlas-360-opportunity-fields>div,
+html[data-theme-id="atlas-orbit"] .atlas-360-opportunity-fields>label,
+html[data-theme-id="atlas-orbit"] .atlas-360-watch-list>div,
+html[data-theme-id="atlas-orbit"] .atlas-360-mini-timeline>button {border-bottom-color:#72869c2a;}
 
-/* Dossier détaillé : un accent par fonction, sans multiplier les fonds saturés. */
+/* Dossier détaillé : les mêmes surfaces colorées, une intensité plus douce
+   pour lire les formulaires, les listes longues et les données officielles. */
+html[data-theme-id="atlas-orbit"] .atlas-360-extended-record {
+  background:#edf4fd;border-color:#cbdcf1;box-shadow:0 5px 20px #344d7210;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-extended-record>summary {
+  background:linear-gradient(100deg,#e6f0fe,#f1f6fe);border-color:#d2e0f0;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-extended-record>.atlas-360-detail-layout {background:#f2f6fc;}
 html[data-theme-id="atlas-orbit"] .atlas-company-watch,
 html[data-theme-id="atlas-orbit"] .atlas-360-legal-extra,
 html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts,
@@ -81,50 +118,76 @@ html[data-theme-id="atlas-orbit"] .atlas-360-pj-details,
 html[data-theme-id="atlas-orbit"] .atlas-360-enriched-data,
 html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities,
 html[data-theme-id="atlas-orbit"] .atlas-360-collaboration {
-  border-top:3px solid var(--atlas-section-accent,#176bee)!important;
+  --atlas-detail-from:#edf4ff;--atlas-detail-to:#e2eeff;--atlas-detail-border:#cbdcf2;
 }
-html[data-theme-id="atlas-orbit"] .atlas-company-watch {--atlas-section-accent:#13a06b;}
-html[data-theme-id="atlas-orbit"] .atlas-360-legal-extra {--atlas-section-accent:#176bee;}
-html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts {--atlas-section-accent:#0b9285;}
-html[data-theme-id="atlas-orbit"] .atlas-360-professional-sources>section {--atlas-section-accent:#5669d9;}
-html[data-theme-id="atlas-orbit"] .atlas-360-pj-details {--atlas-section-accent:#bd861e;}
-html[data-theme-id="atlas-orbit"] .atlas-360-enriched-data {--atlas-section-accent:#8249dc;}
-html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities {--atlas-section-accent:#5966d7;}
-html[data-theme-id="atlas-orbit"] .atlas-360-collaboration {--atlas-section-accent:#079bb8;}
+html[data-theme-id="atlas-orbit"] .atlas-company-watch,
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-extra,
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts,
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-sources>section,
+html[data-theme-id="atlas-orbit"] .atlas-360-pj-details,
+html[data-theme-id="atlas-orbit"] .atlas-360-enriched-data,
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities,
+html[data-theme-id="atlas-orbit"] .atlas-360-collaboration {
+  border-top:1px solid var(--atlas-detail-border,#cbdcf2)!important;
+}
+html[data-theme-id="atlas-orbit"] .atlas-company-watch {--atlas-detail-from:#eaf7ee;--atlas-detail-to:#e0f1e7;--atlas-detail-border:#c8e3d4;}
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-extra {--atlas-detail-from:#eaf3ff;--atlas-detail-to:#deecff;--atlas-detail-border:#c9dcf4;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts {--atlas-detail-from:#eaf8f4;--atlas-detail-to:#ddf1ec;--atlas-detail-border:#c5e3dc;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-sources>section {--atlas-detail-from:#eef1ff;--atlas-detail-to:#e4eafb;--atlas-detail-border:#d1d9ee;}
+html[data-theme-id="atlas-orbit"] .atlas-360-pj-details {--atlas-detail-from:#fbf3e8;--atlas-detail-to:#f5e9d9;--atlas-detail-border:#eadac5;}
+html[data-theme-id="atlas-orbit"] .atlas-360-enriched-data {--atlas-detail-from:#f3eafa;--atlas-detail-to:#e9ddf7;--atlas-detail-border:#dbcaee;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities {--atlas-detail-from:#eef1ff;--atlas-detail-to:#e3eafc;--atlas-detail-border:#d0daf3;}
+html[data-theme-id="atlas-orbit"] .atlas-360-collaboration {--atlas-detail-from:#eaf7fa;--atlas-detail-to:#dff1f5;--atlas-detail-border:#c6e4eb;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-main>.atlas-360-detail-module:not(.atlas-360-detail-monitoring):not(.atlas-360-professional-sources),
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-monitoring>section,
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-sources>section {
+  background:linear-gradient(135deg,var(--atlas-detail-from),var(--atlas-detail-to))!important;
+  border-color:var(--atlas-detail-border)!important;
+  box-shadow:0 4px 16px #344d720d;
+}
 html[data-theme-id="atlas-orbit"] .atlas-company-watch>div:first-child h2,
-html[data-theme-id="atlas-orbit"] .atlas-360-detail-monitoring h2 {color:#0a7b55!important;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-monitoring h2,
 html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts h2,
-html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts h2 svg {color:#088c7d!important;}
 html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities h2,
+html[data-theme-id="atlas-orbit"] .atlas-360-collaboration h2 {color:#1c304b!important;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts h2 svg {color:#088c7d!important;}
 html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities h2 svg {color:#505bc0!important;}
-html[data-theme-id="atlas-orbit"] .atlas-360-collaboration h2,
 html[data-theme-id="atlas-orbit"] .atlas-360-collaboration h2 svg {color:#067f9b!important;}
 html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts .atlas-360-directory-person {
-  border-color:#d0ede8;background:linear-gradient(115deg,#f1fbf8,#fff 85%);
+  border-color:#c5e4dd;background:linear-gradient(115deg,#ffffffa8,#ffffff70 85%);
 }
 html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts .atlas-360-directory-avatar {background:#ddf6ed;color:#078a77;}
 html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities .atlas-360-activity-item:has(.atlas-360-activity-details) {
-  background:#f5f5ff!important;border-left:3px solid #6970db;
+  background:#ffffff91!important;border:1px solid #d1d8ed!important;
 }
 html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities .atlas-360-activity-details>summary {
   background:#eef0ff;border-color:#ced3fb;color:#5058bf;
 }
-html[data-theme-id="atlas-orbit"] .atlas-360-detail-aside-card:first-child {border-top:3px solid #647a9e;}
-html[data-theme-id="atlas-orbit"] .atlas-360-enrichment-tool {border-top:3px solid #8249dc;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-aside-card {
+  background:linear-gradient(145deg,#eef4fc,#e7effa);border-color:#d0deef;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-aside-card header {background:#ffffff45;border-bottom-color:#cddbec;}
+html[data-theme-id="atlas-orbit"] .atlas-360-enrichment-tool {
+  background:linear-gradient(145deg,#f2eafa,#e9e2f7);border-color:#decfed;
+}
 html[data-theme-id="atlas-orbit"] .atlas-360-enrichment-tool header svg {color:#8249dc;}
+html[data-theme-id="atlas-orbit"] .atlas-360-enriched-data>button {
+  background:linear-gradient(110deg,#ffffff70,#ffffff1f)!important;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-enriched-data>button:hover {background:#ffffffb6!important;}
 html[data-theme-id="atlas-orbit"] .atlas-company-watch>details dl>div {border:1px solid #e3edf4;border-radius:9px;
   background:#fbfdff;padding:10px 12px;min-width:0;}
 html[data-theme-id="atlas-orbit"] .atlas-company-watch>details dl dt {color:#6b809d;font-size:10px;}
 html[data-theme-id="atlas-orbit"] .atlas-company-watch>details dl dd {font-weight:730;color:#1c3150;overflow-wrap:anywhere;}
 
 /* Codes couleur des cinq sources professionnelles. */
-html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card {border-left:3px solid var(--atlas-source-accent,#657da3)!important;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card {border-left:1px solid #cbd9e8!important;}
 html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card[data-source="linkedin"] {--atlas-source-accent:#0a66c2;}
 html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card[data-source="bing"] {--atlas-source-accent:#008b83;}
 html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card[data-source="facebook"] {--atlas-source-accent:#1877f2;}
 html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card[data-source="instagram"] {--atlas-source-accent:#c13584;}
 html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card[data-source="tiktok"] {--atlas-source-accent:#303447;}
-html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card h3 {color:var(--atlas-source-accent,#2a4565);}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card h3 {color:#263c5e;}
 html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card .atlas-360-link-button {box-shadow:0 2px 5px #24436b0a;}
 
 @media(max-width:680px) {
