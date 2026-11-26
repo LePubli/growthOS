@@ -154,7 +154,7 @@ export class BrowserService{
         const read=await p.page.evaluate(readers.general);results.push(...(read.results||[]));drafts.push(...(read.drafts||[]));
       }
       if(!results.length&&!drafts.length)return {ok:true,status:'awaiting_user',message:'Aucune fiche locale lisible. Consultez le navigateur pour vérifier la page ou la connexion.',results:[],drafts:[]};
-      return {ok:true,status:'completed',results:results.slice(0,25),drafts:drafts.slice(0,25)};
+      return {ok:true,status:'completed',results:results.slice(0,Math.max(1,Math.min(Number(input.limit)||10,25))),drafts:drafts.slice(0,25)};
     }finally{this.busy=false;this.touch();}
   }
   async societe(p,input){

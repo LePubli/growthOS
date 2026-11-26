@@ -15,7 +15,7 @@ export default function CloudBrowserPage(){
   const [profiles,setProfiles]=useState<Profile[]>([]),[jobs,setJobs]=useState<Job[]>([]),[selected,setSelected]=useState('');
   const [status,setStatus]=useState<{ready:boolean;configured:boolean;automatic:string[]}|null>(null);
   const [limit,setLimit]=useState(10);
-  const [source,setSource]=useState(params.get('source')||'societe_com'),[profileLabel,setProfileLabel]=useState(''),[mode,setMode]=useState<'public'|'account'>('public');
+  const [source,setSource]=useState(params.get('source')||(prospectId?'societe_com':'google_maps')),[profileLabel,setProfileLabel]=useState(''),[mode,setMode]=useState<'public'|'account'>('public');
   const [prospect,setProspect]=useState<any>(null),[query,setQuery]=useState(params.get('query')||''),[area,setArea]=useState(params.get('area')||'');
   const [view,setView]=useState<View|null>(null),[viewing,setViewing]=useState(false),[busy,setBusy]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const control=useRef(''),inputQueue=useRef(Promise.resolve()),viewProfile=useRef(''),latestSelected=useRef(selected);latestSelected.current=selected;
@@ -23,7 +23,7 @@ export default function CloudBrowserPage(){
   async function refresh(){const [p,j,s]=await Promise.all([api.get<Profile[]>('/browser/profiles'),api.get<Job[]>('/browser/jobs'),api.get<any>('/browser/status')]);setProfiles(p);setJobs(j);setStatus(s);}
   useEffect(()=>{void refresh().catch(e=>setError(e.message));const timer=window.setInterval(()=>{void api.get<Job[]>('/browser/jobs').then(setJobs).catch(()=>undefined);},3000);return()=>window.clearInterval(timer);},[]);
   useEffect(()=>{if(!selected){const match=profiles.find(p=>p.source===source);if(match)setSelected(match.id);}},[profiles,source,selected]);
-  useEffect(()=>{if(prospectId)void api.get('/prospects/'+prospectId).then(p=>{setProspect(p);setQuery(p.siret||p.siren||p.company||'');setArea(p.city||'');}).catch(e=>setError(e.message));},[prospectId]);
+  useEffect(()=>{if(prospectId)void api.get('/prospects/'+prospectId).then(p=>{setProspect(p);setQuery((params.get('source')||'societe_com')==='societe_com'?(p.siret||p.siren||p.company||''):(p.company||''));setArea(p.city||'');}).catch(e=>setError(e.message));},[prospectId]);
   useEffect(()=>{setView(null);setViewing(false);control.current='';viewProfile.current='';},[selected]);
   useEffect(()=>{
     if(!selected||!viewing)return;
@@ -79,7 +79,7 @@ export default function CloudBrowserPage(){
     <section className="border rounded-xl p-4 space-y-3" style={{background:'var(--card-bg)'}}>
       <h2 className="font-semibold">Mes profils de navigation</h2>
       <div className="flex flex-wrap gap-2">
-        <label className="text-sm">Source <select className="border rounded p-2 ml-1" value={source} onChange={e=>{setSource(e.target.value);setSelected('');}}>{modules.filter(m=>m.source!=='entreprises').map(m=><option key={m.source} value={m.source}>{m.name}</option>)}</select></label>
+        <label className="text-sm">Source <select className="border rounded p-2 ml-1" value={source} onChange={e=>{setSource(e.target.value);setSelected('');if(prospect)setQuery(e.target.value==='societe_com'?(prospect.siret||prospect.siren||prospect.company||''):(prospect.company||''));}}>{modules.filter(m=>m.source!=='entreprises').map(m=><option key={m.source} value={m.source}>{m.name}</option>)}</select></label>
         <label className="text-sm">Mode <select className="border rounded p-2 ml-1" value={mode} onChange={e=>setMode(e.target.value as 'public'|'account')}><option value="public">Sans compte · public</option><option value="account">Mon compte · connexion dans la source</option></select></label>
         <input aria-label="Nom du profil" className="border rounded p-2" placeholder="Nom du profil (facultatif)" maxLength={80} value={profileLabel} onChange={e=>setProfileLabel(e.target.value)}/>
         <button className="border rounded p-2" disabled={!!busy} onClick={()=>void create()}>Créer le profil</button>
