@@ -473,7 +473,7 @@ function validCaptured(item,manual=false,verifiedSiret=false){
   const city=String(item.city||'').trim().slice(0,120)||null;
   return {id:'local_'+crypto.randomUUID().replace(/-/g,'').slice(0,32),source:item.source,
     company,address,codePostal,city,phone,website:cleanUrl(item.website),sourceUrl,
-    ...(item.source==='societe_com' && item.email ? {email:String(item.email).trim().slice(0,254)} : {}),
+    ...(item.email ? {email:String(item.email).trim().slice(0,254)} : {}),
     siret:inputSiret || (verifiedSiret && /^\d{14}$/.test(String(item.siret||'')) ? item.siret : null),
     ...(verifiedSiret && item.apeCode ? {apeCode:item.apeCode,nafLabel:item.nafLabel||null,nafVersion:item.nafVersion||null,...(item.apeScope ? {apeScope:item.apeScope} : {})} : {}),
     ...(item.source==='societe_com' && item.companyDetails ? {companyDetails:item.companyDetails} : {}),
@@ -783,8 +783,123 @@ async function captureMapBatch(payload){
     }catch{}
   }
 }
+const TASK_KEY='growthos_contextual_tasks_v1';
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+async function readTasks(){
+  const saved=(await chrome.storage.local.get(TASK_KEY))[TASK_KEY]||{};
+  const tasks=Object.fromEntries(Object.entries(saved.tasks||{}).filter(([,t])=>t && Date.now()-t.createdAt<AGE_LIMIT));
+  return {active:saved.active||null,tasks};
+}
+async function currentTask(){const state=await readTasks();return state.tasks[state.active]||null;}
+function targetUrl(task){return 'https://agile.le-publicitaire.fr/prospects/'+task.prospect.id+'?enrichmentTask='+task.id;}
+function taskCapture(raw,task){
+  if(!raw || raw.source!==task.source || !hostMatches(task.source,raw.sourceUrl))throw new Error('La fiche ne correspond pas à la source choisie.');
+  const sourceUrl=new URL(raw.sourceUrl);
+  if(sourceUrl.username || sourceUrl.password || (sourceUrl.port && sourceUrl.port!=='443') ||
+    (task.source==='linkedin' && !/^\/company\/[a-z0-9_-]+(?:\/about)?\/?$/i.test(sourceUrl.pathname)))throw new Error('URL de fiche professionnelle invalide.');
+  const company=String(raw.company||'').trim();
+  if(company.length<2 || company.length>160)throw new Error('Vérifiez le nom de l’entreprise sur la source.');
+  const capture={id:'task_'+task.id,source:task.source,company,sourceUrl:raw.sourceUrl,
+    collectionMode:['linkedin','facebook','instagram','tiktok'].includes(task.source)?'manual':raw.collectionMode==='visible'?'visible':'manual',capturedAt:Date.now()};
+  for(const [key,max] of Object.entries({address:320,codePostal:5,city:120,phone:40,email:254,website:500,siret:14,apeCode:6,nafLabel:250,nafVersion:32})){
+    const value=String(raw[key]||'').trim();if(value.length>max)throw new Error('Champ trop long : '+key);if(value)capture[key]=value;
+  }
+  if(capture.codePostal && !/^\d{5}$/.test(capture.codePostal))throw new Error('Code postal invalide.');
+  if(capture.siret && !/^\d{14}$/.test(capture.siret))throw new Error('SIRET invalide.');
+  if(capture.address && capture.codePostal && !capture.address.includes(capture.codePostal))throw new Error('Adresse et code postal incohérents.');
+  if(capture.website){const u=new URL(capture.website);if(!['http:','https:'].includes(u.protocol))throw new Error('Site web invalide.');}
+  if(task.source==='societe_com' && raw.companyDetails && JSON.stringify(raw.companyDetails).length<60000)capture.companyDetails=raw.companyDetails;
+  return capture;
+}
+async function contextualTask(action,payload={}){
+  if(action==='task-current')return {ok:true,task:await currentTask()};
+  if(action==='begin-task')return withStorageWrite(async()=>{
+    if(busy)throw new Error('Attendez la fin de la collecte en cours avant de changer de fonction.');
+    const {source,mode}=payload;
+    if(![...CAPTURE_SOURCES,'pagesjaunes'].includes(source) || !['discover','enrich'].includes(mode) || (source==='societe_com' && mode!=='enrich'))throw new Error('Outil inconnu.');
+    const state=await readTasks();
+    for(const [id,old] of Object.entries(state.tasks))if(old.mode==='discover')delete state.tasks[id];
+    const receipts=Object.entries(state.tasks).filter(([,t])=>t.status==='done');
+    for(const [id] of receipts.slice(0,-50))delete state.tasks[id];
+    if(Object.values(state.tasks).some(t=>t.status==='pending'))throw new Error('Un enrichissement attend son enregistrement. Revenez sur le prospect indiqué dans l’extension.');
+    if(state.tasks[state.active]?.mode==='enrich')throw new Error('Terminez ou quittez l’enrichissement en cours dans l’extension.');
+    const prospect=payload.prospect;
+    if(mode==='enrich' && (!UUID.test(prospect?.id||'') || typeof prospect?.company!=='string' || prospect.company.length<2 || prospect.company.length>160))throw new Error('Choisissez un prospect valide.');
+    const task={id:crypto.randomUUID(),source,mode,query:String(payload.query||'').trim().slice(0,120),area:String(payload.area||'').trim().slice(0,100),createdAt:Date.now(),status:'active',
+      ...(mode==='enrich'?{prospect:{id:prospect.id,company:prospect.company}}:{})};
+    if(task.query.length<3)throw new Error('Indiquez une entreprise ou une activité (3 caractères minimum).');
+    await chrome.storage.local.set({[TASK_KEY]:{active:task.id,tasks:{...state.tasks,[task.id]:task}}});
+    const opened=await popupAction({action:'open-source',payload:task});
+    return {ok:true,task,url:opened.url};
+  });
+  if(['get-task-result','ack-task'].includes(action))return withStorageWrite(async()=>{
+    const state=await readTasks(),task=state.tasks[payload.taskId];
+    if(!UUID.test(payload.taskId||'') || !task || task.mode!=='enrich' || task.prospect.id!==payload.prospectId)throw new Error('Tâche introuvable ou expirée (24 h).');
+    if(action==='ack-task'){
+      // Le reçu reste lisible pour les onglets concurrents, sans réappliquer la capture.
+      task.status='done';delete task.capture;delete task.preview;
+      if(state.active===task.id)state.active=null;
+      await chrome.storage.local.set({[TASK_KEY]:state});return {ok:true,task};
+    }
+    if(!['pending','done'].includes(task.status))throw new Error('Confirmez d’abord la capture dans l’extension.');
+    return {ok:true,task};
+  });
+  const task=await currentTask();
+  if(!task || task.id!==payload.taskId)throw new Error('Le contexte a changé. Rouvrez l’extension.');
+  if(action==='task-cancel')return withStorageWrite(async()=>{
+    const state=await readTasks();
+    if(state.tasks[task.id]?.status==='pending' && payload.discardConfirmed!==true)throw new Error('Capture en attente : revenez au prospect pour terminer l’enregistrement.');
+    delete state.tasks[task.id];if(state.active===task.id)state.active=null;
+    await chrome.storage.local.set({[TASK_KEY]:state});return {ok:true};
+  });
+  if(task.mode!=='enrich')throw new Error('Cette action nécessite un prospect ciblé.');
+  if(action==='task-complete'){
+    let saved;
+    await withStorageWrite(async()=>{
+      const state=await readTasks(),latest=state.tasks[task.id];
+      if(state.active!==task.id || !latest)throw new Error('Le contexte a changé.');
+      if(latest.status==='pending'){saved=latest;return;}
+      if(payload.confirmed!==true)throw new Error('Confirmez qu’il s’agit du bon établissement.');
+      const raw=payload.capture || latest.preview?.[payload.index];
+      latest.capture=taskCapture(raw,latest);latest.status='pending';delete latest.preview;
+      saved=latest;await chrome.storage.local.set({[TASK_KEY]:state});
+    });
+    await chrome.tabs.create({url:targetUrl(saved),active:true});return {ok:true,task:saved};
+  }
+  if(action==='task-preview'){
+    if(task.status!=='active')throw new Error('Capture déjà confirmée. Revenez sur le prospect.');
+    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+    if(!tab?.id || !hostMatches(task.source,tab.url))throw new Error('Ouvrez une fiche de la source '+task.source+'.');
+    if(task.source==='google_maps' && !new URL(tab.url).pathname.startsWith('/maps/place/'))throw new Error('Ouvrez une seule fiche établissement Maps avant de la lire.');
+    let captures;
+    if(task.source==='pagesjaunes'){
+      if(!isProfileUrl(tab.url))throw new Error('Ouvrez une fiche PagesJaunes détaillée.');
+      const result=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readBusinessProfile});
+      const p=result?.[0]?.result;
+      captures=p?[{...p,company:p.name,source:task.source,collectionMode:'visible'}]:[];
+    }else if(['google_maps','google_search','bing','societe_com'].includes(task.source)){
+      const result=await chrome.scripting.executeScript({target:{tabId:tab.id},files:[task.source==='societe_com'?'societe.js':'capture.js']});
+      const data=result?.[0]?.result;
+      if(data?.error)throw new Error(data.error);
+      captures=[...(data?.results||[]),...(data?.drafts||[])];
+    }else throw new Error('Utilisez la saisie assistée des données visibles pour cette source.');
+    const preview=captures.slice(0,25).map(c=>taskCapture(c,task));
+    if(!preview.length)throw new Error('Aucune fiche lisible. Utilisez la saisie assistée ou ouvrez une fiche détaillée.');
+    await withStorageWrite(async()=>{
+      const state=await readTasks();
+      if(state.active!==task.id || state.tasks[task.id]?.status!=='active')throw new Error('Le contexte a changé.');
+      state.tasks[task.id].preview=preview;await chrome.storage.local.set({[TASK_KEY]:state});
+    });
+    return {ok:true,task:{...task,preview}};
+  }
+  throw new Error('Action de tâche inconnue.');
+}
+
 async function popupAction(message){
   const action=message.action;
+  if(['task-current','task-preview','task-complete','task-cancel'].includes(action))return contextualTask(action,message.payload);
+  if((await currentTask())?.mode==='enrich' && ['manual-add','capture-tab','auto-capture-maps','enrich-local-drafts'].includes(action))
+    throw new Error('Une fiche prospect est ciblée. Validez son enrichissement ou quittez ce mode avant de collecter une liste.');
   if(action==='list-captures')return {ok:true,results:await readQueue(),warnings:[]};
   if(action==='list-drafts')return {ok:true,drafts:await readDrafts()};
   if(action==='reset-maps-progress'){
@@ -898,6 +1013,10 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   }
   if (origin !== 'https://agile.le-publicitaire.fr') {
     reply({ok:false,error:'Origine non autorisée'}); return false;
+  }
+  if(['begin-task','get-task-result','ack-task'].includes(message?.action)){
+    contextualTask(message.action,message.payload).then(reply).catch(error=>reply({ok:false,error:String(error?.message||error)}));
+    return true;
   }
   if (message?.action === 'ping') {
     Promise.all([readQueue(),readDrafts()]).then(([results,drafts])=>reply({ok:true,

@@ -42,7 +42,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Prospection',
     items: [
-      { href: '/sourcing', label: 'Trouver des entreprises', icon: <Search size={16} /> },
+      { href: '/outils', label: 'Collecte et enrichissement', icon: <Search size={16} /> },
       { href: '/seo-check', label: 'Diagnostic site & SEO', icon: <Globe size={16} /> },
       { href: '/prospects', label: 'Prospects', icon: <Building2 size={16} /> },
       { href: '/accounts', label: 'Entreprises', icon: <Users size={16} /> },

@@ -9,6 +9,7 @@ import { preferredCompanyQuery } from "@/lib/societe-search";
 
 type Props = {
   prospect: SourceLinkedProspect & {
+    id?: string;
     company?: string | null;
     city?: string | null;
     firstName?: string | null;
@@ -108,10 +109,10 @@ export function ProspectProfessionalSources({ prospect }: Props) {
         ses informations.
       </p>
       <Link
-        href="/prospects/connecteur"
+        href={prospect.id?'/outils?mode=enrich&prospectId='+prospect.id:'/prospects/connecteur'}
         className="inline-block border rounded-lg px-3 py-2 text-sm font-medium text-teal-700"
       >
-        Comparer et importer les captures du connecteur
+        {prospect.id?'Compléter ce prospect avec le connecteur':'Comparer et importer les captures du connecteur'}
       </Link>
     </section>
   );

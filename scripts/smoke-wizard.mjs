@@ -13,7 +13,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes, createHmac } from "node:crypto";
+import { randomBytes, randomUUID, createHmac } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 const root = resolve(fileURLToPath(import.meta.url), "../..");
@@ -1201,6 +1201,59 @@ try {
   check(differentSite.status===409,'Societe.com : un autre établissement ne remplace pas celui du prospect');
   const wrongSource = await request('POST',enrichPath,{confirmed:true,capture:directCapture},token);
   check(wrongSource.status===400,'Societe.com : la route refuse une capture d’une autre source');
+
+  {
+    const target=await request('POST','/prospects',{company:'Atelier Ciblé',city:'Roubaix',phone:'03 20 11 22 33'},token);
+    const path=`/sourcing/device/prospects/${target.body.id}/enrich-capture`;
+    const taskId=randomUUID(),capture={id:'task_'+taskId,source:'linkedin',company:'Atelier Ciblé',
+      sourceUrl:'https://www.linkedin.com/company/atelier-cible/',collectionMode:'manual',capturedAt:Date.now(),
+      phone:'03 20 99 88 77',website:'https://atelier-cible.example.org'};
+    const payload={taskId,capture,confirmed:true};
+    check((await request('POST',path,{...payload,confirmed:false},token)).status===400,'Ciblage : confirmation obligatoire');
+    check((await request('POST',path,{...payload,taskId:randomUUID()},token)).status===400,'Ciblage : capture liée à sa tâche');
+    const two=await Promise.all([request('POST',path,payload,token),request('POST',path,payload,token)]);
+    check(two.every(r=>r.status===200) && two.filter(r=>r.body.alreadyApplied).length===1,'Ciblage : deux retours concurrents appliquent une seule fois la capture');
+    const read=await request('GET','/prospects/'+target.body.id,undefined,token);
+    check(read.body.website===capture.website && read.body.linkedinUrl===capture.sourceUrl && !read.body.address && !read.body.postalCode,
+      'LinkedIn ciblé : données partielles enregistrées sans inventer adresse ni CP');
+    check(read.body.phone==='03 20 11 22 33' && read.body.sourceDetails.crossSource.conflicts.length===1 &&
+      read.body.sourceDetails.crossSource.observations.filter(o=>o.captureId===capture.id).length===1,
+      'Ciblage : téléphone conservé, un conflit et une seule observation');
+    const distinct=()=>{const taskId=randomUUID();return {...payload,taskId,capture:{...capture,id:'task_'+taskId}};};
+    for(const changes of [{company:'Autre société'},{city:'Lille'},{sourceUrl:'https://www.linkedin.com/in/personne/'},
+      {capturedAt:Date.now()-86400001},{sourceUrl:'https://www.linkedin.com/company/atelier/posts/123'},
+      {sourceUrl:'URL invalide'},{website:'site invalide'}]){
+      const p=distinct();p.capture={...p.capture,...changes};
+      const result=await request('POST',path,p,token);
+      check([400,409].includes(result.status),'Ciblage : fiche incompatible ou expirée refusée '+Object.keys(changes)[0]);
+    }
+    const pendingEmail=distinct(),pendingAddress=distinct();
+    pendingEmail.capture.email='contact@atelier-cible.example.org';
+    pendingAddress.capture.address='8 rue du Test 59100 Roubaix';pendingAddress.capture.codePostal='59100';
+    const concurrent=await Promise.all([request('POST',path,pendingEmail,token),request('POST',path,pendingAddress,token)]);
+    const combined=await request('GET','/prospects/'+target.body.id,undefined,token);
+    check(concurrent.every(r=>r.status===200) && combined.body.email===pendingEmail.capture.email && combined.body.address===pendingAddress.capture.address &&
+      combined.body.sourceDetails.crossSource.observations.length===3,'Ciblage : deux captures différentes concurrentes conservent leurs champs et provenances');
+    for(const [source,url] of Object.entries({facebook:'https://www.facebook.com/atelier.cible/',instagram:'https://www.instagram.com/atelier.cible/',
+      tiktok:'https://www.tiktok.com/@atelier.cible/',bing:'https://www.bing.com/search?q=Atelier+Cible',
+      google_search:'https://www.google.com/search?q=Atelier+Cible',google_maps:'https://www.google.com/maps/place/Atelier/',
+      pagesjaunes:'https://www.pagesjaunes.fr/pros/12345678',societe_com:'https://www.societe.com/societe/atelier-cible-998000008.html'})){
+      const p=distinct();p.capture={id:p.capture.id,company:'Atelier Ciblé',source,sourceUrl:url,collectionMode:'manual',capturedAt:Date.now()};
+      const result=await request('POST',path,p,token);
+      const profile=await request('GET','/prospects/'+target.body.id,undefined,token);
+      check(result.status===200 && profile.body.sourceDetails.crossSource.observations.some(o=>o.captureId===p.capture.id && o.sourceUrl===url),
+        'Ciblage : source '+source+' relue avec sa provenance sans adresse obligatoire');
+    }
+    const legalMismatch=distinct();legalMismatch.capture.siret='99900000200017';
+    check((await request('POST',path,legalMismatch,token)).status===409,'Ciblage : autre identité juridique refusée');
+    const tokenPayload=JSON.parse(Buffer.from(token.split('.')[1],'base64url'));
+    const foreignPayload=Buffer.from(JSON.stringify({...tokenPayload,tenantId:'00000000-0000-4000-8000-000000000099'})).toString('base64url');
+    const foreignUnsigned=token.split('.')[0]+'.'+foreignPayload;
+    const foreignToken=foreignUnsigned+'.'+createHmac('sha256',testEnv.JWT_SECRET).update(foreignUnsigned).digest('base64url');
+    check((await request('POST',path,distinct(),foreignToken)).status===404,'Ciblage : prospect d’une autre agence inaccessible');
+    check((await request('POST','/sourcing/device/prospects/'+randomUUID()+'/enrich-capture',distinct(),token)).status===404,
+      'Ciblage : une cible absente ne crée jamais de prospect');
+  }
 
   const legacyEdit=await request('POST','/prospects',{company:'Fiche importée sans identité',status:'converted'},token);
   const fullRecordEdit=await request('PATCH',`/prospects/${legacyEdit.body.id}`,{

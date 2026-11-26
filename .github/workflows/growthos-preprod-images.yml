@@ -76,7 +76,9 @@ jobs:
           node -e 'const m=require("./extensions/growthos-pagesjaunes/manifest.json"); if(m.manifest_version!==3 || m.host_permissions.some(p=>!p.includes("pagesjaunes.fr")&&!p.includes("recherche-entreprises.api.gouv.fr")&&!p.includes("data.geopf.fr")))process.exit(1)'
 
       - name: Test professional source links and interface rendering
-        run: node scripts/test-professional-sources.mjs
+        run: |
+          node scripts/test-professional-sources.mjs
+          node scripts/test-collection-tools.mjs
 
       - name: Build API for integration tests
         run: pnpm --filter @workspace/api-server build
