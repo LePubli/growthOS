@@ -32,6 +32,9 @@ type Monitoring = {
 };
 type Props = {
   onUpdated?:()=>void|Promise<void>;
+  onManagerNames?:(names:string[])=>void;
+  compactManagers?:boolean;
+  onOpenContacts?:()=>void;
   prospect: {
     id: string;
     siren?: string | null;
@@ -113,12 +116,16 @@ export function CompanyDetailsView({ details }: { details: CompanyDetails }) {
     </div>
   );
 }
-export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
+export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compactManagers=false,onOpenContacts }: Props) {
   const [data, setData] = useState<Monitoring | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const identifiable = Boolean(prospect.siren || prospect.siret);
   const lastApplied=useRef(''),updated=useRef(onUpdated);updated.current=onUpdated;
+  const managersUpdated=useRef(onManagerNames);managersUpdated.current=onManagerNames;
+  useEffect(()=>{
+    if(Array.isArray(data?.snapshot?.managers))managersUpdated.current?.(data.snapshot.managers);
+  },[data?.snapshot?.managers]);
   useEffect(()=>{
     const applied=data?.lastSync?.appliedAt;
     if(applied && applied!==lastApplied.current){lastApplied.current=applied;void updated.current?.();}
@@ -207,7 +214,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
   ];
   return (
     <section
-      className="rounded-2xl border p-5 space-y-4"
+      className="atlas-company-watch rounded-2xl border p-5 space-y-4"
       style={{
         background: "var(--card-bg)",
         borderColor: "var(--card-border)",
@@ -275,7 +282,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
           )}
         </p>
       )}
-      <div className="border-t pt-3 space-y-2 text-sm">
+      {!compactManagers?<div className="border-t pt-3 space-y-2 text-sm">
         <h3 className="font-semibold">Dirigeants et contacts professionnels</h3>
         {contacts.map((contact, index) => (
           <div key={index} className="rounded-lg border p-3 space-y-1">
@@ -348,7 +355,11 @@ export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
             )}
           </p>
         )}
-      </div>
+      </div>:<div className="atlas-360-monitoring-manager-link">
+        <div><strong>Répertoire des dirigeants et contacts</strong>
+          <span>Les coordonnées et les rôles sont centralisés dans le répertoire Contacts.</span></div>
+        <button type="button" onClick={onOpenContacts}>Voir les contacts →</button>
+      </div>}
       <div className="flex flex-wrap items-center gap-3 text-sm border-t pt-3">
         <label className="flex gap-2">
           <input

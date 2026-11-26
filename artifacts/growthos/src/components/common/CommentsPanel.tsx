@@ -56,7 +56,9 @@ export function CommentsPanel({ entityType, entityId }: Props) {
       .then((data: any) => {
         if (!active) return;
         const list = Array.isArray(data) ? data : data?.data || [];
-        setActivities(list.map((entry: any) => ({
+        // Les événements automatiques de veille/enrichissement ont déjà leur
+        // journal dédié dans la fiche. Ne pas les répéter dans la collaboration.
+        setActivities(list.filter((entry:any) => entityType !== 'prospect' || entry.type !== 'data_update').map((entry: any) => ({
           id: entry.id,
           type: entry.type || 'comment',
           content: entry.description || entry.title || '',

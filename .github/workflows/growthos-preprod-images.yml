@@ -79,6 +79,7 @@ jobs:
         run: |
           node scripts/test-professional-sources.mjs
           node scripts/test-collection-tools.mjs
+          node scripts/test-prospect-people.mjs
 
       - name: Build API for integration tests
         run: pnpm --filter @workspace/api-server build
