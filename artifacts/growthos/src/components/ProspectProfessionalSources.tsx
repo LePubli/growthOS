@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { ExternalLink, Globe } from "lucide-react";
+import { ExternalLink, Globe, Search, Layers } from "lucide-react";
 import { PROFESSIONAL_SOURCES } from "../../../../lib/api-zod/src/professional-sources";
 import {
   prospectSourceLinks,
@@ -51,23 +51,11 @@ export function ProspectProfessionalSources({ prospect }: Props) {
           return (
             <div
               key={source.id}
-              className="border rounded-xl p-3 space-y-2"
+              className="atlas-360-professional-source-card border rounded-xl p-3 space-y-2"
               style={{ borderColor: "var(--card-border)" }}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-medium text-sm">{source.label}</h3>
-                {query.trim() && (
-                  <a
-                    href={searchUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs underline text-teal-700"
-                  >
-                    {source.id === "bing"
-                      ? "Rechercher sur Bing"
-                      : "Rechercher le nom sur Google"}
-                  </a>
-                )}
               </div>
               {!captured.length && (
                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -76,16 +64,12 @@ export function ProspectProfessionalSources({ prospect }: Props) {
               )}
               {captured.map((link) => (
                 <div key={link.url} className="text-sm space-y-1">
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-teal-700 underline break-all inline-flex items-start gap-1"
-                  >
-                    <ExternalLink size={13} className="mt-1 shrink-0" />
-                    {link.url}
+                  <a href={link.url} target="_blank" rel="noopener noreferrer"
+                    className="atlas-360-link-button atlas-360-link-button-primary" title={link.url}>
+                    <ExternalLink size={13} /> Ouvrir la fiche collectée
                   </a>
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {new URL(link.url).hostname.replace(/^www\./,'')} ·{' '}
                     {link.origins.join(" · ")}
                     {link.capturedAt && (
                       <>
@@ -99,6 +83,13 @@ export function ProspectProfessionalSources({ prospect }: Props) {
                   </p>
                 </div>
               ))}
+              {query.trim() && (
+                <a href={searchUrl} target="_blank" rel="noopener noreferrer"
+                  className="atlas-360-link-button atlas-360-link-button-secondary">
+                  <Search size={13} />
+                  {source.id === "bing" ? "Rechercher sur Bing" : "Rechercher sur Google"}
+                </a>
+              )}
             </div>
           );
         })}
@@ -110,8 +101,9 @@ export function ProspectProfessionalSources({ prospect }: Props) {
       </p>
       <Link
         href={prospect.id?'/outils?mode=enrich&prospectId='+prospect.id:'/prospects/connecteur'}
-        className="inline-block border rounded-lg px-3 py-2 text-sm font-medium text-teal-700"
+        className="atlas-360-link-button atlas-360-link-button-primary"
       >
+        <Layers size={15} />
         {prospect.id?'Compléter ce prospect avec le connecteur':'Comparer et importer les captures du connecteur'}
       </Link>
     </section>

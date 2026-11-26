@@ -53,7 +53,7 @@ export function CompanyDetailsView({ details }: { details: CompanyDetails }) {
   return (
     <div className="space-y-3 text-sm">
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {Object.entries(details.fields).map(([label, value]) => (
+        {Object.entries(details.fields).filter(([label])=>!/nomenclature/i.test(label)).map(([label, value]) => (
           <div key={label}>
             <dt className="text-xs text-gray-500">{label}</dt>
             <dd>{value}</dd>
@@ -398,7 +398,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compa
             Identité légale et données économiques officielles
           </summary>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 text-sm">
-            {Object.entries(snapshot.fields).map(([label, value]) => (
+            {Object.entries(snapshot.fields).filter(([label])=>!/nomenclature/i.test(label)).map(([label, value]) => (
               <div key={label}>
                 <dt className="text-xs text-gray-500">{label}</dt>
                 <dd>{value || "Non communiqué par la source"}</dd>

@@ -246,6 +246,87 @@ html[data-theme-id="atlas-orbit"] .atlas-360-collaboration textarea {
 .atlas-360-enrichment-recent {margin:7px 15px 0;padding:10px;display:flex;align-items:center;gap:7px;
   background:#e7f8ee;border:1px solid #b9e7cd;border-radius:9px;color:#087844;font-size:11px;font-weight:700;}
 
+/* Dernière passe ATLAS : les liens sont de vrais contrôles visuels, pas du texte souligné. */
+.atlas-360-link-button,
+html[data-theme-id="atlas-orbit"] .atlas-360-extended-record a,
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-main a,
+html[data-theme-id="atlas-orbit"] .atlas-company-watch a {
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;vertical-align:middle;
+  width:max-content;max-width:100%;min-height:31px;padding:7px 10px;
+  border:1px solid #c5d9f7!important;border-radius:8px;background:#f4f8ff;
+  color:#1266e7!important;text-decoration:none!important;font-size:11px;font-weight:760;
+  line-height:1.3;white-space:normal;cursor:pointer;transition:background .15s,border-color .15s,transform .15s;
+}
+.atlas-360-link-button:hover,
+html[data-theme-id="atlas-orbit"] .atlas-360-extended-record a:hover,
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-main a:hover,
+html[data-theme-id="atlas-orbit"] .atlas-company-watch a:hover {
+  background:#e8f2ff;border-color:#8bbaff!important;transform:translateY(-1px);
+}
+.atlas-360-link-button:focus-visible,
+html[data-theme-id="atlas-orbit"] .atlas-360-extended-record a:focus-visible,
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-main a:focus-visible,
+html[data-theme-id="atlas-orbit"] .atlas-company-watch a:focus-visible {outline:2px solid #176bee;outline-offset:2px;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card {
+  display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-height:121px;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card>div:first-child {width:100%;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card .atlas-360-link-button-secondary {margin-top:auto;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card .atlas-360-link-button-primary {
+  border-color:#bdd5ff!important;background:#eaf3ff;color:#0d5fd5!important;
+}
+
+/* Carte de localisation directement sous l'adresse de la première carte 360°. */
+html[data-theme-id="atlas-orbit"] .atlas-360-company .atlas-360-legal-list {padding-bottom:4px;}
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-list dd a.atlas-360-legal-action {
+  display:inline-flex;align-items:center;gap:7px;padding:5px 8px;min-height:28px;
+  border:1px solid #c8ddfc;border-radius:7px;background:#f1f7ff;
+  color:#115fcf;text-decoration:none;font-size:10.5px;font-weight:770;max-width:100%;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-list dd a.atlas-360-legal-action:hover {background:#e4efff;border-color:#9dc4ff;}
+.atlas-360-company-location {border-top:1px solid #edf1f8;padding:9px 13px 13px;}
+.atlas-360-company-location-toolbar {display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:8px;margin-bottom:9px;}
+.atlas-360-company-location-toolbar>span {display:inline-flex;align-items:center;gap:6px;
+  color:#3c5477;font-size:10.5px;font-weight:790;}
+.atlas-360-company-location-toolbar>span svg {color:#176bee;}
+.atlas-360-company-location-toolbar>div {display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.atlas-360-company-location-toolbar :is(button,a) {display:inline-flex;align-items:center;justify-content:center;
+  gap:5px;min-height:28px;padding:6px 8px;background:#f5f9ff;color:#1266e7;
+  border:1px solid #ccddf6;border-radius:7px;font-size:10px;font-weight:750;text-decoration:none;cursor:pointer;}
+.atlas-360-company-location-toolbar :is(button,a):hover {background:#e4efff;border-color:#9fc4ff;}
+.atlas-360-company-location .leaflet-container {width:100%;border-radius:9px;z-index:0;}
+.atlas-360-company-geocode {min-height:104px;display:flex;align-items:center;justify-content:center;flex-direction:column;
+  gap:9px;background:repeating-linear-gradient(135deg,#f8fbff,#f8fbff 9px,#f0f6ff 9px,#f0f6ff 18px);
+  border:1px dashed #c2d6f2;border-radius:10px;color:#7186a3;font-size:11px;}
+.atlas-360-company-geocode button {display:inline-flex;gap:7px;align-items:center;padding:8px 11px;
+  border:1px solid #176bee;border-radius:8px;background:#176bee;color:white;font-size:11px;font-weight:780;cursor:pointer;}
+.atlas-360-company-geocode button:disabled {opacity:.5;cursor:wait;}
+
+/* Score exigeant : tous les critères documentaires doivent être validés pour atteindre 100 %. */
+html[data-theme-id="atlas-orbit"] .atlas-360-complete-body {align-items:flex-start;justify-content:flex-start;gap:12px;padding:17px 12px 10px;flex:1;}
+html[data-theme-id="atlas-orbit"] .atlas-360-donut {width:112px;height:112px;flex-basis:112px;margin-top:13px;}
+html[data-theme-id="atlas-orbit"] .atlas-360-donut>div {width:88px;height:88px;}
+html[data-theme-id="atlas-orbit"] .atlas-360-donut strong {font-size:24px;}
+html[data-theme-id="atlas-orbit"] .atlas-360-complete-list {gap:7px;}
+html[data-theme-id="atlas-orbit"] .atlas-360-complete-list li {align-items:center;font-size:10px;line-height:1.3;cursor:help;}
+.atlas-360-complete-rule {color:#7586a1;font-size:10px;line-height:1.4;padding:9px 14px 12px;border-top:1px solid #ecf1f8;}
+html[data-theme-id="atlas-orbit"] .atlas-360-text-button,
+html[data-theme-id="atlas-orbit"] .atlas-360-card-footer-link {
+  display:inline-flex;align-items:center;gap:6px;width:max-content;min-height:29px;
+  border:1px solid #c7dbf9;border-radius:8px;padding:7px 10px;
+  background:#f5f9ff;color:#1266e7;text-decoration:none;font-size:10.5px;font-weight:780;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-text-button:hover,
+html[data-theme-id="atlas-orbit"] .atlas-360-card-footer-link:hover {background:#e6f0ff;border-color:#a2c4f9;text-decoration:none;}
+html[data-theme-id="atlas-orbit"] .atlas-360-card-footer-link {margin:9px 12px 12px auto;}
+
+@media(max-width:1350px) {
+  html[data-theme-id="atlas-orbit"] .atlas-360-complete-body {flex-direction:column;align-items:center;gap:13px;}
+  html[data-theme-id="atlas-orbit"] .atlas-360-donut {margin:0;}
+  html[data-theme-id="atlas-orbit"] .atlas-360-complete-list {align-self:stretch;}
+}
+
 @media(max-width:1150px) {
   html[data-theme-id="atlas-orbit"] .atlas-360-extended-record>.atlas-360-detail-layout {
     grid-template-columns:minmax(0,1fr);
