@@ -1,0 +1,11 @@
+.cloud-browser-page>section,.cloud-browser-page article{border-color:var(--card-border);box-shadow:0 3px 15px #203b6308}
+.cloud-browser-page :is(button,input,select){border-color:var(--card-border);border-radius:10px}
+.cloud-browser-page :is(input,select){background:var(--card-bg);color:var(--text-primary);min-height:42px}
+.cloud-browser-page button{font-weight:600;min-height:39px;transition:background .15s,border-color .15s}
+.cloud-browser-page button:not(:disabled):hover{border-color:var(--color-primary)}
+.cloud-browser-page :is(button,a):disabled{opacity:.45}
+.cloud-browser-page .bg-teal-700{background:var(--color-primary)}
+.cloud-browser-page .text-teal-700{color:var(--color-primary)}
+.cloud-browser-page .focus\:outline-teal-600:focus-visible{outline-color:var(--color-primary)}
+.cloud-browser-page [aria-label="Navigateur distant interactif"]{background:#fff;color:#111}
+.cloud-browser-page [aria-label="Navigateur distant interactif"] img{user-select:none}

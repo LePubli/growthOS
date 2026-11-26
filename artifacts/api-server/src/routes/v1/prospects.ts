@@ -14,6 +14,8 @@ router.use(actionLogger);
 interface GeoResult { lat: number; lng: number }
 
 async function geocodeAddress(address: string): Promise<GeoResult | null> {
+  // Isolated integration recipes must never send their addresses to a public provider.
+  if (process.env.GROWTHOS_SMOKE_TEST === "true") return null;
   if (!address?.trim()) return null;
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&countrycodes=fr,be,ch,lu,de,es,it,gb`;

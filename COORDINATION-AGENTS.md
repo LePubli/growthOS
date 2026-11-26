@@ -97,6 +97,16 @@ Demande explicite du propriétaire du 26/11/2026 : **les deux agents doivent le 
 - Après redéploiement, le propriétaire teste et fait son retour ; l'agent concerné corrige puis réannonce un nouveau lot prêt.
 - Conserver cette règle et le reste des notes jusqu'à l'autorisation explicite du lancement final de production.
 
+
+## Changement de parcours demandé — automatisation intégrée et trois plateformes
+
+Le 26/11/2026, le propriétaire précise que l'extension et la saisie assistée ne sont pas le parcours principal attendu. GrowthOS doit lancer lui-même recherche, collecte et enrichissement, dans un navigateur intégré, avec ses comptes connectés quand la source le permet et en navigation publique sinon. L'extension est un secours externe en cas de difficulté.
+
+Il demande les trois accès : **Web + application PC + application Android**. Proposition de socle : un moteur d'automatisation et une file PostgreSQL sur son VPS, partagés par ces clients ; profils de comptes isolés, progression, reprise et traçabilité communes. Le pilote du moteur Web précède l'installateur Windows et l'APK Android. La base Expo existante est à auditer/raccorder ; aucune nouvelle application n'est annoncée comme livrée.
+
+Cadrage et état du code : [docs/NAVIGATEUR-INTEGRE-AUTOMATISATION.md](docs/NAVIGATEUR-INTEGRE-AUTOMATISATION.md). Branche du cadrage : `plan/integrated-browser-automation`. L'agent fonctionnement traite le moteur, les sessions, les adaptateurs et l'API ; l'agent design conserve son périmètre visuel. Les écrans « Comptes », « Navigateur » et « Tâches de collecte » doivent refléter des capacités réelles, avec une interface adaptée au tactile. Aucun changement de thème ou de composant de design dans ce cadrage.
+
+Cette note complète les deux relais existants et le protocole de notification. Elle ne constitue ni une fonction terminée, ni un feu vert pour redéployer, ni une autorisation de lancement en production.
 ## Lot design : dossier complémentaire et contacts (26/11/2026)
 
 - Branche isolée : `feat/atlas-orbit-deep-details-20261126`, cible `fix/growthos-functional-redesign`. L'objectif est d'aligner **tous les blocs sous « Informations détaillées, édition et historique »** sur les cartes ATLAS × ORBIT, et non de les afficher avec l'ancienne charte.
@@ -124,3 +134,17 @@ Demande explicite du propriétaire du 26/11/2026 : **les deux agents doivent le 
 - La cartographie des relations (`ProspectRelationshipMap.tsx`) peut montrer l'icône de l'entreprise principale grâce à `prospect.website` et, pour un nœud ultérieur, un domaine `node.website` explicitement sourcé ; les autres entités gardent leurs initiales. L'instantané documentaire Pappers ne gagne aucune information factuelle inventée.
 - Test `scripts/test-prospect-logos.mjs`, inclus dans le workflow de préproduction. Fichiers UX concernés : `ProspectDetailPage.tsx`, `Prospect360Dashboard.tsx`, `ProspectProfessionalSources.tsx`, `ProspectCompanyProfile.tsx`, `ProspectRelationshipMap.tsx`, CSS et nouveaux composants utilitaires. Tout point concurrent sur ces fichiers exige une fusion ciblée.
 - Conserver ces notes jusqu'à la mise en production finale sur autorisation explicite du propriétaire. Statut de CI/PR à contrôler avant annonce DockPanel.
+
+## Lot fonctionnel Web cloud — PR 43 (26/11/2026)
+
+Priorité corrigée par le propriétaire : **Web cloud d'abord ; Windows et Android plus tard**. Branche `plan/integrated-browser-automation`, base synchronisée avec la PR 49 (`82d40f0`). Nouveau worker `workers/cloud-browser`, `Dockerfile.browser`, API `/api/v1/browser`, tables de profils/tâches, route Web `/navigateur` et entrée de menu. Catalogue : lancement intégré prioritaire, extension en secours.
+
+L'interface utilise les variables du thème actif et `SourceLogo` ; aucune modification de `ProspectDetailPage.tsx`, des CSS ATLAS, des logos ni du dashboard de l'autre agent. Le seul delta AppShell est le lien fonctionnel vers `/navigateur`. Préserver les adaptateurs, l'isolation utilisateur/agence et la transaction annulation/mise à jour du prospect.
+
+Le compose ajoute un **nouveau service navigateur** et un **CLOUD_BROWSER_TOKEN séparé** (au moins 32 caractères), à configurer par le propriétaire ; ne pas régénérer les secrets existants ni les volumes DB. Aucune action DockPanel par l'agent. Nouvelle image GHCR `growthos-browser`, quatre images attendues après validation. Extension 0.11.1.13 inchangée. Détails dans `docs/NAVIGATEUR-CLOUD-INSTALLATION.md`.
+
+Tests locaux : 299 contrôles API avec sources simulées et PostgreSQL 16, TypeScript API/Web, rendu du catalogue/navigateur et régressions design. Test Chromium réel ajouté à la CI (le téléchargement local du navigateur est bloqué par l'environnement) ; pas de validation de compte réel revendiquée. Statut final de publication à inscrire après CI. Conserver cette note jusqu'à autorisation explicite de production.
+
+**Validation du lot cloud** : 299 contrôles API locaux verts sur PostgreSQL16 jetable, géocodage public désactivé uniquement en mode recette. Chromium réel vert sur pages locales : workflow [45823630830](https://github.com/LePubli/growthOS/actions/runs/45823630830). Les comptes et sites fournisseurs réels restent à recetter par le propriétaire. La publication préprod des quatre images est encore à suivre avant feu vert.
+
+Dernière régression couverte : une panne du worker pendant une saisie de connexion renvoie une erreur neutre sans transmettre le corps au journal d'erreur générique. Les 299 contrôles API passent après ce correctif. Les fichiers de design restent inchangés.

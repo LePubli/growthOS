@@ -566,7 +566,7 @@ function ambiguousLinkedinProfiles(records: (typeof prospectsTable.$inferSelect)
 }
 async function mergeProspectCapture(
   existing:typeof prospectsTable.$inferSelect,item:ImportCapture,incomplete:boolean,
-  tenantId:string, executor:Pick<typeof db,'update'|'insert'>=db,actorId?:string,
+  tenantId:string, executor:Pick<typeof db,'update'|'insert'>=db,actorId?:string,autoFields:EnrichmentField[]=[],
 ):Promise<{updated:boolean;filled:string[];conflicts:number;newConflicts:EnrichmentConflict[]}>{
   const oldDetails=jsonRecord(existing.sourceDetails);
   const oldMerge=jsonRecord(oldDetails.crossSource);
@@ -585,9 +585,9 @@ async function mergeProspectCapture(
   for(const field of FIELDS){
     const incoming=fields[field];if(!incoming)continue;
     const current=stringOrEmpty(existing[field]);
-    if(!current){
+    if(!current || (autoFields.includes(field) && normalizedField(field,current)!==normalizedField(field,incoming))){
       updates[field]=incoming;filled.push(field);
-      fieldSources[field]={source:item.source,sourceUrl:item.sourceUrl,capturedAt:now};
+      fieldSources[field]={source:item.source,sourceUrl:item.sourceUrl,capturedAt:now,...(autoFields.length?{automatic:true}:{})};
     }else if(normalizedField(field,current)!==normalizedField(field,incoming)){
       const repeated=[...oldConflicts,...priorResolutions].some(c=>c.field===field&&c.incoming===incoming&&
         c.existing===current&&c.source===item.source);
@@ -634,6 +634,7 @@ async function mergeProspectCapture(
   }};
   await executor.update(prospectsTable).set({
     ...updates,
+    ...(['address','postalCode','city'].some(field=>filled.includes(field))?{lat:null,lng:null}:{}),
     source:[...sources].join(','),
     sourceUrl:existing.sourceUrl||captureProfileUrl(item.sourceUrl),
     sourceDetails:updatedDetails,updatedAt:new Date(),
@@ -646,7 +647,7 @@ async function mergeProspectCapture(
     if(detailsChanged)changes['Informations détaillées Societe.com']={before:oldSociete||null,after:nextSociete};
     const proposals=newConflicts.length?'\nPropositions non appliquées : '+newConflicts.map(c=>`${prospectFieldLabels[c.field]||c.field} : ${c.existing} → ${c.incoming}`).join(' ; '):'';
     await executor.insert(activitiesTable).values({type:'data_update',title:'Enrichissement · '+item.source,
-      description:changeDescription(item.source,item.sourceUrl||null,changes,'Champs vides complétés ; les valeurs divergentes restent à valider.',now)+proposals,
+      description:changeDescription(item.source,item.sourceUrl||null,changes,autoFields.length?'Enrichissement automatique : identité exacte et données confirmées de la source.':'Champs vides complétés ; les valeurs divergentes restent à valider.',now)+proposals,
       status:'done',doneAt:new Date(),prospectId:existing.id,tenantId,createdBy:actorId||null});
   }
   return {updated:true,filled,conflicts:newConflicts.length,newConflicts};
@@ -687,21 +688,28 @@ const targetCaptureSchema=deviceCandidateFieldsSchema.extend({
   sourceDetails:item.source==='societe_com' && item.companyDetails
     ? {societe_com:{companyDetails:item.companyDetails,sourceUrl:item.sourceUrl,capturedAt:item.capturedAt}} : {},
 }));
-router.post('/device/prospects/:id/enrich-capture',requireAuth,async(req,res)=>{
-  const id=z.string().uuid().safeParse(req.params.id);
-  const parsed=z.object({taskId:z.string().uuid(),confirmed:z.literal(true),capture:targetCaptureSchema}).strict().safeParse(req.body);
-  if(!id.success || !parsed.success){res.status(400).json({error:'Confirmez une capture valide du prospect ciblé.'});return;}
-  const {capture,taskId}=parsed.data;
-  if(capture.id!=='task_'+taskId){res.status(400).json({error:'Capture et tâche incohérentes.'});return;}
-  try{
-    const outcome=await db.transaction(async tx=>{
+export async function applyTargetCapture(tenantId:string,userId:string,prospectId:string,taskId:string,rawCapture:unknown,automatic=false,cloud?:{lease:string;result:Record<string,unknown>}){
+  const parsed=targetCaptureSchema.safeParse(rawCapture);
+  if(!parsed.success || !z.string().uuid().safeParse(prospectId).success || !z.string().uuid().safeParse(taskId).success)
+    return {status:400,error:'Capture ou tâche invalide.'};
+  const capture=parsed.data;
+  if(capture.id!=='task_'+taskId)return {status:400,error:'Capture et tâche incohérentes.'};
+  return db.transaction(async tx=>{
+      if(cloud){
+        const job=await tx.execute(sql`SELECT status,lease FROM cloud_browser_jobs WHERE id=${taskId} AND tenant_id=${tenantId} FOR UPDATE`);
+        if(job.rows[0]?.status!=='running'||job.rows[0]?.lease!==cloud.lease)return {status:409,error:'La tâche a été annulée ou reprise ailleurs.'};
+      }
+      const complete=async(outcome:{status:number;filled:string[];conflicts:number;alreadyApplied:boolean})=>{
+        if(cloud)await tx.execute(sql`UPDATE cloud_browser_jobs SET status='completed',result=${JSON.stringify({...cloud.result,applied:outcome})}::jsonb,lease=NULL,lease_until=NULL,updated_at=NOW() WHERE id=${taskId} AND tenant_id=${tenantId}`);
+        return outcome;
+      };
       const [prospect]=await tx.select().from(prospectsTable).where(and(
-        eq(prospectsTable.id,id.data),eq(prospectsTable.tenantId,req.auth!.tenantId),
+        eq(prospectsTable.id,prospectId),eq(prospectsTable.tenantId,tenantId),
       )).for('update');
       if(!prospect)return {status:404,error:'Prospect introuvable.'};
       const observations=jsonRecord(jsonRecord(prospect.sourceDetails).crossSource).observations;
       if(Array.isArray(observations) && observations.some(o=>jsonRecord(o).captureId===capture.id))
-        return {status:200,filled:[],conflicts:0,alreadyApplied:true};
+        return complete({status:200,filled:[],conflicts:0,alreadyApplied:true});
       const knownSiren=prospect.siren || prospect.siret?.slice(0,9);
       const incomingSiren=capture.siren || capture.siret?.slice(0,9);
       if((knownSiren && incomingSiren && knownSiren!==incomingSiren) ||
@@ -713,10 +721,16 @@ router.post('/device/prospects/:id/enrich-capture',requireAuth,async(req,res)=>{
         (prospect.city && capture.city && normalizedIdentity(prospect.city)!==normalizedIdentity(capture.city)))
       )
         return {status:409,error:'Le nom ou la ville diffère. Vérifiez la fiche et son établissement avant enrichissement.'};
-      const merged=await mergeProspectCapture(prospect,{...capture,targetedIdentity:true},false,req.auth!.tenantId,tx,req.auth!.userId);
-      return {status:200,filled:merged.filled,conflicts:merged.conflicts,alreadyApplied:false};
+      const merged=await mergeProspectCapture(prospect,{...capture,targetedIdentity:true},false,tenantId,tx,userId,automatic && exactSite && capture.source==='societe_com' ? ['company','address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);
+      return complete({status:200,filled:merged.filled,conflicts:merged.conflicts,alreadyApplied:false});
     });
-    res.status(outcome.status).json(outcome);
+}
+router.post('/device/prospects/:id/enrich-capture',requireAuth,async(req,res)=>{
+  const parsed=z.object({taskId:z.string().uuid(),confirmed:z.literal(true),capture:z.unknown()}).strict().safeParse(req.body);
+  if(!parsed.success){res.status(400).json({error:'Confirmez une capture valide du prospect ciblé.'});return;}
+  try{
+    const result=await applyTargetCapture(req.auth!.tenantId,req.auth!.userId,String(req.params.id),parsed.data.taskId,parsed.data.capture);
+    res.status(result.status).json(result);
   }catch(error){
     if(isProspectIdentityDuplicate(error)){res.status(409).json({error:'Ce SIRET est déjà utilisé par un autre prospect.'});return;}
     throw error;

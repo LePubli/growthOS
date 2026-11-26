@@ -79,6 +79,7 @@ jobs:
         run: |
           node scripts/test-professional-sources.mjs
           node scripts/test-collection-tools.mjs
+          node scripts/test-cloud-browser.mjs
           node scripts/test-prospect-people.mjs
           node scripts/test-prospect-completeness.mjs
           node scripts/test-prospect-logos.mjs
@@ -97,8 +98,17 @@ jobs:
       - name: Test SSRF protection of website audits
         run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/seo-safety.test.ts
 
+  browser-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build the isolated cloud browser
+        run: docker build -f Dockerfile.browser -t growthos-browser-test .
+      - name: Exercise persistent profiles and collection with real Chromium and local page fixtures
+        run: docker run --rm --ipc=host --entrypoint node growthos-browser-test workers/cloud-browser/runtime-test.mjs
+
   build-and-publish:
-    needs: validate
+    needs: [validate, browser-runtime]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -113,6 +123,8 @@ jobs:
             dockerfile: Dockerfile
           - component: pagesjaunes
             dockerfile: Dockerfile.pagesjaunes
+          - component: browser
+            dockerfile: Dockerfile.browser
     steps:
       - name: Read the preproduction branch
         uses: actions/checkout@v6
