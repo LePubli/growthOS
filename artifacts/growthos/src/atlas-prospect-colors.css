@@ -1,0 +1,133 @@
+/* ATLAS × ORBIT — couleur fonctionnelle, logos d'origine et repères de lecture.
+   Les nuances indiquent la catégorie ; le vert/ambre signalent la fiabilité. */
+html[data-theme-id="atlas-orbit"] .atlas-prospect-360 {
+  --atlas-blue:#176bee;--atlas-teal:#078f85;--atlas-indigo:#5a63d9;
+  --atlas-violet:#8249dc;--atlas-emerald:#0c925e;--atlas-amber:#b97718;
+}
+
+.atlas-source-logo,.atlas-entity-logo {display:inline-grid;place-items:center;flex-shrink:0;
+  vertical-align:middle;position:relative;overflow:hidden;border-radius:9px;
+  background:#fff;border:1px solid #d9e4f1;box-shadow:0 1px 3px #1f35501a;}
+.atlas-source-logo {background:color-mix(in srgb,var(--atlas-source-color,#176bee) 9%,white);
+  border-color:color-mix(in srgb,var(--atlas-source-color,#176bee) 22%,white);}
+.atlas-source-logo--sm {width:21px;height:21px;border-radius:6px;}
+.atlas-source-logo--md {width:28px;height:28px;border-radius:8px;}
+.atlas-source-logo--lg {width:36px;height:36px;border-radius:9px;}
+.atlas-source-logo>img {width:78%;height:78%;object-fit:contain;}
+.atlas-source-logo>span {font-size:11px;font-weight:900;letter-spacing:-.055em;color:var(--atlas-source-color,#176bee);}
+.atlas-source-logo--sm>span {font-size:9px;}
+.atlas-source-logo--lg>span {font-size:14px;}
+.atlas-entity-logo {background:linear-gradient(140deg,#e7f1ff,#f7faff);border-color:#c8dcf9;color:#1569dd;}
+.atlas-entity-logo--sm {width:30px;height:30px;border-radius:9px;}
+.atlas-entity-logo--md {width:40px;height:40px;border-radius:11px;}
+.atlas-entity-logo--lg {width:64px;height:64px;border-radius:14px;}
+.atlas-entity-logo>img {max-width:80%;max-height:80%;width:auto;height:auto;object-fit:contain;}
+.atlas-entity-logo>span {font-size:13px;font-weight:900;letter-spacing:-.055em;}
+.atlas-entity-logo--md>span {font-size:17px;}
+.atlas-entity-logo--lg>span {font-size:24px;}
+.atlas-360-hero-icon>.atlas-entity-logo {box-shadow:0 3px 11px #1e5fb51c;}
+.atlas-graph-node-icon>.atlas-entity-logo,.atlas-graph-detail-icon>.atlas-entity-logo {border:0;box-shadow:none;}
+.atlas-graph-node-icon:has(.atlas-entity-logo),.atlas-graph-detail-icon:has(.atlas-entity-logo) {background:transparent;}
+.atlas-graph-node .atlas-entity-logo--sm {width:32px;height:32px;}
+.atlas-graph-detail-icon .atlas-entity-logo--md {width:42px;height:42px;}
+
+/* Le regard identifie une famille de données avant d'en lire le titre. */
+html[data-theme-id="atlas-orbit"] .atlas-360-overview-grid>.atlas-360-card,
+html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card {
+  border-top:3px solid var(--atlas-accent,#176bee);
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-card-header {background:linear-gradient(105deg,var(--atlas-tint,#f1f6ff),#fff 70%);}
+html[data-theme-id="atlas-orbit"] .atlas-360-card-header>div>svg {
+  width:33px;height:33px;padding:7px;border-radius:10px;
+  background:var(--atlas-tint,#eaf3ff);color:var(--atlas-accent,#176bee);
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-card-header h2 {color:var(--atlas-ink,#192d4a);}
+html[data-theme-id="atlas-orbit"] .atlas-360-company {--atlas-accent:#176bee;--atlas-tint:#ecf4ff;--atlas-ink:#1754a3;}
+html[data-theme-id="atlas-orbit"] .atlas-360-completeness {--atlas-accent:#079bb8;--atlas-tint:#e8f9fc;--atlas-ink:#0e7183;}
+html[data-theme-id="atlas-orbit"] .atlas-360-copilot {--atlas-accent:#8449e1;--atlas-tint:#f4eeff;--atlas-ink:#5f33aa;}
+html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(1) {--atlas-accent:#0b9285;--atlas-tint:#e7f8f3;--atlas-ink:#0a7268;}
+html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(2) {--atlas-accent:#5869d8;--atlas-tint:#eeefff;--atlas-ink:#464fac;}
+html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(3) {--atlas-accent:#13a06b;--atlas-tint:#e8f9ef;--atlas-ink:#147a53;}
+html[data-theme-id="atlas-orbit"] .atlas-360-secondary-grid>.atlas-360-card:nth-child(4) {--atlas-accent:#bd861e;--atlas-tint:#fff7e7;--atlas-ink:#8d621a;}
+html[data-theme-id="atlas-orbit"] .atlas-360-copilot .atlas-360-card-header svg {color:#8449e1;}
+html[data-theme-id="atlas-orbit"] .atlas-360-completeness .atlas-360-donut {
+  background:conic-gradient(#079bb8 var(--atlas-score),#e2eaf0 var(--atlas-score));
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-list>div:first-child {
+  border-left:3px solid #5b91eb;background:linear-gradient(90deg,#f0f6ff,#fff 76%);border-radius:6px;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-list>div:first-child dd strong {color:#1556b6;}
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-list>div:nth-child(3) dd strong {
+  display:inline-block;border-radius:5px;background:#eef0ff;color:#4c51bd;padding:3px 6px;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-list>div:nth-child(4) a.atlas-360-legal-action {
+  background:#e9f8f2;border-color:#bfe5d6;color:#08795d;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-list>div:nth-child(5) a.atlas-360-legal-action {
+  background:#eaf8fb;border-color:#b9e3ed;color:#087e95;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-person-preview .atlas-360-contact-avatar {background:#def5ed;color:#0a8c75;}
+html[data-theme-id="atlas-orbit"] .atlas-360-watch-dot {background:#13a06b;}
+html[data-theme-id="atlas-orbit"] .atlas-360-source-chips>span {background:#edf8fc;}
+html[data-theme-id="atlas-orbit"] .atlas-360-source-chips .atlas-source-logo {padding:0;gap:0;flex:0 0 21px;}
+html[data-theme-id="atlas-orbit"] .atlas-360-source-chips .atlas-source-logo>span {padding:0;gap:0;background:none;}
+
+/* Dossier détaillé : un accent par fonction, sans multiplier les fonds saturés. */
+html[data-theme-id="atlas-orbit"] .atlas-company-watch,
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-extra,
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts,
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-sources>section,
+html[data-theme-id="atlas-orbit"] .atlas-360-pj-details,
+html[data-theme-id="atlas-orbit"] .atlas-360-enriched-data,
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities,
+html[data-theme-id="atlas-orbit"] .atlas-360-collaboration {
+  border-top:3px solid var(--atlas-section-accent,#176bee)!important;
+}
+html[data-theme-id="atlas-orbit"] .atlas-company-watch {--atlas-section-accent:#13a06b;}
+html[data-theme-id="atlas-orbit"] .atlas-360-legal-extra {--atlas-section-accent:#176bee;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts {--atlas-section-accent:#0b9285;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-sources>section {--atlas-section-accent:#5669d9;}
+html[data-theme-id="atlas-orbit"] .atlas-360-pj-details {--atlas-section-accent:#bd861e;}
+html[data-theme-id="atlas-orbit"] .atlas-360-enriched-data {--atlas-section-accent:#8249dc;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities {--atlas-section-accent:#5966d7;}
+html[data-theme-id="atlas-orbit"] .atlas-360-collaboration {--atlas-section-accent:#079bb8;}
+html[data-theme-id="atlas-orbit"] .atlas-company-watch>div:first-child h2,
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-monitoring h2 {color:#0a7b55!important;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts h2,
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts h2 svg {color:#088c7d!important;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities h2,
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities h2 svg {color:#505bc0!important;}
+html[data-theme-id="atlas-orbit"] .atlas-360-collaboration h2,
+html[data-theme-id="atlas-orbit"] .atlas-360-collaboration h2 svg {color:#067f9b!important;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts .atlas-360-directory-person {
+  border-color:#d0ede8;background:linear-gradient(115deg,#f1fbf8,#fff 85%);
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-contacts .atlas-360-directory-avatar {background:#ddf6ed;color:#078a77;}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities .atlas-360-activity-item:has(.atlas-360-activity-details) {
+  background:#f5f5ff!important;border-left:3px solid #6970db;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-activities .atlas-360-activity-details>summary {
+  background:#eef0ff;border-color:#ced3fb;color:#5058bf;
+}
+html[data-theme-id="atlas-orbit"] .atlas-360-detail-aside-card:first-child {border-top:3px solid #647a9e;}
+html[data-theme-id="atlas-orbit"] .atlas-360-enrichment-tool {border-top:3px solid #8249dc;}
+html[data-theme-id="atlas-orbit"] .atlas-360-enrichment-tool header svg {color:#8249dc;}
+html[data-theme-id="atlas-orbit"] .atlas-company-watch>details dl>div {border:1px solid #e3edf4;border-radius:9px;
+  background:#fbfdff;padding:10px 12px;min-width:0;}
+html[data-theme-id="atlas-orbit"] .atlas-company-watch>details dl dt {color:#6b809d;font-size:10px;}
+html[data-theme-id="atlas-orbit"] .atlas-company-watch>details dl dd {font-weight:730;color:#1c3150;overflow-wrap:anywhere;}
+
+/* Codes couleur des cinq sources professionnelles. */
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card {border-left:3px solid var(--atlas-source-accent,#657da3)!important;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card[data-source="linkedin"] {--atlas-source-accent:#0a66c2;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card[data-source="bing"] {--atlas-source-accent:#008b83;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card[data-source="facebook"] {--atlas-source-accent:#1877f2;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card[data-source="instagram"] {--atlas-source-accent:#c13584;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card[data-source="tiktok"] {--atlas-source-accent:#303447;}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card h3 {color:var(--atlas-source-accent,#2a4565);}
+html[data-theme-id="atlas-orbit"] .atlas-360-professional-source-card .atlas-360-link-button {box-shadow:0 2px 5px #24436b0a;}
+
+@media(max-width:680px) {
+  html[data-theme-id="atlas-orbit"] .atlas-360-card-header>div>svg {width:30px;height:30px;padding:6px;}
+  .atlas-entity-logo--lg {width:50px;height:50px;}
+}
