@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Building2, CircleHelp, ExternalLink, History, Maximize, Minus, Plus, UserRound, Users, ZoomIn } from 'lucide-react';
+import { CompanyLogo, SourceLogo } from '@/components/atlas/ProspectLogos';
 
 type Node = {
   id: string; name: string; kind: 'company' | 'person'; x: number; y: number;
-  subtitle: string; url: string; note?: string; historical?: boolean;
+  subtitle: string; url: string; note?: string; historical?: boolean; website?: string;
 };
 type Edge = { from: string; to: string; label: string; historical?: boolean };
 export type RelationshipData = { nodes: Node[]; edges: Edge[]; source: string; capturedAt: string };
@@ -34,12 +35,12 @@ const SOLUTION_ENR_REFERENCE: RelationshipData = {
   ],
 };
 
-type Props = { siren?: string | null; siret?: string | null; company?: string | null; data?: RelationshipData | null };
+type Props = { siren?: string | null; siret?: string | null; company?: string | null; website?: string | null; data?: RelationshipData | null };
 const WIDTH = 1020;
 const HEIGHT = 590;
 const clamp = (v: number) => Math.max(0.55, Math.min(2.6, v));
 
-export function ProspectRelationshipMap({ siren, siret, company, data }: Props) {
+export function ProspectRelationshipMap({ siren, siret, company, website, data }: Props) {
   const referenceId = (siren || siret || '').replace(/\D/g, '').slice(0,9);
   const graph = data || (referenceId === '981075252' ? SOLUTION_ENR_REFERENCE : null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -106,7 +107,7 @@ export function ProspectRelationshipMap({ siren, siret, company, data }: Props) 
         <div><div className="atlas-overline">RÉSEAU D’ENTREPRISE</div><h2>Cartographie des relations</h2>
           <p>Vue interactive des sociétés et dirigeants liés à {company||'cette entreprise'}.</p></div>
         <a href={graph.source} target="_blank" rel="noopener noreferrer" className="atlas-source-link">
-          <ExternalLink size={15}/> Source Pappers
+          <SourceLogo source="pappers" size="sm"/> Source Pappers <ExternalLink size={15}/>
         </a>
       </header>
       <div className="atlas-graph-toolbar">
@@ -148,7 +149,9 @@ export function ProspectRelationshipMap({ siren, siret, company, data }: Props) 
             {visibleNodes.map(n=><button key={n.id} type="button" onClick={()=>setSelected(n.id)}
               className={'atlas-graph-node '+n.kind+(n.historical?' historical':'')+(currentNode?.id===n.id?' active':'')}
               style={{left:n.x,top:n.y}} aria-pressed={currentNode?.id===n.id}>
-              <span className="atlas-graph-node-icon">{n.kind==='company'?<Building2 size={18}/>:<UserRound size={18}/>}</span>
+              <span className="atlas-graph-node-icon">{n.kind==='company'
+                ?<CompanyLogo name={n.name} website={n.website||(n.id==='solution'?website:null)} size="sm"/>
+                :<UserRound size={18}/>}</span>
               <span className="atlas-graph-node-text"><strong>{n.name}</strong><small>{n.subtitle}</small></span>
             </button>)}
           </div>
@@ -163,7 +166,8 @@ export function ProspectRelationshipMap({ siren, siret, company, data }: Props) 
       </div>
       <footer className="atlas-graph-footer">
         <div className="atlas-graph-detail">
-          <div className="atlas-graph-detail-icon">{currentNode?.kind==='person'?<UserRound size={20}/>:<Building2 size={20}/>}</div>
+          <div className="atlas-graph-detail-icon">{currentNode?.kind==='person'?<UserRound size={20}/>
+            :<CompanyLogo name={currentNode?.name||company||'Entreprise'} website={currentNode?.website||(currentNode?.id==='solution'?website:null)} size="md"/>}</div>
           <div><strong>{currentNode?.name}</strong><p>{currentNode?.subtitle} {currentNode?.note && ' · '+currentNode.note}</p></div>
           {currentNode && <a href={currentNode.url} target="_blank" rel="noopener noreferrer" aria-label={'Voir la fiche Pappers de '+currentNode.name}><ArrowUpRight size={18}/></a>}
         </div>
@@ -184,7 +188,7 @@ export function ProspectPappersDossier({ siren, siret }: { siren?: string|null; 
   ];
   return <section className="atlas-pappers-dossier">
     <div className="atlas-preview-section-header"><div><span className="atlas-overline">DOSSIER DE RÉFÉRENCE</span><h3>Données légales et financières · Pappers</h3></div>
-      <a href="https://www.pappers.fr/entreprise/solution-enr-981075252" target="_blank" rel="noopener noreferrer"><ExternalLink size={15}/> Voir la source</a>
+      <a href="https://www.pappers.fr/entreprise/solution-enr-981075252" target="_blank" rel="noopener noreferrer"><SourceLogo source="pappers" size="sm"/> Voir la source <ExternalLink size={15}/></a>
     </div>
     <div className="atlas-pappers-facts">{facts.map(([k,v])=><div key={k}><span>{k}</span><strong>{v}</strong></div>)}</div>
     <div className="atlas-documentation-notice"><CircleHelp size={15}/> Exemple spécifique à SOLUTION ENR, relevé le 26/11/2026. Les comptes 2024 sont partiellement confidentiels. Ces valeurs ne sont pas injectées dans le CRM et doivent être revérifiées avant usage opérationnel.</div>

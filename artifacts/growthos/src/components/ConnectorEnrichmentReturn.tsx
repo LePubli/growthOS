@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {useSearch} from 'wouter';
+import {AlertTriangle,CheckCircle2,Info,Loader2,X} from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import {getConnectorTask,acknowledgeConnectorTask} from '@/lib/pagesjaunes-device';
 
@@ -7,11 +8,12 @@ export function ConnectorEnrichmentReturn({prospectId,onSaved,onBusyChange}:{pro
   const search=useSearch(),taskId=new URLSearchParams(search).get('enrichmentTask');
   const [retry,setRetry]=useState(0),[error,setError]=useState(''),[result,setResult]=useState('');
   const [conflicts,setConflicts]=useState(0);
+  const [dismissed,setDismissed]=useState(false);
   const saved=useRef(onSaved);saved.current=onSaved;
   const busy=useRef(onBusyChange);busy.current=onBusyChange;
   useEffect(()=>{
     if(!taskId)return;
-    let alive=true;setError('');setResult('');setConflicts(0);busy.current?.(true);
+    let alive=true;setError('');setResult('');setConflicts(0);setDismissed(false);busy.current?.(true);
     (async()=>{
       const response=await getConnectorTask(taskId,prospectId),task=response.task;
       if(!task || task.prospect?.id!==prospectId)throw new Error('La capture ne cible pas ce prospect.');
@@ -26,10 +28,20 @@ export function ConnectorEnrichmentReturn({prospectId,onSaved,onBusyChange}:{pro
       .finally(()=>{if(alive)busy.current?.(false);});
     return()=>{alive=false;busy.current?.(false);};
   },[taskId,prospectId,retry]);
-  if(!taskId)return null;
-  return <div className={'p-4 mb-4 rounded-xl border '+(error?'bg-amber-50 text-amber-950':'bg-teal-50 text-teal-950')} role={error?'alert':'status'}>
-    {error?<><p>{error}</p><p className="text-sm mt-1">La capture reste dans l’extension pendant 24 h. Vérifiez votre connexion et le prospect ciblé, puis réessayez.</p><button className="mt-2 border rounded-lg px-3 py-2" onClick={()=>setRetry(n=>n+1)}>Réessayer l’enregistrement</button></>
-      :result||'Enregistrement des données confirmées dans l’extension…'}
-    {!error && conflicts>0 && <a href="#enrichment-conflicts" className="block underline mt-2">Comparer et mettre à jour les données proposées</a>}
-  </div>;
+  if(!taskId||dismissed)return null;
+  const duplicate=!error&&result==='Cet enrichissement a déjà été enregistré.';
+  const pending=!error&&!result;
+  const tone=error?'error':pending?'pending':duplicate?'duplicate':'success';
+  const Icon=error?AlertTriangle:pending?Loader2:duplicate?Info:CheckCircle2;
+  return <section className={'atlas-enrichment-notice atlas-enrichment-notice--'+tone} role={error?'alert':'status'} aria-live="polite">
+    <span className="atlas-enrichment-notice-icon"><Icon size={20} className={pending?'animate-spin':undefined}/></span>
+    <div className="atlas-enrichment-notice-copy">
+      <strong>{error?'Échec de l’enrichissement':pending?'Enregistrement en cours…':duplicate?'Enrichissement déjà enregistré':'Enrichissement enregistré'}</strong>
+      <p>{error?error:pending?'Enregistrement des données confirmées dans l’extension…':duplicate?'Cette capture a déjà été intégrée au dossier. Aucun nouvel enregistrement n’est nécessaire.':result}</p>
+      {error&&<><small>La capture reste disponible dans l’extension pendant 24 h. Vérifiez la connexion et le prospect ciblé.</small>
+        <button type="button" className="atlas-enrichment-notice-action" onClick={()=>setRetry(n=>n+1)}>Réessayer l’enregistrement</button></>}
+      {!error&&conflicts>0&&<a href="#enrichment-conflicts" className="atlas-enrichment-notice-action">Comparer les {conflicts} donnée(s) divergente(s)</a>}
+    </div>
+    {!!result&&!error&&<button type="button" className="atlas-enrichment-notice-dismiss" onClick={()=>setDismissed(true)} title="Masquer cette notification" aria-label="Masquer cette notification"><X size={17}/></button>}
+  </section>;
 }

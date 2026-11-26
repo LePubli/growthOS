@@ -4,9 +4,11 @@ Mis à jour le **26 novembre 2026**. Ce registre suit le parcours d’une agence
 
 **Coordination des agents** — un autre agent travaille uniquement sur le design. Voir les [notes temporaires de coordination](COORDINATION-AGENTS.md). Elles resteront jusqu’au lancement final en production autorisé par le propriétaire, puis seront supprimées lors de ce lancement.
 
-**Dernier retour utilisateur** — le 26 novembre, nouveau catalogue installé, mais parcours Societe.com bloqué parce que « Chauffagiste » avait été stocké comme ville. Le bouton de lecture de l’extension était placé après le bouton de retour. Ces deux régressions sont corrigées et couvertes par les tests du lot ci-dessous ; la recette utilisateur de ce correctif reste ouverte.
+**Dernier retour utilisateur** — les corrections d'enrichissement sont confirmées (« c'est nickel »). Le propriétaire demande maintenant l'automatisation dans GrowthOS avec navigateur cloud et sessions par source ; l'extension devient un secours. **Windows et Android sont différés**, priorité explicite au Web cloud.
 
-**Prochain contrôle en préproduction** — mettre à jour web/API et Chrome, reprendre la capture du même établissement, vérifier la proposition de remplacement Chauffagiste → Roubaix et l’activité enregistrée après validation. Activer la veille pour vérifier le rafraîchissement officiel et sa traçabilité. Continuer ensuite avec LinkedIn, Bing, Facebook, Instagram et TikTok. Les parcours d’IA, séquences, équipe et exploitation restent ouverts ci-dessous.
+**Lot en cours — PR 43** — moteur Chromium, file persistante, profils privés et écran `/navigateur`, intégrés aux variables de thème ATLAS × ORBIT et aux logos de l'autre agent. Collecteurs initiaux Maps/Google/Bing/Societe.com ; navigation des autres sources sans promesse de collecte automatique. Publication et recette fournisseur à suivre. [Installation et tests pas à pas](docs/NAVIGATEUR-CLOUD-INSTALLATION.md).
+
+**Prochain contrôle en préproduction** — ajouter le service navigateur et son secret dédié à la stack, puis lancer une recherche publique et un enrichissement Societe.com au SIRET exact. Relire les valeurs modifiées et l'activité ; vérifier interruption, reprise et déconnexion. LinkedIn et les réseaux doivent ensuite recevoir leurs collecteurs spécifiques avant d'être annoncés automatiques.
 
 ## Comment tenir ce fichier
 
@@ -148,3 +150,10 @@ Le [document de référence Linked Helper](docs/REFERENCE-LINKED-HELPER.md) cons
 - Plateformes demandées : Web, application PC et application Android. Socle proposé : même API/CRM et moteur de tâches central sur VPS, avec progression et résultats partagés. L'exécution ne doit pas dépendre d'un PC ou téléphone laissé ouvert.
 - Inventaire : navigateur serveur PagesJaunes sans session persistante ; collecteurs Chrome et fusion CRM réutilisables ; base mobile Expo existante mais non recettée pour ces parcours ; aucun client PC identifié. Les comptes persistants, le navigateur interactif et les collecteurs intégrés des réseaux restent à construire.
 - [Cadrage et recette à suivre](docs/NAVIGATEUR-INTEGRE-AUTOMATISATION.md). Il distingue ce qui existe de ce qui reste à réaliser, les clients, la file, les états de session et le secours. Aucun nouveau fonctionnement n'est livré par cette note ; aucun redéploiement requis pour un changement documentaire.
+
+## 43 · Premier navigateur Web cloud (26/11/2026)
+
+- Implémenté : vue interactive dans GrowthOS, profils personnels séparés, stockage persistant, déconnexion, file de tâches, reprise/annulation, sélection avant import et enrichissement ciblé avec historique.
+- Testé en isolation : 297 contrôles API sur PostgreSQL 16 (sources simulées), protocole navigateur, contrat UI et tests du thème ; TypeScript et builds API/Web. Chromium réel exécuté par la CI sur des pages locales de recette : statut à suivre dans la PR.
+- À recetter : connexion réelle acceptée par chaque fournisseur depuis le VPS, Maps au-delà d'une première page, données Societe.com réelles, consommation VPS et reprise après arrêt du conteneur.
+- À développer : collecteurs automatiques LinkedIn/FB/Instagram/TikTok, raccordement PagesJaunes au nouveau moteur ; Windows/Android différés. Les campagnes d'invitations/messages ne sont pas incluses.

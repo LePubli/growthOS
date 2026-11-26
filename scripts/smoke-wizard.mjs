@@ -34,8 +34,8 @@ async function availablePort() {
   return port;
 }
 
-const [dbPort, apiPort, companiesPort, ollamaPort, pagesJaunesPort, browserPort] = await Promise.all([
-  availablePort(), availablePort(), availablePort(), availablePort(), availablePort(), availablePort(),
+const [dbPort, apiPort, companiesPort, ollamaPort, pagesJaunesPort, browserPort,cloudPort] = await Promise.all([
+  availablePort(), availablePort(), availablePort(), availablePort(), availablePort(), availablePort(),availablePort(),
 ]);
 const base = `http://127.0.0.1:${apiPort}/api/v1`;
 const testEnv = {
@@ -49,6 +49,8 @@ const testEnv = {
   GROWTHOS_SMOKE_TEST: "true",
   PAGESJAUNES_TEST_ORIGIN: `http://127.0.0.1:${pagesJaunesPort}`,
   PAGESJAUNES_BROWSER_URL: `http://127.0.0.1:${browserPort}`,
+  CLOUD_BROWSER_URL:`http://127.0.0.1:${cloudPort}`,
+  CLOUD_BROWSER_TOKEN:randomBytes(32).toString('hex'),
   ENABLE_OUTBOUND_EMAIL: "false",
   ALLOW_PUBLIC_REGISTRATION: "false",
   PLATFORM_ADMIN_EMAILS: "admin@wizard.invalid",
@@ -124,6 +126,13 @@ async function monitoringMaintenance(action,id) {
     const child=spawn('node',['--import','tsx','--input-type=module','-e',code,action,id],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
     let errors='';child.stderr.on('data',chunk=>{errors+=String(chunk);});
     child.on('error',reject);child.on('exit',status=>status===0?resolve():reject(new Error('Maintenance de test : '+errors.slice(-1000))));
+  });
+}
+async function runCloudMaintenance(id){
+  const code=`import {pool} from '@workspace/db';import {runCloudJob} from './src/services/cloud-browser.ts';await runCloudJob(process.argv[1]);await pool.end();`;
+  await new Promise((resolve,reject)=>{
+    const child=spawn('node',['--import','tsx','--input-type=module','-e',code,id],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
+    let errors='';child.stderr.on('data',chunk=>errors+=String(chunk));child.on('error',reject);child.on('exit',status=>status===0?resolve():reject(new Error('Tâche cloud : '+errors.slice(-1600))));
   });
 }
 
@@ -305,6 +314,31 @@ const ollama = createServer((req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ models: [{ name: "llama3.1:8b" }] }));
 });
+const cloudCalls=[];let cloudDelay=0;
+const cloudStub=createServer(async(req,res)=>{
+  res.setHeader('Content-Type','application/json');
+  if(req.headers['x-worker-token']!==testEnv.CLOUD_BROWSER_TOKEN){res.writeHead(401).end(JSON.stringify({error:'Token requis'}));return;}
+  if(req.method==='GET'&&req.url==='/healthz'){res.end(JSON.stringify({ok:true}));return;}
+  let raw='';for await(const chunk of req)raw+=chunk;
+  const p=JSON.parse(raw);
+  cloudCalls.push({action:req.url,tenantId:p.tenantId,profileId:p.profileId,source:p.source});
+  if(req.url==='/open'){res.end(JSON.stringify({ok:true,controlId:'10000000-0000-4000-8000-000000000001',url:'https://www.societe.com/'}));return;}
+  if(req.url==='/view'){res.end(JSON.stringify({ok:true,image:'data:image/jpeg;base64,ZmFrZQ==',url:'https://www.societe.com/',width:1280,height:800}));return;}
+  if(['/action','/erase','/stop'].includes(req.url)){res.end(JSON.stringify({ok:true}));return;}
+  if(req.url==='/collect'){
+    if(cloudDelay)await delay(cloudDelay);
+    if(p.query==='cloud-wait'){res.end(JSON.stringify({status:'awaiting_user',message:'Connexion à vérifier',results:[]}));return;}
+    if(p.query==='cloud-fail'){res.writeHead(503).end(JSON.stringify({error:'Source indisponible'}));return;}
+    const siret=p.query==='cloud-wrong'?'96677700900019':p.target?.siret||'96677700200019';
+    res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:p.target?'ATELIER CLOUD':'Entreprise trouvée',siret:p.source==='societe_com'?siret:null,
+      address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone:'03 20 99 88 77',
+      website:'https://cloud-recette.example.org',apeCode:'43.22A',
+      sourceUrl:p.source==='societe_com'?'https://www.societe.com/societe/atelier-cloud-'+siret.slice(0,9)+'.html':'https://www.google.com/maps/place/Entreprise/',
+      ...(p.source==='societe_com'?{companyDetails:{fields:{'Forme juridique':'SAS'},managers:['Alice CLOUD'],establishments:[],links:[]}}:{}),
+    }],drafts:[]}));return;
+  }
+  res.writeHead(404).end(JSON.stringify({error:'Route inconnue'}));
+});
 
 try {
   console.log("\nGrowthOS — tests d'installation isolés");
@@ -313,6 +347,7 @@ try {
     new Promise(resolve => ollama.listen(ollamaPort, "127.0.0.1", resolve)),
     new Promise(resolve => pagesJaunes.listen(pagesJaunesPort, "127.0.0.1", resolve)),
     new Promise(resolve => browserStub.listen(browserPort, "127.0.0.1", resolve)),
+    new Promise(resolve => cloudStub.listen(cloudPort,'127.0.0.1',resolve)),
   ]);
   if (!realPostgresUrl) {
     startProcess("npx", ["--yes", "@electric-sql/pglite-socket", `--db=${ephemeralDbDir}`, `--port=${dbPort}`, "--host=127.0.0.1"]);
@@ -1470,6 +1505,94 @@ try {
       'Course connecteur : identifiants déjà traités renvoyés, capture en conflit conservée');
   }
 
+  {
+    const state=await request('GET','/browser/status',undefined,token);
+    check(state.body.configured && state.body.ready && state.body.automatic.includes('societe_com') && !state.body.automatic.includes('linkedin'),
+      'Cloud : état réel du worker et capacités automatiques limitées aux collecteurs disponibles');
+    check((await request('GET','/browser/profiles',undefined)).status===401,'Cloud : profils inaccessibles sans authentification GrowthOS');
+    const made=await request('POST','/browser/profiles',{source:'societe_com',label:'Societe.com recette',mode:'public'},token);
+    const profile=made.body;
+    check(made.status===201 && profile.id && profile.mode==='public','Cloud : création du profil de source publique');
+    check((await request('POST','/browser/profiles',{source:'unknown',label:'Source inconnue'},token)).status===400,'Cloud : source arbitraire refusée');
+    const listed=await request('GET','/browser/profiles',undefined,token);
+    check(listed.body.some(p=>p.id===profile.id) && !JSON.stringify(listed.body).includes(testEnv.CLOUD_BROWSER_TOKEN),'Cloud : profils listés sans secret du worker');
+    check((await request('POST',`/browser/profiles/${profile.id}/open`,{query:'ATELIER',url:'http://127.0.0.1'},token)).status===400,
+      'Cloud : URL arbitraire ou interne refusée par le contrat API');
+    const opened=await request('POST',`/browser/profiles/${profile.id}/open`,{query:'ATELIER',area:'Roubaix'},token);
+    check(opened.status===200 && opened.body.controlId,'Cloud : ouverture de la source avec contrôle de la vue');
+    const screenshot=await request('POST',`/browser/profiles/${profile.id}/view`,{},token);
+    check(screenshot.status===200 && screenshot.body.image.startsWith('data:image/jpeg;base64,'),'Cloud : vue transmise uniquement via la route authentifiée');
+    const beforeForeign=cloudCalls.length;
+    check((await request('POST',`/browser/profiles/${profile.id}/view`,{},foreignToken)).status===404 && cloudCalls.length===beforeForeign,
+      'Cloud : autre agence refusée avant tout appel au worker ou à la session');
+    const sameTenantPayload=JSON.parse(Buffer.from(token.split('.')[1],'base64url'));sameTenantPayload.userId=randomUUID();
+    const unsigned=token.split('.')[0]+'.'+Buffer.from(JSON.stringify(sameTenantPayload)).toString('base64url');
+    const colleague=unsigned+'.'+createHmac('sha256',testEnv.JWT_SECRET).update(unsigned).digest('base64url');
+    check((await request('POST',`/browser/profiles/${profile.id}/view`,{},colleague)).status===404,'Cloud : profil personnel non accessible à un autre utilisateur de la même agence');
+    const target=await request('POST','/prospects',{company:'Ancien nom cloud',siret:'96677700200019',city:'Chauffagiste',address:'Adresse erronée',lat:50.7,lng:3.1,phone:'03 20 11 22 33'},token);
+    const created=await request('POST','/browser/jobs',{profileId:profile.id,prospectId:target.body.id,query:'96677700200019',area:'Roubaix'},token);
+    check(created.status===201 && created.body.status==='queued' && created.body.mode==='enrich','Cloud : tâche ciblée persistée avant exécution');
+    check((await request('POST',`/browser/profiles/${profile.id}/erase`,{},token)).status===409,'Cloud : déconnexion empêchée tant qu’un lot utilise le profil');
+    await runCloudMaintenance(created.body.id);
+    const done=await request('GET','/browser/jobs/'+created.body.id,undefined,token);
+    const updated=await request('GET','/prospects/'+target.body.id,undefined,token);
+    check(done.body.status==='completed' && done.body.result.applied.filled.includes('city'),'Cloud : lecture et fusion terminent la tâche automatiquement sans extension');
+    check(updated.body.company==='ATELIER CLOUD' && updated.body.city==='Roubaix' && updated.body.postalCode==='59100' && updated.body.address==='8 rue du Test 59100 Roubaix' && updated.body.lat===null,
+      'Cloud : SIRET exact corrige automatiquement identité et adresse avec invalidation de l’ancienne carte');
+    check(updated.body.phone==='03 20 11 22 33' && updated.body.sourceDetails.crossSource.conflicts.some(c=>c.field==='phone'),
+      'Cloud : téléphone divergent conservé comme proposition sans écrasement silencieux');
+    const activity=await request('GET','/activities?prospectId='+target.body.id,undefined,token);
+    check(activity.body.some(a=>a.type==='data_update' && a.description.includes('Chauffagiste → Roubaix') && a.description.includes('Enrichissement automatique')),
+      'Cloud : mise à jour automatique relue dans les activités avec valeurs avant/après');
+    await runCloudMaintenance(created.body.id);
+    check((await request('GET','/activities?prospectId='+target.body.id,undefined,token)).body.length===activity.body.length &&
+      (await request('POST','/browser/jobs/'+created.body.id+'/retry',{},token)).status===409,
+      'Cloud : exécuter deux fois la même tâche terminée ne rejoue ni fusion ni activité');
+    check((await request('GET','/browser/jobs/'+created.body.id,undefined,foreignToken)).status===404,'Cloud : résultat de tâche isolé par agence');
+    const wrong=await request('POST','/browser/jobs',{profileId:profile.id,prospectId:target.body.id,query:'cloud-wrong'},token);
+    await runCloudMaintenance(wrong.body.id);
+    check((await request('GET','/browser/jobs/'+wrong.body.id,undefined,token)).body.status==='needs_review' &&
+      (await request('GET','/prospects/'+target.body.id,undefined,token)).body.siret==='96677700200019',
+      'Cloud : autre SIRET en revue sans modification du prospect');
+    const waiting=await request('POST','/browser/jobs',{profileId:profile.id,prospectId:target.body.id,query:'cloud-wait'},token);
+    await runCloudMaintenance(waiting.body.id);
+    check((await request('GET','/browser/jobs/'+waiting.body.id,undefined,token)).body.status==='awaiting_user','Cloud : source demandant une intervention suspend le lot');
+    check((await request('POST','/browser/jobs/'+waiting.body.id+'/retry',{resume:true},token)).body.status==='queued','Cloud : reprise explicite depuis la page intégrée');
+    await request('POST','/browser/jobs/'+waiting.body.id+'/cancel',{},token);
+    const doomed=await request('POST','/prospects',{company:'Cible supprimée cloud',siret:'96677700300019'},token);
+    const doomedJob=await request('POST','/browser/jobs',{profileId:profile.id,prospectId:doomed.body.id,query:'96677700300019'},token);
+    await request('DELETE','/prospects/'+doomed.body.id,undefined,token);await runCloudMaintenance(doomedJob.body.id);
+    const gone=await request('GET','/browser/jobs/'+doomedJob.body.id,undefined,token);
+    check(gone.body.status==='failed' && gone.body.mode==='enrich' && !gone.body.result.captures,
+      'Cloud : cible supprimée ne transforme pas un enrichissement en découverte importable');
+    const cancelTarget=await request('POST','/prospects',{company:'Cible à conserver',siret:'96677700400019',city:'Ville initiale'},token);
+    const cancelJob=await request('POST','/browser/jobs',{profileId:profile.id,prospectId:cancelTarget.body.id,query:'96677700400019'},token);
+    cloudDelay=1000;const collectCount=cloudCalls.filter(c=>c.action==='/collect').length;
+    const running=runCloudMaintenance(cancelJob.body.id);
+    for(let i=0;i<100 && cloudCalls.filter(c=>c.action==='/collect').length===collectCount;i++)await delay(50);
+    const queuedCancel=await request('POST','/browser/jobs',{profileId:profile.id,prospectId:cancelTarget.body.id,query:'96677700400019'},token);
+    const stopsBefore=cloudCalls.filter(c=>c.action==='/stop').length;
+    await request('POST','/browser/jobs/'+queuedCancel.body.id+'/cancel',{},token);
+    check(cloudCalls.filter(c=>c.action==='/stop').length===stopsBefore,'Cloud : annuler un lot en file ne ferme pas le navigateur du lot actif');
+    const cancelled=await request('POST','/browser/jobs/'+cancelJob.body.id+'/cancel',{},token);await running;cloudDelay=0;
+    check(cancelled.status===200 && (await request('GET','/browser/jobs/'+cancelJob.body.id,undefined,token)).body.status==='cancelled' &&
+      (await request('GET','/prospects/'+cancelTarget.body.id,undefined,token)).body.company==='Cible à conserver',
+      'Cloud : annulation pendant lecture empêche la fusion ultérieure dans le CRM');
+    const social=await request('POST','/browser/profiles',{source:'linkedin',label:'Compte LinkedIn',mode:'account'},token);
+    check((await request('POST','/browser/jobs',{profileId:social.body.id,query:'entreprise'},token)).status===422,
+      'Cloud : une session réseau ne prétend pas disposer d’un collecteur non implémenté');
+    check((await request('POST',`/browser/profiles/${profile.id}/action`,{controlId:opened.body.controlId,event:{type:'text',text:'RECETTE_SECRETE_NON_STOCKEE'}},token)).status===200,
+      'Cloud : saisie explicite dans le navigateur par une route authentifiée');
+    check(!JSON.stringify((await request('GET','/browser/jobs',undefined,token)).body).includes('RECETTE_SECRETE_NON_STOCKEE'),
+      'Cloud : la saisie de connexion ne persiste pas dans la file de tâches');
+    const mapProfile=await request('POST','/browser/profiles',{source:'google_maps',label:'Maps public'},token);
+    const discovery=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'plombier',area:'Roubaix'},token);
+    await runCloudMaintenance(discovery.body.id);
+    const captured=await request('GET','/browser/jobs/'+discovery.body.id,undefined,token);
+    check(captured.body.status==='completed' && captured.body.mode==='discover' && captured.body.result.captures.length===1,
+      'Cloud : collecte publique livre une sélection persistante avant création de prospects');
+  }
+
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");
 } catch (error) {
   process.exitCode = 1;
@@ -1484,6 +1607,7 @@ try {
     new Promise(resolve => ollama.close(resolve)),
     new Promise(resolve => pagesJaunes.close(resolve)),
     new Promise(resolve => browserStub.close(resolve)),
+    new Promise(resolve => cloudStub.close(resolve)),
   ]);
   await rm(ephemeralDbDir, { recursive: true, force: true });
 }

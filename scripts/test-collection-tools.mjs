@@ -15,6 +15,7 @@ try{
     import {Router} from 'wouter';
     import {renderToStaticMarkup} from 'react-dom/server';
     import CollectionToolsPage from './src/pages/CollectionToolsPage';
+    import CloudBrowserPage from './src/pages/CloudBrowserPage';
     import {ConnectorEnrichmentReturn} from './src/components/ConnectorEnrichmentReturn';
     import modules from '../../extensions/growthos-pagesjaunes/modules.json';
     const render=(search='')=>renderToStaticMarkup(createElement(Router,{ssrPath:'/outils',ssrSearch:search},createElement(CollectionToolsPage)));
@@ -22,7 +23,13 @@ try{
     assert.equal((discovery.match(/<article/g)||[]).length,modules.filter(m=>m.modes.includes('discover')).length);
     for(const source of modules.filter(m=>m.modes.includes('discover'))) assert.ok(discovery.includes(source.name));
     assert.ok(discovery.includes('/sourcing?source=entreprises') && discovery.includes('/sourcing?source=pagesjaunes'));
-    assert.ok(discovery.includes('Saisie assistée') && discovery.includes('Lecture de la fiche visible'));
+    assert.ok(discovery.includes('Collecteur cloud') && discovery.includes('collecteur en préparation'));
+    assert.ok(discovery.includes('/navigateur?source=google_maps') && discovery.includes('Secours externe'));
+    assert.ok(discovery.indexOf('Rechercher dans GrowthOS')<discovery.indexOf('Secours externe'));
+    const browserHtml=renderToStaticMarkup(createElement(Router,{ssrPath:'/navigateur',ssrSearch:'source=societe_com'},createElement(CloudBrowserPage)));
+    assert.ok(browserHtml.includes('Navigateur cloud') && browserHtml.includes('Sans compte') && browserHtml.includes('Mon compte'));
+    assert.ok(browserHtml.includes('Mes profils de navigation') && browserHtml.includes('Tâches récentes'));
+    assert.ok(!browserHtml.includes('Compte connecté'),'Ne pas présenter une session non vérifiée comme connectée');
     const enrich=render('mode=enrich');
     assert.equal((enrich.match(/<article/g)||[]).length,modules.filter(m=>m.modes.includes('enrich')).length);
     assert.ok(enrich.includes('Societe.com') && enrich.includes('ouvrez un prospect'));
@@ -32,9 +39,9 @@ try{
     const returnHtml=renderToStaticMarkup(createElement(Router,{ssrPath:'/prospects/test',ssrSearch:'enrichmentTask=10000000-0000-4000-8000-000000000001'},createElement(ConnectorEnrichmentReturn,{prospectId:'test',onSaved:()=>{}})));
     assert.ok(returnHtml.includes('Enregistrement des données confirmées'));
     assert.equal(renderToStaticMarkup(createElement(Router,{ssrPath:'/prospects/test'},createElement(ConnectorEnrichmentReturn,{prospectId:'test',onSaved:()=>{}}))),'');
-    console.log('✓ Catalogue : fonctions distinctes, sources assistées, cibles obligatoires et retour direct sur la fiche');
+    console.log('✓ Catalogue et navigateur cloud : parcours intégré prioritaire, secours Chrome, capacités réelles, profils et tâches');
   `},outfile:join(directory,'test.mjs'),platform:'node',format:'esm',bundle:true,jsx:'automatic',
-    tsconfig:join(root,'artifacts/growthos/tsconfig.json'),plugins:[{name:'no-browser-transport',setup(build){
+    tsconfig:join(root,'artifacts/growthos/tsconfig.json'),loader:{'.css':'empty'},plugins:[{name:'no-browser-transport',setup(build){
       build.onLoad({filter:/\/lib\/api-client\.ts$/},()=>({contents:'export default {get(){throw Error("Unexpected SSR request")}};',loader:'ts'}));
       build.onLoad({filter:/\/lib\/pagesjaunes-device\.ts$/},()=>({contents:'export function beginConnectorTask(){};export function getConnectorTask(){};export function acknowledgeConnectorTask(){};',loader:'ts'}));
     }}],banner:{js:"import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);"},logLevel:'warning'});

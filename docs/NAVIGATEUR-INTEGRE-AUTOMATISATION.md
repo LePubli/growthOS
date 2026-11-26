@@ -2,7 +2,25 @@
 
 Demande précisée par le propriétaire le 26 novembre 2026, après validation du lot correctif : l'automatisation dans GrowthOS est le parcours principal. L'extension Chrome sert de secours externe. La saisie manuelle de coordonnées et les allers-retours vers l'extension ne constituent pas le parcours cible.
 
-**État : cadrage, aucune nouvelle fonction de comptes connectés ou de navigateur interactif livrée par ce document.** Le propriétaire demande les trois accès : Web, PC et application Android. Base proposée : une API, un CRM et un moteur d'automatisation centraux sur son VPS ; les trois clients pilotent ce même moteur. L'extension externe reste un secours.
+**Priorité confirmée : version Web cloud uniquement pour ce lot. Windows et Android sont différés à la demande du propriétaire.** Le premier moteur est implémenté dans la PR 43 : navigateur Chromium sur le VPS, profils persistants privés, vue interactive authentifiée, file PostgreSQL et collecte intégrée. Publication CI et recette sur les sites réels restent nécessaires avant validation en usage. L'extension externe reste un secours.
+
+## Premier lot Web cloud
+
+Entrée **Navigateur cloud** (`/navigateur`), également accessible depuis **Collecte et enrichissement**. Les recherches publiques créent leur profil au lancement. Les profils personnels peuvent ouvrir une connexion fournisseur dans la vue GrowthOS ; leur authentification reste affichée « non vérifiée » tant qu'elle n'a pas été constatée sur le site. Le logiciel ne promet pas qu'un fournisseur acceptera une connexion depuis le VPS.
+
+| Source | Capacité de ce lot | Recette restante |
+|---|---|---|
+| Google Maps | Recherche, défilement du lot et lecture de fiches, maximum 25 par tâche | Vrai lot, consentement, résultats incomplets et reprise |
+| Google Search et Bing | Recherche et lecture des cartes locales prises en charge par les lecteurs existants | Résultats actuels, absence de carte et homonymes |
+| Societe.com | Recherche ciblée du prospect, ouverture de la fiche unique puis enrichissement tracé | Même SIRET réel, corrections d'adresse et données absentes |
+| PagesJaunes | Navigation dans le nouveau moteur ; collecteur historique conservé | Adaptateur automatique du moteur commun à développer |
+| LinkedIn, Facebook, Instagram et TikTok | Navigation publique ou connexion dans un profil dédié | Collecteurs automatiques spécifiques à développer et tester |
+
+Un établissement Societe.com au **SIRET strictement identique** peut mettre à jour automatiquement le nom et les données légales/adresse autorisées, avec activité avant/après. Les coordonnées contradictoires restent en arbitrage. Une identité incertaine met la tâche en revue. Les recherches de nouveaux prospects produisent une sélection avant import. Annulation et écriture CRM sont coordonnées transactionnellement ; une reprise ne rejoue pas une activité déjà enregistrée.
+
+Une seule session active et une seule opération navigateur à la fois pour ce pilote. Fermeture à cinq minutes d'inactivité ; profils conservés dans un volume privé. Les cookies de session sauvegardés pour reprise sont chiffrés ; l'ensemble du profil Chromium ne constitue pas un volume chiffré. Aucune saisie de connexion ni vue navigateur n'est enregistrée dans la file CRM.
+
+Installation et recette : [NAVIGATEUR-CLOUD-INSTALLATION.md](NAVIGATEUR-CLOUD-INSTALLATION.md). Tests : suite API sur PostgreSQL 16 avec fournisseur simulé, protocole réseau et rendu React ; workflow dédié exécutant Chromium réel sur des pages de recette locales. Ces tests ne remplacent pas la recette des fournisseurs et comptes réels.
 
 ## Parcours attendu
 
@@ -25,7 +43,7 @@ Demande précisée par le propriétaire le 26 novembre 2026, après validation d
 
 Une source n'est déclarée « automatique » que pour une action testée. Connexion, recherche, extraction, enrichissement, invitations et messagerie sont des capacités distinctes. Les campagnes d'envoi ne sont pas incluses dans le premier lot navigateur.
 
-## État vérifié du dépôt
+## Inventaire initial avant le lot cloud (conservé pour suivi)
 
 | Élément | Disponible | À construire pour ce parcours |
 |---|---|---|
@@ -90,4 +108,4 @@ Ne pas utiliser une simple iframe des sites comme navigateur universel. Les site
 - [MDN — X-Frame-Options](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options) : restrictions d'intégration en iframe.
 - [Google — autorisation OAuth et navigateurs](https://developers.google.com/identity/protocols/oauth2/policies#use_secure_browsers) : le mode de connexion doit être choisi séparément de la navigation et de la collecte.
 
-Ce document n'autorise aucun déploiement DockPanel et n'annonce aucune fonction comme terminée. Les livraisons devront suivre le protocole commun de notification et préserver le travail de l'agent design.
+Aucun déploiement DockPanel n'est effectué par l'agent. La livraison suit le protocole commun de notification et préserve le thème ainsi que les composants de l'agent design. Les cases de recette fournisseur restent ouvertes jusqu'au test réel.

@@ -146,6 +146,39 @@ CREATE TABLE IF NOT EXISTS webhooks (
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS cloud_browser_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  source TEXT NOT NULL,
+  label TEXT NOT NULL,
+  mode TEXT NOT NULL DEFAULT 'public' CHECK (mode IN ('public','account')),
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS cloud_browser_profiles_tenant ON cloud_browser_profiles(tenant_id);
+CREATE TABLE IF NOT EXISTS cloud_browser_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  profile_id UUID NOT NULL REFERENCES cloud_browser_profiles(id),
+  prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  mode TEXT NOT NULL DEFAULT 'discover' CHECK (mode IN ('discover','enrich')),
+  query TEXT NOT NULL,
+  area TEXT NOT NULL DEFAULT '',
+  limit_count INTEGER NOT NULL DEFAULT 10 CHECK (limit_count BETWEEN 1 AND 25),
+  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','awaiting_user','needs_review','completed','failed','cancelled')),
+  resume BOOLEAN NOT NULL DEFAULT false,
+  result JSONB NOT NULL DEFAULT '{}',
+  error TEXT,
+  lease UUID,
+  lease_until TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS cloud_browser_jobs_tenant ON cloud_browser_jobs(tenant_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS cloud_browser_jobs_queue ON cloud_browser_jobs(created_at) WHERE status='queued';
+
 CREATE TABLE IF NOT EXISTS prospect_monitoring (
   prospect_id UUID PRIMARY KEY REFERENCES prospects(id) ON DELETE CASCADE,
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

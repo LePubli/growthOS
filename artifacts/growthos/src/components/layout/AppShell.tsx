@@ -43,6 +43,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Prospection',
     items: [
       { href: '/outils', label: 'Collecte et enrichissement', icon: <Search size={16} /> },
+      { href: '/navigateur', label: 'Navigateur cloud', icon: <Globe size={16} /> },
       { href: '/seo-check', label: 'Diagnostic site & SEO', icon: <Globe size={16} /> },
       { href: '/prospects', label: 'Prospects', icon: <Building2 size={16} /> },
       { href: '/accounts', label: 'Entreprises', icon: <Users size={16} /> },
@@ -131,10 +132,18 @@ function SidebarContent({
     <>
       <div className="atlas-brand" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 12px', borderBottom: '1px solid rgba(255,255,255,.06)', flexShrink: 0 }}>
         <div className="atlas-brand-mark" style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0, background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 14 }}>G</div>
+        <svg className="atlas-brand-symbol" viewBox="0 0 36 36" width="34" height="34" fill="none" aria-hidden="true">
+          <path d="M18 1 34 10 18 19 2 10 18 1Z" fill="#1680FF"/>
+          <path d="M2 10v9l16 9v-9L2 10Z" fill="#0057DC"/>
+          <path d="m34 10-16 9v9l16-9v-9Z" fill="#6DB9FF"/>
+          <path d="m2 20 16 9 16-9v8l-16 8L2 28v-8Z" fill="#1266E8"/>
+          <path d="m18 19 8-4-8-5-8 5 8 4Z" fill="#E4F3FF"/>
+        </svg>
         {!collapsed && (
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--sidebar-text)', lineHeight: 1.2 }}>
+            <div className="atlas-brand-name" style={{ fontWeight: 700, fontSize: 14, color: 'var(--sidebar-text)', lineHeight: 1.2 }}>
               {(tenant?.branding as any)?.companyName || 'GrowthOS'}
+              <span className="atlas-brand-version">2.0</span>
             </div>
             <div className="atlas-brand-meta" style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', lineHeight: 1 }}>
               {user?.email?.split('@')[1] || 'workspace'}
@@ -398,12 +407,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Search — hidden on small mobile */}
           {!isMobile && (
-            <button
+            <button className="atlas-global-search"
               onClick={() => setCmdOpen(true)}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', background: 'var(--body-bg)', border: '1px solid var(--card-border)', borderRadius: 8, cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13, flexShrink: 0 }}
             >
-              <Search size={13} />
-              <span>Rechercher...</span>
+              <Search size={16} />
+              <span>Rechercher un prospect, une entreprise, un contact, un deal...</span>
               <kbd style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 4, padding: '1px 5px', fontSize: 11, color: 'var(--text-muted)' }}>⌘K</kbd>
             </button>
           )}

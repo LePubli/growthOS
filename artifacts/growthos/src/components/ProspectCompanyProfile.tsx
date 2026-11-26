@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import apiClient from "@/lib/api-client";
 import type { CompanyDetails } from "@/lib/pagesjaunes-device";
+import { SourceLogo } from "@/components/atlas/ProspectLogos";
 
 type Snapshot = {
   sourceUrl: string;
@@ -32,6 +33,9 @@ type Monitoring = {
 };
 type Props = {
   onUpdated?:()=>void|Promise<void>;
+  onManagerNames?:(names:string[])=>void;
+  compactManagers?:boolean;
+  onOpenContacts?:()=>void;
   prospect: {
     id: string;
     siren?: string | null;
@@ -50,7 +54,7 @@ export function CompanyDetailsView({ details }: { details: CompanyDetails }) {
   return (
     <div className="space-y-3 text-sm">
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {Object.entries(details.fields).map(([label, value]) => (
+        {Object.entries(details.fields).filter(([label])=>!/nomenclature/i.test(label)).map(([label, value]) => (
           <div key={label}>
             <dt className="text-xs text-gray-500">{label}</dt>
             <dd>{value}</dd>
@@ -113,12 +117,16 @@ export function CompanyDetailsView({ details }: { details: CompanyDetails }) {
     </div>
   );
 }
-export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
+export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compactManagers=false,onOpenContacts }: Props) {
   const [data, setData] = useState<Monitoring | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const identifiable = Boolean(prospect.siren || prospect.siret);
   const lastApplied=useRef(''),updated=useRef(onUpdated);updated.current=onUpdated;
+  const managersUpdated=useRef(onManagerNames);managersUpdated.current=onManagerNames;
+  useEffect(()=>{
+    if(Array.isArray(data?.snapshot?.managers))managersUpdated.current?.(data.snapshot.managers);
+  },[data?.snapshot?.managers]);
   useEffect(()=>{
     const applied=data?.lastSync?.appliedAt;
     if(applied && applied!==lastApplied.current){lastApplied.current=applied;void updated.current?.();}
@@ -207,7 +215,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
   ];
   return (
     <section
-      className="rounded-2xl border p-5 space-y-4"
+      className="atlas-company-watch rounded-2xl border p-5 space-y-4"
       style={{
         background: "var(--card-bg)",
         borderColor: "var(--card-border)",
@@ -268,14 +276,14 @@ export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
             rel="noreferrer"
             className="underline text-teal-700"
           >
-            Source · Annuaire des Entreprises
+            <SourceLogo source="annuaire" size="sm"/> Source · Annuaire des Entreprises
           </a>
           {snapshot.sourceUpdatedAt && (
             <> · mise à jour de la source {date(snapshot.sourceUpdatedAt)}</>
           )}
         </p>
       )}
-      <div className="border-t pt-3 space-y-2 text-sm">
+      {!compactManagers?<div className="border-t pt-3 space-y-2 text-sm">
         <h3 className="font-semibold">Dirigeants et contacts professionnels</h3>
         {contacts.map((contact, index) => (
           <div key={index} className="rounded-lg border p-3 space-y-1">
@@ -348,7 +356,11 @@ export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
             )}
           </p>
         )}
-      </div>
+      </div>:<div className="atlas-360-monitoring-manager-link">
+        <div><strong>Répertoire des dirigeants et contacts</strong>
+          <span>Les coordonnées et les rôles sont centralisés dans le répertoire Contacts.</span></div>
+        <button type="button" onClick={onOpenContacts}>Voir les contacts →</button>
+      </div>}
       <div className="flex flex-wrap items-center gap-3 text-sm border-t pt-3">
         <label className="flex gap-2">
           <input
@@ -387,7 +399,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
             Identité légale et données économiques officielles
           </summary>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 text-sm">
-            {Object.entries(snapshot.fields).map(([label, value]) => (
+            {Object.entries(snapshot.fields).filter(([label])=>!/nomenclature/i.test(label)).map(([label, value]) => (
               <div key={label}>
                 <dt className="text-xs text-gray-500">{label}</dt>
                 <dd>{value || "Non communiqué par la source"}</dd>
@@ -428,7 +440,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
       {profile?.companyDetails && (
         <details>
           <summary className="cursor-pointer font-medium text-sm">
-            Informations détaillées capturées sur Societe.com
+            <SourceLogo source="societe_com" size="sm"/> Informations détaillées capturées sur Societe.com
           </summary>
           <p className="text-xs my-2">
             Capture du{" "}
