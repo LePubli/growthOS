@@ -156,3 +156,11 @@ Dernière régression couverte : une panne du worker pendant une saisie de conne
 - Le dossier « Informations détaillées, édition et historique » reprend des fonds compatibles dans ses huit modules, y compris les écrans de surveillance, de sources et de collaboration, ainsi qu'une colonne droite adoucie. Les listes/formulaires gardent leurs contrastes et interactions existantes.
 - Test `scripts/test-prospect-harmony.mjs` inclus dans la CI : contraste du texte (rapport minimal 8:1 sur les fonds), distinction visuelle des sept teintes, couverture des huit modules et absence d'anciens liserés épais.
 - Ne pas fusionner une version antérieure de `atlas-prospect-colors.css` par-dessus ce lot. En cas de développement simultané, rebaser de façon ciblée. Conserver cette note jusqu'au lancement final en production, sur autorisation du propriétaire.
+
+## Lot fonctionnel : imports en lot et nettoyage des recherches (26/11/2026)
+
+- Demande du propriétaire : tout cocher/décocher pour importer un lot et effacer l'historique du navigateur cloud. Branche isolée `feat/cloud-bulk-import-history`, base PR50. L'autre agent conserve le design.
+- Nouveau composant fonctionnel `components/cloud-browser/CloudJobHistory.tsx` pour les résultats/sélections et commandes d'historique. Dans `CloudBrowserPage.tsx`, conserver son branchement et les callbacks lors du redesign ; pas de modification de CSS global ou ATLAS dans ce lot.
+- Contrat API ajouté : `POST /api/v1/browser/jobs/history/delete`, corps `{scope:"all"}` ou `{scope:"selected",ids:[UUID,...]}`. Réponse `{deleted:number,deletedIds:string[]}`. Seulement recherches completed/failed/cancelled du propriétaire et de son agence ; un lot sélectionné avec une tâche active ou un ID étranger est refusé atomiquement.
+- Effacer une recherche supprime ses résultats non importés et sa ligne de tâche, **jamais les prospects importés, les activités CRM ou les profils/sessions**. Confirmation explicite dans l'interface. Les tâches en attente d'intervention/revue doivent d'abord être annulées pour être effacées.
+- À préserver côté UX : sélection par lot, compteurs, import groupé, choix individuel/multiple/tout de l'historique, confirmation et relecture après suppression. Aucune action DockPanel par l'agent. Notes temporaires conservées jusqu'à autorisation explicite de production.
