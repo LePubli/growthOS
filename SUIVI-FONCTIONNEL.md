@@ -140,3 +140,11 @@ Le [document de référence Linked Helper](docs/REFERENCE-LINKED-HELPER.md) cons
 - La protection contre une réponse plus ancienne compare uniquement les snapshots du même SIREN et du même SIRET demandé. Corriger l’identité d’un prospect établit un nouveau contrôle, même si l’entreprise ou l’établissement corrigé a une date de source plus ancienne.
 - Deux régressions testées : autre entreprise après changement du SIREN/SIRET ; autre établissement dans la même entreprise. **270 contrôles d’intégration réussis** sur PostgreSQL 16 jetable, fournisseurs simulés. L’extension reste en 0.11.1 pour ce complément API.
 - Coordination renforcée à la demande du propriétaire : branches et PR séparées, contrôle des modifications locales et distantes avant commit/fusion, préservation des fichiers de l’autre agent. Voir `COORDINATION-AGENTS.md`, à supprimer au lancement final autorisé en production.
+
+
+## Orientation précisée — navigateur intégré et clients Web/PC/Android
+
+- Le propriétaire veut automatiser recherche, collecte et enrichissement dans GrowthOS. Connexion à ses comptes lorsque possible, navigation publique sans compte lorsque la source l'autorise. L'extension Chrome devient un secours externe ; la recopie manuelle ne valide pas cet objectif.
+- Plateformes demandées : Web, application PC et application Android. Socle proposé : même API/CRM et moteur de tâches central sur VPS, avec progression et résultats partagés. L'exécution ne doit pas dépendre d'un PC ou téléphone laissé ouvert.
+- Inventaire : navigateur serveur PagesJaunes sans session persistante ; collecteurs Chrome et fusion CRM réutilisables ; base mobile Expo existante mais non recettée pour ces parcours ; aucun client PC identifié. Les comptes persistants, le navigateur interactif et les collecteurs intégrés des réseaux restent à construire.
+- [Cadrage et recette à suivre](docs/NAVIGATEUR-INTEGRE-AUTOMATISATION.md). Il distingue ce qui existe de ce qui reste à réaliser, les clients, la file, les états de session et le secours. Aucun nouveau fonctionnement n'est livré par cette note ; aucun redéploiement requis pour un changement documentaire.

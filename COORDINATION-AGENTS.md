@@ -61,3 +61,14 @@ Demande explicite du propriétaire du 26/11/2026 : **les deux agents doivent le 
 - Le propriétaire réalise le déploiement dans DockPanel : **Edit / Save avec pull_policy: always**, pas seulement « Restart » (qui peut garder une ancienne image). Ne toucher ni aux volumes PostgreSQL ni aux secrets.
 - Après redéploiement, le propriétaire teste et fait son retour ; l'agent concerné corrige puis réannonce un nouveau lot prêt.
 - Conserver cette règle et le reste des notes jusqu'à l'autorisation explicite du lancement final de production.
+
+
+## Changement de parcours demandé — automatisation intégrée et trois plateformes
+
+Le 26/11/2026, le propriétaire précise que l'extension et la saisie assistée ne sont pas le parcours principal attendu. GrowthOS doit lancer lui-même recherche, collecte et enrichissement, dans un navigateur intégré, avec ses comptes connectés quand la source le permet et en navigation publique sinon. L'extension est un secours externe en cas de difficulté.
+
+Il demande les trois accès : **Web + application PC + application Android**. Proposition de socle : un moteur d'automatisation et une file PostgreSQL sur son VPS, partagés par ces clients ; profils de comptes isolés, progression, reprise et traçabilité communes. Le pilote du moteur Web précède l'installateur Windows et l'APK Android. La base Expo existante est à auditer/raccorder ; aucune nouvelle application n'est annoncée comme livrée.
+
+Cadrage et état du code : [docs/NAVIGATEUR-INTEGRE-AUTOMATISATION.md](docs/NAVIGATEUR-INTEGRE-AUTOMATISATION.md). Branche du cadrage : `plan/integrated-browser-automation`. L'agent fonctionnement traite le moteur, les sessions, les adaptateurs et l'API ; l'agent design conserve son périmètre visuel. Les écrans « Comptes », « Navigateur » et « Tâches de collecte » doivent refléter des capacités réelles, avec une interface adaptée au tactile. Aucun changement de thème ou de composant de design dans ce cadrage.
+
+Cette note complète les deux relais existants et le protocole de notification. Elle ne constitue ni une fonction terminée, ni un feu vert pour redéployer, ni une autorisation de lancement en production.
