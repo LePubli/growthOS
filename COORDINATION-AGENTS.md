@@ -50,6 +50,19 @@ Fichiers UX : `artifacts/growthos/src/atlas-orbit.css`, `components/atlas/Prospe
 
 **Ne pas effacer** cette note ni le relais UX avant le lancement final expressément autorisé. Les validations de déploiement de préproduction restent la responsabilité du propriétaire.
 
+**Correctif UX de précision du 26/11/2026** — branche design
+`fix/atlas-orbit-visual-polish-20261126` : la notification de retour
+d'enrichissement affiche désormais explicitement les états « déjà enregistré »,
+« enregistré », « en cours » ou « erreur » avec un traitement coloré, une
+icône, des actions contextuelles et une fermeture non destructive. Elle est
+placée **après l'en-tête identité** ; l'historique des captures est déplacé dans
+le dossier détaillé existant, sans perte de données. La grille Prospect 360°
+conserve le Copilote IA en colonne étroite **à droite** sur les résolutions
+desktop courantes (notamment ~1366 px), au lieu de l'étendre en travers de
+toute la ligne. Sont concernés uniquement
+`components/ConnectorEnrichmentReturn.tsx`, `pages/ProspectDetailPage.tsx`
+et `atlas-prospect-360.css`. Aucun changement serveur ni contrat API.
+
 **Lot fidélité visuelle ATLAS × ORBIT (26/11/2026)** — branche isolée
 `feat/atlas-orbit-pixel-360-20261126`, cible de fusion
 `fix/growthos-functional-redesign`. La page Prospect 360° affiche désormais en

@@ -607,7 +607,6 @@ export default function ProspectDetailPage() {
 
   return (
     <div className="atlas-prospect-360 min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
-      <ConnectorEnrichmentReturn prospectId={id!} onSaved={async() => {await fetchProspect();await fetchActivities();}} onBusyChange={setReturnProcessing}/>
       {!!prospect.identityConflicts?.length && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 text-amber-950 p-4 mb-4">
         <p className="font-semibold">SIRET déjà utilisé sur une autre fiche prospect</p>
         <p className="text-sm">Vérifiez ces fiches avant de poursuivre l’enrichissement.</p>
@@ -699,22 +698,6 @@ export default function ProspectDetailPage() {
             </div>)}
           </div>
         </div>}
-      {sourceHistory.length>0&&<details className="mb-5 rounded-xl border border-gray-200 bg-white p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-gray-800">
-          Historique des enrichissements · {sourceHistory.length} capture(s)
-        </summary>
-        <div className="mt-3 space-y-2">
-          {[...sourceHistory].reverse().map((entry,index)=><div key={`${entry.captureId}-${index}`}
-            className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-700">
-            <strong>{entry.source.replaceAll('_',' ')}</strong>
-            <span className="mx-2 text-gray-400">·</span>
-            <time>{new Date(entry.capturedAt).toLocaleString('fr-FR')}</time>
-            {Array.isArray(entry.fieldsFilled)&&entry.fieldsFilled.length>0&&<p className="mt-1">Données ajoutées : {entry.fieldsFilled.map(f=>conflictLabels[f]||f).join(', ')}</p>}
-            {entry.sourceUrl&&<a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer"
-              className="text-teal-700 underline inline-block mt-1">Consulter la fiche source</a>}
-          </div>)}
-        </div>
-      </details>}
       {/* Header */}
       <div className="atlas-360-breadcrumb"><button onClick={()=>navigate('/prospects')}>Prospects</button><span>/</span><strong>{fullName}</strong></div>
       <div className="atlas-360-hero flex flex-wrap items-center gap-3 mb-6">
@@ -765,6 +748,7 @@ export default function ProspectDetailPage() {
         </div>
       </div>
 
+      <ConnectorEnrichmentReturn prospectId={id!} onSaved={async() => {await fetchProspect();await fetchActivities();}} onBusyChange={setReturnProcessing}/>
       {active360View==='overview'&&<ProspectOrbitBanner prospect={prospect} onEdit={openEditor}
         onOpenContacts={()=>openDetailedSection('atlas-prospect-contacts')}
         onCall={()=>prospect.phone?window.location.assign('tel:'+prospect.phone):prospect.email
@@ -797,6 +781,18 @@ export default function ProspectDetailPage() {
           onStatusChange={status=>void updateOpportunityStatus(status)}/>
         <details ref={legacyDetailsRef} className="atlas-360-extended-record">
           <summary><FileText size={18}/> Informations détaillées, édition et historique <ChevronDown size={17}/></summary>
+          {sourceHistory.length>0&&<details className="atlas-360-enrichment-history">
+            <summary>Historique des enrichissements <span>{sourceHistory.length} capture(s)</span></summary>
+            <div className="atlas-360-enrichment-history-list">
+              {[...sourceHistory].reverse().map((entry,index)=><div key={`${entry.captureId}-${index}`}>
+                <strong>{entry.source.replaceAll('_',' ')}</strong>
+                <span>·</span>
+                <time>{new Date(entry.capturedAt).toLocaleString('fr-FR')}</time>
+                {Array.isArray(entry.fieldsFilled)&&entry.fieldsFilled.length>0&&<p>Données ajoutées : {entry.fieldsFilled.map(f=>conflictLabels[f]||f).join(', ')}</p>}
+                {entry.sourceUrl&&<a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer">Consulter la fiche source ↗</a>}
+              </div>)}
+            </div>
+          </details>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left — Info */}
         <div className="lg:col-span-2 space-y-4">
