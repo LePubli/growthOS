@@ -66,8 +66,11 @@ router.post('/jobs/:id/cancel',async(req,res)=>{
   if(previous.status==='running')await browserCall('/stop',{tenantId:req.auth!.tenantId,profileId:profile.id,source:profile.source},5000).catch(()=>undefined);
   res.json(q.rows[0]);
 });
-router.use((error:unknown,_req:any,res:any,next:any)=>{
+router.use((error:unknown,_req:any,res:any,_next:any)=>{
   if(error instanceof z.ZodError){res.status(400).json({error:'Paramètres du navigateur invalides.'});return;}
-  if(error instanceof CloudBrowserError){res.status(error.status).json({error:error.message});return;}next(error);
+  if(error instanceof CloudBrowserError){res.status(error.status).json({error:error.message});return;}
+  // The global error handler logs request bodies. Browser input can contain credentials.
+  logger.error('Cloud browser operation failed');
+  res.status(503).json({error:'Navigateur temporairement indisponible. Réessayez après son rétablissement.'});
 });
 export default router;

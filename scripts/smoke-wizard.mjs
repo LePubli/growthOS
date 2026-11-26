@@ -324,6 +324,7 @@ const cloudStub=createServer(async(req,res)=>{
   cloudCalls.push({action:req.url,tenantId:p.tenantId,profileId:p.profileId,source:p.source});
   if(req.url==='/open'){res.end(JSON.stringify({ok:true,controlId:'10000000-0000-4000-8000-000000000001',url:'https://www.societe.com/'}));return;}
   if(req.url==='/view'){res.end(JSON.stringify({ok:true,image:'data:image/jpeg;base64,ZmFrZQ==',url:'https://www.societe.com/',width:1280,height:800}));return;}
+  if(req.url==='/action'&&p.event?.text==='RECETTE_ERREUR_SECRETE_NON_STOCKEE'){req.socket.destroy();return;}
   if(['/action','/erase','/stop'].includes(req.url)){res.end(JSON.stringify({ok:true}));return;}
   if(req.url==='/collect'){
     if(cloudDelay)await delay(cloudDelay);
@@ -1583,6 +1584,9 @@ try {
       'Cloud : une session réseau ne prétend pas disposer d’un collecteur non implémenté');
     check((await request('POST',`/browser/profiles/${profile.id}/action`,{controlId:opened.body.controlId,event:{type:'text',text:'RECETTE_SECRETE_NON_STOCKEE'}},token)).status===200,
       'Cloud : saisie explicite dans le navigateur par une route authentifiée');
+    const failedInput=await request('POST',`/browser/profiles/${profile.id}/action`,{controlId:opened.body.controlId,event:{type:'text',text:'RECETTE_ERREUR_SECRETE_NON_STOCKEE'}},token);
+    await delay(80);
+    check(failedInput.status===503&&!apiErrorLog.includes('RECETTE_ERREUR_SECRETE_NON_STOCKEE'),'Cloud : panne worker pendant saisie sans contenu confidentiel dans les journaux');
     check(!JSON.stringify((await request('GET','/browser/jobs',undefined,token)).body).includes('RECETTE_SECRETE_NON_STOCKEE'),
       'Cloud : la saisie de connexion ne persiste pas dans la file de tâches');
     const mapProfile=await request('POST','/browser/profiles',{source:'google_maps',label:'Maps public'},token);
