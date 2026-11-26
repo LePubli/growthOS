@@ -18,6 +18,7 @@
     <section id="taskPanel" hidden>
       <h2 id="taskTitle"></h2><p id="taskTarget"></p><p class="hint" id="taskHint"></p>
       <p class="hint">Les données manquantes peuvent rester vides. Seules les valeurs absentes du CRM seront complétées ; les désaccords seront à vérifier.</p>
+      <button type="button" class="primary teal" id="taskRead" hidden>Lire la fiche affichée</button>
       <div id="taskPreview"></div>
       <label><input type="checkbox" id="taskConfirmed"/> Je confirme la bonne entreprise et le bon établissement.</label>
       <button type="button" class="primary teal" id="taskFinish">Confirmer et revenir au prospect</button>
@@ -61,7 +62,6 @@
       <details id="diagnosticPanel" hidden><summary>Pourquoi certaines fiches restent à vérifier ?</summary><div id="diagnostics" class="diagnostics"></div></details>
       <div id="drafts" class="draft-list"><p class="empty">Aucun brouillon</p></div>
       </div>
-      <button type="button" class="primary teal" id="taskRead" hidden>Lire la fiche affichée</button>
       <details id="manualPanel">
         <summary>+ Compléter ou ajouter une fiche vérifiée</summary>
         <form id="manualForm">

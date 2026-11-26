@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { activitiesTable, dealsTable } from "@workspace/db";
-import { eq, and, desc, or, getTableColumns, isNull, inArray } from "drizzle-orm";
+import { eq, and, desc, or, getTableColumns, isNull, inArray, ne } from "drizzle-orm";
 
 const router = Router();
 
@@ -87,7 +87,7 @@ router.patch("/:id", async (req, res) => {
 
   const [updated] = await db.update(activitiesTable)
     .set(updateData)
-    .where(and(eq(activitiesTable.id, req.params.id), eq(activitiesTable.tenantId, req.auth!.tenantId)))
+    .where(and(eq(activitiesTable.id, req.params.id), eq(activitiesTable.tenantId, req.auth!.tenantId),ne(activitiesTable.type,'data_update')))
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Activité introuvable" }); return; }
@@ -95,9 +95,10 @@ router.patch("/:id", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  await db.delete(activitiesTable).where(
-    and(eq(activitiesTable.id, req.params.id), eq(activitiesTable.tenantId, req.auth!.tenantId))
-  );
+  const deleted=await db.delete(activitiesTable).where(
+    and(eq(activitiesTable.id, req.params.id), eq(activitiesTable.tenantId, req.auth!.tenantId),ne(activitiesTable.type,'data_update'))
+  ).returning({id:activitiesTable.id});
+  if(!deleted.length){res.status(404).json({error:'Activité introuvable ou historique automatique protégé.'});return;}
   res.json({ ok: true });
 });
 

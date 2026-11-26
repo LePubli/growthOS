@@ -221,7 +221,7 @@ async function awaitApi(timeoutMs = 90000) {
   throw new Error("API did not start (check database migrations and startup logs)");
 }
 
-let watchVersion=0,watchDown=false,watchWrongIdentity=false,watchRequests=0;
+let watchVersion=0,watchDown=false,watchWrongIdentity=false,watchRequests=0,watchEmptyAddress=false,watchStale=false;
 const companies = createServer((req, res) => {
   if (!req.url?.startsWith("/search?")) { res.writeHead(404).end(); return; }
   const directoryQuery = new URL(req.url, 'http://localhost').searchParams.get("q");
@@ -229,15 +229,15 @@ const companies = createServer((req, res) => {
     watchRequests++;
     if(watchDown){res.writeHead(503).end();return;}
     res.setHeader('Content-Type','application/json');
-    res.end(JSON.stringify({results:[{siren:watchWrongIdentity?'777000002':'777000001',nom_complet:'Entreprise de veille',
+    res.end(JSON.stringify({results:[{siren:watchWrongIdentity?'777000002':'777000001',nom_complet:watchVersion===3?'Entreprise de veille renommée':'Entreprise de veille',
       etat_administratif:watchVersion===1?'C':'A',nature_juridique:'1000',date_creation:'2013-10-14',
-      date_fermeture:watchVersion===1?'2026-11-01':null,date_mise_a_jour:'2026-11-25',nombre_etablissements:1,
+      date_fermeture:watchVersion===1?'2026-11-01':null,date_mise_a_jour:watchStale?'2020-01-01':'2026-11-25',nombre_etablissements:1,
       nombre_etablissements_ouverts:watchVersion===1?0:1,activite_principale:'43.22A',
       tranche_effectif_salarie:'01',annee_tranche_effectif_salarie:'2024',categorie_entreprise:'PME',
       dirigeants:[{nom:'Test',prenoms:watchVersion===0?'Alice':'Basma',qualite:'Gérante'}],
       finances:{2025:{ca:100000,resultat_net:0}},
-      siege:{siret:'77700000100019',etat_administratif:watchVersion===1?'F':'A',activite_principale:'43.22A',
-        adresse:watchVersion===0?'8 rue du Test 59100 Roubaix':'10 rue du Test 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix'},
+      siege:{siret:'77700000100019',etat_administratif:watchVersion===1?'F':'A',activite_principale:watchVersion===3?'43.21A':'43.22A',
+        adresse:watchEmptyAddress?null:watchVersion===0?'8 rue du Test 59100 Roubaix':'10 rue du Test 59100 Roubaix',code_postal:watchEmptyAddress?null:'59100',libelle_commune:watchEmptyAddress?null:'Roubaix'},
     }]}));return;
   }
   if (directoryQuery === "official-down") {
@@ -1255,6 +1255,40 @@ try {
       'Ciblage : une cible absente ne crée jamais de prospect');
   }
 
+  {
+    const target=await request('POST','/prospects',{company:'Ancien nom',siret:'96677700100019',city:'Chauffagiste',address:'Ancienne rue',lat:50.7,lng:3.1},token);
+    const id=target.body.id,taskId=randomUUID();
+    const capture={id:'task_'+taskId,source:'societe_com',company:'SOLUTION ENR',siret:'96677700100019',
+      city:'Roubaix',address:'8 rue du Test 59100 Roubaix',codePostal:'59100',
+      sourceUrl:'https://www.societe.com/societe/solution-enr-966777001.html',collectionMode:'visible',capturedAt:Date.now()};
+    const path='/sourcing/device/prospects/'+id;
+    const enriched=await request('POST',path+'/enrich-capture',{taskId,capture,confirmed:true},token);
+    check(enriched.status===200 && enriched.body.conflicts===3,'Régression Chauffagiste : même SIRET, nom/ville/adresse différents proposés sans bloquer la capture');
+    const before=await request('GET','/prospects/'+id,undefined,token);
+    const conflicts=before.body.sourceDetails.crossSource.conflicts;
+    check(before.body.city==='Chauffagiste' && before.body.company==='Ancien nom' && before.body.postalCode==='59100',
+      'Enrichissement : valeurs divergentes conservées avant validation, champs absents complétés');
+    const city=conflicts.find(c=>c.field==='city');
+    const apply=await request('POST',path+'/resolve-conflict',{conflictId:city.id,decision:'use_incoming'},token);
+    check(apply.status===200 && apply.body.prospect.city==='Roubaix' && apply.body.prospect.lat===null && apply.body.prospect.lng===null,
+      'Ville erronée remplacée explicitement et ancienne géolocalisation invalidée');
+    const changes=await Promise.all(conflicts.filter(c=>c.field!=='city').map(c=>request('POST',path+'/resolve-conflict',{conflictId:c.id,decision:'use_incoming'},token)));
+    const after=await request('GET','/prospects/'+id,undefined,token);
+    check(changes.every(r=>r.status===200) && after.body.company==='SOLUTION ENR' && after.body.address===capture.address && after.body.sourceDetails.crossSource.conflicts.length===0,
+      'Résolutions concurrentes : nom et adresse appliqués sans perdre les décisions');
+    const activities=await request('GET','/activities?prospectId='+id+'&scope=history',undefined,token);
+    const cityHistory=activities.body.find(a=>a.type==='data_update' && a.description.includes('Chauffagiste → Roubaix'));
+    check(activities.body.length===4 && cityHistory?.description.includes(capture.sourceUrl) && cityHistory.createdBy,
+      'Historique réel de la fiche : enrichissement et trois corrections, auteur, source et valeurs avant/après');
+    await request('POST',path+'/enrich-capture',{taskId,capture,confirmed:true},token);
+    await request('POST',path+'/resolve-conflict',{conflictId:city.id,decision:'use_incoming'},token);
+    check((await request('GET','/activities?prospectId='+id,undefined,token)).body.length===4,
+      'Réessayer une capture ou une décision ne duplique pas les activités');
+    check((await request('PATCH','/activities/'+cityHistory.id,{description:'Effacer la trace'},token)).status===404 &&
+      (await request('DELETE','/activities/'+cityHistory.id,undefined,token)).status===404,
+      'Historique des données : activité automatique protégée contre modification et suppression');
+  }
+
   const legacyEdit=await request('POST','/prospects',{company:'Fiche importée sans identité',status:'converted'},token);
   const fullRecordEdit=await request('PATCH',`/prospects/${legacyEdit.body.id}`,{
     ...legacyEdit.body,postalCode:'59100',city:'Roubaix',firstName:null,lat:null,lng:null,
@@ -1268,7 +1302,8 @@ try {
     'Modification partielle : statut et autres champs conservés');
   const missingIdentity=await request('POST',`/prospects/${legacyEdit.body.id}/verify-company`,{},token);
   check(missingIdentity.status===422,'Une entreprise sans SIREN ou SIRET reste non vérifiée');
-  const watched=await request('POST','/prospects',{company:'Entreprise de veille',siren:'777000001',siret:'77700000100019'},token);
+  const watched=await request('POST','/prospects',{company:'Entreprise de veille',siren:'777000001',siret:'77700000100019',
+    city:'Chauffagiste',address:'Ancienne adresse',phone:'03 20 11 22 33',website:'https://veille.example.org',lat:50.7,lng:3.1},token);
   const watchId=watched.body.id,watchPath=`/prospects/${watchId}`;
   const initialWatch=await request('POST',watchPath+'/verify-company',{},token);
   check(initialWatch.status===200 && initialWatch.body.snapshot.fields['État de l’entreprise']==='Active' &&
@@ -1278,6 +1313,8 @@ try {
     initialWatch.body.snapshot.fields['Activité de l’entreprise'].includes('eau et de gaz'),
     'Fiche complète : dirigeants, résultat nul et activité issus de la source');
   const beforeCached=watchRequests;
+  const beforeEnabled=await request('GET',watchPath,undefined,token);
+  check(beforeEnabled.body.city==='Chauffagiste' && beforeEnabled.body.address==='Ancienne adresse','Veille désactivée : le contrôle à l’ouverture ne remplace pas les coordonnées CRM');
   await request('POST',watchPath+'/verify-company',{},token);
   check(watchRequests===beforeCached,'Réouverture immédiate : contrôle récent réutilisé sans appel fournisseur supplémentaire');
   const enabledWatch=await request('PATCH',watchPath+'/monitoring',{enabled:true,intervalHours:24},token);
@@ -1295,11 +1332,21 @@ try {
   const notices=await request('GET','/notifications',undefined,token);
   check(notices.body.some(item=>item.payload?.prospectId===watchId),
     'Le changement du prospect déclenche une notification GrowthOS');
+  const syncedWatch=await request('GET',watchPath,undefined,token);
+  const syncActivities=await request('GET','/activities?prospectId='+watchId+'&scope=history',undefined,token);
+  check(syncedWatch.body.city==='Roubaix' && syncedWatch.body.postalCode==='59100' && syncedWatch.body.address==='10 rue du Test 59100 Roubaix' && syncedWatch.body.lat===null && syncedWatch.body.lng===null,
+    'Veille activée : adresse, code postal et ville réels remplacent les coordonnées erronées du même établissement et invalident la carte');
+  check(syncedWatch.body.phone==='03 20 11 22 33' && syncedWatch.body.website==='https://veille.example.org',
+    'Veille : les coordonnées commerciales absentes de la source sont conservées');
+  check(syncActivities.body.some(a=>a.type==='data_update' && a.description.includes('Chauffagiste → Roubaix') && a.description.includes('Annuaire des entreprises') && a.description.includes('Ancienne adresse → 10 rue du Test')),
+    'Veille : activité datée avec source et anciennes/nouvelles valeurs relue dans la fiche');
   const afterCronRequests=watchRequests;
   await monitoringMaintenance('cron',watchId);
   const sameWatch=await request('GET',watchPath+'/monitoring',undefined,token);
   check(sameWatch.body.changes.length===1 && watchRequests===afterCronRequests,
     'Redémarrage du traitement : échéance conservée et aucune alerte en double');
+  check((await request('GET','/activities?prospectId='+watchId,undefined,token)).body.length===syncActivities.body.length,
+    'Veille : aucune activité de mise à jour répétée sans changement');
   await monitoringMaintenance('expire',watchId);watchDown=true;
   const failedWatch=await request('POST',watchPath+'/verify-company',{force:true},token);
   check(failedWatch.status===200 && failedWatch.body.error && failedWatch.body.snapshot.fields['État de l’entreprise']==='Cessée' &&
@@ -1329,10 +1376,39 @@ try {
     const foreign=await request(method,watchPath+path,body,foreignToken);
     check(foreign.status===404,'Isolation agence : '+method+' '+path+' refuse le prospect d’une autre agence');
   }
-  const absentSite=await request('POST','/prospects',{company:'Autre établissement',siret:'77700000100027'},token);
+  const absentSite=await request('POST','/prospects',{company:'Autre établissement',siret:'77700000100027',city:'Lille',address:'Adresse locale conservée',apeCode:'62.01Z'},token);
   const siteStatus=await request('POST',`/prospects/${absentSite.body.id}/verify-company`,{},token);
   check(siteStatus.body.snapshot.fields['État de l’entreprise']==='Active' && siteStatus.body.snapshot.fields['État de l’établissement']===null,
     'Établissement absent de la réponse : état non vérifié, aucune activité déduite du siège');
+  await request('PATCH',watchPath+'/monitoring',{enabled:true,intervalHours:24},token);
+  await monitoringMaintenance('expire',watchId);watchVersion=3;
+  await monitoringMaintenance('cron',watchId);
+  const renamed=await request('GET',watchPath,undefined,token);
+  check(renamed.body.company==='Entreprise de veille renommée' && renamed.body.apeCode==='43.21A' && renamed.body.nafLabel?.includes('électrique'),
+    'Veille : changement de dénomination et activité locale appliqués avec le libellé du secteur');
+  const renamedHistory=await request('GET','/activities?prospectId='+watchId,undefined,token);
+  check(renamedHistory.body.some(a=>a.description.includes('Entreprise de veille → Entreprise de veille renommée') && a.description.includes('43.22A → 43.21A')),
+    'Veille : nouvelles identité et activité tracées avec leurs anciennes valeurs');
+  const countBeforeBlank=renamedHistory.body.length;
+  await monitoringMaintenance('expire',watchId);watchEmptyAddress=true;
+  await request('POST',watchPath+'/verify-company',{force:true},token);
+  const absentFields=await request('GET',watchPath,undefined,token);
+  check(absentFields.body.address==='10 rue du Test 59100 Roubaix' && absentFields.body.city==='Roubaix' && absentFields.body.postalCode==='59100',
+    'Veille : coordonnées absentes de la réponse n’effacent pas les valeurs connues');
+  check((await request('GET','/activities?prospectId='+watchId,undefined,token)).body.length===countBeforeBlank,
+    'Réponse partielle sans nouvelle valeur : aucune fausse mise à jour dans les activités');
+  await monitoringMaintenance('expire',watchId);watchEmptyAddress=false;watchStale=true;
+  const stale=await request('POST',watchPath+'/verify-company',{force:true},token);
+  check(stale.body.error?.includes('plus ancienne') && (await request('GET',watchPath,undefined,token)).body.company===renamed.body.company,
+    'Veille : une version officielle plus ancienne ne remplace pas les dernières données');
+  watchStale=false;
+  await request('PATCH',`/prospects/${absentSite.body.id}/monitoring`,{enabled:true,intervalHours:24},token);
+  await monitoringMaintenance('expire',absentSite.body.id);await monitoringMaintenance('cron',absentSite.body.id);
+  const absentSiteAgain=await request('GET','/prospects/'+absentSite.body.id,undefined,token);
+  check(absentSiteAgain.body.city==='Lille' && absentSiteAgain.body.address==='Adresse locale conservée' && absentSiteAgain.body.apeCode==='62.01Z',
+    'Veille : le siège ne remplace ni les coordonnées ni l’activité d’un établissement absent de la réponse');
+  await request('PATCH',watchPath+'/monitoring',{enabled:false,intervalHours:24},token);
+  await request('PATCH',`/prospects/${absentSite.body.id}/monitoring`,{enabled:false,intervalHours:24},token);
 
   const identity=await request('POST','/prospects',{company:'Identité principale',siret:'981 075 252 00016'},token);
   check(identity.status===201 && identity.body.siret==='98107525200016','SIRET avec espaces normalisé à la création');

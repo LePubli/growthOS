@@ -3,7 +3,8 @@ import { isDeepStrictEqual } from 'node:util';
 import { Router } from "express";
 import { z } from "zod";
 import { activityLabel, db } from "@workspace/db";
-import { sourcingJobsTable, prospectsTable } from "@workspace/db";
+import { sourcingJobsTable, prospectsTable, activitiesTable } from "@workspace/db";
+import {changeDescription,prospectFieldLabels,type FieldChanges} from '../../lib/prospect-change-history';
 import { eq, and, desc, inArray, or, ilike, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { requireAuth } from "../../middlewares/auth";
@@ -466,13 +467,14 @@ type ImportCapture = {
   siren?:string|null;sourceUrl?:string|null;capturedAt?:number;
   apeCode?:string|null;nafLabel?:string|null;nafVersion?:string|null;
   sourceDetails?:Record<string,unknown>|null;
+  targetedIdentity?:boolean;
 };
-type EnrichmentField = 'linkedinUrl'|'address'|'postalCode'|'city'|'phone'|'email'|'website'|'siret'|'siren'|'apeCode'|'nafLabel'|'nafVersion';
+type EnrichmentField = 'company'|'linkedinUrl'|'address'|'postalCode'|'city'|'phone'|'email'|'website'|'siret'|'siren'|'apeCode'|'nafLabel'|'nafVersion';
 type EnrichmentConflict = {
   id:string;field:EnrichmentField;existing:string;incoming:string;
   source:string;sourceUrl:string|null;capturedAt:string;
 };
-const FIELDS:EnrichmentField[]=['linkedinUrl','address','postalCode','city','phone','email','website','siret','siren','apeCode','nafLabel','nafVersion'];
+const FIELDS:EnrichmentField[]=['company','linkedinUrl','address','postalCode','city','phone','email','website','siret','siren','apeCode','nafLabel','nafVersion'];
 const stringOrEmpty=(value:unknown)=>typeof value==='string'?value.trim():'';
 function normalizedField(field:EnrichmentField,value:unknown):string{
   const raw=stringOrEmpty(value);
@@ -500,6 +502,7 @@ function captureProfileUrl(value:string|null|undefined):string|null{
 }
 function incomingFields(item:ImportCapture,incomplete:boolean):Partial<Record<EnrichmentField,string>>{
   const fields:Partial<Record<EnrichmentField,string>>={};
+  if(item.targetedIdentity)fields.company=item.company;
   for(const field of ['address','city','phone','email','website'] as const){
     const value=stringOrEmpty(item[field]);if(value)fields[field]=value;
   }
@@ -563,7 +566,7 @@ function ambiguousLinkedinProfiles(records: (typeof prospectsTable.$inferSelect)
 }
 async function mergeProspectCapture(
   existing:typeof prospectsTable.$inferSelect,item:ImportCapture,incomplete:boolean,
-  tenantId:string, executor:Pick<typeof db,'update'>=db,
+  tenantId:string, executor:Pick<typeof db,'update'|'insert'>=db,actorId?:string,
 ):Promise<{updated:boolean;filled:string[];conflicts:number;newConflicts:EnrichmentConflict[]}>{
   const oldDetails=jsonRecord(existing.sourceDetails);
   const oldMerge=jsonRecord(oldDetails.crossSource);
@@ -635,6 +638,17 @@ async function mergeProspectCapture(
     sourceUrl:existing.sourceUrl||captureProfileUrl(item.sourceUrl),
     sourceDetails:updatedDetails,updatedAt:new Date(),
   }).where(and(eq(prospectsTable.id,existing.id),eq(prospectsTable.tenantId,tenantId)));
+  const oldSociete=jsonRecord(oldDetails.societe_com).companyDetails;
+  const nextSociete=jsonRecord(combinedDetails.societe_com).companyDetails;
+  const detailsChanged=!!nextSociete && !isDeepStrictEqual(oldSociete,nextSociete);
+  if(filled.length || newConflicts.length || detailsChanged){
+    const changes:FieldChanges=Object.fromEntries(filled.map(field=>[field,{before:existing[field as EnrichmentField],after:updates[field as EnrichmentField]}]));
+    if(detailsChanged)changes['Informations détaillées Societe.com']={before:oldSociete||null,after:nextSociete};
+    const proposals=newConflicts.length?'\nPropositions non appliquées : '+newConflicts.map(c=>`${prospectFieldLabels[c.field]||c.field} : ${c.existing} → ${c.incoming}`).join(' ; '):'';
+    await executor.insert(activitiesTable).values({type:'data_update',title:'Enrichissement · '+item.source,
+      description:changeDescription(item.source,item.sourceUrl||null,changes,'Champs vides complétés ; les valeurs divergentes restent à valider.',now)+proposals,
+      status:'done',doneAt:new Date(),prospectId:existing.id,tenantId,createdBy:actorId||null});
+  }
   return {updated:true,filled,conflicts:newConflicts.length,newConflicts};
 }
 
@@ -694,10 +708,12 @@ router.post('/device/prospects/:id/enrich-capture',requireAuth,async(req,res)=>{
         (prospect.siret && capture.siret && prospect.siret!==capture.siret))
         return {status:409,error:'L’identité juridique ou l’établissement diffère de ce prospect.'};
       const legalMatch=!!(knownSiren && incomingSiren===knownSiren);
-      if((!legalMatch && normalizedIdentity(prospect.company||'')!==normalizedIdentity(capture.company)) ||
+      const exactSite=!!(prospect.siret && capture.siret===prospect.siret);
+      if(!exactSite && ((!legalMatch && normalizedIdentity(prospect.company||'')!==normalizedIdentity(capture.company)) ||
         (prospect.city && capture.city && normalizedIdentity(prospect.city)!==normalizedIdentity(capture.city)))
+      )
         return {status:409,error:'Le nom ou la ville diffère. Vérifiez la fiche et son établissement avant enrichissement.'};
-      const merged=await mergeProspectCapture(prospect,capture,false,req.auth!.tenantId,tx);
+      const merged=await mergeProspectCapture(prospect,{...capture,targetedIdentity:true},false,req.auth!.tenantId,tx,req.auth!.userId);
       return {status:200,filled:merged.filled,conflicts:merged.conflicts,alreadyApplied:false};
     });
     res.status(outcome.status).json(outcome);
@@ -729,7 +745,7 @@ router.post('/device/prospects/:id/societe-enrich', requireAuth, async (req, res
        (prospect.city && incoming.city && normalizedIdentity(prospect.city) !== normalizedIdentity(incoming.city)))) {
     res.status(409).json({error:'La société ou la ville diffère. Vérifiez le rapprochement et le SIREN avant enrichissement.'}); return;
   }
-  const merged = await mergeProspectCapture(prospect,incoming,false,req.auth!.tenantId);
+  const merged = await mergeProspectCapture(prospect,incoming,false,req.auth!.tenantId,db,req.auth!.userId);
   res.json({enriched:merged.filled.length>0,conflicts:merged.conflicts});
 });
 
@@ -788,7 +804,7 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
       if(siret && matches[0].siret===siret && matches[0].company && normalizedIdentity(matches[0].company)!==company){
         skipped++;reviews.push({prospectId:matches[0].id,company:item.company,fields:['company','siret'],type:'identity'});continue;
       }
-      const merged=await mergeProspectCapture(matches[0],item,incomplete,req.auth!.tenantId).catch((error:unknown)=>{
+      const merged=await mergeProspectCapture(matches[0],item,incomplete,req.auth!.tenantId,db,req.auth!.userId).catch((error:unknown)=>{
         if(isProspectIdentityDuplicate(error))return null;
         throw error;
       });
@@ -830,34 +846,37 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
 
 // Chaque désaccord reste en attente jusqu'au choix explicite d'un utilisateur du tenant.
 router.post('/device/prospects/:id/resolve-conflict',requireAuth,async(req,res)=>{
+  const id=z.string().uuid().safeParse(req.params.id);
   const parsed=z.object({conflictId:z.string().uuid(),decision:z.enum(['keep_existing','use_incoming'])})
     .strict().safeParse(req.body);
-  if(!parsed.success){res.status(400).json({error:'Décision de fusion invalide'});return;}
-  const [prospect]=await db.select().from(prospectsTable).where(and(
-    eq(prospectsTable.id,String(req.params.id)),eq(prospectsTable.tenantId,req.auth!.tenantId),
-  )).limit(1);
-  if(!prospect){res.status(404).json({error:'Prospect introuvable'});return;}
-  const details=jsonRecord(prospect.sourceDetails),crossSource=jsonRecord(details.crossSource);
-  const conflicts=Array.isArray(crossSource.conflicts)?crossSource.conflicts as EnrichmentConflict[]:[];
-  const found=conflicts.find(c=>c.id===parsed.data.conflictId&&FIELDS.includes(c.field));
-  if(!found){res.status(404).json({error:'Conflit déjà résolu ou introuvable'});return;}
-  if(stringOrEmpty(prospect[found.field])!==found.existing){
-    res.status(409).json({error:'La valeur CRM a changé. Rechargez la fiche avant de trancher.'});return;
-  }
-  const fieldSources=jsonRecord(crossSource.fieldSources);
-  if(parsed.data.decision==='use_incoming')
-    fieldSources[found.field]={source:found.source,sourceUrl:found.sourceUrl,capturedAt:found.capturedAt,
-      resolvedAt:new Date().toISOString()};
-  const resolutions=Array.isArray(crossSource.resolutions)?crossSource.resolutions as unknown[]:[];
-  const nextDetails={...details,crossSource:{...crossSource,fieldSources,
-    conflicts:conflicts.filter(c=>c.id!==found.id),
-    resolutions:[...resolutions,{...found,decision:parsed.data.decision,
-      resolvedAt:new Date().toISOString()}].slice(-80)}};
-  const update=parsed.data.decision==='use_incoming'?{[found.field]:found.incoming}:{};
-  const [updated]=await db.update(prospectsTable).set({...update,sourceDetails:nextDetails,
-    updatedAt:new Date()}).where(and(eq(prospectsTable.id,prospect.id),
-    eq(prospectsTable.tenantId,req.auth!.tenantId))).returning();
-  res.json({prospect:updated});
+  if(!id.success || !parsed.success){res.status(400).json({error:'Décision de fusion invalide'});return;}
+  const result=await db.transaction(async tx=>{
+    const [prospect]=await tx.select().from(prospectsTable).where(and(
+      eq(prospectsTable.id,id.data),eq(prospectsTable.tenantId,req.auth!.tenantId),
+    )).for('update');
+    if(!prospect)return {status:404,error:'Prospect introuvable'};
+    const details=jsonRecord(prospect.sourceDetails),crossSource=jsonRecord(details.crossSource);
+    const conflicts=Array.isArray(crossSource.conflicts)?crossSource.conflicts as EnrichmentConflict[]:[];
+    const found=conflicts.find(c=>c.id===parsed.data.conflictId&&FIELDS.includes(c.field));
+    if(!found)return {status:404,error:'Conflit déjà résolu ou introuvable'};
+    if(stringOrEmpty(prospect[found.field])!==found.existing)
+      return {status:409,error:'La valeur CRM a changé. Rechargez la fiche avant de trancher.'};
+    const apply=parsed.data.decision==='use_incoming';
+    const fieldSources=jsonRecord(crossSource.fieldSources);
+    if(apply)fieldSources[found.field]={source:found.source,sourceUrl:found.sourceUrl,capturedAt:found.capturedAt,resolvedAt:new Date().toISOString()};
+    const resolutions=Array.isArray(crossSource.resolutions)?crossSource.resolutions as unknown[]:[];
+    const nextDetails={...details,crossSource:{...crossSource,fieldSources,conflicts:conflicts.filter(c=>c.id!==found.id),
+      resolutions:[...resolutions,{...found,decision:parsed.data.decision,resolvedAt:new Date().toISOString()}].slice(-80)}};
+    const update=apply?{[found.field]:found.incoming,...(['address','city','postalCode'].includes(found.field)?{lat:null,lng:null}:{})}:{};
+    const [updated]=await tx.update(prospectsTable).set({...update,sourceDetails:nextDetails,updatedAt:new Date()})
+      .where(and(eq(prospectsTable.id,prospect.id),eq(prospectsTable.tenantId,req.auth!.tenantId))).returning();
+    await tx.insert(activitiesTable).values({type:'data_update',title:apply?'Correction validée · '+found.field:'Proposition écartée · '+found.field,
+      description:changeDescription(found.source,found.sourceUrl,apply?{[found.field]:{before:found.existing,after:found.incoming}}:{},
+        apply?'Nouvelle valeur validée par l’utilisateur.':`Valeur conservée : ${found.existing}. Proposition écartée : ${found.incoming}.`,found.capturedAt),
+      prospectId:prospect.id,tenantId:req.auth!.tenantId,createdBy:req.auth!.userId,doneAt:new Date()});
+    return {status:200,prospect:updated};
+  });
+  res.status(result.status).json(result);
 });
 
 const distinctiveDraft = (company: string) => {
@@ -1467,7 +1486,7 @@ router.post("/jobs/:id/import", requireAuth, async (req, res) => {
     if(!matches.length && ambiguousLinkedinProfiles(existing,incoming).length){skipped++;continue;}
     if(matches.length>1){skipped++;continue;}
     if(matches.length===1){
-      const outcome=await mergeProspectCapture(matches[0],incoming,false,req.auth!.tenantId).catch((error:unknown)=>{
+      const outcome=await mergeProspectCapture(matches[0],incoming,false,req.auth!.tenantId,db,req.auth!.userId).catch((error:unknown)=>{
         if(isProspectIdentityDuplicate(error))return null;
         throw error;
       });

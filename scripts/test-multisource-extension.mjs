@@ -15,11 +15,11 @@ assert.ok(manifest.host_permissions.includes('https://data.geopf.fr/*'),
   'La validation des rues partielles utilise le géocodeur officiel de la Géoplateforme');
 
 const captureScript=readFileSync(new URL('capture.js',root),'utf8');
-function capture(url,hasAddress=true,localPack=false){
+function capture(url,hasAddress=true,localPack=false,textOverride=null){
   const card={
-    innerText:localPack
+    innerText:textOverride || (localPack
       ? 'Leclerc & Chéry Valnegreen\n3,5 ★★★★ (17) · Plombier\nPlus de 45 ans en activité · Roubaix\nOuvert · 03 20 70 48 97\nSite Web\nItinéraire'
-      : hasAddress?'Atelier Test\n14 rue des Tests 59100 Roubaix\nAppeler':'Atelier Test\nRoubaix',
+      : hasAddress?'Atelier Test\n14 rue des Tests 59100 Roubaix\nAppeler':'Atelier Test\nRoubaix'),
     getClientRects:()=>[{}],
     querySelector:()=>null,
     querySelectorAll:()=>[],
@@ -44,6 +44,13 @@ assert.equal(googleLocal.drafts.length,1);
 assert.equal(googleLocal.drafts[0].company,'Leclerc & Chéry Valnegreen');
 assert.equal(googleLocal.drafts[0].phone,'03 20 70 48 97');
 assert.equal(googleLocal.drafts[0].codePostal,null);
+assert.equal(googleLocal.drafts[0].city,null,'Une ville sans libellé ni adresse postale ne doit pas être déduite d’une catégorie');
+const categoryOnly=capture('https://www.google.com/maps/search/chauffagiste',false,false,'SOLUTION ENR\nChauffagiste\n07 62 55 71 60\nSite Web\nItinéraire');
+assert.equal(categoryOnly.drafts.length,1);
+assert.equal(categoryOnly.drafts[0].city,null,'La catégorie Chauffagiste ne devient jamais une ville');
+const popupMarkup=readFileSync(new URL('popup.html',root),'utf8');
+assert.ok(popupMarkup.indexOf('id="taskRead"')<popupMarkup.indexOf('id="taskPreview"') &&
+  popupMarkup.indexOf('id="taskPreview"')<popupMarkup.indexOf('id="taskFinish"'),'Lire précède la comparaison et le retour au prospect');
 const partialCard={innerText:'France Dépannage\nPlombier · 35 Av. Jean Lebas\nRoubaix\n03 20 70 48 97',
   getClientRects:()=>[{}],querySelector:()=>null,querySelectorAll:()=>[],closest:()=>null};
 const partialDocument={body:partialCard,querySelectorAll:selector=>selector==='[role="article"]'?[partialCard]:[],querySelector:()=>null};

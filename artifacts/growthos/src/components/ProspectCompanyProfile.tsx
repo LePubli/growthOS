@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import apiClient from "@/lib/api-client";
 import type { CompanyDetails } from "@/lib/pagesjaunes-device";
 
@@ -16,6 +16,7 @@ type Snapshot = {
   }[];
 };
 type Monitoring = {
+  lastSync?:{appliedAt:string;fields:string[];sourceUrl:string}|null;
   enabled: boolean;
   intervalHours: number;
   checkedAt: string | null;
@@ -30,6 +31,7 @@ type Monitoring = {
   }[];
 };
 type Props = {
+  onUpdated?:()=>void|Promise<void>;
   prospect: {
     id: string;
     siren?: string | null;
@@ -111,11 +113,23 @@ export function CompanyDetailsView({ details }: { details: CompanyDetails }) {
     </div>
   );
 }
-export function ProspectCompanyProfile({ prospect }: Props) {
+export function ProspectCompanyProfile({ prospect,onUpdated }: Props) {
   const [data, setData] = useState<Monitoring | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const identifiable = Boolean(prospect.siren || prospect.siret);
+  const lastApplied=useRef(''),updated=useRef(onUpdated);updated.current=onUpdated;
+  useEffect(()=>{
+    const applied=data?.lastSync?.appliedAt;
+    if(applied && applied!==lastApplied.current){lastApplied.current=applied;void updated.current?.();}
+  },[data?.lastSync?.appliedAt]);
+  useEffect(()=>{
+    if(!data?.enabled)return;
+    const timer=window.setInterval(()=>{
+      void apiClient.get<Monitoring>(`/prospects/${prospect.id}/monitoring`).then(setData).catch(()=>undefined);
+    },60000);
+    return()=>window.clearInterval(timer);
+  },[prospect.id,data?.enabled]);
   useEffect(() => {
     let current = true;
     setLoading(true);
@@ -231,6 +245,10 @@ export function ProspectCompanyProfile({ prospect }: Props) {
         Dernier contrôle · {date(data?.checkedAt)}. Contrôle à l’ouverture de la
         fiche, avec réutilisation du dernier résultat pendant une minute.
       </p>
+      {data?.lastSync && <p role="status" className="rounded-lg bg-teal-50 text-teal-900 p-3 text-sm">
+        Mise à jour automatique · {date(data.lastSync.appliedAt)} : {data.lastSync.fields.join(', ')}.
+        {' '}Les anciennes et nouvelles valeurs sont conservées dans les activités de cette fiche.
+      </p>}
       {issue && (
         <p role="alert" className="text-sm text-amber-800">
           {issue}
@@ -341,7 +359,7 @@ export function ProspectCompanyProfile({ prospect }: Props) {
               void configure(e.target.checked, data?.intervalHours || 24)
             }
           />
-          Surveiller les changements de ce prospect
+          Surveiller et mettre à jour les données officielles de ce prospect
         </label>
         <select
           aria-label="Fréquence de surveillance"
