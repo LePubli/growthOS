@@ -30,6 +30,13 @@ try{
     assert.ok(browserHtml.includes('Navigateur cloud') && browserHtml.includes('Sans compte') && browserHtml.includes('Mon compte'));
     assert.ok(browserHtml.includes('Mes profils de navigation') && browserHtml.includes('Tâches récentes'));
     assert.ok(!browserHtml.includes('Compte connecté'),'Ne pas présenter une session non vérifiée comme connectée');
+    for(const marker of ['cloud-browser-command-grid','cloud-browser-workspace','cloud-browser-view-panel',
+      'cloud-browser-results-list','cloud-browser-history','Importer dans Prospects',
+      'Reprendre le contrôle','Lancer la collecte','Déconnecter et effacer la session']){
+      assert.ok(browserHtml.includes(marker),'Espace navigateur manquant : '+marker);
+    }
+    assert.ok(browserHtml.indexOf('cloud-browser-command-grid')<browserHtml.indexOf('cloud-browser-workspace'));
+    assert.ok(browserHtml.indexOf('cloud-browser-view-panel')<browserHtml.indexOf('cloud-browser-results-list'));
     const enrich=render('mode=enrich');
     assert.equal((enrich.match(/<article/g)||[]).length,modules.filter(m=>m.modes.includes('enrich')).length);
     assert.ok(enrich.includes('Societe.com') && enrich.includes('ouvrez un prospect'));

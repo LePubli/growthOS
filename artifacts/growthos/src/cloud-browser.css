@@ -1,11 +1,234 @@
-.cloud-browser-page>section,.cloud-browser-page article{border-color:var(--card-border);box-shadow:0 3px 15px #203b6308}
-.cloud-browser-page :is(button,input,select){border-color:var(--card-border);border-radius:10px}
-.cloud-browser-page :is(input,select){background:var(--card-bg);color:var(--text-primary);min-height:42px}
-.cloud-browser-page button{font-weight:600;min-height:39px;transition:background .15s,border-color .15s}
-.cloud-browser-page button:not(:disabled):hover{border-color:var(--color-primary)}
-.cloud-browser-page :is(button,a):disabled{opacity:.45}
-.cloud-browser-page .bg-teal-700{background:var(--color-primary)}
-.cloud-browser-page .text-teal-700{color:var(--color-primary)}
-.cloud-browser-page .focus\:outline-teal-600:focus-visible{outline-color:var(--color-primary)}
-.cloud-browser-page [aria-label="Navigateur distant interactif"]{background:#fff;color:#111}
-.cloud-browser-page [aria-label="Navigateur distant interactif"] img{user-select:none}
+/* GrowthOS ATLAS × ORBIT — Navigateur cloud Workspace.
+   Les fonds reprennent Harmony, les actions gardent leurs états métier. */
+.cloud-browser-page {
+  --cb-ink:#162744;--cb-muted:#627596;--cb-line:#d1dff0;--cb-blue:#176bee;
+  --cb-shadow:0 5px 18px #26486f0b;
+  width:100%;max-width:1760px;margin:0 auto;padding:22px clamp(14px,2vw,30px) 34px;
+  color:var(--cb-ink);font-size:13px;
+}
+.cloud-browser-page *, .cloud-browser-page *::before, .cloud-browser-page *::after {box-sizing:border-box;}
+.cloud-browser-page :is(button,input,select) {font:inherit;}
+.cloud-browser-page button {cursor:pointer;transition:background .16s,border-color .16s,box-shadow .16s,transform .16s;}
+.cloud-browser-page button:disabled {opacity:.45;cursor:not-allowed;transform:none!important;}
+.cloud-browser-page :is(button,a,input,select,summary,[tabindex]):focus-visible {outline:2px solid #4489ff;outline-offset:2px;}
+.cloud-browser-page :is(input,select) {color:#1c3150;background:#ffffffcf;}
+.cloud-browser-page :is(input,select)::placeholder {color:#879ab4;}
+.cloud-browser-page a {text-decoration:none;}
+
+/* En-tête compact et état réel du worker, jamais état de connexion inventé. */
+.cloud-browser-heading {display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:17px;}
+.cloud-browser-heading>div {min-width:0;}
+.cloud-browser-back {display:inline-flex;align-items:center;gap:5px;color:#57739b;font-size:11px;font-weight:710;margin-bottom:7px;}
+.cloud-browser-back:hover {color:#176bee;}
+.cloud-browser-heading h1 {display:flex;align-items:center;gap:12px;font-size:27px;line-height:1.2;letter-spacing:-.035em;color:#101f3e;font-weight:840;}
+.cloud-browser-heading-icon {display:inline-grid;place-items:center;width:40px;height:40px;flex:0 0 40px;
+  border:1px solid #bcd4fb;background:linear-gradient(140deg,#e8f2ff,#d9e8ff);border-radius:13px;color:#1269ef;}
+.cloud-browser-heading p {font-size:12px;color:#647796;margin:7px 0 0 52px;}
+.cloud-browser-health {display:inline-flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;
+  color:#637996;background:#eef3fb;border:1px solid #d5e1f1;font-size:11px;font-weight:780;white-space:nowrap;}
+.cloud-browser-health.is-ready {color:#08784d;background:#e0f7e8;border-color:#bfe8d0;}
+.cloud-browser-health.is-offline {color:#a06019;background:#fff2e3;border-color:#f2d8b8;}
+
+.cloud-browser-alert {display:flex;align-items:flex-start;gap:9px;padding:12px 14px;border:1px solid;border-radius:11px;
+  margin-bottom:13px;font-size:12px;line-height:1.5;font-weight:620;}
+.cloud-browser-alert svg {flex:0 0 auto;margin-top:1px;}
+.cloud-browser-alert.is-warning {background:#fff5e7;border-color:#efd4ae;color:#8c5e20;}
+.cloud-browser-alert.is-warning a {display:inline-flex;gap:6px;align-items:center;color:#085ee0;font-weight:780;}
+.cloud-browser-alert.is-error {background:#fff0ef;border-color:#f4c8c7;color:#a23939;}
+.cloud-browser-alert.is-info {background:#e7f5ef;border-color:#c6e6d5;color:#087657;}
+.cloud-browser-prospect-context {display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:13px;
+  padding:10px 14px;border:1px solid #c7e4d8;border-radius:11px;background:#e7f7f0;color:#24624e;font-size:11px;}
+.cloud-browser-prospect-context>svg {color:#16865f;}
+.cloud-browser-prospect-context>small {color:#56816e;font-size:10px;}
+
+/* Une seule barre de pilotage, 6 contrôles alignés sur les grandes fenêtres. */
+.cloud-browser-command {position:relative;z-index:4;padding:16px 17px 12px;border:1px solid #c7daf6;border-radius:15px;
+  background:linear-gradient(119deg,#e8f1ff 0%,#dceaff 100%);box-shadow:var(--cb-shadow);}
+.cloud-browser-command-grid {display:grid;grid-template-columns:minmax(125px,1fr) minmax(150px,1.15fr) minmax(180px,1.35fr)
+  minmax(125px,.95fr) minmax(90px,.7fr) minmax(160px,1fr);gap:12px;align-items:end;}
+.cloud-browser-field {min-width:0;display:flex;flex-direction:column;gap:6px;}
+.cloud-browser-field>span:first-child {font-size:11px;font-weight:800;color:#243b5d;}
+.cloud-browser-field>select,.cloud-browser-field>input,.cloud-browser-input-icon,.cloud-browser-select-with-logo {
+  width:100%;min-width:0;height:40px;min-height:40px;border:1px solid #c3d5ee;border-radius:9px;background:#ffffffd9;
+  box-shadow:0 2px 5px #20477208;}
+.cloud-browser-field>select,.cloud-browser-field>input {padding:0 10px;outline-color:#4489ff;font-size:11.5px;font-weight:670;}
+.cloud-browser-select-with-logo {display:flex;align-items:center;gap:4px;padding-left:9px;}
+.cloud-browser-select-with-logo>select {border:0;background:transparent;min-width:0;width:100%;height:100%;padding:0 5px;
+  outline-color:#4489ff;font-size:11.5px;font-weight:730;}
+.cloud-browser-input-icon {display:flex;align-items:center;gap:7px;padding:0 9px;color:#6483b1;}
+.cloud-browser-input-icon>svg {flex:0 0 auto;}
+.cloud-browser-input-icon>input {background:transparent;border:0;min-width:0;width:100%;height:100%;outline:0;
+  color:#1d3454;font-size:11.5px;font-weight:650;}
+.cloud-browser-field.cloud-browser-limit>input {font-weight:800;}
+.cloud-browser-primary {display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:9px 13px;
+  min-height:39px;border-radius:9px;border:1px solid #176bee;color:#fff;background:#176bee;
+  font-size:11.5px;font-weight:800!important;white-space:nowrap;box-shadow:0 3px 10px #175fcc1f;}
+.cloud-browser-primary:not(:disabled):hover {background:#0a5edb;border-color:#0a5edb;box-shadow:0 4px 13px #175fcc2d;}
+.cloud-browser-primary svg {flex:0 0 auto;}
+.cloud-browser-launch {height:40px;min-height:40px;align-self:end;}
+.cloud-browser-command-secondary {display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:13px;}
+.cloud-browser-secondary,.cloud-browser-profile-manager>summary {display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  min-height:34px;padding:7px 10px;border:1px solid #c6d8f2;border-radius:9px;background:#ffffffb5;
+  color:#28476e;font-size:11px;font-weight:760;list-style:none;white-space:nowrap;}
+.cloud-browser-secondary:hover,.cloud-browser-profile-manager>summary:hover {border-color:#99bdec;background:#fff;}
+.cloud-browser-profile-manager {position:relative;}
+.cloud-browser-profile-manager>summary {cursor:pointer;}
+.cloud-browser-profile-manager>summary::-webkit-details-marker {display:none;}
+.cloud-browser-profile-manager[open]>summary {border-color:#85ace9;background:#fff;}
+.cloud-browser-profile-manager[open]>summary>svg:last-child {transform:rotate(180deg);}
+.cloud-browser-profile-form {position:absolute;top:43px;left:0;z-index:20;width:min(340px,calc(100vw - 45px));
+  display:flex;flex-direction:column;gap:11px;background:#fff;border:1px solid #c5d7ef;box-shadow:0 14px 38px #1f3c632b;
+  border-radius:12px;padding:17px;}
+.cloud-browser-profile-form>strong {font-size:13px;color:#1a2d4c;}
+.cloud-browser-profile-form>label {display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:750;color:#516a8a;}
+.cloud-browser-profile-form :is(input,select) {height:38px;min-height:38px;padding:0 10px;border:1px solid #d2dff0;border-radius:8px;}
+.cloud-browser-profile-form>small {font-size:10px;line-height:1.45;color:#8392a9;}
+.cloud-browser-command-helper {color:#6a7f9d;font-size:10.5px;line-height:1.4;}
+.cloud-browser-command-footnote {color:#7d5e2a;font-size:10.5px;line-height:1.5;margin-top:10px;}
+
+/* Le navigateur est l'espace de travail, les résultats une console latérale. */
+.cloud-browser-workspace {display:grid;grid-template-columns:minmax(0,1.75fr) minmax(320px,.88fr);gap:15px;margin-top:18px;align-items:stretch;}
+.cloud-browser-workspace.is-expanded {grid-template-columns:1fr;}
+.cloud-browser-workspace.is-expanded>.cloud-browser-results {display:none;}
+.cloud-browser-view-panel,.cloud-browser-results {min-width:0;overflow:hidden;border:1px solid #d2e0f2;
+  background:#fff;border-radius:15px;box-shadow:var(--cb-shadow);}
+.cloud-browser-view-panel {display:flex;flex-direction:column;}
+.cloud-browser-panel-toolbar {display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  min-height:63px;padding:11px 13px;background:linear-gradient(110deg,#f7faff,#edf5ff);border-bottom:1px solid #dce6f4;}
+.cloud-browser-browser-name {display:flex;align-items:center;gap:9px;min-width:0;}
+.cloud-browser-browser-name>div {display:flex;flex-direction:column;gap:4px;min-width:0;}
+.cloud-browser-browser-name strong {font-size:12px;font-weight:820;color:#1b2e4d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cloud-browser-browser-name small {font-size:10px;color:#16845d;font-weight:680;}
+.cloud-browser-browser-actions {display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+.cloud-browser-browser-actions>button {display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:33px;min-width:33px;padding:7px;border:1px solid #cfdef2;border-radius:8px;background:#ffffffc8;
+  color:#345176;font-size:10px;font-weight:750;}
+.cloud-browser-browser-actions>button:first-child {padding:7px 10px;color:#1e3a62;}
+.cloud-browser-browser-actions>button:not(:disabled):hover {background:#e8f1ff;border-color:#abc9f0;color:#1161d7;}
+.cloud-browser-browser-actions>button:last-child {color:#7a8399;}
+.cloud-browser-url {display:flex;align-items:center;gap:9px;min-height:35px;padding:8px 14px;background:#fcfdff;
+  border-bottom:1px solid #e2eafa;font-size:10px;color:#6b7e9a;}
+.cloud-browser-url svg {color:#18966b;flex:0 0 auto;}
+.cloud-browser-url>span:first-of-type {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.cloud-browser-live-dot {width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:#1aa470;}
+.cloud-browser-remote {min-width:0;background:#fff;color:#161616;overflow:hidden;outline-offset:-3px;line-height:0;}
+.cloud-browser-remote img {display:block;width:100%;height:auto;aspect-ratio:1280/800;object-fit:contain;user-select:none;cursor:crosshair;}
+.cloud-browser-empty-view {min-height:440px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;text-align:center;padding:28px;background:linear-gradient(135deg,#f4f8ff,#ecf5ff 60%,#f5f2ff);}
+.cloud-browser-empty-view>span {display:grid;place-items:center;width:76px;height:76px;border-radius:24px;
+  background:#e0edff;border:1px solid #c6dafe;color:#186cec;}
+.cloud-browser-empty-view strong {font-size:16px;color:#243b5f;}
+.cloud-browser-empty-view p {font-size:12px;line-height:1.6;max-width:335px;color:#7386a1;}
+.cloud-browser-browser-footer {display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;
+  margin-top:auto;padding:11px 14px;background:#f9fbff;border-top:1px solid #e1eaf6;}
+.cloud-browser-browser-footer>span {display:inline-flex;align-items:center;gap:7px;font-size:10px;color:#627894;}
+.cloud-browser-browser-footer>span svg {color:#0d9d71;}
+.cloud-browser-browser-footer>small {font-size:9.5px;color:#8a99ae;}
+
+/* Résultats vérifiés : sélection visible, import dans le CRM en pied. */
+.cloud-browser-results {display:flex;flex-direction:column;background:linear-gradient(140deg,#f4f2ff,#eaf1ff);min-height:570px;}
+.cloud-browser-results-header {display:flex;align-items:center;gap:11px;min-height:71px;padding:15px 15px 13px;
+  background:linear-gradient(115deg,#f2edff,#e8e9ff);border-bottom:1px solid #dedbf2;}
+.cloud-browser-results-header>span {display:grid;place-items:center;flex:0 0 35px;width:35px;height:35px;border-radius:10px;
+  color:#7451dd;background:#e4dbff;}
+.cloud-browser-results-header h2 {font-size:15px;font-weight:850;line-height:1.3;color:#1b2c49;}
+.cloud-browser-results-header p {margin-top:3px;color:#667499;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cloud-browser-results-summary {display:flex;align-items:center;gap:8px;margin:11px 11px 8px;padding:10px 11px;
+  background:#ddecff;border:1px solid #d0e0f5;border-radius:9px;color:#215284;font-size:11px;font-weight:800;}
+.cloud-browser-results-summary svg {flex:0 0 auto;color:#1975ec;}
+.cloud-browser-results-list {display:flex;flex-direction:column;gap:6px;min-height:220px;max-height:575px;
+  overflow:auto;padding:0 11px 10px;scrollbar-width:thin;scrollbar-color:#c4d2ec transparent;}
+.cloud-browser-result-row {display:flex;align-items:flex-start;gap:10px;padding:11px 10px;cursor:pointer;
+  border:1px solid #d7e1f2;border-radius:10px;background:#ffffffb0;transition:background .15s,border-color .15s;}
+.cloud-browser-result-row:hover {background:#fff;border-color:#b8ccf2;}
+.cloud-browser-result-row.is-checked {background:#e5efff;border-color:#c6d8fa;}
+.cloud-browser-result-row>input[type="checkbox"] {width:17px;height:17px;min-height:17px;flex:0 0 17px;margin:1px 0 0;
+  accent-color:#176bee;cursor:pointer;}
+.cloud-browser-result-info {display:flex;min-width:0;flex:1;flex-direction:column;gap:5px;}
+.cloud-browser-result-info strong {font-size:11.5px;font-weight:820;color:#233754;line-height:1.35;overflow-wrap:anywhere;}
+.cloud-browser-result-info small {font-size:10px;color:#667e9d;display:flex;align-items:flex-start;gap:5px;line-height:1.4;}
+.cloud-browser-result-info small svg {flex:0 0 12px;margin-top:1px;}
+.cloud-browser-no-results {display:flex;align-items:center;justify-content:center;flex:1;min-height:230px;gap:10px;
+  flex-direction:column;text-align:center;padding:25px 18px;color:#99a6bd;}
+.cloud-browser-no-results>strong {font-size:12px;color:#456081;}
+.cloud-browser-no-results>p {font-size:10.5px;line-height:1.5;max-width:270px;}
+.cloud-browser-results-note {display:flex;align-items:flex-start;gap:6px;margin:3px 11px 7px;padding:8px;
+  color:#875c25;background:#fff3df;border:1px solid #f0dfc5;border-radius:8px;font-size:10px;line-height:1.4;}
+.cloud-browser-results-note.is-error {color:#a74c47;background:#fff0f0;border-color:#edcccc;}
+.cloud-browser-results-note svg {flex:0 0 auto;}
+.cloud-browser-results-footer {display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto;
+  padding:13px 12px;background:#f5f8ff;border-top:1px solid #dbe5f4;}
+.cloud-browser-results-footer>span {font-size:11px;color:#465d7e;white-space:nowrap;}
+.cloud-browser-results-footer>span strong {font-size:13px;color:#153c73;}
+.cloud-browser-results-footer .cloud-browser-primary {padding:9px 12px;font-size:11px;white-space:normal;text-align:center;}
+
+/* Tâches raccourcies, mais reprise/annulation toujours atteignables. */
+.cloud-browser-history {margin-top:18px;}
+.cloud-browser-history-heading {display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:12px;}
+.cloud-browser-history-heading h2 {display:flex;align-items:center;gap:9px;color:#1b2d49;font-size:15px;font-weight:830;}
+.cloud-browser-history-heading h2 svg {color:#355fa6;}
+.cloud-browser-history-heading>button {display:flex;align-items:center;gap:7px;color:#1468e6;background:transparent;
+  border:0;font-size:11px;font-weight:760;}
+.cloud-browser-history-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+.cloud-browser-job-card {min-width:0;display:flex;flex-direction:column;gap:11px;padding:13px 14px;
+  border:1px solid #d3dff0;border-radius:12px;background:linear-gradient(125deg,#fff,#f2f7ff);box-shadow:var(--cb-shadow);}
+.cloud-browser-job-card.is-active {border-color:#9cc4f6;background:linear-gradient(125deg,#f5f9ff,#eaf2ff);}
+.cloud-browser-job-top {display:flex;align-items:center;gap:9px;min-width:0;}
+.cloud-browser-job-logo {display:grid;place-items:center;flex:0 0 29px;width:29px;height:29px;border-radius:10px;background:#fff;}
+.cloud-browser-job-title {display:flex;flex-direction:column;min-width:0;flex:1;gap:4px;}
+.cloud-browser-job-title strong {font-size:11.5px;line-height:1.3;color:#1f3554;font-weight:820;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cloud-browser-job-title small {font-size:9.5px;color:#71849f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cloud-browser-job-status {display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;max-width:125px;padding:5px 7px;
+  border-radius:999px;background:#eff2f7;color:#65738a;font-size:9px;font-weight:800;text-align:center;}
+.cloud-browser-job-status--completed {background:#dff5e8;color:#087d51;}
+.cloud-browser-job-status--failed,.cloud-browser-job-status--needs_review {background:#fff0d9;color:#a2661c;}
+.cloud-browser-job-status--running,.cloud-browser-job-status--queued {background:#e3efff;color:#1868d0;}
+.cloud-browser-job-message {font-size:10px;line-height:1.4;color:#7c6480;overflow-wrap:anywhere;}
+.cloud-browser-job-actions {display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:auto;}
+.cloud-browser-job-actions :is(button,a) {display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:26px;
+  padding:5px 7px;border:1px solid #cfdff4;border-radius:7px;background:#ffffffbb;color:#225fbc;
+  font-size:9.5px;font-weight:750;white-space:normal;text-align:center;}
+.cloud-browser-job-actions :is(button,a):hover {border-color:#a2c9fa;background:#eaf3ff;}
+.cloud-browser-history-empty {display:flex;align-items:center;gap:9px;padding:24px 16px;border:1px dashed #cbdcef;
+  border-radius:12px;background:#f4f8ff;color:#798eab;font-size:12px;}
+.cloud-browser-external-help {display:inline-flex;align-items:center;gap:7px;margin-top:15px;color:#57769e;
+  font-size:11px;font-weight:720;}
+.cloud-browser-external-help:hover {color:#176bee;}
+
+@media(max-width:1250px) {
+  .cloud-browser-command-grid {grid-template-columns:repeat(3,minmax(0,1fr));}
+  .cloud-browser-launch {width:100%;}
+  .cloud-browser-workspace {grid-template-columns:minmax(0,1.55fr) minmax(300px,.85fr);}
+  .cloud-browser-browser-actions>button:first-child {font-size:0;min-width:33px;padding:7px;}
+  .cloud-browser-browser-actions>button:first-child svg {width:16px;}
+}
+@media(max-width:980px) {
+  .cloud-browser-workspace {grid-template-columns:1fr;}
+  .cloud-browser-results {min-height:320px;}
+  .cloud-browser-results-list {max-height:450px;}
+  .cloud-browser-history-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:720px) {
+  .cloud-browser-page {padding:14px 12px 26px;}
+  .cloud-browser-heading h1 {font-size:23px;}
+  .cloud-browser-heading p {margin-left:0;}
+  .cloud-browser-heading-icon {width:36px;height:36px;flex-basis:36px;}
+  .cloud-browser-health {font-size:10px;}
+  .cloud-browser-command {padding:13px;}
+  .cloud-browser-command-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+  .cloud-browser-search-field {grid-column:span 2;}
+  .cloud-browser-launch {grid-column:span 2;}
+  .cloud-browser-command-helper {flex-basis:100%;}
+  .cloud-browser-panel-toolbar {align-items:flex-start;}
+  .cloud-browser-browser-actions {width:100%;}
+  .cloud-browser-browser-actions>button:first-child {font-size:10px;}
+  .cloud-browser-empty-view {min-height:330px;}
+  .cloud-browser-history-grid {grid-template-columns:1fr;}
+}
+@media(max-width:430px) {
+  .cloud-browser-command-grid {grid-template-columns:1fr;}
+  .cloud-browser-search-field,.cloud-browser-launch {grid-column:auto;}
+  .cloud-browser-results-footer {flex-direction:column;align-items:stretch;}
+  .cloud-browser-results-footer .cloud-browser-primary {width:100%;}
+  .cloud-browser-profile-form {left:-100px;}
+}
