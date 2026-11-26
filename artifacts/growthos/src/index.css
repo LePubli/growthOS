@@ -4,6 +4,7 @@
 @import "./atlas-orbit.css";
 @import "./atlas-prospect-360.css";
 @import "./atlas-prospect-details.css";
+@import "./atlas-prospect-colors.css";
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));

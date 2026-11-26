@@ -3,6 +3,7 @@ import { ProspectProfessionalSources } from '@/components/ProspectProfessionalSo
 import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
 import { ProspectRelationshipMap, ProspectPappersDossier } from '@/components/atlas/ProspectRelationshipMap';
 import { Prospect360Dashboard, ProspectOrbitBanner } from '@/components/atlas/Prospect360Dashboard';
+import { CompanyLogo, SourceLogo } from '@/components/atlas/ProspectLogos';
 import { collectProspectPeople } from '@/lib/prospect-people';
 import { hasValidGeoPosition } from '@/lib/prospect-completeness';
 import { SocieteEnrichmentDialog } from '@/components/SocieteEnrichment';
@@ -376,9 +377,11 @@ export default function ProspectDetailPage() {
   const fetchEnrichmentHistory = async () => {
     try {
       const history = await apiClient.get(`/enrich/history/${id}`) as any[];
-      if (Array.isArray(history) && history.length > 0) {
-        setLastEnrichedAt(new Date(history[0].createdAt));
-      }
+      const lastCompleted = Array.isArray(history) ? history.find(entry =>
+        entry?.status === 'completed' || (!entry?.status && (entry?.createdAt || entry?.created_at))) : null;
+      const timestamp = lastCompleted?.completed_at || lastCompleted?.started_at || lastCompleted?.createdAt || lastCompleted?.created_at;
+      const date = timestamp ? new Date(timestamp) : null;
+      setLastEnrichedAt(date && Number.isFinite(date.getTime()) ? date : null);
     } catch { /* plugin may not be active */ }
   };
 
@@ -675,7 +678,7 @@ export default function ProspectDetailPage() {
             Pour chaque désaccord, choisissez celle que vous souhaitez conserver.</p>
           <div className="space-y-3 mt-3">
             {pendingConflicts.map(conflict=><div key={conflict.id} className="bg-white rounded-xl border border-amber-200 p-3">
-              <div className="font-semibold text-sm text-gray-800">{conflictLabels[conflict.field]||conflict.field}
+              <div className="font-semibold text-sm text-gray-800 flex items-center flex-wrap gap-2"><SourceLogo source={conflict.source} size="sm"/>{conflictLabels[conflict.field]||conflict.field}
                 <span className="ml-2 text-xs text-gray-500 font-normal">Source : {conflict.source}</span></div>
               <div className="grid gap-3 sm:grid-cols-2 my-2 text-sm">
                 <div className="rounded-lg bg-gray-50 p-2"><span className="text-xs text-gray-500">Dans le CRM</span>
@@ -702,7 +705,10 @@ export default function ProspectDetailPage() {
         </button>
         <div className="atlas-360-hero-identity flex items-center gap-3 flex-1 min-w-[220px]">
           <div className="atlas-360-hero-icon w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-bold"
-            style={{ background: 'var(--color-primary)' }}><Building2 size={31}/></div>
+            style={{ background: 'var(--color-primary)' }}>
+            <CompanyLogo name={prospect.company||fullName} website={prospect.website}
+              logoUrl={prospect.sourceDetails?.logoUrl||null} size="lg" />
+          </div>
           <div>
             <div className="atlas-360-hero-title"><h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{fullName}</h1>
               {prospect.sourceDetails?.annuaire && <span className="atlas-360-company-active"><CheckCircle size={14}/> Identité vérifiée</span>}</div>
@@ -762,7 +768,7 @@ export default function ProspectDetailPage() {
           onClick={()=>setActive360View('relations')}><Network size={17}/> Cartographie</button>
       </nav>
       {active360View==='relations' && <div className="atlas-relationship-view">
-        <ProspectRelationshipMap siren={prospect.siren} siret={prospect.siret} company={prospect.company}/>
+        <ProspectRelationshipMap siren={prospect.siren} siret={prospect.siret} company={prospect.company} website={prospect.website}/>
         <ProspectPappersDossier siren={prospect.siren} siret={prospect.siret}/>
       </div>}
       {active360View==='overview' && <>
@@ -790,7 +796,7 @@ export default function ProspectDetailPage() {
             <summary>Historique des enrichissements <span>{sourceHistory.length} capture(s)</span></summary>
             <div className="atlas-360-enrichment-history-list">
               {[...sourceHistory].reverse().map((entry,index)=><div key={`${entry.captureId}-${index}`}>
-                <strong>{entry.source.replaceAll('_',' ')}</strong>
+                <SourceLogo source={entry.source} size="sm"/><strong>{entry.source.replaceAll('_',' ')}</strong>
                 <span>·</span>
                 <time>{new Date(entry.capturedAt).toLocaleString('fr-FR')}</time>
                 {Array.isArray(entry.fieldsFilled)&&entry.fieldsFilled.length>0&&<p>Données ajoutées : {entry.fieldsFilled.map(f=>conflictLabels[f]||f).join(', ')}</p>}
@@ -814,7 +820,7 @@ export default function ProspectDetailPage() {
           {/* Informations légales structurées, accessibles sans enrichissement */}
           <section id="atlas-prospect-legal" className="atlas-scroll-target atlas-360-detail-module atlas-360-legal-extra rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex flex-wrap gap-3 justify-between items-center mb-4">
-              <h2 className="font-semibold text-base flex items-center gap-2" style={{ color: 'var(--text-primary)' }}><Building2 size={17} className="text-teal-600"/>Identifiants et activité officielle</h2>
+              <h2 className="font-semibold text-base flex items-center gap-2" style={{ color: 'var(--text-primary)' }}><SourceLogo source="annuaire" size="sm"/>Identifiants et activité officielle</h2>
               <div className="flex items-center gap-2 flex-wrap">
                 {!editing&&<button type="button" className="atlas-360-detail-edit-link" onClick={()=>openEditor('atlas-prospect-legal')}><Edit2 size={13}/> Modifier</button>}
                 {(prospect.siren || prospect.siret) && <button type="button" onClick={()=>void enrichOfficialActivity()} disabled={enrichingActivity}
@@ -863,6 +869,7 @@ export default function ProspectDetailPage() {
           </section>
 
           {prospect.source && <div className="atlas-360-origin-line rounded-xl border px-4 py-3 flex flex-wrap items-center gap-2 text-xs" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-muted)' }}>
+            <SourceLogo source={prospect.source} size="sm"/>
             <span className="font-semibold">Source :</span>
             <span>{prospect.source === 'pagesjaunes' ? 'PagesJaunes.fr' : prospect.source === 'annuaire-entreprises' ? 'Annuaire des entreprises' : prospect.source}</span>
             {pagesJaunesProfile && <a href={prospect.sourceUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline">Voir la fiche source</a>}
@@ -875,7 +882,7 @@ export default function ProspectDetailPage() {
           {pagesJaunesDetails && <section className="atlas-360-detail-module atlas-360-pj-details rounded-2xl border p-4 sm:p-5 space-y-4" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2">
-                <FileText size={16} className="text-teal-600"/>
+                <SourceLogo source="pagesjaunes" size="md"/>
                 <h2 className="text-sm font-bold" style={{color:'var(--text-primary)'}}>DONNÉES PAGESJAUNES</h2>
               </div>
               <span className="text-xs text-gray-500">

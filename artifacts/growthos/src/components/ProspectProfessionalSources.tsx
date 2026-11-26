@@ -6,6 +6,7 @@ import {
   type SourceLinkedProspect,
 } from "@/lib/prospect-source-links";
 import { preferredCompanyQuery } from "@/lib/societe-search";
+import { SourceLogo } from "@/components/atlas/ProspectLogos";
 
 type Props = {
   prospect: SourceLinkedProspect & {
@@ -51,11 +52,12 @@ export function ProspectProfessionalSources({ prospect }: Props) {
           return (
             <div
               key={source.id}
+              data-source={source.id}
               className="atlas-360-professional-source-card border rounded-xl p-3 space-y-2"
               style={{ borderColor: "var(--card-border)" }}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-medium text-sm">{source.label}</h3>
+                <h3 className="font-medium text-sm flex items-center gap-2"><SourceLogo source={source.id} size="md"/>{source.label}</h3>
               </div>
               {!captured.length && (
                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>

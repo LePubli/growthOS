@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { collectProspectPeople } from '@/lib/prospect-people';
 import { computeProspectCompleteness, hasValidGeoPosition } from '@/lib/prospect-completeness';
+import { CompanyLogo, SourceLogo } from '@/components/atlas/ProspectLogos';
 import {
   Activity, ArrowRight, Bell, Building2, CalendarDays, Check, CheckCircle2,
   ChevronDown, Circle, CircleAlert, ClipboardList, ExternalLink, FileSearch,
@@ -81,7 +82,7 @@ export function Prospect360Dashboard({
     <div className="atlas-360-dashboard">
       <div className="atlas-360-overview-grid">
         <section className="atlas-360-card atlas-360-company">
-          <header className="atlas-360-card-header"><div><Building2 size={19}/><h2>Identité & données légales</h2></div>
+          <header className="atlas-360-card-header"><div><CompanyLogo name={p.company||'Entreprise'} website={p.website} size="sm"/><h2>Identité & données légales</h2></div>
             <button className="atlas-360-text-button" onClick={onOpenSources}>Voir toutes les données <ArrowRight size={14}/></button></header>
           <dl className="atlas-360-legal-list">
             <div><dt>SIRET</dt><dd><strong>{text(p.siret)}</strong>{verified&&<span className="atlas-360-verified"><Check size={13}/> Vérifié</span>}</dd></div>
@@ -114,8 +115,8 @@ export function Prospect360Dashboard({
           <p className="atlas-360-complete-rule">{completed}/{total} critères validés · Les informations incomplètes ou non vérifiées ne comptent pas.</p>
           <footer className="atlas-360-source-confidence">
             <div>Confiance des sources <button title="Confiance indicative basée sur les données du dossier"><CircleAlert size={14}/></button></div>
-            <div className="atlas-360-source-chips"><span>INSEE <b>{verified?'Identifiée':'À confirmer'}</b></span>
-              <span>Source CRM <b>{sourceName}</b></span></div>
+            <div className="atlas-360-source-chips"><span><SourceLogo source="insee" size="sm"/> INSEE <b>{verified?'Identifiée':'À confirmer'}</b></span>
+              <span><SourceLogo source={p.source==='annuaire-entreprises'?'annuaire':p.source||'crm'} size="sm"/> Source CRM <b>{sourceName}</b></span></div>
           </footer>
         </section>
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import apiClient from "@/lib/api-client";
 import type { CompanyDetails } from "@/lib/pagesjaunes-device";
+import { SourceLogo } from "@/components/atlas/ProspectLogos";
 
 type Snapshot = {
   sourceUrl: string;
@@ -275,7 +276,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compa
             rel="noreferrer"
             className="underline text-teal-700"
           >
-            Source · Annuaire des Entreprises
+            <SourceLogo source="annuaire" size="sm"/> Source · Annuaire des Entreprises
           </a>
           {snapshot.sourceUpdatedAt && (
             <> · mise à jour de la source {date(snapshot.sourceUpdatedAt)}</>
@@ -439,7 +440,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compa
       {profile?.companyDetails && (
         <details>
           <summary className="cursor-pointer font-medium text-sm">
-            Informations détaillées capturées sur Societe.com
+            <SourceLogo source="societe_com" size="sm"/> Informations détaillées capturées sur Societe.com
           </summary>
           <p className="text-xs my-2">
             Capture du{" "}
