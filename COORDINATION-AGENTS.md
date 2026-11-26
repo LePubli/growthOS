@@ -9,14 +9,16 @@ Notes de travail demandées par le propriétaire le 26 novembre 2026. À lire av
 | Agent | Périmètre | Coordination |
 |---|---|---|
 | Agent design, dans une autre conversation | Design du logiciel GrowthOS uniquement | Préserver les contrôles, validations, états de chargement et liaisons de données. Ajouter ici sa branche et ses fichiers lorsqu’ils sont connus. |
-| Agent de cette branche `fix/prospect-updates-and-watch-history` | Fonctionnement : enrichissement, veille, mise à jour et traçabilité | Modifications d’interface limitées au parcours demandé et à l’affichage des données. Aucune refonte de la charte, de la navigation générale ou du style. |
+| Agent fonctionnement, branche active `fix/watch-baseline-identity` | Fonctionnement : enrichissement, veille, mise à jour et traçabilité | Modifications d’interface limitées au parcours demandé et à l’affichage des données. Aucune refonte de la charte, de la navigation générale ou du style. |
 
 ## État du travail fonctionnel
 
 - Base livrée : PR 38, fusion `c9110a99d9ee33a8085c44085b8c146d7e57f453`, catalogue `/outils`, enrichissement lié au prospect et Chrome `0.11.0.12`.
-- Correction en cours après recette utilisateur : « Lire la fiche » avant la confirmation/retour ; catégorie « Chauffagiste » exclue de l’inférence d’une ville ; même SIRET autorise la comparaison malgré un nom ou une ville erronés ; remplacement explicite des valeurs divergentes.
+- PR 39 fusionnée, commit `071114127269e30d94d9275c2b816822b1afe1e6`, 268 contrôles API réussis ; recette Chrome encore ouverte : « Lire la fiche » avant la confirmation/retour ; catégorie « Chauffagiste » exclue de l’inférence d’une ville ; même SIRET autorise la comparaison malgré un nom ou une ville erronés ; remplacement explicite des valeurs divergentes.
 - Veille activée : appliquer les données officielles d’identité, d’adresse et d’activité pour l’établissement exact, conserver les champs absents, notifier et historiser les valeurs avant/après. Les coordonnées commerciales non fournies par l’Annuaire restent conservées.
 - Traçabilité dans les activités de la fiche, avec source, date et valeurs. Les activités automatiques utilisent le type `data_update` et restent en lecture seule.
+
+- Correctif complémentaire sur `fix/watch-baseline-identity` après revue de la PR 39 : ne comparer les dates officielles que pour le même SIREN et le même SIRET demandé. Une identité corrigée doit pouvoir établir un nouveau contrôle. Ce complément touche seulement le service API de veille, ses tests et la documentation. 270 contrôles d’intégration réussis sur PostgreSQL 16 jetable, fournisseurs simulés.
 
 ## Fichiers d’interface partagés à intégrer avec précaution
 
@@ -28,11 +30,13 @@ Notes de travail demandées par le propriétaire le 26 novembre 2026. À lire av
 
 ## Règles de synchronisation
 
-- Travailler sur des branches distinctes, publier des PR ciblées et relire les modifications de la branche de préproduction avant chaque fusion.
+- Travailler sur des branches distinctes et publier des PR ciblées. Avant chaque commit et fusion, relire les changements locaux et distants, contrôler la branche cible et les PR ouvertes. Ne committer que les fichiers du lot, sans inclure le travail non committé de l’autre agent.
+- Pas de `push --force`, de réinitialisation destructive ou d’écrasement d’une branche partagée. Une fusion conflictuelle doit intégrer les deux versions de façon ciblée.
 - En cas de fichier commun, intégrer les changements des deux agents : conserver le design de l’agent design et le comportement validé de l’agent fonctionnel.
 - Ne pas remplacer un fichier entier par une ancienne copie pour résoudre un conflit.
 - Inscrire ici les changements de périmètre, points bloquants et résultats utiles. Ne jamais inscrire de secrets, mots de passe ou cookies.
 - Déploiement DockPanel laissé au propriétaire. Le lancement final en production reste soumis à son autorisation.
+- **Annonce de fin obligatoire pour les deux agents** : à la fin de chaque lot, prévenir le propriétaire quand les commits sont poussés, les contrôles réussis et les images nécessaires publiées. Fournir le lien du ZIP Chrome si le connecteur change et les étapes de redéploiement/recette. Distinguer code prêt, compilation en cours et lot réellement disponible. Chaque agent annonce son propre lot avec les preuves connues ; ne pas annoncer celui de l’autre sans les vérifier. Aucun redéploiement DockPanel par les agents.
 
 ## Relais design
 

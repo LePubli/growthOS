@@ -388,7 +388,8 @@ export async function verifyProspect(
         409,
         "Une autre vérification est déjà en cours.",
       );
-    if(watch.snapshot?.sourceUpdatedAt && snapshot.sourceUpdatedAt &&
+    if(watch.snapshot?.siren===snapshot.siren && watch.snapshot?.requestedSiret===snapshot.requestedSiret &&
+      watch.snapshot?.sourceUpdatedAt && snapshot.sourceUpdatedAt &&
       Date.parse(snapshot.sourceUpdatedAt)<Date.parse(watch.snapshot.sourceUpdatedAt))
       throw new MonitoringError(502,'La source a renvoyé une version plus ancienne. Les dernières données sont conservées.');
     const sourceChanges = watch.snapshot

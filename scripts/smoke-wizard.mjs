@@ -225,6 +225,14 @@ let watchVersion=0,watchDown=false,watchWrongIdentity=false,watchRequests=0,watc
 const companies = createServer((req, res) => {
   if (!req.url?.startsWith("/search?")) { res.writeHead(404).end(); return; }
   const directoryQuery = new URL(req.url, 'http://localhost').searchParams.get("q");
+  if(directoryQuery?.startsWith('777000003')){
+    res.setHeader('Content-Type','application/json');
+    res.end(JSON.stringify({results:[{siren:'777000003',nom_complet:'Entreprise identité corrigée',etat_administratif:'A',
+      date_mise_a_jour:directoryQuery.endsWith('00027')?'2019-01-01':'2020-01-01',activite_principale:'43.22A',
+      siege:{siret:'77700000300019',etat_administratif:'A',adresse:'1 rue du Test 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix',activite_principale:'43.22A'},
+      matching_etablissements:[{siret:'77700000300027',etat_administratif:'A',adresse:'2 rue du Test 59000 Lille',code_postal:'59000',libelle_commune:'Lille',activite_principale:'43.21A'}],
+    }]}));return;
+  }
   if (directoryQuery?.startsWith('777000001')) {
     watchRequests++;
     if(watchDown){res.writeHead(503).end();return;}
@@ -1409,6 +1417,20 @@ try {
     'Veille : le siège ne remplace ni les coordonnées ni l’activité d’un établissement absent de la réponse');
   await request('PATCH',watchPath+'/monitoring',{enabled:false,intervalHours:24},token);
   await request('PATCH',`/prospects/${absentSite.body.id}/monitoring`,{enabled:false,intervalHours:24},token);
+  await request('PATCH',watchPath,{siren:'777000003',siret:'77700000300019'},token);
+  await request('PATCH',watchPath+'/monitoring',{enabled:true,intervalHours:24},token);
+  await monitoringMaintenance('expire',watchId);
+  const correctedIdentity=await request('POST',watchPath+'/verify-company',{force:true},token);
+  check(!correctedIdentity.body.error && correctedIdentity.body.snapshot.siren==='777000003' && correctedIdentity.body.snapshot.sourceUpdatedAt==='2020-01-01' &&
+    (await request('GET',watchPath,undefined,token)).body.company==='Entreprise identité corrigée',
+    'Veille : nouvelle entreprise après correction du SIREN acceptée malgré une date officielle plus ancienne');
+  await request('PATCH',watchPath,{siret:'77700000300027'},token);
+  await monitoringMaintenance('expire',watchId);
+  const correctedSite=await request('POST',watchPath+'/verify-company',{force:true},token);
+  check(!correctedSite.body.error && correctedSite.body.snapshot.requestedSiret==='77700000300027' && correctedSite.body.snapshot.sourceUpdatedAt==='2019-01-01' &&
+    (await request('GET',watchPath,undefined,token)).body.city==='Lille',
+    'Veille : changement de SIRET dans la même entreprise établit un nouveau contrôle sans comparer les dates de deux établissements');
+  await request('PATCH',watchPath+'/monitoring',{enabled:false,intervalHours:24},token);
 
   const identity=await request('POST','/prospects',{company:'Identité principale',siret:'981 075 252 00016'},token);
   check(identity.status===201 && identity.body.siret==='98107525200016','SIRET avec espaces normalisé à la création');
