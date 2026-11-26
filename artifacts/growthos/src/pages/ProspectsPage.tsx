@@ -8,6 +8,7 @@ import {
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
 import { AddressAutocomplete } from '@/components/common/AddressAutocomplete';
+import { ProspectQuickPreview } from '@/components/atlas/ProspectQuickPreview';
 
 const STATUS_OPTIONS = [
   {value:'all',label:'Tous'},{value:'new',label:'Nouveau'},{value:'contacted',label:'Contacté'},
@@ -125,6 +126,7 @@ export default function ProspectsPage() {
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkStatus, setShowBulkStatus] = useState(false);
+  const [previewProspect, setPreviewProspect] = useState<any | null>(null);
   const [geocodingAll, setGeocodingAll] = useState(false);
   const [geocodeProgress, setGeocodeProgress] = useState({ done: 0, total: 0 });
 
@@ -268,9 +270,11 @@ export default function ProspectsPage() {
   const someSelected = selected.size > 0 && selected.size < prospects.length;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="atlas-prospect-page min-h-screen bg-gray-50 p-6">
       {showCreate && <CreateModal onClose={()=>setShowCreate(false)} onSave={()=>{fetchProspects();toast.success('Prospect créé ✓');}}/>}
       {showBulkStatus && <BulkStatusModal count={selected.size} onClose={()=>setShowBulkStatus(false)} onConfirm={bulkChangeStatus}/>}
+      {previewProspect && <ProspectQuickPreview prospect={previewProspect} onClose={()=>setPreviewProspect(null)}
+        onOpen360={()=>{const targetId=previewProspect.id;setPreviewProspect(null);navigate('/prospects/' + targetId);}}/>}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -400,7 +404,7 @@ export default function ProspectsPage() {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-x-auto">
+      <div className="atlas-prospect-table bg-white rounded-2xl border border-gray-200 overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -437,7 +441,7 @@ export default function ProspectsPage() {
             {prospects.map(p=>(
               <tr key={p.id}
                 className={`hover:bg-gray-50 cursor-pointer transition-colors ${selected.has(p.id)?'bg-teal-50':''}`}
-                onClick={()=>navigate(`/prospects/${p.id}`)}>
+                onClick={()=>setPreviewProspect(p)}>
                 <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
                   <button onClick={()=>toggleSelect(p.id)} className="flex items-center">
                     {selected.has(p.id)
@@ -496,7 +500,7 @@ export default function ProspectsPage() {
                         <GitMerge className="w-3 h-3"/>Deal
                       </button>
                     )}
-                    <button onClick={()=>navigate(`/prospects/${p.id}`)} className="text-gray-300 hover:text-teal-600">
+                    <button onClick={()=>setPreviewProspect(p)} aria-label="Aperçu rapide du prospect" className="text-gray-300 hover:text-teal-600">
                       <ChevronRight className="w-5 h-5"/>
                     </button>
                   </div>

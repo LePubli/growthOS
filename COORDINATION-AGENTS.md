@@ -36,4 +36,12 @@ Notes de travail demandées par le propriétaire le 26 novembre 2026. À lire av
 
 ## Relais design
 
-Branche, PR et fichiers de l’agent design : à compléter par cet agent ou par le propriétaire. L’absence de branche renseignée ne signifie pas que le travail de design est arrêté.
+**Lot design ATLAS × ORBIT du 26/11/2026 :** branche `feat/atlas-orbit-design-20261126`. La fiche Prospect 360° reprend le parcours **liste → aperçu latéral → bouton « Ouvrir la fiche 360° » → page pleine largeur**. S'y ajoutent le thème bleu/blanc ATLAS, navigation par onglets/ancres et cartographie des relations avec molette, glisser et filtre des anciens mandats.
+
+Fichiers UX : `artifacts/growthos/src/atlas-orbit.css`, `components/atlas/ProspectQuickPreview.tsx`, `components/atlas/ProspectRelationshipMap.tsx`, `providers/theme-provider.tsx`, `components/layout/AppShell.tsx`, `pages/ProspectsPage.tsx` et `pages/ProspectDetailPage.tsx`.
+
+**Point de fusion vérifié :** les corrections fonctionnelles de la PR 39 ont été conservées lors du rebase, en particulier les callbacks `ConnectorEnrichmentReturn.onSaved` et `ProspectCompanyProfile.onUpdated` qui rafraîchissent simultanément la fiche et les activités. Aucun changement voulu sur la logique serveur.
+
+**Pappers :** la cartographie installée est un instantané **documenté uniquement pour SOLUTION ENR (SIREN 981075252)** ; il n'y a pas encore de clé ni de client API Pappers. Le futur endpoint tenant-aware, les vérifications, sources, quotas, limites légales et tests de recette sont détaillés dans `docs/design/ATLAS-ORBIT-HANDOFF.md`. Les autres SIREN affichent un état d'attente, jamais la carte SOLUTION ENR.
+
+**Ne pas effacer** cette note ni le relais UX avant le lancement final expressément autorisé. Les validations de déploiement de préproduction restent la responsabilité du propriétaire.
