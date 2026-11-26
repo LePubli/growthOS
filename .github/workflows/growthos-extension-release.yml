@@ -55,7 +55,7 @@ jobs:
           NODE
           cd extensions/growthos-pagesjaunes
           zip -q "$RUNNER_TEMP/growthos-connecteur-chrome.zip" \
-            manifest.json background.js bridge.js capture.js societe.js popup.html popup.css popup.js
+            manifest.json modules.json background.js bridge.js capture.js societe.js popup.html popup.css popup.js
 
       - name: Keep verified extension ZIP available from GitHub Actions
         uses: actions/upload-artifact@v4

@@ -397,7 +397,7 @@ const companyDetailsSchema = z.object({
     const url=new URL(value);return url.protocol==='https:' && ['societe.com','www.societe.com'].includes(url.hostname);
   })}).strict()).max(20),
 }).strict();
-const deviceCandidateSchema = z.object({
+const deviceCandidateFieldsSchema = z.object({
   id: z.string().trim().min(3).max(64),
   source: z.enum(deviceSources).default('pagesjaunes'), // compatibilité extension 0.3
   company: z.string().trim().min(2).max(160),
@@ -416,7 +416,8 @@ const deviceCandidateSchema = z.object({
   companyDetails: companyDetailsSchema.optional(),
   collectionMode: z.enum(['manual','visible']).optional(),
   capturedAt: z.number().int().positive().optional(),
-}).strict().superRefine((item, context) => {
+}).strict();
+const deviceCandidateSchema = deviceCandidateFieldsSchema.superRefine((item, context) => {
   if (item.sourceUrl ? !validDeviceSourceUrl(item.source,item.sourceUrl) : item.source!=='pagesjaunes') {
     context.addIssue({code:'custom',path:['sourceUrl'],message:'URL de source obligatoire et conforme à la source'});
   }
@@ -562,7 +563,7 @@ function ambiguousLinkedinProfiles(records: (typeof prospectsTable.$inferSelect)
 }
 async function mergeProspectCapture(
   existing:typeof prospectsTable.$inferSelect,item:ImportCapture,incomplete:boolean,
-  tenantId:string,
+  tenantId:string, executor:Pick<typeof db,'update'>=db,
 ):Promise<{updated:boolean;filled:string[];conflicts:number;newConflicts:EnrichmentConflict[]}>{
   const oldDetails=jsonRecord(existing.sourceDetails);
   const oldMerge=jsonRecord(oldDetails.crossSource);
@@ -628,7 +629,7 @@ async function mergeProspectCapture(
     observations:(alreadyObserved?oldObservations:[...oldObservations,observation]).slice(-60),
     conflicts:[...oldConflicts,...newConflicts].slice(-60),
   }};
-  await db.update(prospectsTable).set({
+  await executor.update(prospectsTable).set({
     ...updates,
     source:[...sources].join(','),
     sourceUrl:existing.sourceUrl||captureProfileUrl(item.sourceUrl),
@@ -636,6 +637,75 @@ async function mergeProspectCapture(
   }).where(and(eq(prospectsTable.id,existing.id),eq(prospectsTable.tenantId,tenantId)));
   return {updated:true,filled,conflicts:newConflicts.length,newConflicts};
 }
+
+// L'enrichissement ciblé accepte une source partielle, sans créer de prospect.
+// L'import de listes conserve ses exigences d'adresse vérifiée.
+const targetCaptureSchema=deviceCandidateFieldsSchema.extend({
+  source:z.enum(deviceSources),
+  capturedAt:z.number().int().positive(),
+  website:z.string().url().max(500).refine(value=>{
+    try{return ['http:','https:'].includes(new URL(value).protocol);}catch{return false;}
+  }).nullable().optional(),
+  address:z.string().trim().max(320).nullable().optional(),
+  codePostal:z.string().regex(/^\d{5}$/).nullable().optional(),
+}).superRefine((item,ctx)=>{
+  const validSource=!!item.sourceUrl && validDeviceSourceUrl(item.source,item.sourceUrl);
+  if(!validSource)
+    ctx.addIssue({code:'custom',path:['sourceUrl'],message:'Ouvrez une fiche professionnelle conforme à la source.'});
+  if(item.sourceUrl && validSource){
+    const url=new URL(item.sourceUrl);
+    if(url.username || url.password || (url.port && url.port!=='443') ||
+      (item.source==='google_maps' && !url.pathname.startsWith('/maps/place/')) ||
+      (item.source==='pagesjaunes' && !/^\/pros\/\d{4,20}\/?$/.test(url.pathname)))
+      ctx.addIssue({code:'custom',path:['sourceUrl'],message:'Ouvrez une fiche détaillée de cet établissement.'});
+  }
+  if(item.source==='societe_com' && item.siret && item.sourceUrl && validSource &&
+    !new URL(item.sourceUrl).pathname.replace(/\/$/,'').endsWith('-'+item.siret.slice(0,9)+'.html'))
+    ctx.addIssue({code:'custom',path:['siret'],message:'SIRET incohérent avec la fiche Societe.com.'});
+  if(item.address && item.codePostal && !item.address.includes(item.codePostal))
+    ctx.addIssue({code:'custom',path:['address'],message:'Adresse et code postal incohérents.'});
+  if(['linkedin','facebook','instagram','tiktok'].includes(item.source) && item.collectionMode!=='manual')
+    ctx.addIssue({code:'custom',path:['collectionMode'],message:'Confirmez les données visibles de la page professionnelle.'});
+  if(item.capturedAt && (item.capturedAt>Date.now()+60000 || Date.now()-item.capturedAt>86400000))
+    ctx.addIssue({code:'custom',path:['capturedAt'],message:'Capture expirée (24 h).'});
+}).transform(item=>({...item,
+  ...(item.source==='societe_com' && item.sourceUrl ? {siren:new URL(item.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1]}:{}),
+  sourceDetails:item.source==='societe_com' && item.companyDetails
+    ? {societe_com:{companyDetails:item.companyDetails,sourceUrl:item.sourceUrl,capturedAt:item.capturedAt}} : {},
+}));
+router.post('/device/prospects/:id/enrich-capture',requireAuth,async(req,res)=>{
+  const id=z.string().uuid().safeParse(req.params.id);
+  const parsed=z.object({taskId:z.string().uuid(),confirmed:z.literal(true),capture:targetCaptureSchema}).strict().safeParse(req.body);
+  if(!id.success || !parsed.success){res.status(400).json({error:'Confirmez une capture valide du prospect ciblé.'});return;}
+  const {capture,taskId}=parsed.data;
+  if(capture.id!=='task_'+taskId){res.status(400).json({error:'Capture et tâche incohérentes.'});return;}
+  try{
+    const outcome=await db.transaction(async tx=>{
+      const [prospect]=await tx.select().from(prospectsTable).where(and(
+        eq(prospectsTable.id,id.data),eq(prospectsTable.tenantId,req.auth!.tenantId),
+      )).for('update');
+      if(!prospect)return {status:404,error:'Prospect introuvable.'};
+      const observations=jsonRecord(jsonRecord(prospect.sourceDetails).crossSource).observations;
+      if(Array.isArray(observations) && observations.some(o=>jsonRecord(o).captureId===capture.id))
+        return {status:200,filled:[],conflicts:0,alreadyApplied:true};
+      const knownSiren=prospect.siren || prospect.siret?.slice(0,9);
+      const incomingSiren=capture.siren || capture.siret?.slice(0,9);
+      if((knownSiren && incomingSiren && knownSiren!==incomingSiren) ||
+        (prospect.siret && capture.siret && prospect.siret!==capture.siret))
+        return {status:409,error:'L’identité juridique ou l’établissement diffère de ce prospect.'};
+      const legalMatch=!!(knownSiren && incomingSiren===knownSiren);
+      if((!legalMatch && normalizedIdentity(prospect.company||'')!==normalizedIdentity(capture.company)) ||
+        (prospect.city && capture.city && normalizedIdentity(prospect.city)!==normalizedIdentity(capture.city)))
+        return {status:409,error:'Le nom ou la ville diffère. Vérifiez la fiche et son établissement avant enrichissement.'};
+      const merged=await mergeProspectCapture(prospect,capture,false,req.auth!.tenantId,tx);
+      return {status:200,filled:merged.filled,conflicts:merged.conflicts,alreadyApplied:false};
+    });
+    res.status(outcome.status).json(outcome);
+  }catch(error){
+    if(isProspectIdentityDuplicate(error)){res.status(409).json({error:'Ce SIRET est déjà utilisé par un autre prospect.'});return;}
+    throw error;
+  }
+});
 
 router.post('/device/prospects/:id/societe-enrich', requireAuth, async (req, res) => {
   const prospectId = z.string().uuid().safeParse(req.params.id);

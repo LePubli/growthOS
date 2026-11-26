@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "GrowthOS — Connecteur multisource",
-  "version": "0.10.1",
-  "description": "Collecte PagesJaunes, Google et Bing, et saisie assistée des fiches entreprises LinkedIn, Societe.com, Facebook, Instagram et TikTok.",
+  "version": "0.11.0",
+  "description": "Outils spécialisés de collecte et enrichissement ciblé des prospects GrowthOS, avec confirmation des données visibles.",
   "permissions": [
     "tabs",
     "scripting",

@@ -51,7 +51,10 @@ type ExtensionResponse = {
   profile: LocalProfile | null;
   version?: string;
   extensionId?: string;
+  task?: ConnectorTask | null;
 };
+export type ConnectorTask={id:string;source:string;mode:'discover'|'enrich';status:'active'|'pending'|'done';
+  prospect?:{id:string;company:string};capture?:Partial<LocalCompany>&{id:string;company:string;source:string}};
 const CHANNEL = 'growthos-pagesjaunes-device-v1';
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 export function isMobileConnectorRequired() { return isMobile; }
@@ -65,7 +68,7 @@ export function localPagesJaunesLocations(filters: {
     departements.length ? departements.map(code => departmentNames[code] || code) :
     regions.map(code => regionNames[code] || code))];
 }
-function askExtension(action: 'ping'|'search'|'enrich'|'get-captures'|'get-drafts'|'ack-import', payload?: object, timeoutMs = 4000): Promise<ExtensionResponse> {
+function askExtension(action: 'ping'|'search'|'enrich'|'get-captures'|'get-drafts'|'ack-import'|'begin-task'|'get-task-result'|'ack-task', payload?: object, timeoutMs = 4000): Promise<ExtensionResponse> {
   return new Promise((resolve,reject) => {
     if (isMobile) { reject(new Error('Sur téléphone, une application Android dédiée sera nécessaire.')); return; }
     const requestId = crypto.randomUUID();
@@ -80,13 +83,16 @@ function askExtension(action: 'ping'|'search'|'enrich'|'get-captures'|'get-draft
       window.clearTimeout(timeout); window.removeEventListener('message',listener);
       if (!m.ok) { reject(new Error(m.error || 'Extension indisponible')); return; }
       resolve({results: Array.isArray(m.results) ? m.results : [], drafts: Array.isArray(m.drafts) ? m.drafts : [], warnings: Array.isArray(m.warnings) ? m.warnings : [], profile: m.profile || null,
-        version:m.version,extensionId:m.extensionId});
+        task:m.task,version:m.version,extensionId:m.extensionId});
     }
     window.addEventListener('message',listener);
     window.postMessage({channel:CHANNEL,direction:'to-extension',requestId,action,payload},window.location.origin);
   });
 }
 export function pingLocalPagesJaunes() { return askExtension('ping'); }
+export function beginConnectorTask(payload:{source:string;mode:'discover'|'enrich';query:string;area:string;prospect?:{id:string;company:string}}){return askExtension('begin-task',payload,10000);}
+export function getConnectorTask(taskId:string,prospectId:string){return askExtension('get-task-result',{taskId,prospectId});}
+export function acknowledgeConnectorTask(taskId:string,prospectId:string){return askExtension('ack-task',{taskId,prospectId});}
 export function acknowledgeLocalImport(ids:string[]) { return askExtension('ack-import',{ids}); }
 /** Les fiches restent sur l'appareil jusqu'à la recherche : aucun token CRM dans l'extension. */
 export async function getLocalCaptures(): Promise<LocalCompany[]> {

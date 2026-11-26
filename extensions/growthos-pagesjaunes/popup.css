@@ -16,3 +16,5 @@ button:disabled{opacity:.47;cursor:not-allowed}.hint{color:#748394;font-size:11p
 .diagnostics{max-height:130px;overflow-y:auto;font-size:11px;line-height:1.45;color:#556b7c}
 .diagnostics p{padding:6px 0;border-bottom:1px solid #ecf0f4}
 .map-progress{font-size:11px;background:#eff6ff;color:#245b89;border:1px solid #c1dafa;border-radius:8px;padding:8px;margin-top:7px}
+
+[hidden]{display:none!important}#taskPanel{border:2px solid #00a08d}input[type=checkbox]{width:auto;margin-right:6px}#taskPreview label{border:1px solid #dce6ee;border-radius:8px;padding:9px}#taskPreview small{display:block;line-height:1.6}#taskPreview input{width:auto}#taskTarget{font-weight:700}#taskCancel{margin-top:12px}

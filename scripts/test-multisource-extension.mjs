@@ -332,3 +332,66 @@ assert.equal(structured.phone,'0320112233');
 assert.equal(structured.email,null,'Le contact direct ne devient pas le contact général');
 assert.ok(!JSON.stringify(structured).includes('hidden@example.org'));
 console.log('✓ Societe.com : URL q/ftStatus, libellés en ligne, dirigeants, rôle et coordonnées visibles séparés du standard');
+
+{
+// Parcours ciblé : aucune capture ne doit rejoindre la sélection d'import.
+const prospect={id:'10000000-0000-4000-8000-000000000001',company:'Atelier Manuel'};
+const queueBefore=JSON.stringify((await send('list-captures')).results);
+const started=await send('begin-task',{source:'linkedin',mode:'enrich',query:'Atelier Manuel',area:'Roubaix',prospect},growthos);
+assert.equal(started.ok,true);const taskId=started.task.id;
+assert.equal(started.task.prospect.id,prospect.id);
+assert.ok(opened.at(-1).url.startsWith('https://www.linkedin.com/search/results/companies/'));
+assert.equal((await send('manual-add',{source:'linkedin',company:'Accident'})).ok,false,'Le mode ciblé interdit les écritures dans la sélection de listes');
+assert.equal((await send('task-preview',{taskId},growthos)).ok,false,'Le site ne peut pas déclencher une lecture de l’onglet actif');
+assert.equal((await send('task-complete',{taskId,confirmed:false,capture:{}})).ok,false);
+const partial={source:'linkedin',company:prospect.company,sourceUrl:'https://www.linkedin.com/company/atelier-manuel/',website:'https://atelier.example.org'};
+assert.equal((await send('task-complete',{taskId,confirmed:true,capture:{...partial,sourceUrl:'https://www.linkedin.com/company/atelier/posts/123'}})).ok,false);
+const completed=await send('task-complete',{taskId,confirmed:true,capture:partial});
+assert.equal(completed.ok,true);assert.equal(completed.task.status,'pending');
+assert.equal(completed.task.capture.id,'task_'+taskId);
+assert.equal(completed.task.capture.address,undefined,'Une page sociale enrichit un prospect connu sans inventer une adresse');
+assert.equal(opened.at(-1).url,`https://agile.le-publicitaire.fr/prospects/${prospect.id}?enrichmentTask=${taskId}`);
+assert.equal(JSON.stringify((await send('list-captures')).results),queueBefore);
+assert.equal((await send('get-task-result',{taskId,prospectId:'10000000-0000-4000-8000-000000000002'},growthos)).ok,false);
+assert.equal((await send('get-task-result',{taskId,prospectId:prospect.id},{url:'https://evil.example/'})).ok,false);
+assert.equal((await send('task-cancel',{taskId})).ok,false,'Une capture non enregistrée reste récupérable');
+assert.equal((await send('begin-task',{source:'bing',mode:'discover',query:'plombier'},growthos)).ok,false,'Ne pas abandonner une capture en attente');
+const recovered=await send('get-task-result',{taskId,prospectId:prospect.id},growthos);
+assert.equal(recovered.task.capture.website,partial.website);
+await send('ack-task',{taskId,prospectId:prospect.id},growthos);
+assert.equal((await send('task-current')).task,null);
+assert.equal((await send('get-task-result',{taskId,prospectId:prospect.id},growthos)).task.status,'done');
+const mapTask=await send('begin-task',{source:'google_maps',mode:'enrich',query:prospect.company,prospect},growthos);
+activeTabUrl='https://www.google.com/maps/search/Atelier';
+assert.equal((await send('task-preview',{taskId:mapTask.task.id})).ok,false,'Une liste Maps ne peut pas enrichir une fiche unique en lot');
+activeTabUrl='https://www.google.com/maps/place/Atelier/';injectedResult={results:[{...partial,source:'google_maps',sourceUrl:activeTabUrl}],drafts:[]};
+const preview=await send('task-preview',{taskId:mapTask.task.id});
+assert.equal(preview.ok,true);assert.equal(preview.task.preview.length,1);
+assert.equal(JSON.stringify((await send('list-captures')).results),queueBefore);
+await send('task-cancel',{taskId:mapTask.task.id});
+const expired=await send('begin-task',{source:'bing',mode:'enrich',query:prospect.company,prospect},growthos);
+storage.growthos_contextual_tasks_v1.tasks[expired.task.id].createdAt=Date.now()-86400001;
+assert.equal((await send('task-current')).task,null,'Le contexte expire après 24 h');
+assert.equal((await send('task-complete',{taskId:expired.task.id,confirmed:true,capture:partial})).ok,false);
+const registry=JSON.parse(readFileSync(new URL('modules.json',root),'utf8'));
+assert.equal(new Set(registry.map(m=>m.source)).size,registry.length);
+assert.ok(registry.filter(m=>m.kind==='assisted').every(m=>m.hint.includes('profession')||m.source==='linkedin'));
+console.log('✓ Outils ciblés : liaison au prospect, données partielles, reprise, confirmation, isolation des listes et expiration');
+
+// Le pont n'expose que les actions prévues, sur la fenêtre et l'origine locales.
+let webListener;const forwarded=[],responses=[];
+const page={location:{origin:'https://agile.le-publicitaire.fr'},addEventListener:(_event,fn)=>{webListener=fn;},postMessage:value=>responses.push(value)};
+page.top=page;
+const bridgeChrome={runtime:{id:'unit-test',getManifest:()=>({version:'0.11.0'}),sendMessage:(message,reply)=>{
+  forwarded.push(message);reply({ok:true,task:{id:taskId,status:'pending',prospect,capture:partial}});
+}}};
+vm.runInNewContext(readFileSync(new URL('bridge.js',root),'utf8'),{window:page,chrome:bridgeChrome});
+const event={source:page,origin:page.location.origin,data:{channel:'growthos-pagesjaunes-device-v1',direction:'to-extension',requestId:'task-read',action:'get-task-result',payload:{taskId,prospectId:prospect.id}}};
+webListener({...event,origin:'https://evil.example'});assert.equal(forwarded.length,0);
+webListener({...event,source:{}});assert.equal(forwarded.length,0);
+webListener({...event,data:{...event.data,action:'task-preview'}});assert.equal(forwarded.length,0);
+webListener(event);assert.equal(forwarded.length,1);assert.equal(responses.at(-1).task.prospect.id,prospect.id);
+assert.equal(responses.at(-1).task.capture.sourceUrl,partial.sourceUrl);
+console.log('✓ Pont navigateur : contexte transmis et lecture active interdite depuis la page web');
+
+}

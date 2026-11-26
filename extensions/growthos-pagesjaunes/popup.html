@@ -15,7 +15,15 @@
   <div id="notice" role="status" aria-live="polite" hidden></div>
   <main>
     <div class="hero"><span class="dot"></span> Extension prête <span id="currentTab">· Vérification de l’onglet…</span> <small id="extensionIdentity"></small></div>
-    <section aria-label="Choisir la source">
+    <section id="taskPanel" hidden>
+      <h2 id="taskTitle"></h2><p id="taskTarget"></p><p class="hint" id="taskHint"></p>
+      <p class="hint">Les données manquantes peuvent rester vides. Seules les valeurs absentes du CRM seront complétées ; les désaccords seront à vérifier.</p>
+      <div id="taskPreview"></div>
+      <label><input type="checkbox" id="taskConfirmed"/> Je confirme la bonne entreprise et le bon établissement.</label>
+      <button type="button" class="primary teal" id="taskFinish">Confirmer et revenir au prospect</button>
+      <button type="button" class="link" id="taskCancel">Quitter ce mode</button>
+    </section>
+    <section id="sourcePicker" aria-label="Choisir la source">
       <h2>1. Choisir la source</h2>
       <div class="sources" id="sources">
         <button type="button" data-source="google_maps">🗺️ Maps</button>
@@ -39,7 +47,8 @@
       <p class="hint" id="sourceHint"></p>
     </section>
     <section>
-      <h2>3. Collecter</h2>
+      <h2 id="collectTitle">3. Collecter</h2>
+      <div id="bulkControls">
       <button type="button" class="primary teal" id="capture">⤓ Capturer les fiches</button>
       <button type="button" class="secondary" id="autoMaps">▣ Lancer une recherche Maps par activité</button>
       <button type="button" class="link" id="resetMaps">Repartir du premier résultat Maps</button>
@@ -51,6 +60,8 @@
       <p class="hint">Le numéro et la rue réellement affichés peuvent être vérifiés auprès de la Base Adresse Nationale. Sans rue, seule une correspondance d’entreprise officielle certaine est acceptée. Aucun import automatique.</p>
       <details id="diagnosticPanel" hidden><summary>Pourquoi certaines fiches restent à vérifier ?</summary><div id="diagnostics" class="diagnostics"></div></details>
       <div id="drafts" class="draft-list"><p class="empty">Aucun brouillon</p></div>
+      </div>
+      <button type="button" class="primary teal" id="taskRead" hidden>Lire la fiche affichée</button>
       <details id="manualPanel">
         <summary>+ Compléter ou ajouter une fiche vérifiée</summary>
         <form id="manualForm">
@@ -59,15 +70,16 @@
           <div class="two"><div><label for="postal">Code postal *</label><input id="postal" placeholder="59100" inputmode="numeric" pattern="[0-9]{5}" required maxlength="5"/></div>
           <div><label for="city">Ville</label><input id="city" placeholder="Roubaix" maxlength="120"/></div></div>
           <div id="legalIdentity" hidden><label for="siret">SIRET de l’établissement (facultatif)</label><input id="siret" pattern="[0-9]{14}" maxlength="14" inputmode="numeric"/></div>
+          <label for="email">Email professionnel visible (facultatif)</label><input id="email" type="email" maxlength="254"/>
           <label for="phone">Téléphone (facultatif)</label><input id="phone" placeholder="Numéro affiché et vérifié" maxlength="40"/>
           <label for="website">Site web (facultatif)</label><input id="website" type="url" placeholder="https://…"/>
           <label for="sourceUrl">Lien de la fiche source *</label><input id="sourceUrl" type="url" required placeholder="https://…"/>
-          <button class="secondary" type="submit">Valider et ajouter à la sélection</button>
+          <button class="secondary" type="submit" id="manualSubmit">Valider et ajouter à la sélection</button>
         </form>
       </details>
     </section>
     <section>
-      <div class="listhead"><h2>4. Sélection locale <span class="count" id="total">0</span></h2><button type="button" class="link" id="clear">Vider</button></div>
+      <div id="selectionHead" class="listhead"><h2>4. Sélection locale <span class="count" id="total">0</span></h2><button type="button" class="link" id="clear">Vider</button></div>
       <div id="queue" class="queue"><p class="empty">Aucune fiche capturée</p></div>
       <p class="hint">Conservées 24 h sur cet appareil. L'import est validé dans GrowthOS : les fiches incomplètes peuvent être importées sans inventer d'adresse ni SIRET.</p>
       <a class="primary growthos" href="https://agile.le-publicitaire.fr/prospects/connecteur" target="_blank" rel="noopener noreferrer">Sélectionner et importer dans Prospects →</a>

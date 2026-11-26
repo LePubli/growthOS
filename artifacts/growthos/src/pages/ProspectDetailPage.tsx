@@ -1,3 +1,4 @@
+import { ConnectorEnrichmentReturn } from '@/components/ConnectorEnrichmentReturn';
 import { ProspectProfessionalSources } from '@/components/ProspectProfessionalSources';
 import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
 import { SocieteEnrichmentDialog } from '@/components/SocieteEnrichment';
@@ -303,6 +304,7 @@ export default function ProspectDetailPage() {
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [returnProcessing,setReturnProcessing]=useState(false);
   const [form, setForm] = useState<any>({});
   const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -576,6 +578,7 @@ export default function ProspectDetailPage() {
 
   return (
     <div className="min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
+      <ConnectorEnrichmentReturn prospectId={id!} onSaved={() => fetchProspect()} onBusyChange={setReturnProcessing}/>
       {!!prospect.identityConflicts?.length && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 text-amber-950 p-4 mb-4">
         <p className="font-semibold">SIRET déjà utilisé sur une autre fiche prospect</p>
         <p className="text-sm">Vérifiez ces fiches avant de poursuivre l’enrichissement.</p>
@@ -704,7 +707,8 @@ export default function ProspectDetailPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setShowSocieteEnrichment(true)} className="px-3 py-2 border rounded-xl text-sm font-medium text-teal-700">
+          <button type="button" disabled={editing||returnProcessing} onClick={() => navigate(`/outils?mode=enrich&prospectId=${id}`)} className="px-3 py-2 bg-teal-700 text-white rounded-xl text-sm font-medium disabled:opacity-50">Enrichir</button>
+          <button type="button" disabled={editing||returnProcessing} onClick={() => setShowSocieteEnrichment(true)} className="px-3 py-2 border rounded-xl text-sm font-medium text-teal-700">
             Enrichir via Societe.com
           </button>
           <button onClick={toggleStar} className={`p-2 rounded-xl ${prospect.isStarred ? 'bg-amber-50' : 'hover:bg-gray-100'}`}>
@@ -731,7 +735,7 @@ export default function ProspectDetailPage() {
               </button>
             </>
           ) : (
-            <button onClick={() => setEditing(true)} className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300">
+            <button disabled={returnProcessing} onClick={() => setEditing(true)} className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300 disabled:opacity-50">
               <Edit2 size={14} />Modifier
             </button>
           )}

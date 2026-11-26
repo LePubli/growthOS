@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import {
   Search, Plus, Play, Pause, CheckCircle, Clock, AlertCircle, Loader2,
   Globe, Users, ChevronRight, X, RotateCcw, Trash2, Eye, Zap, Filter, Laptop, Smartphone, Link2,
@@ -100,7 +100,8 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
   const [step, setStep] = useState<1|2>(1);
   const [sources, setSources] = useState<string[]>([initialSource]);
   const [name, setName] = useState('');
-  const [params, setParams] = useState<Record<string,string>>({});
+  const initialCriteria=new URLSearchParams(useSearch());
+  const [params, setParams] = useState<Record<string,string>>({query:(initialCriteria.get('query')||'').slice(0,120)});
   const [launching, setLaunching] = useState(false);
   const [launchStage, setLaunchStage] = useState<'collect'|'save'|'api'|null>(null);
   const [captures,setCaptures] = useState<Record<string,number>>({});
@@ -108,7 +109,7 @@ function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceCo
   const [checkingCaptures,setCheckingCaptures] = useState(false);
   const [regions, setRegions] = useState<string[]>([]);
   const [departements, setDepartements] = useState<string[]>([]);
-  const [codesPostauxInput, setCodesPostauxInput] = useState('');
+  const [codesPostauxInput, setCodesPostauxInput] = useState(/^\d{5}$/.test(initialCriteria.get('area')||'')?initialCriteria.get('area')!:'');
   const parsedCodes = codesPostauxInput.split(/[\s,;]+/).map(code => code.trim()).filter(Boolean);
   const codesPostaux = [...new Set(parsedCodes)];
   const zonesValid = (regions.length + departements.length + codesPostaux.length) > 0
@@ -313,9 +314,11 @@ export default function SourcingPage() {
   const [, navigate] = useLocation();
   const [jobs, setJobs] = useState<any[]>([]);
   const [jobListError,setJobListError] = useState(false);
-  const [showNew, setShowNew] = useState(false);
+  const requestedSource=new URLSearchParams(useSearch()).get('source');
+  const configuredSource=requestedSource==='pagesjaunes'?'pagesjaunes':'entreprises';
+  const [showNew, setShowNew] = useState(requestedSource==='pagesjaunes'||requestedSource==='entreprises');
   const [browserStatus, setBrowserStatus] = useState<'direct' | 'ready' | 'offline'>('direct');
-  const [initialSource, setInitialSource] = useState('entreprises');
+  const [initialSource, setInitialSource] = useState(configuredSource);
   const [deviceConnected,setDeviceConnected] = useState(false);
   const [deviceConnecting,setDeviceConnecting] = useState(false);
   const mobileConnector = isMobileConnectorRequired();

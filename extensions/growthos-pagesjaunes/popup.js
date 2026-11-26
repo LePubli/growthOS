@@ -5,6 +5,8 @@ const manualSources = new Set(['linkedin','societe_com','facebook','instagram','
 let source='google_maps';
 let currentUrl='';
 let pendingDraftId=null;
+let context=null;
+let modules=[];
 function message(action,payload){return new Promise((resolve,reject)=>{
   chrome.runtime.sendMessage({action,payload},response=>{
     const error=chrome.runtime.lastError;
@@ -49,6 +51,47 @@ function selectSource(value){
     : 'Ouvrez les résultats puis cliquez sur Capturer. Sur une liste Maps, les fiches détaillées seront ouvertes successivement.';
   $('manualPanel').open=isManual;
   $('sourceUrl').value=sourceFromUrl(currentUrl)===value?currentUrl:'';
+  const module=modules.find(m=>m.source===value);
+  if(module)$('sourceHint').textContent=module.hint;
+}
+function renderContext(task){
+  context=task;
+  if(!task)return;
+  selectSource(task.source);
+  $('query').value=task.query;$('area').value=task.area;
+  if(task.mode!=='enrich'){
+    $('sourceHint').textContent=(modules.find(m=>m.source===task.source)?.hint||'')+' Mode : nouveaux prospects.';
+    return;
+  }
+  const module=modules.find(m=>m.source===task.source);
+  $('taskPanel').hidden=false;$('sourcePicker').hidden=true;
+  $('taskTitle').textContent=(module?.name||labels[task.source])+' · Enrichir';
+  $('taskTarget').textContent='Prospect : '+task.prospect.company;
+  $('taskHint').textContent=module?.hint||'';
+  $('bulkControls').hidden=true;$('selectionHead').closest('section').hidden=true;
+  $('collectTitle').textContent='Données de la fiche affichée';
+  $('taskRead').hidden=module?.kind!=='reader';
+  $('manualPanel').hidden=false;$('manualPanel').open=module?.kind==='assisted';
+  $('manualSubmit').textContent='Confirmer ces données et revenir au prospect';
+  $('address').required=false;$('postal').required=false;
+  document.querySelector('label[for=address]').textContent='Adresse affichée (facultatif)';
+  document.querySelector('label[for=postal]').textContent='Code postal (facultatif)';
+  $('taskFinish').disabled=!task.preview?.length;
+  $('growthos').href='https://agile.le-publicitaire.fr/prospects/'+task.prospect.id;
+  if(task.status==='pending'){
+    $('taskHint').textContent='Capture confirmée, en attente d’enregistrement dans GrowthOS. Revenez sur le prospect ; les données restent conservées jusqu’au succès.';
+    $('taskFinish').disabled=false;$('taskFinish').textContent='Revenir au prospect pour terminer';
+    $('taskRead').hidden=true;$('manualPanel').hidden=true;$('taskCancel').textContent='Abandonner cette capture';
+  }
+  const box=$('taskPreview');box.replaceChildren();
+  for(const [index,capture] of (task.preview||[]).entries()){
+    const label=document.createElement('label'),radio=document.createElement('input');
+    radio.type='radio';radio.name='taskCandidate';radio.value=String(index);radio.checked=index===0;
+    const title=document.createElement('strong');title.textContent=capture.company;
+    const details=document.createElement('small');
+    details.textContent=[capture.address,capture.city,capture.phone,capture.email,capture.website,capture.siret,capture.sourceUrl].filter(Boolean).join(' · ');
+    label.append(radio,title,details);box.append(label);
+  }
 }
 async function refresh(){
   const [data,draftData,mapRun]=await Promise.all([message('list-captures'),message('list-drafts'),message('auto-capture-status')]);
@@ -119,7 +162,10 @@ async function init(){
     const saved=await chrome.storage.local.get('growthos_popup_prefs');
     $('query').value=saved.growthos_popup_prefs?.query||'';
     $('area').value=saved.growthos_popup_prefs?.area||'';
-    await refresh();
+    modules=await fetch(chrome.runtime.getURL('modules.json')).then(r=>r.json());
+    const taskState=await message('task-current');
+    renderContext(taskState.task);
+    if(context?.mode!=='enrich')await refresh();
   }catch(e){notice(e.message,true);}
 }
 for(const btn of document.querySelectorAll('[data-source]'))btn.addEventListener('click',()=>selectSource(btn.dataset.source));
@@ -182,12 +228,32 @@ $('autoEnrich').addEventListener('click',async()=>{
 $('manualForm').addEventListener('submit',async e=>{
   e.preventDefault();
   const form={source,company:$('company').value,address:$('address').value,codePostal:$('postal').value,
-    city:$('city').value,phone:$('phone').value,website:$('website').value,sourceUrl:$('sourceUrl').value,
+    city:$('city').value,phone:$('phone').value,email:$('email').value,website:$('website').value,sourceUrl:$('sourceUrl').value,
     siret:source==='societe_com'?$('siret').value.trim():undefined,draftId:pendingDraftId};
-  try{const result=await message('manual-add',form);$('manualForm').reset();
+  try{
+    if(context?.mode==='enrich'){
+      await message('task-complete',{taskId:context.id,capture:form,confirmed:$('taskConfirmed').checked});window.close();return;
+    }
+    const result=await message('manual-add',form);$('manualForm').reset();
     pendingDraftId=null;
     await refresh();notice(result.added?'Fiche ajoutée. Vérifiez-la dans GrowthOS avant import.':'Fiche déjà présente.');
   }catch(error){notice(error.message,true);}
+});
+$('taskRead').addEventListener('click',async()=>{
+  $('taskRead').disabled=true;
+  try{const result=await message('task-preview',{taskId:context.id});renderContext(result.task);notice('Vérifiez les données, puis confirmez le bon établissement.');}
+  catch(error){notice(error.message,true);}
+  finally{$('taskRead').disabled=false;}
+});
+$('taskFinish').addEventListener('click',async()=>{
+  const selected=document.querySelector('input[name=taskCandidate]:checked');
+  $('taskFinish').disabled=true;
+  try{await message('task-complete',{taskId:context.id,index:Number(selected?.value||0),confirmed:$('taskConfirmed').checked});window.close();}
+  catch(error){notice(error.message,true);$('taskFinish').disabled=false;}
+});
+$('taskCancel').addEventListener('click',async()=>{
+  if(context.status==='pending' && !confirm('Abandonner la copie locale de cette capture ? Si elle n’a pas été enregistrée dans GrowthOS, ces données seront perdues. Les données déjà enregistrées dans le CRM restent conservées.'))return;
+  try{await message('task-cancel',{taskId:context.id,discardConfirmed:context.status==='pending'});window.location.reload();}catch(error){notice(error.message,true);}
 });
 $('clear').addEventListener('click',async()=>{
   if(!confirm('Vider toutes les fiches locales non importées ?'))return;
