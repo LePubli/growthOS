@@ -36,6 +36,7 @@ Notes de travail demandées par le propriétaire le 26 novembre 2026. À lire av
 - Ne pas remplacer un fichier entier par une ancienne copie pour résoudre un conflit.
 - Inscrire ici les changements de périmètre, points bloquants et résultats utiles. Ne jamais inscrire de secrets, mots de passe ou cookies.
 - Déploiement DockPanel laissé au propriétaire. Le lancement final en production reste soumis à son autorisation.
+- **Annonce de fin obligatoire pour les deux agents** : à la fin de chaque lot, prévenir le propriétaire quand les commits sont poussés, les contrôles réussis et les images nécessaires publiées. Fournir le lien du ZIP Chrome si le connecteur change et les étapes de redéploiement/recette. Distinguer code prêt, compilation en cours et lot réellement disponible. Chaque agent annonce son propre lot avec les preuves connues ; ne pas annoncer celui de l’autre sans les vérifier. Aucun redéploiement DockPanel par les agents.
 
 ## Relais design
 
