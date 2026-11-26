@@ -148,3 +148,11 @@ Tests locaux : 299 contrôles API avec sources simulées et PostgreSQL 16, TypeS
 **Validation du lot cloud** : 299 contrôles API locaux verts sur PostgreSQL16 jetable, géocodage public désactivé uniquement en mode recette. Chromium réel vert sur pages locales : workflow [45823630830](https://github.com/LePubli/growthOS/actions/runs/45823630830). Les comptes et sites fournisseurs réels restent à recetter par le propriétaire. La publication préprod des quatre images est encore à suivre avant feu vert.
 
 Dernière régression couverte : une panne du worker pendant une saisie de connexion renvoie une erreur neutre sans transmettre le corps au journal d'erreur générique. Les 299 contrôles API passent après ce correctif. Les fichiers de design restent inchangés.
+
+## Lot design : fonds Harmony validés par le propriétaire (26/11/2026)
+
+- Branche isolée `feat/atlas-orbit-harmony-backgrounds-20261126`, cible `fix/growthos-functional-redesign`. La référence visuelle est la **seconde maquette Soft Harmony**, plus contrastée, validée par le propriétaire après une première version jugée trop fade. Aucun changement API ni logique de contact/veille/enrichissement.
+- `artifacts/growthos/src/atlas-prospect-colors.css` : remplace les traits supérieurs saturés par des **fonds de cartes en dégradés pastel visibles** et coordonnés sur les sept modules principaux (bleu glacier, aqua, lavande, vert d'eau, pervenche, sauge et sable), homogénéise les titres foncés et respecte les états vérifié/à contrôler. Les logos ajoutés dans le lot précédent sont conservés.
+- Le dossier « Informations détaillées, édition et historique » reprend des fonds compatibles dans ses huit modules, y compris les écrans de surveillance, de sources et de collaboration, ainsi qu'une colonne droite adoucie. Les listes/formulaires gardent leurs contrastes et interactions existantes.
+- Test `scripts/test-prospect-harmony.mjs` inclus dans la CI : contraste du texte (rapport minimal 8:1 sur les fonds), distinction visuelle des sept teintes, couverture des huit modules et absence d'anciens liserés épais.
+- Ne pas fusionner une version antérieure de `atlas-prospect-colors.css` par-dessus ce lot. En cas de développement simultané, rebaser de façon ciblée. Conserver cette note jusqu'au lancement final en production, sur autorisation du propriétaire.

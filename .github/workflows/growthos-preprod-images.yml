@@ -83,6 +83,7 @@ jobs:
           node scripts/test-prospect-people.mjs
           node scripts/test-prospect-completeness.mjs
           node scripts/test-prospect-logos.mjs
+          node scripts/test-prospect-harmony.mjs
 
       - name: Build API for integration tests
         run: pnpm --filter @workspace/api-server build
