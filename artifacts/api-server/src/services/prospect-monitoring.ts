@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { pool, activityLabel } from "@workspace/db";
 import { publishNotification } from "./notification.service";
 import { logger } from "../lib/logger";
+import {changeDescription,prospectFieldLabels,type FieldChanges} from '../lib/prospect-change-history';
 
 type RecordData = Record<string, any>;
 export type CompanySnapshot = {
@@ -20,6 +21,7 @@ export type CompanySnapshot = {
   }[];
 };
 type Prospect = {
+  [key:string]:any;
   id: string;
   tenant_id: string;
   siren: string | null;
@@ -143,10 +145,13 @@ export function companySnapshot(
         : null,
       "SIRET contrôlé": local ? text(local.siret) : null,
       "Adresse de l’établissement": local ? text(local.adresse) : null,
+      "Code postal de l’établissement": local ? text(local.code_postal) : null,
+      "Ville de l’établissement": local ? text(local.libelle_commune) : null,
       "Adresse du siège": text(legal.siege?.adresse),
       "Code APE de l’entreprise": ape,
       "Activité de l’entreprise": activityLabel(ape),
       "Code APE de l’établissement": text(local?.activite_principale),
+      "Nomenclature de l’activité": text(local?.nomenclature_activite_principale) || (!requestedSiret?text(legal.nomenclature_activite_principale):null),
       "Activité de l’établissement": activityLabel(
         text(local?.activite_principale),
       ),
@@ -222,7 +227,7 @@ export function snapshotChanges(
 
 async function prospect(tenantId: string, id: string): Promise<Prospect> {
   const { rows } = await pool.query<Prospect>(
-    "SELECT id,tenant_id,siren,siret,company FROM prospects WHERE id=$1 AND tenant_id=$2",
+    "SELECT * FROM prospects WHERE id=$1 AND tenant_id=$2",
     [id, tenantId],
   );
   if (!rows[0]) throw new MonitoringError(404, "Prospect introuvable");
@@ -262,6 +267,7 @@ export async function monitoringState(tenantId: string, id: string) {
     error: w?.last_error ?? null,
     snapshot: w?.snapshot ?? null,
     changes: events.rows,
+    lastSync:p.source_details?.officialSync || null,
   };
 }
 export async function configureMonitoring(
@@ -360,7 +366,7 @@ export async function verifyProspect(
     connection = await pool.connect();
     await connection.query("BEGIN");
     const current = await connection.query<Prospect>(
-      "SELECT siren,siret FROM prospects WHERE id=$1 AND tenant_id=$2 FOR SHARE",
+      "SELECT * FROM prospects WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
       [id, tenantId],
     );
     if (
@@ -382,15 +388,59 @@ export async function verifyProspect(
         409,
         "Une autre vérification est déjà en cours.",
       );
-    const changes = watch.snapshot
+    if(watch.snapshot?.sourceUpdatedAt && snapshot.sourceUpdatedAt &&
+      Date.parse(snapshot.sourceUpdatedAt)<Date.parse(watch.snapshot.sourceUpdatedAt))
+      throw new MonitoringError(502,'La source a renvoyé une version plus ancienne. Les dernières données sont conservées.');
+    const sourceChanges = watch.snapshot
       ? snapshotChanges(watch.snapshot, snapshot)
       : {};
+    const live=current.rows[0];
+    const synced:FieldChanges={};
+    if(watch.enabled){
+      const exactSite=!!(p.siret && snapshot.fields['SIRET contrôlé']===p.siret);
+      const ape=exactSite?snapshot.fields['Code APE de l’établissement']:!p.siret?snapshot.fields['Code APE de l’entreprise']:null;
+      const desired:Record<string,string|null>={company:snapshot.fields['Dénomination']?.slice(0,160)||null,siren:snapshot.siren,
+        ...(exactSite?{address:snapshot.fields['Adresse de l’établissement']?.slice(0,320)||null,
+          postalCode:/^\d{5}$/.test(snapshot.fields['Code postal de l’établissement']||'')?snapshot.fields['Code postal de l’établissement']:null,
+          city:snapshot.fields['Ville de l’établissement']?.slice(0,120)||null}:{}),
+        ...(/^\d{2}\.\d{2}[A-Z]$/.test(ape||'')?{apeCode:ape,nafLabel:activityLabel(ape)?.slice(0,250)||null,
+          nafVersion:snapshot.fields['Nomenclature de l’activité']?.slice(0,32)||null}:{})};
+      const columns:Record<string,string>={company:'company',siren:'siren',address:'address',postalCode:'postal_code',city:'city',apeCode:'ape_code',nafLabel:'naf_label',nafVersion:'naf_version'};
+      for(const [field,value] of Object.entries(desired))if(value && value!==(live[columns[field]]||null))
+        synced[field]={before:live[columns[field]]||null,after:value};
+      if(Object.keys(synced).length || Object.keys(sourceChanges).length){
+        const details=live.source_details && typeof live.source_details==='object'?live.source_details:{};
+        const cross=details.crossSource && typeof details.crossSource==='object'?details.crossSource:{};
+        const fieldSources={...cross.fieldSources};
+        const appliedAt=new Date().toISOString();
+        for(const field of Object.keys(synced))fieldSources[field]={source:'entreprises',sourceUrl:snapshot.sourceUrl,capturedAt:appliedAt,automatic:true};
+        const previousConflicts=Array.isArray(cross.conflicts)?cross.conflicts:[];
+        const superseded=previousConflicts.filter((c:RecordData)=>c.field in synced);
+        const nextDetails={...details,officialSync:{appliedAt,sourceUrl:snapshot.sourceUrl,sourceUpdatedAt:snapshot.sourceUpdatedAt,
+          fields:[...Object.keys(synced).map(f=>prospectFieldLabels[f]||f),...Object.keys(sourceChanges)]},crossSource:{...cross,fieldSources,
+          conflicts:previousConflicts.filter((c:RecordData)=>!(c.field in synced)),
+          resolutions:[...(Array.isArray(cross.resolutions)?cross.resolutions:[]),...superseded.map((c:RecordData)=>({...c,decision:'official_update',resolvedAt:appliedAt}))].slice(-80)}};
+        const values:unknown[]=[id,tenantId,JSON.stringify(nextDetails)];
+        const assignments=['source_details=$3','updated_at=NOW()'];
+        for(const [field,change] of Object.entries(synced)){values.push(change.after);assignments.push(columns[field]+'=$'+values.length);}
+        if(['address','postalCode','city'].some(field=>field in synced))assignments.push('lat=NULL','lng=NULL');
+        await connection.query('UPDATE prospects SET '+assignments.join(',')+' WHERE id=$1 AND tenant_id=$2',values);
+      }
+    }
+    const changes:FieldChanges={...sourceChanges,...Object.fromEntries(Object.entries(synced).map(([field,change])=>['Fiche · '+(prospectFieldLabels[field]||field),change]))};
     if (Object.keys(changes).length) {
       const eventId = randomUUID();
       await connection.query(
         "INSERT INTO prospect_changes(id,prospect_id,tenant_id,changes,source_url) VALUES($1,$2,$3,$4,$5)",
         [eventId, id, tenantId, JSON.stringify(changes), snapshot.sourceUrl],
       );
+      await connection.query(`INSERT INTO activities(type,title,description,status,done_at,prospect_id,tenant_id)
+        VALUES('data_update',$1,$2,'done',NOW(),$3,$4)`,[
+        watch.enabled?'Mise à jour automatique · veille officielle':'Changements détectés · contrôle officiel',
+        changeDescription('Annuaire des entreprises',snapshot.sourceUrl,changes,
+          watch.enabled?'Veille activée : données officielles mises à jour automatiquement. Les coordonnées non publiées restent conservées.':'Changements détectés dans la source. Veille désactivée : les champs CRM sont conservés.',snapshot.sourceUpdatedAt||undefined),
+        id,tenantId,
+      ]);
       if (watch.enabled) {
         const saved = await connection.query(
           `INSERT INTO notifications(type,title,body,href,payload,tenant_id)

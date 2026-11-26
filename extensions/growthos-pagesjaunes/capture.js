@@ -36,7 +36,7 @@
     const codePostal = address.match(/\b\d{5}\b/)?.[0];
     const city = codePostal
       ? clean(address.split(codePostal)[1] || '').replace(/\s*(?:Voir|Itinéraire|Directions).*$/i,'').slice(0,120) || null
-      : clean(lines.find(line => /(?:^|[·•])\s*[A-ZÀ-ÿ][a-zà-ÿ-]{2,}(?:[- ][A-ZÀ-ÿ][a-zà-ÿ-]{2,})?\s*$/.test(line))?.split(/[·•]/).pop()).slice(0,120) || null;
+      : clean(lines.find(line => /(?:ville|localit[eé]|commune)\s*:/i.test(line))?.replace(/^.*?(?:ville|localit[eé]|commune)\s*:\s*/i,'')).slice(0,120) || null;
     const phoneRaw = clean(preferredPhone || node.querySelector('a[href^="tel:"]')?.getAttribute('href')?.slice(4)
       || lines.find(line => /^(?:t[eé]l[eé]phone|phone)\s*:/i.test(line))?.replace(/^[^:]+:\s*/,''));
     const phoneMatch = (phoneRaw || lines.join(' ')).match(/(?:\+33\s?(?:\(0\))?\s?|0)[1-9](?:[ .-]?\d{2}){4}\b/);

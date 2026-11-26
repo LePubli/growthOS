@@ -1,10 +1,12 @@
 # GrowthOS — suivi fonctionnel
 
-Mis à jour le **25 novembre 2026**. Ce registre suit le parcours d’une agence qui cherche des entreprises, les qualifie, propose un site ou une prestation SEO, puis suit l’affaire dans le CRM.
+Mis à jour le **26 novembre 2026**. Ce registre suit le parcours d’une agence qui cherche des entreprises, les qualifie, propose un site ou une prestation SEO, puis suit l’affaire dans le CRM.
 
-**Dernier retour utilisateur** — le 25 novembre 2026, l’utilisateur confirme le fonctionnement du lot enrichissement Societe.com et identité des prospects livré avec les PR 33 à 35 et l’extension 0.10.1.11. Ce retour valide le lot essayé ; les cas limites de la liste restent à vérifier individuellement.
+**Coordination des agents** — un autre agent travaille uniquement sur le design. Voir les [notes temporaires de coordination](COORDINATION-AGENTS.md). Elles resteront jusqu’au lancement final en production autorisé par le propriétaire, puis seront supprimées lors de ce lancement.
 
-**Prochain contrôle en préproduction** — LinkedIn en premier : ouvrir une page entreprise, confirmer une capture dans le connecteur, importer puis relire le lien LinkedIn, les coordonnées et la provenance sur le prospect. Réimporter la capture et vérifier qu’aucune fiche supplémentaire n’apparaît. Continuer ensuite avec Bing, Facebook, Instagram et TikTok. Les parcours d’IA, séquences, équipe et exploitation restent ouverts ci-dessous.
+**Dernier retour utilisateur** — le 26 novembre, nouveau catalogue installé, mais parcours Societe.com bloqué parce que « Chauffagiste » avait été stocké comme ville. Le bouton de lecture de l’extension était placé après le bouton de retour. Ces deux régressions sont corrigées et couvertes par les tests du lot ci-dessous ; la recette utilisateur de ce correctif reste ouverte.
+
+**Prochain contrôle en préproduction** — mettre à jour web/API et Chrome, reprendre la capture du même établissement, vérifier la proposition de remplacement Chauffagiste → Roubaix et l’activité enregistrée après validation. Activer la veille pour vérifier le rafraîchissement officiel et sa traçabilité. Continuer ensuite avec LinkedIn, Bing, Facebook, Instagram et TikTok. Les parcours d’IA, séquences, équipe et exploitation restent ouverts ci-dessous.
 
 ## Comment tenir ce fichier
 
@@ -119,3 +121,16 @@ Mis à jour le **25 novembre 2026**. Ce registre suit le parcours d’une agence
 ## Suite du plan — références Linked Helper reçues le 26 novembre 2026
 
 Le [document de référence Linked Helper](docs/REFERENCE-LINKED-HELPER.md) conserve les fonctions visibles dans les captures, les correspondances GrowthOS et les étapes à développer. Priorités suivantes après recette du lot actuel : comptes connectés et compagnon, contacts liés aux entreprises, listes et qualification, moteur de campagnes persistant, première séquence puis boîte de réception. L’espace « Comptes connectés » et le navigateur intégré ne sont pas encore développés. La connexion actuelle se fait directement dans Chrome, sans transfert des identifiants vers GrowthOS.
+
+## Correction après recette du 26 novembre — remplacement et veille
+
+- Le bouton « Lire la fiche affichée » précède la comparaison, la confirmation puis le retour au prospect. Extension de base 0.11.1.
+- Google/Maps/Bing ne déduisent plus une ville d’une ligne libre pouvant être une catégorie (« Chauffagiste »). Sans adresse postale ni libellé explicite de localité, la ville reste vide.
+- Même SIRET exact : une différence de nom, de ville ou d’adresse ne bloque plus l’enrichissement ciblé. Les valeurs actuelles sont comparées aux nouvelles ; le remplacement explicite est proposé. Un autre SIRET ou une identité contradictoire reste refusé. Sans preuve d’établissement exacte, les contrôles de rapprochement restent actifs.
+- Les résolutions sont transactionnelles et les modifications d’adresse invalident l’ancienne géolocalisation. Les activités de la fiche enregistrent les valeurs avant/après, la source, la date et l’auteur de la décision. Les enrichissements enregistrent aussi leurs ajouts et propositions. Réessayer ne crée pas d’activité en double.
+- **Veille activée** : l’Annuaire officiel met à jour automatiquement dénomination, SIREN concordant, adresse/code postal/ville du SIRET exact et activité avec son libellé NAF. Les statuts, dirigeants et données économiques restent actualisés dans les rubriques officielles et leur historique. Une notification et une activité signalent les changements.
+- Une donnée absente n’efface pas une valeur connue. Un établissement absent ne reprend ni l’adresse ni l’activité de son siège. Une réponse plus ancienne conserve les dernières données connues. Téléphone, email, site web, coordonnées sociales et statut commercial ne sont pas remplacés par l’Annuaire.
+- **Veille désactivée** : contrôle et affichage du statut officiel conservés, sans remplacement automatique des champs CRM. Les modifications issues des captures demeurent proposées à l’utilisateur.
+- La fiche et ses activités se rafraîchissent après une synchronisation détectée. Un formulaire en cours de modification est conservé ; sa sauvegarde envoie uniquement les champs modifiés depuis le début de l’édition. Les traces automatiques `data_update` sont en lecture seule dans l’API et l’interface.
+- **Preuves** : 268 contrôles d’intégration réussis sur PostgreSQL 16 jetable, sources externes simulées. Ils incluent le cas Chauffagiste, trois résolutions concurrentes/successives, traçabilité relue dans `/activities`, absence de doublons, protection de l’historique, correction automatique par veille activée, maintien des coordonnées non publiées, dénomination et activité modifiées, réponse partielle, version ancienne et établissement absent. Tests Chrome simulés, rendu React, TypeScript et builds web/API vérifiés. Recette réelle du nouveau correctif à effectuer dans Chrome.
+- **Travail design parallèle** : seules les modifications d’interface nécessaires au parcours, aux propositions et à la traçabilité ont été faites dans ce lot. Aucun déploiement DockPanel par l’agent.

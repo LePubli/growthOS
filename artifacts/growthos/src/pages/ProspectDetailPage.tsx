@@ -304,6 +304,8 @@ export default function ProspectDetailPage() {
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const editingRef=useRef(editing);editingRef.current=editing;
+  const editBaseline=useRef<any>(null);
   const [returnProcessing,setReturnProcessing]=useState(false);
   const [form, setForm] = useState<any>({});
   const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -324,7 +326,7 @@ export default function ProspectDetailPage() {
     try {
       const data = await apiClient.get(`/prospects/${id}`);
       setProspect(data);
-      setForm(data);
+      if(!editingRef.current)setForm(data);
     } catch { toast.error('Prospect introuvable'); navigate('/prospects'); }
     finally { setLoading(false); }
   };
@@ -409,7 +411,7 @@ export default function ProspectDetailPage() {
       const editableFields = ['firstName','lastName','email','phone','company','siren','siret','apeCode',
         'nafLabel','nafVersion','postalCode','city','linkedinUrl','jobTitle','website','address','lat','lng','status','score','isStarred'];
       const changedFields = Object.fromEntries(editableFields
-        .filter(field => form[field] !== undefined && !Object.is(form[field],prospect[field]))
+        .filter(field => form[field] !== undefined && !Object.is(form[field],(editBaseline.current||prospect)[field]))
         .map(field => [field,form[field]]));
       const payload = { ...changedFields, ...(geoCoords ?? {}) };
       const updated = await apiClient.patch(`/prospects/${id}`, payload);
@@ -565,20 +567,21 @@ export default function ProspectDetailPage() {
     ? prospect.sourceDetails.crossSource.observations as Array<{
       captureId:string;source:string;sourceUrl?:string|null;capturedAt:string;fieldsFilled?:string[];
     }> : [];
-  const conflictLabels:Record<string,string>={address:'Adresse',postalCode:'Code postal',city:'Ville',
+  const conflictLabels:Record<string,string>={company:'Raison sociale',address:'Adresse',postalCode:'Code postal',city:'Ville',
     phone:'Téléphone',email:'Email',website:'Site web',linkedinUrl:'LinkedIn',siret:'SIRET',siren:'SIREN',
     apeCode:'Code APE / NAF',nafLabel:'Libellé NAF',nafVersion:'Nomenclature'};
   const resolveConflict=async(conflictId:string,decision:'keep_existing'|'use_incoming')=>{
     try{
       const result=await apiClient.post(`/sourcing/device/prospects/${id}/resolve-conflict`,{conflictId,decision}) as {prospect:any};
       setProspect(result.prospect);
+      void fetchActivities();
       toast.success(decision==='use_incoming'?'Nouvelle valeur appliquée':'Valeur actuelle conservée');
     }catch(error:any){toast.error(error?.message||'Impossible de résoudre ce conflit');}
   };
 
   return (
     <div className="min-h-screen p-4 sm:p-6" style={{ background: 'var(--body-bg)' }}>
-      <ConnectorEnrichmentReturn prospectId={id!} onSaved={() => fetchProspect()} onBusyChange={setReturnProcessing}/>
+      <ConnectorEnrichmentReturn prospectId={id!} onSaved={async() => {await fetchProspect();await fetchActivities();}} onBusyChange={setReturnProcessing}/>
       {!!prospect.identityConflicts?.length && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 text-amber-950 p-4 mb-4">
         <p className="font-semibold">SIRET déjà utilisé sur une autre fiche prospect</p>
         <p className="text-sm">Vérifiez ces fiches avant de poursuivre l’enrichissement.</p>
@@ -641,13 +644,13 @@ export default function ProspectDetailPage() {
       {prospect.sourceDetails?.browserDraft?.incomplete && !prospect.postalCode &&
         <div role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <strong>Prospect importé avec des informations incomplètes.</strong> La fiche provient d’une capture Google/Bing.
-          L’adresse exacte, le code postal, le SIREN et le SIRET n’ont pas été vérifiés. Complétez les données avant de démarrer une campagne.
+          Certaines coordonnées restent à compléter ou à vérifier. Les identifiants déjà affichés ci-dessous sont conservés.
         </div>}
       {pendingConflicts.length>0&&
-        <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+        <div id="enrichment-conflicts" className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4">
           <h2 className="text-base font-bold text-amber-950 flex gap-2 items-center"><GitMerge size={18}/>
             {pendingConflicts.length} donnée(s) contradictoire(s) à vérifier</h2>
-          <p className="text-xs text-amber-900 my-2">Les valeurs déjà présentes dans le CRM n'ont pas été remplacées.
+          <p className="text-xs text-amber-900 my-2">L’entreprise a été rapprochée. Les valeurs différentes sont proposées ci-dessous, sans remplacement silencieux.
             Pour chaque désaccord, choisissez celle que vous souhaitez conserver.</p>
           <div className="space-y-3 mt-3">
             {pendingConflicts.map(conflict=><div key={conflict.id} className="bg-white rounded-xl border border-amber-200 p-3">
@@ -660,9 +663,9 @@ export default function ProspectDetailPage() {
                   <p className="break-all font-medium">{conflict.incoming}</p></div>
               </div>
               <div className="flex flex-wrap gap-2 items-center">
-                <button type="button" onClick={()=>void resolveConflict(conflict.id,'keep_existing')}
+                <button type="button" disabled={editing||returnProcessing} onClick={()=>void resolveConflict(conflict.id,'keep_existing')}
                   className="px-3 py-2 rounded-lg bg-gray-100 text-gray-800 text-xs font-semibold">Conserver le CRM</button>
-                <button type="button" onClick={()=>void resolveConflict(conflict.id,'use_incoming')}
+                <button type="button" disabled={editing||returnProcessing} onClick={()=>void resolveConflict(conflict.id,'use_incoming')}
                   className="px-3 py-2 rounded-lg bg-teal-600 text-white text-xs font-semibold">Utiliser la nouvelle valeur</button>
                 {conflict.sourceUrl&&<a href={conflict.sourceUrl} target="_blank" rel="noopener noreferrer"
                   className="text-xs text-teal-700 underline">Vérifier la source ↗</a>}
@@ -735,7 +738,7 @@ export default function ProspectDetailPage() {
               </button>
             </>
           ) : (
-            <button disabled={returnProcessing} onClick={() => setEditing(true)} className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300 disabled:opacity-50">
+            <button disabled={returnProcessing} onClick={() => {editBaseline.current=prospect;setForm(prospect);setEditing(true);}} className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300 disabled:opacity-50">
               <Edit2 size={14} />Modifier
             </button>
           )}
@@ -745,7 +748,7 @@ export default function ProspectDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left — Info */}
         <div className="lg:col-span-2 space-y-4">
-          <ProspectCompanyProfile key={id} prospect={prospect} />
+          <ProspectCompanyProfile key={id} prospect={prospect} onUpdated={async()=>{await fetchProspect();await fetchActivities();}} />
           {/* Informations légales structurées, accessibles sans enrichissement */}
           <section className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex flex-wrap gap-3 justify-between items-center mb-4">
@@ -1095,15 +1098,15 @@ export default function ProspectDetailPage() {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{act.title}</div>
                       {act.dealId && act.dealTitle && <button className="text-xs text-teal-700 underline" onClick={() => navigate(`/pipeline/${act.dealId}`)}>Deal · {act.dealTitle}</button>}
-                      {act.description && <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{act.description}</div>}
+                      {act.description && <div className="text-xs mt-0.5 whitespace-pre-wrap" style={{ color: 'var(--text-muted)' }}>{act.description}</div>}
                       <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                         {new Date(act.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </div>
                     </div>
                     {act.type === 'note' && <EditNote note={act} onSaved={fetchActivities} />}
-                    <button onClick={() => deleteActivity(act.id)} className="text-red-400 hover:text-red-600 flex-shrink-0">
+                    {act.type!=='data_update' && <button onClick={() => deleteActivity(act.id)} className="text-red-400 hover:text-red-600 flex-shrink-0">
                       <Trash2 size={13} />
-                    </button>
+                    </button>}
                   </div>
                 ))}
               </div>
