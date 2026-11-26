@@ -3,6 +3,7 @@ import { ProspectProfessionalSources } from '@/components/ProspectProfessionalSo
 import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
 import { ProspectRelationshipMap, ProspectPappersDossier } from '@/components/atlas/ProspectRelationshipMap';
 import { Prospect360Dashboard, ProspectOrbitBanner } from '@/components/atlas/Prospect360Dashboard';
+import { collectProspectPeople } from '@/lib/prospect-people';
 import { SocieteEnrichmentDialog } from '@/components/SocieteEnrichment';
 import { EditNote } from '@/components/EditNote';
 import React, { useState, useEffect, useRef } from 'react';
@@ -11,7 +12,7 @@ import {
   ArrowLeft, Edit2, Save, X, Star, Mail, Phone, Globe, Building2,
   Briefcase, Loader2, Plus, Trash2, CheckCircle, AlertCircle,
   MessageSquare, Phone as PhoneIcon, Calendar, FileText, Clock,
-  Archive, RotateCcw, RefreshCw, Brain, TrendingUp, TrendingDown, Minus, MapPin,
+  Archive, RotateCcw, RefreshCw, Brain, MapPin,
   ExternalLink, Navigation, Zap, BadgeCheck, ChevronDown, ChevronUp,
   Building, Database, BarChart2, Users, Newspaper, GitMerge, Copy, Network, LayoutGrid, MoreHorizontal,
 } from 'lucide-react';
@@ -194,10 +195,10 @@ function EnrichedDataPanel({ prospectId }: { prospectId: string }) {
   const hasData = !!(legal || financial || digital || social || news);
 
   return (
-    <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+    <div className="atlas-360-detail-module atlas-360-enriched-data rounded-2xl border overflow-hidden" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
       <button onClick={load} className="flex items-center justify-between w-full px-5 py-4 text-left hover:opacity-80 transition-opacity">
         <h2 className="font-semibold text-sm flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
-          <Database size={13} />DONNÉES ENRICHIES
+          <Database size={16} />Données enrichies
           {hasData && <span className="text-xs px-2 py-0.5 rounded-full font-normal" style={{ background: '#EFF6FF', color: '#2563EB' }}>Disponibles</span>}
         </h2>
         {loading ? <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
@@ -216,7 +217,7 @@ function EnrichedDataPanel({ prospectId }: { prospectId: string }) {
 
           {!loading && !hasData && (
             <p className="text-sm text-center py-4" style={{ color: 'var(--text-muted)' }}>
-              Aucune donnée enrichie — cliquez sur "Enrichir" dans les actions rapides.
+              Aucune donnée enrichie — utilisez les outils de sourcing ou le panneau d'enrichissement du dossier.
             </p>
           )}
 
@@ -324,6 +325,7 @@ export default function ProspectDetailPage() {
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [convertLoading, setConvertLoading] = useState(false);
   const [linkedDeals, setLinkedDeals] = useState<{ id: string; title: string; stage: string }[]>([]);
+  const [officialManagers,setOfficialManagers] = useState<string[]>([]);
   const [convertForm, setConvertForm] = useState({ title: '', value: '0', stage: 'lead', closeDate: '' });
 
   const fetchProspect = async () => {
@@ -407,7 +409,15 @@ export default function ProspectDetailPage() {
     }
   };
 
-  useEffect(() => { fetchProspect(); fetchActivities(); fetchEnrichmentHistory(); fetchLinkedDeals(); }, [id]);
+  const fetchOfficialManagers = async () => {
+    if (!id) return;
+    try {
+      const response = await apiClient.get<{snapshot?:{managers?:string[]}|null}>(`/prospects/${id}/monitoring`);
+      setOfficialManagers(Array.isArray(response?.snapshot?.managers)?response.snapshot.managers:[]);
+    } catch { setOfficialManagers([]); }
+  };
+
+  useEffect(() => {setOfficialManagers([]);fetchProspect();fetchActivities();fetchEnrichmentHistory();fetchLinkedDeals();void fetchOfficialManagers();}, [id]);
 
   const save = async () => {
     setSaving(true);
@@ -518,29 +528,13 @@ export default function ProspectDetailPage() {
     } catch { toast.error('Erreur lors de l\'archivage'); }
   };
 
-  // AI Scoring: compute a breakdown from available fields
-  const computeScoring = (p: any) => {
-    // Informations présentes, sans prétendre à un modèle IA.
-    const criteria = [
-      { label: 'Entreprise identifiée', weight: 15, met: !!p.company },
-      { label: 'SIREN renseigné', weight: 15, met: !!p.siren },
-      { label: 'SIRET renseigné', weight: 10, met: !!p.siret },
-      { label: 'Adresse renseignée', weight: 10, met: !!p.address },
-      { label: 'Code postal renseigné', weight: 10, met: !!p.postalCode },
-      { label: 'Email renseigné', weight: 15, met: !!p.email },
-      { label: 'Téléphone renseigné', weight: 10, met: !!p.phone },
-      { label: 'Site web renseigné', weight: 15, met: !!p.website },
-    ];
-    const computedScore = criteria.reduce((s, c) => s + (c.met ? c.weight : 0), 0);
-    return { criteria, computedScore };
-  };
-
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--body-bg)' }}>
       <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--color-primary)' }} />
     </div>
   );
   if (!prospect) return null;
+  const prospectPeople = collectProspectPeople(prospect,officialManagers);
 
   const initials = ((prospect.firstName || prospect.company || '?')[0]).toUpperCase();
   const contactName = [prospect.firstName, prospect.lastName].filter(Boolean).join(' ');
@@ -590,11 +584,11 @@ export default function ProspectDetailPage() {
       if(sectionId)window.setTimeout(()=>document.getElementById(sectionId)?.scrollIntoView({behavior:'smooth',block:'start'}),60);
     },0);
   };
-  const openEditor = () => {
+  const openEditor = (sectionId = 'atlas-prospect-contacts') => {
     editBaseline.current=prospect;
     setForm(prospect);
     setEditing(true);
-    openDetailedSection('atlas-prospect-contacts');
+    openDetailedSection(sectionId);
   };
   const updateOpportunityStatus = async (status:string) => {
     try {
@@ -739,7 +733,7 @@ export default function ProspectDetailPage() {
           <details className="atlas-360-extra-menu">
             <summary aria-label="Plus d'actions" title="Plus d'actions"><MoreHorizontal size={21}/></summary>
             <div className="atlas-360-extra-popover">
-              <button type="button" disabled={editing||returnProcessing} onClick={openEditor}><Edit2 size={16}/> Modifier la fiche</button>
+              <button type="button" disabled={editing||returnProcessing} onClick={()=>openEditor()}><Edit2 size={16}/> Modifier la fiche</button>
               <button type="button" disabled={editing||returnProcessing} onClick={()=>setShowSocieteEnrichment(true)}><Database size={16}/> Enrichir via Societe.com</button>
               <button onClick={toggleStar}><Star size={16}/>{prospect.isStarred?'Retirer des favoris':'Ajouter aux favoris'}</button>
               <button onClick={archiveProspect}><Archive size={16}/>{prospect.status==='archived'?'Restaurer':'Archiver'}</button>
@@ -770,7 +764,7 @@ export default function ProspectDetailPage() {
         <ProspectPappersDossier siren={prospect.siren} siret={prospect.siret}/>
       </div>}
       {active360View==='overview' && <>
-        <Prospect360Dashboard prospect={prospect} activities={activities} deals={linkedDeals}
+        <Prospect360Dashboard prospect={prospect} officialManagers={officialManagers} activities={activities} deals={linkedDeals}
           onEdit={openEditor} onAddActivity={()=>setShowAddActivity(true)}
           onOpenDeal={()=>linkedDeals.length?navigate('/pipeline/'+linkedDeals[0].id):openConvertModal()}
           onOpenContacts={()=>openDetailedSection('atlas-prospect-contacts')}
@@ -793,17 +787,25 @@ export default function ProspectDetailPage() {
               </div>)}
             </div>
           </details>}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {editing&&<div className="atlas-360-edit-toolbar" role="status">
+            <span><Edit2 size={16}/> Modifications en cours · validez pour enregistrer les changements.</span>
+            <div><button type="button" onClick={()=>setEditing(false)}>Annuler</button>
+              <button type="button" onClick={save} disabled={saving}>
+                {saving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>} Enregistrer</button></div>
+          </div>}
+          <div className="atlas-360-detail-layout">
         {/* Left — Info */}
-        <div className="lg:col-span-2 space-y-4">
-          <div id="atlas-prospect-monitoring" className="atlas-scroll-target">
-            <ProspectCompanyProfile key={id} prospect={prospect} onUpdated={async()=>{await fetchProspect();await fetchActivities();}} />
+        <div className="atlas-360-detail-main">
+          <div id="atlas-prospect-monitoring" className="atlas-scroll-target atlas-360-detail-module atlas-360-detail-monitoring">
+            <ProspectCompanyProfile key={id} prospect={prospect} compactManagers onOpenContacts={()=>openDetailedSection('atlas-prospect-contacts')} onManagerNames={setOfficialManagers}
+              onUpdated={async()=>{await fetchProspect();await fetchActivities();}} />
           </div>
           {/* Informations légales structurées, accessibles sans enrichissement */}
-          <section className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+          <section id="atlas-prospect-legal" className="atlas-scroll-target atlas-360-detail-module atlas-360-legal-extra rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex flex-wrap gap-3 justify-between items-center mb-4">
-              <h2 className="font-semibold text-base flex items-center gap-2" style={{ color: 'var(--text-primary)' }}><Building2 size={17} className="text-teal-600"/>Identité de l’entreprise</h2>
+              <h2 className="font-semibold text-base flex items-center gap-2" style={{ color: 'var(--text-primary)' }}><Building2 size={17} className="text-teal-600"/>Identifiants et activité officielle</h2>
               <div className="flex items-center gap-2 flex-wrap">
+                {!editing&&<button type="button" className="atlas-360-detail-edit-link" onClick={()=>openEditor('atlas-prospect-legal')}><Edit2 size={13}/> Modifier</button>}
                 {(prospect.siren || prospect.siret) && <button type="button" onClick={()=>void enrichOfficialActivity()} disabled={enrichingActivity}
                   className="text-xs inline-flex items-center gap-1 px-3 py-2 border border-teal-200 rounded-lg text-teal-700 disabled:opacity-50">
                   {enrichingActivity ? <Loader2 size={12} className="animate-spin"/> : <RefreshCw size={12}/>}
@@ -832,14 +834,9 @@ export default function ProspectDetailPage() {
               ) : (
                 <>
                   {[
-                    { key: 'company', label: 'Raison sociale', value: prospect.company },
                     { key: 'siren', label: 'SIREN', value: prospect.siren },
-                    { key: 'siret', label: 'SIRET de l’établissement', value: prospect.siret },
-                    { key: 'apeCode', label: 'Code APE / NAF', value: prospect.apeCode },
-                    { key: 'nafLabel', label: 'Secteur d’activité · libellé NAF', value: prospect.nafLabel },
                     { key: 'nafVersion', label: 'Nomenclature', value: prospect.nafVersion },
-                    { key: 'postalCode', label: 'Code postal', value: prospect.postalCode },
-                    { key: 'city', label: 'Ville', value: prospect.city },
+                    { key: 'nafLabel', label: 'Libellé officiel NAF', value: prospect.nafLabel },
                   ].map(field => <div key={field.key} className="min-w-0">
                     <div className="text-xs mb-1 text-gray-500">{field.label}</div>
                     <div className="flex items-center gap-2">
@@ -856,7 +853,7 @@ export default function ProspectDetailPage() {
             {!editing && (!prospect.siren || !prospect.siret) && <p className="text-xs text-amber-700 mt-4 bg-amber-50 rounded-lg p-2.5">Identifiant absent de cette fiche. GrowthOS ne l’invente pas : vous pouvez le renseigner après vérification.</p>}
           </section>
 
-          {prospect.source && <div className="rounded-xl border px-4 py-3 flex flex-wrap items-center gap-2 text-xs" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-muted)' }}>
+          {prospect.source && <div className="atlas-360-origin-line rounded-xl border px-4 py-3 flex flex-wrap items-center gap-2 text-xs" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-muted)' }}>
             <span className="font-semibold">Source :</span>
             <span>{prospect.source === 'pagesjaunes' ? 'PagesJaunes.fr' : prospect.source === 'annuaire-entreprises' ? 'Annuaire des entreprises' : prospect.source}</span>
             {pagesJaunesProfile && <a href={prospect.sourceUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline">Voir la fiche source</a>}
@@ -866,7 +863,7 @@ export default function ProspectDetailPage() {
               {enrichingPagesJaunes ? 'Lecture de la fiche…' : 'Compléter depuis PagesJaunes'}
             </button>}
           </div>}
-          {pagesJaunesDetails && <section className="rounded-2xl border p-4 sm:p-5 space-y-4" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
+          {pagesJaunesDetails && <section className="atlas-360-detail-module atlas-360-pj-details rounded-2xl border p-4 sm:p-5 space-y-4" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <FileText size={16} className="text-teal-600"/>
@@ -943,8 +940,9 @@ export default function ProspectDetailPage() {
             </p>
           </section>}
           {/* Coordonnées */}
-          <div id="atlas-prospect-contacts" className="atlas-scroll-target rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>CONTACT ET COORDONNÉES</h2>
+          <div id="atlas-prospect-contacts" className="atlas-scroll-target atlas-360-detail-module atlas-360-detail-contacts rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+            <div className="atlas-360-module-heading"><div><Users size={18}/><h2>Contacts et coordonnées</h2></div>
+              {!editing&&<button type="button" onClick={()=>openEditor()}><Edit2 size={14}/> Modifier</button>}</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {editing ? (
                 <>
@@ -1002,89 +1000,47 @@ export default function ProspectDetailPage() {
                   </div>
                 </>
               ) : (
-                <>
-                  {[
-                    { l: 'Email', v: prospect.email, icon: <Mail size={14} />, href: prospect.email ? `mailto:${prospect.email}` : undefined },
-                    { l: 'Téléphone', v: prospect.phone, icon: <Phone size={14} />, href: prospect.phone ? `tel:${prospect.phone}` : undefined },
-                    { l: 'Poste', v: prospect.jobTitle, icon: <Briefcase size={14} /> },
-                    { l: 'Site web', v: prospect.website, icon: <Globe size={14} />, href: prospect.website },
-                    { l: 'LinkedIn', v: prospect.linkedinUrl, icon: <Globe size={14} />, href: prospect.linkedinUrl },
-                  ].map(f => (
-                    <div key={f.l}>
-                      <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                        {f.icon}{f.l}
-                      </div>
-                      {f.v ? (
-                        f.href ? <a href={f.href} target="_blank" rel="noreferrer" className="text-sm font-medium" style={{ color: 'var(--color-primary)' }}>{f.v}</a>
-                          : <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{f.v}</span>
-                      ) : <span className="text-sm" style={{ color: 'var(--text-muted)' }}>—</span>}
-                    </div>
-                  ))}
-
-                  {/* Address + geo badge — spans full width */}
-                  <div className="sm:col-span-2">
-                    <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                      <MapPin size={14} />Adresse
-                      {prospect.lat && (
-                        <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold" style={{ background: '#ECFDF5', color: '#059669' }}>
-                          🗺 Géolocalisé
-                        </span>
-                      )}
-                    </div>
-                    {prospect.address ? (
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-start gap-2">
-                          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{prospect.address}</span>
-                          {prospect.lat && (
-                            <a
-                              href={`https://www.google.com/maps?q=${prospect.lat},${prospect.lng}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs flex-shrink-0 mt-0.5"
-                              style={{ color: 'var(--color-primary)' }}
-                            >
-                              Voir sur Maps ↗
-                            </a>
-                          )}
-                        </div>
-                        {/* Geocode button — only when address exists but no coordinates yet */}
-                        {!prospect.lat && (
-                          <button
-                            onClick={geocodeNow}
-                            disabled={geocoding}
-                            className="flex items-center gap-1.5 self-start mt-0.5 px-2.5 py-1 rounded-lg text-xs font-medium disabled:opacity-60 transition-all"
-                            style={{ background: geocoding ? '#F3F4F6' : '#F0FDF4', color: geocoding ? '#9CA3AF' : '#059669', border: '1px solid', borderColor: geocoding ? '#E5E7EB' : '#86EFAC' }}
-                          >
-                            {geocoding
-                              ? <><Loader2 size={11} className="animate-spin" />Géocodage en cours…</>
-                              : <><MapPin size={11} />Géocoder maintenant</>}
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-sm" style={{ color: 'var(--text-muted)' }}>— (cliquez Modifier pour ajouter)</span>
-                    )}
+                <div className="atlas-360-contact-directory sm:col-span-2">
+                  <div className="atlas-360-directory-title">
+                    <h3>Personnes identifiées</h3><span>{prospectPeople.length} contact{prospectPeople.length>1?'s':''}</span>
                   </div>
-
-                  <div>
-                    <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Score</div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 rounded-full h-2" style={{ background: 'var(--body-bg)' }}>
-                        <div className="h-2 rounded-full" style={{ width: `${prospect.score || 0}%`, background: 'var(--color-primary)' }} />
+                  {prospectPeople.length>0?<div className="atlas-360-directory-grid">
+                    {prospectPeople.map(person=><article key={person.id} className="atlas-360-directory-person">
+                      <div className="atlas-360-directory-avatar"><Users size={19}/></div>
+                      <div className="atlas-360-directory-info">
+                        <strong>{person.name}</strong>
+                        <span>{person.role||(person.isManager?'Dirigeant · rôle à confirmer':'Contact CRM')}</span>
+                        <small>{person.source==='societe_com'?'Relevé Societe.com':person.source==='annuaire'?'Annuaire officiel':'Enregistré dans GrowthOS'}</small>
+                        {(person.phone||person.email||person.profileUrl)&&<div className="atlas-360-directory-actions">
+                          {person.phone&&<a href={'tel:'+person.phone}><Phone size={13}/> Appeler</a>}
+                          {person.email&&<a href={'mailto:'+person.email}><Mail size={13}/> Email</a>}
+                          {person.profileUrl&&<a href={person.profileUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={13}/> Fiche source</a>}
+                        </div>}
                       </div>
-                      <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{prospect.score || 0}</span>
+                    </article>)}
+                  </div>:<div className="atlas-360-directory-empty">
+                    <Users size={22}/><div><strong>Aucun nom confirmé dans les sources</strong>
+                      <p>Enrichissez les dirigeants ou renseignez le contact principal pour compléter le dossier.</p></div>
+                  </div>}
+                  <div className="atlas-360-contact-channel-card">
+                    <div><Phone size={17}/><h3>Coordonnées du prospect</h3><span>CRM · non attribuées automatiquement à un dirigeant</span></div>
+                    <div className="atlas-360-contact-channels">
+                      {prospect.phone&&<a href={'tel:'+prospect.phone}><Phone size={15}/>{prospect.phone}</a>}
+                      {prospect.email&&<a href={'mailto:'+prospect.email}><Mail size={15}/>{prospect.email}</a>}
+                      {prospect.linkedinUrl&&<a href={prospect.linkedinUrl} target="_blank" rel="noopener noreferrer"><Globe size={15}/>Profil LinkedIn</a>}
+                      {!prospect.phone&&!prospect.email&&!prospect.linkedinUrl&&<span>Aucune coordonnée disponible pour le moment.</span>}
                     </div>
                   </div>
-                </>
+                </div>
               )}
             </div>
           </div>
 
-          {!editing && <div id="atlas-prospect-sources" className="atlas-scroll-target"><ProspectProfessionalSources prospect={prospect}/></div>}
+          {!editing && <div id="atlas-prospect-sources" className="atlas-scroll-target atlas-360-detail-module atlas-360-professional-sources"><ProspectProfessionalSources prospect={prospect}/></div>}
 
-          {/* Mini-map — only when geocoded and not editing */}
-          {!editing && prospect.lat && prospect.lng && (
-            <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+          {/* Localisation et géocodage : distincts du contact nominatif. */}
+          {!editing && prospect.address && (
+            <div className="atlas-360-detail-module atlas-360-location rounded-2xl border overflow-hidden" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
               <div className="flex items-center justify-between px-5 pt-4 pb-2">
                 <h2 className="font-semibold text-sm flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
                   <MapPin size={13} />LOCALISATION
@@ -1098,7 +1054,7 @@ export default function ProspectDetailPage() {
                   >
                     <Navigation size={11} />Voir sur la carte CRM
                   </a>
-                  <a
+                  {prospect.lat&&prospect.lng&&<a
                     href={`https://www.google.com/maps?q=${prospect.lat},${prospect.lng}`}
                     target="_blank"
                     rel="noreferrer"
@@ -1106,16 +1062,23 @@ export default function ProspectDetailPage() {
                     style={{ color: 'var(--text-muted)' }}
                   >
                     <ExternalLink size={11} />Google Maps
-                  </a>
+                  </a>}
                 </div>
               </div>
               <div className="px-5 pb-5">
-                <ProspectMiniMap
+                <p className="atlas-360-location-address"><MapPin size={15}/>{prospect.address}</p>
+                {prospect.lat&&prospect.lng?<ProspectMiniMap
                   lat={prospect.lat}
                   lng={prospect.lng}
                   label={[prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || prospect.company || 'Prospect'}
                   address={prospect.address}
-                />
+                />:<div className="atlas-360-geocode-prompt">
+                  <span>Adresse renseignée, coordonnées GPS non disponibles.</span>
+                  <button type="button" onClick={geocodeNow} disabled={geocoding}>
+                    {geocoding?<Loader2 size={14} className="animate-spin"/>:<MapPin size={14}/>}
+                    {geocoding?'Géocodage en cours…':'Géocoder cette adresse'}
+                  </button>
+                </div>}
               </div>
             </div>
           )}
@@ -1124,9 +1087,9 @@ export default function ProspectDetailPage() {
           <EnrichedDataPanel prospectId={prospect.id} />
 
           {/* Activités */}
-          <div id="atlas-prospect-activities" className="atlas-scroll-target rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+          <div id="atlas-prospect-activities" className="atlas-scroll-target atlas-360-detail-module atlas-360-detail-activities rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>ACTIVITÉS ({activities.length})</h2>
+              <h2 className="font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>Journal des activités <span className="atlas-360-count-pill">{activities.length}</span></h2>
               <button onClick={() => setShowAddActivity(true)}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl text-white" style={{ background: 'var(--color-primary)' }}>
                 <Plus size={12} />Ajouter
@@ -1140,7 +1103,7 @@ export default function ProspectDetailPage() {
             ) : (
               <div className="space-y-3">
                 {activities.map(act => (
-                  <div key={act.id} className="flex gap-3 p-3 rounded-xl" style={{ background: 'var(--body-bg)' }}>
+                  <div key={act.id} className="atlas-360-activity-item flex gap-3 p-3 rounded-xl" style={{ background: 'var(--body-bg)' }}>
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-white text-xs"
                       style={{ background: TYPE_COLORS[act.type] || '#6B7280' }}>
                       {TYPE_ICONS[act.type] || <FileText size={12} />}
@@ -1148,7 +1111,12 @@ export default function ProspectDetailPage() {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{act.title}</div>
                       {act.dealId && act.dealTitle && <button className="text-xs text-teal-700 underline" onClick={() => navigate(`/pipeline/${act.dealId}`)}>Deal · {act.dealTitle}</button>}
-                      {act.description && <div className="text-xs mt-0.5 whitespace-pre-wrap" style={{ color: 'var(--text-muted)' }}>{act.description}</div>}
+                      {act.description && (act.type==='data_update'
+                        ?<details className="atlas-360-activity-details">
+                          <summary>Consulter les données mises à jour et leur provenance</summary>
+                          <div className="whitespace-pre-wrap">{act.description}</div>
+                        </details>
+                        :<div className="text-xs mt-0.5 whitespace-pre-wrap" style={{ color: 'var(--text-muted)' }}>{act.description}</div>)}
                       <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                         {new Date(act.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </div>
@@ -1162,147 +1130,37 @@ export default function ProspectDetailPage() {
               </div>
             )}
           </div>
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <h2 className="font-semibold text-sm mb-3" style={{ color: 'var(--text-muted)' }}>COMMENTAIRES D’ÉQUIPE</h2>
+          <div className="atlas-360-detail-module atlas-360-collaboration rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <CommentsPanel entityType="prospect" entityId={prospect.id} />
           </div>
         </div>
 
-        {/* Right — Métadonnées */}
-        <div className="space-y-4">
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>INFORMATIONS</h2>
-            <div className="space-y-3">
-              <div>
-                <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Statut</div>
-                <span className="text-xs px-2.5 py-1 rounded-full text-white font-medium" style={{ background: statusColor }}>
-                  {STATUS_OPTIONS.find(s => s.value === prospect.status)?.label}
-                </span>
-              </div>
-              <div>
-                <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Favoris</div>
-                <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{prospect.isStarred ? '⭐ Oui' : 'Non'}</span>
-              </div>
-              <div>
-                <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Créé le</div>
-                <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
-                  {new Date(prospect.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </span>
-              </div>
-              <div>
-                <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Mis à jour</div>
-                <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
-                  {new Date(prospect.updatedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Indicateur de complétude explicite, pas un score IA */}
-          {(() => {
-            const { criteria, computedScore } = computeScoring(prospect);
-            const score = computedScore;
-            const color = score >= 70 ? '#059669' : score >= 40 ? '#D97706' : '#DC2626';
-            const label = score >= 70 ? 'Bien renseignée' : score >= 40 ? 'À compléter' : 'Incomplète';
-            const TrendIcon = score >= 70 ? TrendingUp : score >= 40 ? Minus : TrendingDown;
-            return (
-              <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-                <div className="flex items-center gap-2 mb-4">
-                  <FileText size={14} style={{ color: 'var(--color-primary)' }} />
-                  <h2 className="font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>COMPLÉTUDE DE LA FICHE</h2>
-                </div>
-                {/* Score ring */}
-                <div className="flex items-center gap-4 mb-4">
-                  <div style={{ position: 'relative', width: 60, height: 60, flexShrink: 0 }}>
-                    <svg viewBox="0 0 60 60" style={{ transform: 'rotate(-90deg)', width: 60, height: 60 }}>
-                      <circle cx="30" cy="30" r="24" fill="none" stroke="var(--body-bg)" strokeWidth="6" />
-                      <circle cx="30" cy="30" r="24" fill="none" stroke={color} strokeWidth="6"
-                        strokeDasharray={`${2 * Math.PI * 24 * score / 100} ${2 * Math.PI * 24 * (1 - score / 100)}`}
-                        strokeLinecap="round" />
-                    </svg>
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color }}>
-                      {score}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color }} className="flex items-center gap-1.5">
-                      <TrendIcon size={16} />{label}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Champs renseignés · pas un score IA</div>
-                  </div>
-                </div>
-                {/* Criteria */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  {criteria.map((c, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', background: c.met ? '#ECFDF5' : 'var(--body-bg)', border: `1.5px solid ${c.met ? '#059669' : 'var(--card-border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {c.met && <CheckCircle size={9} style={{ color: '#059669' }} />}
-                      </div>
-                      <span style={{ flex: 1, color: c.met ? 'var(--text-primary)' : 'var(--text-muted)' }}>{c.label}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: c.met ? '#059669' : 'var(--text-muted)' }}>+{c.weight}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
-
-          <div className="rounded-2xl border p-5" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-            <h2 className="font-semibold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>ACTIONS RAPIDES</h2>
-            <div className="space-y-2">
-              {prospect.email && (
-                <a href={`mailto:${prospect.email}`}
-                  className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm border transition-all hover:border-teal-300"
-                  style={{ background: 'var(--body-bg)', borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}>
-                  <Mail size={14} style={{ color: 'var(--color-primary)' }} />Envoyer un email
-                </a>
-              )}
-              {prospect.phone && (
-                <a href={`tel:${prospect.phone}`}
-                  className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm border transition-all hover:border-teal-300"
-                  style={{ background: 'var(--body-bg)', borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}>
-                  <PhoneIcon size={14} style={{ color: '#2563EB' }} />Appeler
-                </a>
-              )}
-              <button onClick={() => setShowAddActivity(true)}
-                className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm border transition-all hover:border-teal-300"
-                style={{ background: 'var(--body-bg)', borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}>
-                <Plus size={14} style={{ color: '#7C3AED' }} />Ajouter une activité
-              </button>
-              <button onClick={() => linkedDeals.length > 0 ? navigate(`/pipeline/${linkedDeals[0].id}`) : openConvertModal()}
-                className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm border transition-all hover:border-teal-300"
-                style={{ background: 'var(--body-bg)', borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}>
-                <MessageSquare size={14} style={{ color: '#D97706' }} />{linkedDeals.length > 0 ? 'Voir le deal lié' : 'Créer un deal lié'}
-              </button>
-
-              {isRecentlyEnriched ? (
-                <div className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm border"
-                  style={{ background: '#F0FDF4', borderColor: '#86EFAC', color: '#059669' }}>
-                  <BadgeCheck size={14} />
-                  <span className="flex-1 font-medium">Données récentes</span>
-                  <span style={{ fontSize: 11, color: '#059669', opacity: 0.7 }}>
-                    {lastEnrichedAt ? `il y a ${Math.floor((Date.now() - lastEnrichedAt.getTime()) / 86400000)}j` : ''}
-                  </span>
-                </div>
-              ) : (
-                <button
-                  onClick={handleEnrich}
-                  disabled={enriching}
-                  className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm font-medium border transition-all disabled:opacity-60"
-                  style={{
-                    background: enriching ? 'var(--body-bg)' : 'linear-gradient(135deg,#4C1D95,#7C3AED)',
-                    borderColor: enriching ? 'var(--card-border)' : 'transparent',
-                    color: enriching ? 'var(--text-muted)' : '#fff',
-                  }}
-                >
-                  {enriching
-                    ? <><Loader2 size={14} className="animate-spin" />Enrichissement…</>
-                    : <><Zap size={14} />Enrichir</>}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Traçabilité et outils spécifiques, sans seconde complétude ni actions doublonnées. */}
+        <aside className="atlas-360-detail-side">
+          <section className="atlas-360-detail-aside-card">
+            <header><Clock size={18}/><h2>Traçabilité du dossier</h2></header>
+            <dl className="atlas-360-audit-fields">
+              <div><dt>Fiche créée le</dt><dd>{prospect.createdAt?new Date(prospect.createdAt).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}):'Non renseigné'}</dd></div>
+              <div><dt>Dernière mise à jour</dt><dd>{prospect.updatedAt?new Date(prospect.updatedAt).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}):'Non renseignée'}</dd></div>
+              <div><dt>Activités consignées</dt><dd>{activities.length} événement{activities.length>1?'s':''}</dd></div>
+              {lastEnrichedAt&&<div><dt>Dernier enrichissement</dt><dd>{lastEnrichedAt.toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})}</dd></div>}
+            </dl>
+            <p>Les changements de valeurs sont conservés dans le journal des activités.</p>
+          </section>
+          <section className="atlas-360-detail-aside-card atlas-360-enrichment-tool">
+            <header><Database size={18}/><h2>Enrichissement du dossier</h2></header>
+            <p>Mettre à jour les données disponibles, avec contrôle des sources et conservation de l'historique.</p>
+            {isRecentlyEnriched?<div className="atlas-360-enrichment-recent"><BadgeCheck size={16}/>
+              Enrichissement récent · {lastEnrichedAt?'il y a '+Math.max(0,Math.floor((Date.now()-lastEnrichedAt.getTime())/86400000))+'j':''}</div>
+              :<button type="button" className="atlas-360-enrich-direct" onClick={handleEnrich} disabled={enriching}>
+                {enriching?<Loader2 size={16} className="animate-spin"/>:<Zap size={16}/>}
+                {enriching?'Enrichissement en cours…':'Enrichir automatiquement'}
+              </button>}
+            <button type="button" className="atlas-360-enrich-sources" onClick={()=>navigate('/outils?mode=enrich&prospectId='+id)}>
+              Ouvrir les outils de sourcing <ExternalLink size={13}/>
+            </button>
+          </section>
+        </aside>
       </div>
         </details>
       </>}

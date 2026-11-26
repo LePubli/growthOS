@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import { collectProspectPeople } from '@/lib/prospect-people';
 import {
   Activity, ArrowRight, Bell, Building2, CalendarDays, Check, CheckCircle2,
   ChevronDown, Circle, CircleAlert, ClipboardList, ExternalLink, FileSearch,
@@ -18,7 +19,7 @@ type Prospect = {
 type ActivityEntry = {id:string;title?:string|null;type?:string|null;createdAt?:string|null;description?:string|null};
 type Deal = {id:string;title:string;stage:string};
 type Props = {
-  prospect:Prospect; activities:ActivityEntry[]; deals:Deal[];
+  prospect:Prospect; officialManagers?:string[]; activities:ActivityEntry[]; deals:Deal[];
   onEdit:()=>void; onAddActivity:()=>void; onOpenDeal:()=>void; onOpenContacts:()=>void;
   onOpenActivities:()=>void; onOpenSources:()=>void; onOpenMonitoring:()=>void;
   onEnrich:()=>void; onStatusChange:(status:string)=>void;
@@ -54,12 +55,16 @@ export function ProspectOrbitBanner({prospect:p,onEdit,onOpenContacts,onCall}:{
 }
 
 export function Prospect360Dashboard({
-  prospect:p,activities,deals,onEdit,onAddActivity,onOpenDeal,onOpenContacts,onOpenActivities,
+  prospect:p,officialManagers=[],activities,deals,onEdit,onAddActivity,onOpenDeal,onOpenContacts,onOpenActivities,
   onOpenSources,onOpenMonitoring,onEnrich,onStatusChange,
 }:Props) {
   const [selectedAction,setSelectedAction]=useState(0);
   const legal=!!(p.siren||p.siret);
-  const contact=!!(p.phone||p.email);
+  const people=collectProspectPeople(p,officialManagers);
+  const managers=people.filter(person=>person.isManager);
+  const directPhone=p.phone||people.find(person=>person.phone)?.phone;
+  const directEmail=p.email||people.find(person=>person.email)?.email;
+  const contact=!!(directPhone||directEmail);
   const location=!!(p.address&&p.postalCode);
   const company=!!p.company;
   const criteria=[
@@ -67,7 +72,7 @@ export function Prospect360Dashboard({
     {label:'Activité (APE)',met:!!p.apeCode},
     {label:'Contact (téléphone, email, site)',met:contact||!!p.website},
     {label:'Adresse (à vérifier)',met:location},
-    {label:'Dirigeant (à compléter)',met:!!(p.firstName&&p.lastName)},
+    {label:'Dirigeant (nominatif)',met:managers.length>0},
   ];
   const completeness=Math.round(criteria.filter(c=>c.met).length/criteria.length*100);
   const verified=isVerified(p);
@@ -75,7 +80,7 @@ export function Prospect360Dashboard({
   const suggestions=[
     {label:!location?'Vérifier l’adresse':'Contrôler l’adresse',description:location?'Adresse renseignée ; contrôler sa source.':'Compléter l’adresse et son code postal.',icon:MapPin,action:onEdit,done:location},
     {label:!contact?'Identifier le contact':'Vérifier le contact',description:contact?'Coordonnées enregistrées dans GrowthOS.':'Rechercher un contact qualifié.',icon:UserRound,action:onOpenContacts,done:contact},
-    {label:'Contacter le prospect',description:p.phone?'Appeler le numéro présent dans le CRM.':p.email?'Préparer un email professionnel.':'Une coordonnée est nécessaire avant toute prise de contact.',icon:Phone,action:()=>p.phone?window.location.assign('tel:'+p.phone):p.email?window.location.assign('mailto:'+p.email):onOpenContacts(),done:false},
+    {label:'Contacter le prospect',description:directPhone?'Appeler le numéro enregistré.':directEmail?'Préparer un email professionnel.':'Une coordonnée est nécessaire avant toute prise de contact.',icon:Phone,action:()=>directPhone?window.location.assign('tel:'+directPhone):directEmail?window.location.assign('mailto:'+directEmail):onOpenContacts(),done:false},
   ];
   const selected=suggestions[selectedAction]||suggestions[0];
   return (
@@ -130,15 +135,15 @@ export function Prospect360Dashboard({
 
       <div className="atlas-360-secondary-grid">
         <section className="atlas-360-card atlas-360-mini">
-          <header className="atlas-360-card-header"><div><Users size={19}/><h2>Contacts <small>(parties prenantes)</small></h2></div>
+          <header className="atlas-360-card-header"><div><Users size={19}/><h2>Contacts <small>({people.length} identifié{people.length>1?'s':''})</small></h2></div>
             <button className="atlas-360-text-button" onClick={onOpenContacts}><Plus size={15}/> Ajouter</button></header>
-          <div className="atlas-360-contact-item"><span className="atlas-360-contact-avatar"><UserRound size={19}/></span>
-            <div><strong>Dirigeant</strong><span>{p.jobTitle?.toLowerCase().includes('dirigeant')&&p.firstName?[p.firstName,p.lastName].filter(Boolean).join(' '):'À identifier'}</span></div>
-            <button onClick={onOpenContacts} aria-label="Voir le dirigeant"><MoreHorizontal size={19}/></button></div>
-          <div className="atlas-360-contact-item"><span className="atlas-360-contact-avatar"><UserRound size={19}/></span>
-            <div><strong>Contact principal</strong><span>{p.firstName?[p.firstName,p.lastName].filter(Boolean).join(' '):'Non renseigné'}</span></div>
-            <button onClick={onOpenContacts} aria-label="Voir les contacts"><MoreHorizontal size={19}/></button></div>
-          <button className="atlas-360-card-footer-link" onClick={onOpenContacts}>Voir les coordonnées <ArrowRight size={16}/></button>
+          {people.length?people.slice(0,2).map(person=><button type="button" key={person.id} className="atlas-360-contact-item atlas-360-person-preview" onClick={onOpenContacts}>
+            <span className="atlas-360-contact-avatar"><UserRound size={19}/></span>
+            <span className="atlas-360-person-info"><strong>{person.name}</strong><small>{person.role||(person.isManager?'Dirigeant · rôle à confirmer':'Contact CRM')}</small></span>
+            <ChevronDown size={15} className="atlas-360-person-chevron"/>
+          </button>):<div className="atlas-360-people-empty"><Users size={21}/><span>Aucun contact nominatif identifié</span><small>Les coordonnées générales restent disponibles dans la fiche.</small></div>}
+          <button className="atlas-360-card-footer-link" onClick={onOpenContacts}>
+            {people.length>2?'Voir les '+people.length+' contacts':'Voir le détail des contacts'} <ArrowRight size={16}/></button>
         </section>
 
         <section className="atlas-360-card atlas-360-mini">
