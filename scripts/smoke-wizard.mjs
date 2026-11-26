@@ -1575,6 +1575,7 @@ try {
     const stopsBefore=cloudCalls.filter(c=>c.action==='/stop').length;
     await request('POST','/browser/jobs/'+queuedCancel.body.id+'/cancel',{},token);
     check(cloudCalls.filter(c=>c.action==='/stop').length===stopsBefore,'Cloud : annuler un lot en file ne ferme pas le navigateur du lot actif');
+    check((await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[cancelJob.body.id]},token)).status===409,'Cloud historique : une tâche en cours ne peut pas être supprimée');
     const cancelled=await request('POST','/browser/jobs/'+cancelJob.body.id+'/cancel',{},token);await running;cloudDelay=0;
     check(cancelled.status===200 && (await request('GET','/browser/jobs/'+cancelJob.body.id,undefined,token)).body.status==='cancelled' &&
       (await request('GET','/prospects/'+cancelTarget.body.id,undefined,token)).body.company==='Cible à conserver',
@@ -1595,6 +1596,40 @@ try {
     const captured=await request('GET','/browser/jobs/'+discovery.body.id,undefined,token);
     check(captured.body.status==='completed' && captured.body.mode==='discover' && captured.body.result.captures.length===1,
       'Cloud : collecte publique livre une sélection persistante avant création de prospects');
+    check((await request('POST','/browser/jobs/history/delete',{scope:'all'})).status===401,'Cloud historique : suppression interdite sans connexion');
+    check((await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[]},token)).status===400,'Cloud historique : sélection vide refusée');
+    check((await request('POST','/browser/jobs/history/delete',{scope:'all'},foreignToken)).body.deleted===0 &&
+      (await request('GET','/browser/jobs/'+created.body.id,undefined,token)).status===200,'Cloud historique : nettoyage d’une autre agence sans effet sur mes tâches');
+    check((await request('POST','/browser/jobs/history/delete',{scope:'all'},colleague)).body.deleted===0 &&
+      (await request('GET','/browser/jobs/'+created.body.id,undefined,token)).status===200,'Cloud historique : nettoyage d’un collègue sans effet sur mes tâches personnelles');
+    check((await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[created.body.id]},foreignToken)).status===404,'Cloud historique : suppression ciblée isolée par agence');
+    check((await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[created.body.id,randomUUID()]},token)).status===404 &&
+      (await request('GET','/browser/jobs/'+created.body.id,undefined,token)).status===200,'Cloud historique : sélection avec ID inaccessible refusée sans suppression partielle');
+    const resumed=await request('POST','/browser/jobs/'+cancelJob.body.id+'/retry',{resume:true},token);
+    check(resumed.status===200 && resumed.body.id===cancelJob.body.id && resumed.body.status==='queued' && resumed.body.query==='96677700400019' && !resumed.body.result.captures,
+      'Cloud : reprise d’une tâche annulée avec même identité et critères conservés');
+    await runCloudMaintenance(cancelJob.body.id);
+    check((await request('GET','/browser/jobs/'+cancelJob.body.id,undefined,token)).body.status==='completed' &&
+      (await request('GET','/prospects/'+cancelTarget.body.id,undefined,token)).body.company==='ATELIER CLOUD','Cloud : tâche annulée reprise jusqu’au résultat et à la mise à jour CRM');
+    const protectedJob=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'Tâche en file à conserver'},token);
+    check((await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[created.body.id,protectedJob.body.id]},token)).status===409 &&
+      (await request('GET','/browser/jobs/'+created.body.id,undefined,token)).status===200,'Cloud historique : lot mixte actif/terminé refusé atomiquement');
+    const single=await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[created.body.id]},token);
+    check(single.body.deleted===1 && single.body.deletedIds[0]===created.body.id && (await request('GET','/browser/jobs/'+created.body.id,undefined,token)).status===404,'Cloud historique : une recherche terminée disparaît durablement');
+    check((await request('GET','/prospects/'+target.body.id,undefined,token)).body.company==='ATELIER CLOUD' &&
+      (await request('GET','/activities?prospectId='+target.body.id,undefined,token)).body.length===activity.body.length &&
+      (await request('GET','/browser/profiles',undefined,token)).body.some(p=>p.id===profile.id),'Cloud historique : prospects, activités et profils préservés après suppression');
+    check((await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[discovery.body.id,discovery.body.id]},token)).body.deleted===1,'Cloud historique : identifiants répétés ne doublent pas la suppression');
+    for(let i=0;i<32;i++){
+      const extra=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'Historique de recette '+i},token);
+      await request('POST','/browser/jobs/'+extra.body.id+'/cancel',{},token);
+    }
+    const cleared=await request('POST','/browser/jobs/history/delete',{scope:'all'},token);
+    check(cleared.body.deleted>30 && (await request('GET','/browser/jobs',undefined,token)).body.every(j=>!['completed','cancelled','failed'].includes(j.status)),
+      'Cloud historique : nettoyage intégral au-delà des trente recherches affichées');
+    check((await request('GET','/browser/jobs/'+protectedJob.body.id,undefined,token)).body.status==='queued' &&
+      (await request('GET','/browser/jobs/'+wrong.body.id,undefined,token)).body.status==='needs_review','Cloud historique : nettoyage conserve les tâches actives et en attente de revue');
+
   }
 
   console.log("\nPASS — installation, CRM, IA, audit de lecture isolé et sécurité validés\n");

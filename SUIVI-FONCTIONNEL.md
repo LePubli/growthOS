@@ -157,3 +157,12 @@ Le [document de référence Linked Helper](docs/REFERENCE-LINKED-HELPER.md) cons
 - Testé en isolation : 299 contrôles API sur PostgreSQL 16 (sources simulées), protocole navigateur, contrat UI et tests du thème ; TypeScript et builds API/Web. Chromium réel exécuté par la CI sur des pages locales de recette : statut à suivre dans la PR.
 - À recetter : connexion réelle acceptée par chaque fournisseur depuis le VPS, Maps au-delà d'une première page, données Societe.com réelles, consommation VPS et reprise après arrêt du conteneur.
 - À développer : collecteurs automatiques LinkedIn/FB/Instagram/TikTok, raccordement PagesJaunes au nouveau moteur ; Windows/Android différés. Les campagnes d'invitations/messages ne sont pas incluses.
+
+## 44 · Imports en lot et commandes des tâches cloud (26/11/2026)
+
+- **Recette Maps observée** : la capture utilisateur du 26/11 montre une recherche « plombier 59 » terminée avec 9 fiches proposées et 1 fiche partielle conservée. L'import CRM de ce lot et son réimport restent à valider en usage.
+- **Lot PR51** : tout cocher/décocher dans chaque lot, compteur de sélection, import groupé désactivé sans sélection. Après import, seules les captures effectivement traitées quittent la sélection ; les désaccords restent disponibles.
+- **Tâches** : annuler, reprendre une tâche annulée avec ses critères et son identifiant conservés, supprimer une tâche terminée ; nouvelle lecture après chaque commande.
+- **Historique** : suppression individuelle, par sélection ou nettoyage de toutes les recherches terminées/échouées/annulées, même au-delà des 30 affichées. Confirmation préalable pour la perte des résultats non importés. Les tâches actives/en attente, les prospects importés, les activités et les profils sont préservés.
+- **Coordination design** : composant fonctionnel `components/cloud-browser/CloudJobHistory.tsx`, aucune modification des CSS ou des composants ATLAS. Notes partagées dans `COORDINATION-AGENTS.md`.
+- **Validation en cours** : TypeScript API/Web, build API/Web et tests React des sélections passent. Suite PostgreSQL16 et CI images à confirmer avant feu vert. Aucun déploiement DockPanel par l'agent.

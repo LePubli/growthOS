@@ -39,6 +39,27 @@ for(const action of ['open','view','action','erase'] as const)router.post('/prof
 router.get('/jobs',async(req,res)=>{
   const q=await pool.query('SELECT * FROM cloud_browser_jobs WHERE tenant_id=$1 AND created_by=$2 ORDER BY created_at DESC LIMIT 30',[req.auth!.tenantId,req.auth!.userId]);res.json(q.rows);
 });
+router.post('/jobs/history/delete',async(req,res)=>{
+  const selection=z.discriminatedUnion('scope',[
+    z.object({scope:z.literal('all')}).strict(),
+    z.object({scope:z.literal('selected'),ids:z.array(idSchema).min(1).max(100)}).strict(),
+  ]).parse(req.body);
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const ids=selection.scope==='selected'?[...new Set(selection.ids)]:null;
+    if(ids){
+      const rows=await client.query('SELECT id,status FROM cloud_browser_jobs WHERE tenant_id=$1 AND created_by=$2 AND id=ANY($3::uuid[]) ORDER BY id FOR UPDATE',[req.auth!.tenantId,req.auth!.userId,ids]);
+      if(rows.rowCount!==ids.length)throw new CloudBrowserError(404,'Une recherche est introuvable. Actualisez la liste.');
+      if(rows.rows.some(row=>!['completed','failed','cancelled'].includes(row.status)))
+        throw new CloudBrowserError(409,'Annulez les recherches en cours ou en attente avant de les supprimer.');
+    }
+    const removed=await client.query(`DELETE FROM cloud_browser_jobs WHERE tenant_id=$1 AND created_by=$2
+      AND status IN ('completed','failed','cancelled') AND ($3::uuid[] IS NULL OR id=ANY($3::uuid[])) RETURNING id`,[req.auth!.tenantId,req.auth!.userId,ids]);
+    await client.query('COMMIT');
+    res.json({deleted:removed.rowCount,deletedIds:removed.rows.map(row=>row.id)});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+});
 router.post('/jobs',async(req,res)=>{
   if(!cloudConfigured())throw new CloudBrowserError(503,'Configurez le navigateur cloud pour lancer une tâche.');
   const data=z.object({profileId:idSchema,query:z.string().trim().min(2).max(160),area:z.string().trim().max(120).default(''),limit:z.number().int().min(1).max(25).default(10),prospectId:idSchema.optional()}).strict().parse(req.body);
@@ -54,8 +75,9 @@ router.get('/jobs/:id',async(req,res)=>res.json(await cloudJob(req.auth!.tenantI
 router.post('/jobs/:id/retry',async(req,res)=>{
   const id=idSchema.parse(req.params.id);const data=z.object({resume:z.boolean().default(true)}).strict().parse(req.body||{});
   const job=await cloudJob(req.auth!.tenantId,id,req.auth!.userId);
-  if(!['awaiting_user','needs_review','failed'].includes(job.status))throw new CloudBrowserError(409,'Cette tâche ne peut pas être reprise dans son état actuel.');
-  const q=await pool.query(`UPDATE cloud_browser_jobs SET status='queued',resume=$3,error=NULL,updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status IN ('awaiting_user','needs_review','failed') RETURNING *`,[id,req.auth!.tenantId,data.resume]);
+  if(!['awaiting_user','needs_review','failed','cancelled'].includes(job.status))throw new CloudBrowserError(409,'Cette tâche ne peut pas être reprise dans son état actuel.');
+  const q=await pool.query(`UPDATE cloud_browser_jobs SET status='queued',resume=$3,error=NULL,result='{}'::jsonb,updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status IN ('awaiting_user','needs_review','failed','cancelled') RETURNING *`,[id,req.auth!.tenantId,data.resume]);
+  if(!q.rows[0])throw new CloudBrowserError(409,'La tâche a changé d’état. Actualisez la liste.');
   res.json(q.rows[0]);schedule();
 });
 router.post('/jobs/:id/cancel',async(req,res)=>{

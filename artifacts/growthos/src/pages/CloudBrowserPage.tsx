@@ -1,14 +1,13 @@
 import {useEffect,useRef,useState} from 'react';
 import {Link,useSearch} from 'wouter';
 import api from '@/lib/api-client';
+import CloudJobHistory,{selectCaptureBatch,type CloudJob as Job} from '@/components/cloud-browser/CloudJobHistory';
 import {SourceLogo} from '@/components/atlas/ProspectLogos';
 import modules from '../../../../extensions/growthos-pagesjaunes/modules.json';
 import '@/cloud-browser.css';
 
 type Profile={id:string;source:string;label:string;mode:'public'|'account'};
-type Job={id:string;profile_id:string;prospect_id:string|null;mode:'enrich'|'discover';query:string;status:string;error:string|null;result:{message?:string;captures?:any[];drafts?:any[];applied?:{filled:string[];conflicts:number}}};
 type View={url:string;title:string;image:string;busy:boolean;width:number;height:number};
-const labels:Record<string,string>={queued:'En file',running:'Recherche et collecte en cours',awaiting_user:'Intervention dans le navigateur',needs_review:'Rapprochement à vérifier',completed:'Terminé',failed:'Échec',cancelled:'Annulé'};
 const sourceName=(source:string)=>modules.find(m=>m.source===source)?.name||source;
 export default function CloudBrowserPage(){
   const params=new URLSearchParams(useSearch()),prospectId=params.get('prospectId');
@@ -20,8 +19,10 @@ export default function CloudBrowserPage(){
   const [view,setView]=useState<View|null>(null),[viewing,setViewing]=useState(false),[busy,setBusy]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const control=useRef(''),inputQueue=useRef(Promise.resolve()),viewProfile=useRef(''),latestSelected=useRef(selected);latestSelected.current=selected;
   const [chosen,setChosen]=useState<Record<string,boolean>>({});
-  async function refresh(){const [p,j,s]=await Promise.all([api.get<Profile[]>('/browser/profiles'),api.get<Job[]>('/browser/jobs'),api.get<any>('/browser/status')]);setProfiles(p);setJobs(j);setStatus(s);}
-  useEffect(()=>{void refresh().catch(e=>setError(e.message));const timer=window.setInterval(()=>{void api.get<Job[]>('/browser/jobs').then(setJobs).catch(()=>undefined);},3000);return()=>window.clearInterval(timer);},[]);
+  const jobsRequest=useRef(0);
+  async function readJobs(){const version=++jobsRequest.current;const result=await api.get<Job[]>('/browser/jobs');if(version===jobsRequest.current)setJobs(result);}
+  async function refresh(){const [p,s]=await Promise.all([api.get<Profile[]>('/browser/profiles'),api.get<any>('/browser/status'),readJobs()]);setProfiles(p);setStatus(s);}
+  useEffect(()=>{void refresh().catch(e=>setError(e.message));const timer=window.setInterval(()=>{void readJobs().catch(()=>undefined);},3000);return()=>window.clearInterval(timer);},[]);
   useEffect(()=>{if(!selected){const match=profiles.find(p=>p.source===source);if(match)setSelected(match.id);}},[profiles,source,selected]);
   useEffect(()=>{if(prospectId)void api.get('/prospects/'+prospectId).then(p=>{setProspect(p);setQuery((params.get('source')||'societe_com')==='societe_com'?(p.siret||p.siren||p.company||''):(p.company||''));setArea(p.city||'');}).catch(e=>setError(e.message));},[prospectId]);
   useEffect(()=>{setView(null);setViewing(false);control.current='';viewProfile.current='';},[selected]);
@@ -66,8 +67,21 @@ export default function CloudBrowserPage(){
     const candidates=(job.result.captures||[]).filter(c=>chosen[c.id]);
     if(!candidates.length)throw new Error('Sélectionnez au moins une fiche vérifiée.');
     const result=await api.post<any>('/sourcing/device/import-prospects',{verified:candidates,drafts:[]},{timeoutMs:60000});
-    setNotice(`${result.imported||0} prospect(s) créé(s), ${result.enriched||0} enrichi(s). Les éventuels désaccords restent à vérifier dans le CRM.`);
+    const processed=new Set<string>(result.processedIds||[]);
+    setChosen(current=>Object.fromEntries(Object.entries(current).filter(([id])=>!processed.has(id))));
+    setNotice(`${result.imported||0} prospect(s) créé(s), ${result.enriched||0} enrichi(s), ${result.skipped||0} ignoré(s). Les éventuels désaccords restent à vérifier dans le CRM.`);
   });}
+  async function removeHistory(ids?:string[]){
+    const subject=ids?(ids.length===1?'cette recherche':`ces ${ids.length} recherches`):'toutes vos recherches terminées, échouées ou annulées, y compris les anciennes non affichées';
+    if(!confirm(`Supprimer ${subject} et leurs résultats non importés ? Les prospects importés, leurs activités et vos profils restent conservés. Cette suppression est définitive.`))return;
+    await perform('Supprimer',async()=>{
+      const result=await api.post<{deleted:number;deletedIds:string[]}>('/browser/jobs/history/delete',ids?{scope:'selected',ids}:{scope:'all'});
+      const removed=new Set(result.deletedIds);++jobsRequest.current;
+      const captures=jobs.filter(j=>removed.has(j.id)).flatMap(j=>j.result.captures||[]);
+      setChosen(current=>selectCaptureBatch(current,captures,false));setJobs(current=>current.filter(j=>!removed.has(j.id)));
+      await refresh();setNotice(`${result.deleted} recherche(s) supprimée(s). Les prospects et leurs activités sont conservés.`);
+    });
+  }
   return <main className="cloud-browser-page p-4 sm:p-6 space-y-5 max-w-7xl mx-auto" style={{color:'var(--text-primary)'}}>
     <Link to={prospectId?'/prospects/'+prospectId:'/outils'} className="text-sm underline">← {prospectId?'Retour au prospect':'Catalogue des outils'}</Link>
     <h1 className="text-2xl font-semibold">Navigateur cloud et collecte</h1>
@@ -113,25 +127,13 @@ export default function CloudBrowserPage(){
         </div><button className="border rounded p-2 text-sm" onClick={()=>action({type:'back'})}>Page précédente</button></>}
       {!view&&<p className="text-sm" style={{color:'var(--text-muted)'}}>La vue s’affiche à l’ouverture d’une recherche ou avec « Afficher ».</p>}
     </section>}
-    <section className="space-y-3"><h2 className="font-semibold">Tâches récentes</h2>
-      {!jobs.length&&<p className="text-sm">Aucune tâche cloud lancée.</p>}
-      {jobs.map(job=><article key={job.id} className="border rounded-xl p-4 space-y-2" style={{background:'var(--card-bg)'}}>
-        <div className="flex gap-3 flex-wrap justify-between"><strong>{job.query}</strong><span>{labels[job.status]||job.status}</span></div>
-        {(job.error||job.result.message)&&<p className="text-sm">{job.error||job.result.message}</p>}
-        {job.result.applied&&<p className="text-sm">{job.result.applied.filled.length} champ(s) mis à jour, {job.result.applied.conflicts} désaccord(s) à vérifier.</p>}
-        {job.prospect_id&&<Link className="underline text-teal-700" to={'/prospects/'+job.prospect_id}>Voir le prospect et son historique</Link>}
-        <div className="flex flex-wrap gap-2">
-          <button className="border rounded p-2 text-sm" onClick={()=>{setSelected(job.profile_id);setNotice('Profil sélectionné. Utilisez « Afficher / reprendre le contrôle » pour consulter la page sans relancer la recherche.');}}>Voir son profil de navigation</button>
-          {['awaiting_user','needs_review','failed'].includes(job.status)&&<button className="border rounded p-2 text-sm" disabled={!!busy} onClick={()=>void perform('Reprendre',async()=>{await api.post('/browser/jobs/'+job.id+'/retry',{resume:true});await refresh();})}>Reprendre depuis la page ouverte</button>}
-          {['queued','running','awaiting_user','needs_review','failed'].includes(job.status)&&<button className="border rounded p-2 text-sm" disabled={!!busy} onClick={()=>void perform('Annuler',async()=>{await api.post('/browser/jobs/'+job.id+'/cancel',{});await refresh();})}>Annuler</button>}
-        </div>
-        {job.mode==='discover'&&!!job.result.captures?.length&&<div className="space-y-2">
-          {job.result.captures.map(c=><label key={c.id} className="block text-sm border rounded p-2"><input type="checkbox" checked={!!chosen[c.id]} onChange={e=>setChosen(v=>({...v,[c.id]:e.target.checked}))}/> <strong>{c.company}</strong> · {[c.address,c.city,c.phone].filter(Boolean).join(' · ')}</label>)}
-          <button className="border rounded p-2" disabled={!!busy} onClick={()=>void importSelected(job)}>Importer les fiches sélectionnées</button>
-        </div>}
-        {!!job.result.drafts?.length&&<p className="text-sm">{job.result.drafts.length} fiche(s) partielle(s) conservée(s) dans cette tâche. Elles ne sont pas importées sans vérification.</p>}
-      </article>)}
-    </section>
+    <CloudJobHistory jobs={jobs} busy={!!busy} chosen={chosen}
+      onChoose={(id,value)=>setChosen(current=>selectCaptureBatch(current,[{id}],value))}
+      onChooseBatch={(captures,value)=>setChosen(current=>selectCaptureBatch(current,captures,value))}
+      onImport={job=>void importSelected(job)} onRemove={ids=>void removeHistory(ids)}
+      onProfile={job=>{setSelected(job.profile_id);setNotice('Profil sélectionné. Utilisez « Afficher / reprendre le contrôle » pour consulter la page sans relancer la recherche.');}}
+      onRetry={job=>void perform('Reprendre',async()=>{await api.post('/browser/jobs/'+job.id+'/retry',{resume:true});setChosen(current=>selectCaptureBatch(current,job.result.captures||[],false));await refresh();})}
+      onCancel={job=>void perform('Annuler',async()=>{await api.post('/browser/jobs/'+job.id+'/cancel',{});await refresh();})}/>
     <p className="text-sm"><Link to={'/outils'+(prospectId?'?mode=enrich&prospectId='+prospectId:'')} className="underline">Catalogue et secours externe Chrome</Link></p>
   </main>;
 }
