@@ -1,139 +1,449 @@
-import {useEffect,useRef,useState} from 'react';
-import {Link,useSearch} from 'wouter';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link, useSearch } from 'wouter';
+import {
+  AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown,
+  Clock3, ExternalLink, EyeOff, Globe2, History, Layers, LogOut,
+  MapPin, Maximize2, Minimize2, Play, Plus, Search, ShieldCheck,
+} from 'lucide-react';
 import api from '@/lib/api-client';
-import CloudJobHistory,{selectCaptureBatch,type CloudJob as Job} from '@/components/cloud-browser/CloudJobHistory';
-import {SourceLogo} from '@/components/atlas/ProspectLogos';
+import CloudJobHistory,{CaptureBatchControls,selectCaptureBatch} from '@/components/cloud-browser/CloudJobHistory';
+import { SourceLogo } from '@/components/atlas/ProspectLogos';
 import modules from '../../../../extensions/growthos-pagesjaunes/modules.json';
 import '@/cloud-browser.css';
 
-type Profile={id:string;source:string;label:string;mode:'public'|'account'};
-type View={url:string;title:string;image:string;busy:boolean;width:number;height:number};
-const sourceName=(source:string)=>modules.find(m=>m.source===source)?.name||source;
-export default function CloudBrowserPage(){
-  const params=new URLSearchParams(useSearch()),prospectId=params.get('prospectId');
-  const [profiles,setProfiles]=useState<Profile[]>([]),[jobs,setJobs]=useState<Job[]>([]),[selected,setSelected]=useState('');
-  const [status,setStatus]=useState<{ready:boolean;configured:boolean;automatic:string[]}|null>(null);
-  const [limit,setLimit]=useState(10);
-  const [source,setSource]=useState(params.get('source')||(prospectId?'societe_com':'google_maps')),[profileLabel,setProfileLabel]=useState(''),[mode,setMode]=useState<'public'|'account'>('public');
-  const [prospect,setProspect]=useState<any>(null),[query,setQuery]=useState(params.get('query')||''),[area,setArea]=useState(params.get('area')||'');
-  const [view,setView]=useState<View|null>(null),[viewing,setViewing]=useState(false),[busy,setBusy]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState('');
-  const control=useRef(''),inputQueue=useRef(Promise.resolve()),viewProfile=useRef(''),latestSelected=useRef(selected);latestSelected.current=selected;
-  const [chosen,setChosen]=useState<Record<string,boolean>>({});
-  const jobsRequest=useRef(0);
-  async function readJobs(){const version=++jobsRequest.current;const result=await api.get<Job[]>('/browser/jobs');if(version===jobsRequest.current)setJobs(result);}
-  async function refresh(){const [p,s]=await Promise.all([api.get<Profile[]>('/browser/profiles'),api.get<any>('/browser/status'),readJobs()]);setProfiles(p);setStatus(s);}
-  useEffect(()=>{void refresh().catch(e=>setError(e.message));const timer=window.setInterval(()=>{void readJobs().catch(()=>undefined);},3000);return()=>window.clearInterval(timer);},[]);
-  useEffect(()=>{if(!selected){const match=profiles.find(p=>p.source===source);if(match)setSelected(match.id);}},[profiles,source,selected]);
-  useEffect(()=>{if(prospectId)void api.get('/prospects/'+prospectId).then(p=>{setProspect(p);setQuery((params.get('source')||'societe_com')==='societe_com'?(p.siret||p.siren||p.company||''):(p.company||''));setArea(p.city||'');}).catch(e=>setError(e.message));},[prospectId]);
-  useEffect(()=>{setView(null);setViewing(false);control.current='';viewProfile.current='';},[selected]);
-  useEffect(()=>{
-    if(!selected||!viewing)return;
-    let alive=true,pending=false;
-    const read=async()=>{
-      if(pending)return;pending=true;
-      try{const result=await api.post<View>('/browser/profiles/'+selected+'/view',{});if(alive&&latestSelected.current===selected)setView(result);}
-      catch(e){if(alive){setViewing(false);setError(e instanceof Error?e.message:'Vue indisponible.');}}
-      finally{pending=false;}
-    };
-    void read();const timer=window.setInterval(()=>void read(),1800);
-    return()=>{alive=false;window.clearInterval(timer);};
-  },[selected,viewing]);
-  async function perform(label:string,run:()=>Promise<void>){setBusy(label);setError('');setNotice('');try{await run();}catch(e){setError(e instanceof Error?e.message:'Opération impossible.');}finally{setBusy('');}}
-  const profile=profiles.find(p=>p.id===selected),automatic=status?.automatic.includes(profile?.source||source);
-  async function create(){await perform('Créer',async()=>{
-    const p=await api.post<Profile>('/browser/profiles',{source,label:profileLabel.trim()||sourceName(source)+' · '+(mode==='public'?'public':'mon compte'),mode});
-    setProfiles(v=>[...v,p]);setSelected(p.id);setProfileLabel('');
-  });}
-  async function open(login=false,keepPage=false){await perform('Ouvrir',async()=>{
-    const result=await api.post<any>('/browser/profiles/'+selected+'/open',{query,area,login,keepPage},{timeoutMs:35000});
-    control.current=result.controlId;viewProfile.current=selected;setViewing(true);setNotice('Session ouverte. Les connexions éventuelles restent dans ce profil ; une session ouverte ne garantit pas que le site vous a authentifié.');
-  });}
-  function action(event:object){
-    const target=selected,lease=control.current;if(!lease||!viewing||view?.busy)return;
-    inputQueue.current=inputQueue.current.then(async()=>{
-      if(latestSelected.current!==target||control.current!==lease)return;
-      await api.post('/browser/profiles/'+target+'/action',{event,controlId:lease});
-    }).catch(e=>{setError(e.message);});
+type Profile = { id: string; source: string; label: string; mode: 'public' | 'account' };
+type Capture = { id: string; company?: string; address?: string; city?: string; phone?: string };
+type Job = {
+  id: string; profile_id: string; prospect_id: string | null;
+  mode: 'enrich' | 'discover'; query: string; area?: string; status: string; error: string | null;
+  result: {
+    message?: string; captures?: Capture[]; drafts?: unknown[];
+    applied?: { filled: string[]; conflicts: number };
+  };
+};
+type View = { url: string; title: string; image: string; busy: boolean; width: number; height: number };
+
+const labels: Record<string, string> = {
+  queued: 'En file', running: 'Collecte en cours', awaiting_user: 'Intervention requise',
+  needs_review: 'À vérifier', completed: 'Terminée', failed: 'Échec', cancelled: 'Annulée',
+};
+const sourceName = (source: string) => modules.find(module => module.source === source)?.name || source;
+const activeStatuses = ['queued', 'running', 'awaiting_user', 'needs_review', 'failed'];
+const canResume = ['awaiting_user', 'needs_review', 'failed', 'cancelled'];
+
+export default function CloudBrowserPage() {
+  const params = new URLSearchParams(useSearch()), prospectId = params.get('prospectId');
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [selected, setSelected] = useState('');
+  const [status, setStatus] = useState<{ ready: boolean; configured: boolean; automatic: string[] } | null>(null);
+  const [limit, setLimit] = useState(10);
+  const [source, setSource] = useState(params.get('source') || (prospectId ? 'societe_com' : 'google_maps'));
+  const [profileLabel, setProfileLabel] = useState('');
+  const [mode, setMode] = useState<'public' | 'account'>('public');
+  const [prospect, setProspect] = useState<any>(null);
+  const [query, setQuery] = useState(params.get('query') || '');
+  const [area, setArea] = useState(params.get('area') || '');
+  const [view, setView] = useState<View | null>(null);
+  const [viewing, setViewing] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [activeJobId, setActiveJobId] = useState('');
+  const [expandedBrowser, setExpandedBrowser] = useState(false);
+  const [chosen, setChosen] = useState<Record<string, boolean>>({});
+  const control = useRef('');
+  const inputQueue = useRef(Promise.resolve());
+  const viewProfile = useRef('');
+  const latestSelected = useRef(selected);
+  latestSelected.current = selected;
+
+  const jobsRequest = useRef(0);
+  async function readJobs() {
+    const version = ++jobsRequest.current;
+    const result = await api.get<Job[]>('/browser/jobs');
+    if (version === jobsRequest.current) setJobs(result);
   }
-  async function launch(){await perform('Collecter',async()=>{
-    if(!automatic)throw new Error('Collecteur automatique indisponible pour cette source.');
-    if(prospectId&&!prospect)throw new Error('Prospect cible non chargé.');
-    let target=profile;
-    if(!target){target=await api.post<Profile>('/browser/profiles',{source,label:profileLabel.trim()||sourceName(source)+' · '+(mode==='public'?'public':'mon compte'),mode});setProfiles(p=>[...p,target!]);setSelected(target.id);}
-    const job=await api.post<Job>('/browser/jobs',{profileId:target.id,query,area,limit,...(prospectId?{prospectId}:{})});
-    setJobs(j=>[job,...j]);setNotice('Recherche mise en file. Vous pouvez quitter cette page ; la tâche s’exécute sur le serveur.');
-  });}
-  async function importSelected(job:Job){await perform('Importer',async()=>{
-    const candidates=(job.result.captures||[]).filter(c=>chosen[c.id]);
-    if(!candidates.length)throw new Error('Sélectionnez au moins une fiche vérifiée.');
-    const result=await api.post<any>('/sourcing/device/import-prospects',{verified:candidates,drafts:[]},{timeoutMs:60000});
-    const processed=new Set<string>(result.processedIds||[]);
-    setChosen(current=>Object.fromEntries(Object.entries(current).filter(([id])=>!processed.has(id))));
-    setNotice(`${result.imported||0} prospect(s) créé(s), ${result.enriched||0} enrichi(s), ${result.skipped||0} ignoré(s). Les éventuels désaccords restent à vérifier dans le CRM.`);
-  });}
-  async function removeHistory(ids?:string[]){
-    const subject=ids?(ids.length===1?'cette recherche':`ces ${ids.length} recherches`):'toutes vos recherches terminées, échouées ou annulées, y compris les anciennes non affichées';
-    if(!confirm(`Supprimer ${subject} et leurs résultats non importés ? Les prospects importés, leurs activités et vos profils restent conservés. Cette suppression est définitive.`))return;
-    await perform('Supprimer',async()=>{
-      const result=await api.post<{deleted:number;deletedIds:string[]}>('/browser/jobs/history/delete',ids?{scope:'selected',ids}:{scope:'all'});
-      const removed=new Set(result.deletedIds);++jobsRequest.current;
-      const captures=jobs.filter(j=>removed.has(j.id)).flatMap(j=>j.result.captures||[]);
-      setChosen(current=>selectCaptureBatch(current,captures,false));setJobs(current=>current.filter(j=>!removed.has(j.id)));
-      await refresh();setNotice(`${result.deleted} recherche(s) supprimée(s). Les prospects et leurs activités sont conservés.`);
+  async function refresh() {
+    const [p, s] = await Promise.all([
+      api.get<Profile[]>('/browser/profiles'),
+      api.get<{ ready: boolean; configured: boolean; automatic: string[] }>('/browser/status'), readJobs(),
+    ]);
+    setProfiles(p); setStatus(s);
+  }
+
+  useEffect(() => {
+    void refresh().catch(e => setError(e.message));
+    const timer = window.setInterval(() => {
+      void readJobs().catch(() => undefined);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    if (!selected) {
+      const match = profiles.find(profile => profile.source === source);
+      if (match) setSelected(match.id);
+    }
+  }, [profiles, source, selected]);
+  useEffect(() => {
+    if (prospectId) void api.get<any>('/prospects/' + prospectId).then(p => {
+      setProspect(p);
+      setQuery((params.get('source') || 'societe_com') === 'societe_com'
+        ? (p.siret || p.siren || p.company || '') : (p.company || ''));
+      setArea(p.city || '');
+    }).catch(e => setError(e.message));
+  }, [prospectId]);
+  useEffect(() => {
+    setView(null); setViewing(false); control.current = ''; viewProfile.current = '';
+  }, [selected]);
+  useEffect(() => {
+    if (!selected || !viewing) return;
+    let alive = true, pending = false;
+    const read = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const result = await api.post<View>('/browser/profiles/' + selected + '/view', {});
+        if (alive && latestSelected.current === selected) setView(result);
+      } catch (e) {
+        if (alive) {
+          setViewing(false);
+          setError(e instanceof Error ? e.message : 'Vue indisponible.');
+        }
+      } finally { pending = false; }
+    };
+    void read();
+    const timer = window.setInterval(() => void read(), 1800);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [selected, viewing]);
+
+  async function perform(label: string, run: () => Promise<void>) {
+    setBusy(label); setError(''); setNotice('');
+    try { await run(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Opération impossible.'); }
+    finally { setBusy(''); }
+  }
+
+  const profile = profiles.find(p => p.id === selected);
+  const automatic = status?.automatic.includes(profile?.source || source);
+  const sourceProfiles = profiles.filter(p => p.source === source);
+  const discoveryJobs = jobs.filter(job => job.mode === 'discover');
+  const activeJob = discoveryJobs.find(job => job.id === activeJobId)
+    || discoveryJobs.find(job => job.result?.captures?.length)
+    || discoveryJobs[0];
+  const captures = activeJob?.status === 'completed' ? (activeJob.result?.captures || []) : [];
+  const draftsCount = activeJob?.result?.drafts?.length || 0;
+  const chosenCount = captures.filter(capture => chosen[capture.id]).length;
+
+  async function create() {
+    await perform('Créer', async () => {
+      const p = await api.post<Profile>('/browser/profiles', {
+        source, label: profileLabel.trim() || sourceName(source) + ' · ' + (mode === 'public' ? 'public' : 'mon compte'), mode,
+      });
+      setProfiles(value => [...value, p]); setSelected(p.id); setProfileLabel('');
     });
   }
-  return <main className="cloud-browser-page p-4 sm:p-6 space-y-5 max-w-7xl mx-auto" style={{color:'var(--text-primary)'}}>
-    <Link to={prospectId?'/prospects/'+prospectId:'/outils'} className="text-sm underline">← {prospectId?'Retour au prospect':'Catalogue des outils'}</Link>
-    <h1 className="text-2xl font-semibold">Navigateur cloud et collecte</h1>
-    <p className="text-sm" style={{color:'var(--text-muted)'}}>Recherchez depuis GrowthOS. Vos profils sont conservés sur votre serveur et restent séparés par compte et par agence.</p>
-    {status&&!status.ready&&<div role="status" className="p-4 rounded-xl border bg-amber-50 text-amber-950">{status.configured?'Le navigateur cloud est actuellement indisponible.':'Ajoutez le service navigateur cloud à la stack GrowthOS pour activer ce parcours.'} <Link to={'/outils'+(prospectId?'?mode=enrich&prospectId='+prospectId:'')} className="underline">Retour aux outils et au secours Chrome</Link>.</div>}
-    {error&&<p role="alert" className="p-4 rounded-xl border bg-red-50 text-red-900">{error}</p>}
-    {notice&&<p role="status" className="p-4 rounded-xl border bg-teal-50 text-teal-950">{notice}</p>}
-    {prospect&&<div className="border p-4 rounded-xl"><strong>Enrichissement de {prospect.company}</strong><p className="text-sm">{prospect.siret||prospect.siren||'Identité à vérifier'} · {prospect.city||''}</p><p className="text-sm mt-2">Même SIRET sur Societe.com : identité, adresse et activité confirmées peuvent être mises à jour automatiquement, avec trace dans les activités. Les autres valeurs divergentes restent proposées.</p></div>}
-    <section className="border rounded-xl p-4 space-y-3" style={{background:'var(--card-bg)'}}>
-      <h2 className="font-semibold">Mes profils de navigation</h2>
-      <div className="flex flex-wrap gap-2">
-        <label className="text-sm">Source <select className="border rounded p-2 ml-1" value={source} onChange={e=>{setSource(e.target.value);setSelected('');if(prospect)setQuery(e.target.value==='societe_com'?(prospect.siret||prospect.siren||prospect.company||''):(prospect.company||''));}}>{modules.filter(m=>m.source!=='entreprises').map(m=><option key={m.source} value={m.source}>{m.name}</option>)}</select></label>
-        <label className="text-sm">Mode <select className="border rounded p-2 ml-1" value={mode} onChange={e=>setMode(e.target.value as 'public'|'account')}><option value="public">Sans compte · public</option><option value="account">Mon compte · connexion dans la source</option></select></label>
-        <input aria-label="Nom du profil" className="border rounded p-2" placeholder="Nom du profil (facultatif)" maxLength={80} value={profileLabel} onChange={e=>setProfileLabel(e.target.value)}/>
-        <button className="border rounded p-2" disabled={!!busy} onClick={()=>void create()}>Créer le profil</button>
+
+  async function open(login = false, keepPage = false) {
+    await perform('Ouvrir', async () => {
+      const result = await api.post<any>('/browser/profiles/' + selected + '/open',
+        { query, area, login, keepPage }, { timeoutMs: 35000 });
+      control.current = result.controlId;
+      viewProfile.current = selected;
+      setViewing(true);
+      setNotice('Session ouverte. Les connexions éventuelles restent dans ce profil ; une session ouverte ne garantit pas que le site vous a authentifié.');
+    });
+  }
+
+  function action(event: object) {
+    const target = selected, lease = control.current;
+    if (!lease || !viewing || view?.busy) return;
+    inputQueue.current = inputQueue.current.then(async () => {
+      if (latestSelected.current !== target || control.current !== lease) return;
+      await api.post('/browser/profiles/' + target + '/action', { event, controlId: lease });
+    }).catch(e => { setError(e.message); });
+  }
+
+  async function launch() {
+    await perform('Collecter', async () => {
+      if (!automatic) throw new Error('Collecteur automatique indisponible pour cette source.');
+      if (prospectId && !prospect) throw new Error('Prospect cible non chargé.');
+      let target = profile;
+      if (!target) {
+        target = await api.post<Profile>('/browser/profiles', {
+          source, label: profileLabel.trim() || sourceName(source) + ' · ' + (mode === 'public' ? 'public' : 'mon compte'), mode,
+        });
+        setProfiles(value => [...value, target!]); setSelected(target.id);
+      }
+      const job = await api.post<Job>('/browser/jobs', {
+        profileId: target.id, query, area, limit, ...(prospectId ? { prospectId } : {}),
+      });
+      setJobs(value => [job, ...value]);
+      if (job.mode === 'discover') setActiveJobId(job.id);
+      setNotice('Recherche mise en file. Vous pouvez quitter cette page ; la tâche s’exécute sur le serveur.');
+    });
+  }
+
+  async function importSelected(job: Job) {
+    await perform('Importer', async () => {
+      const candidates = (job.result?.captures || []).filter(capture => chosen[capture.id]);
+      if (!candidates.length) throw new Error('Sélectionnez au moins une fiche vérifiée.');
+      const result = await api.post<any>('/sourcing/device/import-prospects',
+        { verified: candidates, drafts: [] }, { timeoutMs: 60000 });
+      const processed = new Set<string>(result.processedIds || []);
+      setChosen(current => Object.fromEntries(Object.entries(current).filter(([id]) => !processed.has(id))));
+      setNotice((result.imported || 0) + ' prospect(s) créé(s), ' + (result.enriched || 0)
+        + ' enrichi(s), ' + (result.skipped || 0) + ' ignoré(s). Les éventuels désaccords restent à vérifier dans le CRM.');
+    });
+  }
+
+  async function removeHistory(ids?: string[]) {
+    const subject = ids ? (ids.length === 1 ? 'cette recherche' : `ces ${ids.length} recherches`)
+      : 'toutes vos recherches terminées, échouées ou annulées, y compris les anciennes non affichées';
+    if (!confirm(`Supprimer ${subject} et leurs résultats non importés ? Les prospects importés, leurs activités et vos profils restent conservés. Cette suppression est définitive.`)) return;
+    await perform('Supprimer', async () => {
+      const result = await api.post<{deleted: number; deletedIds: string[]}>('/browser/jobs/history/delete', ids ? {scope: 'selected', ids} : {scope: 'all'});
+      const removed = new Set(result.deletedIds); ++jobsRequest.current;
+      const oldCaptures = jobs.filter(job => removed.has(job.id)).flatMap(job => job.result?.captures || []);
+      setChosen(current => selectCaptureBatch(current, oldCaptures, false));
+      setJobs(current => current.filter(job => !removed.has(job.id)));
+      setActiveJobId(current => removed.has(current) ? '' : current);
+      await refresh();
+      setNotice(`${result.deleted} recherche(s) supprimée(s). Les prospects et leurs activités sont conservés.`);
+    });
+  }
+
+  function selectJob(job: Job) {
+    setActiveJobId(job.id);
+    if (job.mode === 'discover') document.getElementById('cloud-browser-results')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function jobCard(job: Job, historySelection: ReactNode, removeAction: ReactNode) {
+    const jobProfile = profiles.find(p => p.id === job.profile_id);
+    const jobCaptures = job.result?.captures?.length || 0;
+    return <article key={job.id} className={'cloud-browser-job-card' + (activeJob?.id === job.id ? ' is-active' : '')}>
+      <div className="cloud-browser-job-top">
+        {historySelection}
+        <span className="cloud-browser-job-logo"><SourceLogo source={jobProfile?.source || source} size="sm"/></span>
+        <div className="cloud-browser-job-title">
+          <strong>{job.query || 'Recherche sans titre'}</strong>
+          <small>{sourceName(jobProfile?.source || source)} · {jobCaptures} fiche(s)</small>
+        </div>
+        <span className={'cloud-browser-job-status cloud-browser-job-status--' + job.status}>{labels[job.status] || job.status}</span>
       </div>
-      <label className="block text-sm">Profil utilisé <select className="border rounded p-2 ml-2" value={selected} onChange={e=>setSelected(e.target.value)}><option value="">Choisir un profil</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.label} · {sourceName(p.source)}</option>)}</select></label>
-      {profile&&<p className="text-xs" style={{color:'var(--text-muted)'}}>Profil {profile.mode==='account'?'destiné à votre compte : connectez-vous directement sur la source.':'public : aucune connexion requise pour les pages publiques.'} Les possibilités de recherche dépendent des accès offerts par le site.</p>}
-    </section>
-    <section className="border rounded-xl p-4 space-y-3" style={{background:'var(--card-bg)'}}>
-      <h2 className="font-semibold">Rechercher et exécuter</h2>
-      <div className="flex flex-wrap gap-2"><input aria-label="Recherche" className="border rounded p-2 grow" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Entreprise, activité, SIREN ou SIRET" maxLength={160}/><input aria-label="Ville ou code postal" className="border rounded p-2" value={area} onChange={e=>setArea(e.target.value)} placeholder="Ville ou code postal" maxLength={120}/></div>
-      <label className="block text-sm">Nombre maximum de fiches dans ce lot <input type="number" min={1} max={25} value={limit} className="border rounded p-2 ml-2 w-20" onChange={e=>setLimit(Math.max(1,Math.min(25,Number(e.target.value)||1)))}/></label>
-      <div className="flex flex-wrap gap-2">
-        <button className="border rounded-lg p-3" disabled={!selected||!!busy||!status?.ready} onClick={()=>void open()}>Ouvrir dans GrowthOS</button>
-        {profile?.mode==='account'&&<button className="border rounded-lg p-3" disabled={!!busy||!status?.ready} onClick={()=>void open(true)}>Ouvrir la connexion à la source</button>}
-        <button className="border rounded-lg p-3 bg-teal-700 text-white disabled:opacity-40" disabled={!automatic||!!busy||!status?.ready||query.trim().length<2||((profile?.source||source)==='societe_com'&&!prospectId)} onClick={()=>void launch()}>{busy==='Collecter'?'Mise en file…':prospectId?'Enrichir automatiquement ce prospect':'Lancer la collecte automatique'}</button>
+      {(job.error || job.result?.message) && <p className="cloud-browser-job-message">{job.error || job.result.message}</p>}
+      {job.result?.applied && <p className="cloud-browser-job-message">{job.result.applied.filled.length} champ(s) mis à jour · {job.result.applied.conflicts} désaccord(s)</p>}
+      <div className="cloud-browser-job-actions">
+        {job.mode === 'discover' && <button type="button" onClick={() => selectJob(job)}>Voir les résultats <ArrowRight size={13}/></button>}
+        <button type="button" onClick={() => {
+          setSelected(job.profile_id);
+          setNotice('Profil sélectionné. Utilisez « Reprendre le contrôle » pour consulter la page sans relancer la recherche.');
+        }}>Voir le profil</button>
+        {job.prospect_id && <Link to={'/prospects/' + job.prospect_id}>Voir le prospect <ExternalLink size={12}/></Link>}
+        {canResume.includes(job.status) && <button type="button" disabled={!!busy} onClick={() => void perform('Reprendre', async () => {
+          await api.post('/browser/jobs/' + job.id + '/retry', { resume: true });
+          setChosen(current => selectCaptureBatch(current, job.result?.captures || [], false)); await refresh();
+        })}>Reprendre</button>}
+        {activeStatuses.includes(job.status) && <button type="button" disabled={!!busy} onClick={() => void perform('Annuler', async () => {
+          await api.post('/browser/jobs/' + job.id + '/cancel', {}); await refresh();
+        })}>Annuler</button>}
+        {removeAction}
       </div>
-      {profile&&!automatic&&<p className="text-sm">Le navigateur de cette source est disponible. Son collecteur automatique reste à développer ; aucune donnée n’est présentée comme collectée automatiquement.</p>}
-      {profile?.source==='societe_com'&&!prospectId&&<p className="text-sm">Pour Societe.com, ouvrez « Enrichir » depuis un prospect afin de conserver son identité et sa fiche cible.</p>}
+    </article>;
+  }
+
+  return <main className="cloud-browser-page" style={{ color: 'var(--text-primary)' }}>
+    <div className="cloud-browser-heading">
+      <div>
+        <Link to={prospectId ? '/prospects/' + prospectId : '/outils'} className="cloud-browser-back"><ArrowLeft size={14}/> {prospectId ? 'Retour au prospect' : 'Catalogue des outils'}</Link>
+        <h1><span className="cloud-browser-heading-icon"><Globe2 size={25}/></span> Navigateur cloud</h1>
+        <p>Rechercher, explorer et importer vos entreprises depuis GrowthOS.</p>
+      </div>
+      <span className={'cloud-browser-health ' + (status?.ready ? 'is-ready' : status ? 'is-offline' : 'is-loading')}>
+        {status?.ready ? <CheckCircle2 size={16}/> : <AlertCircle size={16}/>}
+        {status?.ready ? 'Navigateur opérationnel' : status ? 'Navigateur indisponible' : 'Vérification du service…'}
+      </span>
+    </div>
+
+    {status && !status.ready && <div role="status" className="cloud-browser-alert is-warning">
+      {status.configured ? 'Le navigateur cloud est actuellement indisponible.' : 'Ajoutez le service navigateur cloud à la stack GrowthOS pour activer ce parcours.'}
+      <Link to={'/outils' + (prospectId ? '?mode=enrich&prospectId=' + prospectId : '')}>Outils et secours Chrome <ArrowRight size={14}/></Link>
+    </div>}
+    {error && <div role="alert" className="cloud-browser-alert is-error"><AlertCircle size={18}/>{error}</div>}
+    {notice && <div role="status" className="cloud-browser-alert is-info"><CheckCircle2 size={18}/>{notice}</div>}
+    {prospect && <div className="cloud-browser-prospect-context">
+      <ShieldCheck size={18}/>
+      <span><strong>Enrichissement de {prospect.company}</strong> · {prospect.siret || prospect.siren || 'Identité à vérifier'} · {prospect.city || ''}</span>
+      <small>Identité et activité confirmées : mise à jour avec traçabilité. Autres désaccords proposés à vérifier.</small>
+    </div>}
+
+    <section className="cloud-browser-command" aria-label="Recherche et collecte">
+      <div className="cloud-browser-command-grid">
+        <label className="cloud-browser-field"><span>Source</span>
+          <div className="cloud-browser-select-with-logo"><SourceLogo source={source} size="sm"/>
+            <select aria-label="Source" value={source} onChange={e => {
+              setSource(e.target.value); setSelected('');
+              if (prospect) setQuery(e.target.value === 'societe_com'
+                ? (prospect.siret || prospect.siren || prospect.company || '') : (prospect.company || ''));
+            }}>{modules.filter(m => m.source !== 'entreprises').map(m => <option key={m.source} value={m.source}>{m.name}</option>)}</select>
+          </div>
+        </label>
+        <label className="cloud-browser-field"><span>Profil de navigation</span>
+          <select aria-label="Profil utilisé" value={selected} onChange={e => setSelected(e.target.value)}>
+            <option value="">Choisir un profil</option>
+            {sourceProfiles.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        </label>
+        <label className="cloud-browser-field cloud-browser-search-field"><span>Recherche</span>
+          <span className="cloud-browser-input-icon"><Search size={15}/>
+            <input aria-label="Recherche" value={query} onChange={e => setQuery(e.target.value)} placeholder="Entreprise, activité, SIREN…" maxLength={160}/>
+          </span>
+        </label>
+        <label className="cloud-browser-field"><span>Localisation</span>
+          <span className="cloud-browser-input-icon"><MapPin size={15}/>
+            <input aria-label="Ville ou code postal" value={area} onChange={e => setArea(e.target.value)} placeholder="Ville ou département" maxLength={120}/>
+          </span>
+        </label>
+        <label className="cloud-browser-field cloud-browser-limit"><span>Nombre de fiches</span>
+          <input aria-label="Nombre maximum de fiches dans ce lot" type="number" min={1} max={25}
+            value={limit} onChange={e => setLimit(Math.max(1, Math.min(25, Number(e.target.value) || 1)))}/>
+        </label>
+        <button type="button" className="cloud-browser-primary cloud-browser-launch"
+          disabled={!automatic || !!busy || !status?.ready || query.trim().length < 2
+            || ((profile?.source || source) === 'societe_com' && !prospectId)}
+          onClick={() => void launch()}><Play size={16}/>
+          {busy === 'Collecter' ? 'Mise en file…' : prospectId ? 'Enrichir ce prospect' : 'Lancer la collecte'}
+        </button>
+      </div>
+      <div className="cloud-browser-command-secondary">
+        <button type="button" className="cloud-browser-secondary" disabled={!selected || !!busy || !status?.ready}
+          onClick={() => void open()}><ExternalLink size={15}/> Ouvrir dans GrowthOS</button>
+        {profile?.mode === 'account' && <button type="button" className="cloud-browser-secondary" disabled={!!busy || !status?.ready}
+          onClick={() => void open(true)}><LogOut size={15}/> Ouvrir la connexion à la source</button>}
+        <details className="cloud-browser-profile-manager">
+          <summary><Plus size={15}/> Nouveau profil <ChevronDown size={14}/></summary>
+          <div className="cloud-browser-profile-form">
+            <strong>Mes profils de navigation</strong>
+            <label>Mode de navigation <select value={mode} onChange={e => setMode(e.target.value as 'public' | 'account')}>
+              <option value="public">Sans compte · public</option>
+              <option value="account">Mon compte · connexion dans la source</option>
+            </select></label>
+            <label>Nom du profil <input aria-label="Nom du profil" placeholder="Nom du profil (facultatif)" maxLength={80}
+              value={profileLabel} onChange={e => setProfileLabel(e.target.value)}/></label>
+            <button type="button" className="cloud-browser-primary" disabled={!!busy} onClick={() => void create()}>Créer le profil</button>
+            <small>Profils séparés par compte et par agence ; les accès possibles dépendent du site source.</small>
+          </div>
+        </details>
+        <span className="cloud-browser-command-helper">
+          {profile ? (profile.mode === 'account' ? 'Profil avec compte · connectez-vous directement sur la source.' : 'Profil public · sans connexion requise.') : 'Sélectionnez ou créez un profil pour ouvrir la source.'}
+        </span>
+      </div>
+      {profile && !automatic && <p className="cloud-browser-command-footnote">Cette source peut être ouverte dans le navigateur. Son collecteur automatique n'est pas encore disponible.</p>}
+      {(profile?.source || source) === 'societe_com' && !prospectId && <p className="cloud-browser-command-footnote">Pour Societe.com, ouvrez « Enrichir » depuis la fiche d'un prospect identifié.</p>}
     </section>
-    {selected&&<section className="border rounded-xl p-4 space-y-3" style={{background:'var(--card-bg)'}}>
-      <div className="flex justify-between gap-2 flex-wrap"><h2 className="font-semibold flex items-center gap-2"><SourceLogo source={profile?.source||source}/> Vue du navigateur · {profile?.label}</h2><div className="flex gap-2"><button className="border rounded p-2 text-sm" disabled={!!busy||!status?.ready} onClick={()=>void open(false,true)}>Afficher / reprendre le contrôle</button><button className="border rounded p-2 text-sm" onClick={()=>{setViewing(false);setView(null);}}>Masquer la vue</button><button className="border rounded p-2 text-sm" disabled={!!busy||!status?.ready} onClick={()=>{if(confirm('Déconnecter ce profil et effacer sa session conservée sur le serveur ?'))void perform('Déconnecter',async()=>{await api.post('/browser/profiles/'+selected+'/erase',{});setViewing(false);setView(null);control.current='';setNotice('Session effacée.');});}}>Déconnecter / effacer la session</button></div></div>
-      {view&&<><p className="text-xs break-all">Source réelle : {view.url} {view.busy?'· Lecture automatique en cours':''}</p>
-        <p className="text-xs" style={{color:'var(--text-muted)'}}>Cliquez dans la page puis utilisez le clavier. Alt + Échap libère le focus ; Tab et Entrée sont transmis à la page.</p>
-        <div tabIndex={0} aria-label="Navigateur distant interactif" className="border rounded overflow-hidden focus:outline-teal-600" onKeyDown={e=>{
-          if(e.altKey&&e.key==='Escape'){e.currentTarget.blur();return;}if(e.key==='Shift'||e.key==='Control'||e.key==='Alt'||e.key==='Meta')return;
-          const key=e.ctrlKey&&e.key.toLowerCase()==='a'?'Control+A':e.key;
-          if(['Enter','Tab','Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Escape','Home','End','Control+A'].includes(key)){e.preventDefault();action({type:'key',key});}
-          else if(e.key.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();action({type:'text',text:e.key});}
-        }} onPaste={e=>{e.preventDefault();action({type:'text',text:e.clipboardData.getData('text').slice(0,2000)});}} onWheel={e=>{action({type:'scroll',deltaY:Math.max(-1500,Math.min(1500,e.deltaY))});}}>
-          <img src={view.image} alt={view.title||'Page de la source'} draggable={false} className="block w-full h-auto" onClick={e=>{e.currentTarget.parentElement?.focus();const box=e.currentTarget.getBoundingClientRect();action({type:'click',x:Math.min(1279,Math.floor((e.clientX-box.left)/box.width*1280)),y:Math.min(799,Math.floor((e.clientY-box.top)/box.height*800))});}}/>
-        </div><button className="border rounded p-2 text-sm" onClick={()=>action({type:'back'})}>Page précédente</button></>}
-      {!view&&<p className="text-sm" style={{color:'var(--text-muted)'}}>La vue s’affiche à l’ouverture d’une recherche ou avec « Afficher ».</p>}
-    </section>}
-    <CloudJobHistory jobs={jobs} busy={!!busy} chosen={chosen}
-      onChoose={(id,value)=>setChosen(current=>selectCaptureBatch(current,[{id}],value))}
-      onChooseBatch={(captures,value)=>setChosen(current=>selectCaptureBatch(current,captures,value))}
-      onImport={job=>void importSelected(job)} onRemove={ids=>void removeHistory(ids)}
-      onProfile={job=>{setSelected(job.profile_id);setNotice('Profil sélectionné. Utilisez « Afficher / reprendre le contrôle » pour consulter la page sans relancer la recherche.');}}
-      onRetry={job=>void perform('Reprendre',async()=>{await api.post('/browser/jobs/'+job.id+'/retry',{resume:true});setChosen(current=>selectCaptureBatch(current,job.result.captures||[],false));await refresh();})}
-      onCancel={job=>void perform('Annuler',async()=>{await api.post('/browser/jobs/'+job.id+'/cancel',{});await refresh();})}/>
-    <p className="text-sm"><Link to={'/outils'+(prospectId?'?mode=enrich&prospectId='+prospectId:'')} className="underline">Catalogue et secours externe Chrome</Link></p>
+
+    <div className={'cloud-browser-workspace' + (expandedBrowser ? ' is-expanded' : '')}>
+      <section className="cloud-browser-view-panel" aria-label="Vue du navigateur cloud">
+        <div className="cloud-browser-panel-toolbar">
+          <div className="cloud-browser-browser-name">
+            <SourceLogo source={profile?.source || source} size="md"/>
+            <div><strong>Navigateur · {sourceName(profile?.source || source)}</strong>
+              <small>{view?.busy ? 'Lecture automatique en cours' : viewing && view ? 'Session ouverte' : 'Vue en attente'}</small></div>
+          </div>
+          <div className="cloud-browser-browser-actions">
+            <button type="button" disabled={!selected || !!busy || !status?.ready} onClick={() => void open(false, true)}
+              title="Afficher ou reprendre la session ouverte"><Globe2 size={15}/> Reprendre le contrôle</button>
+            <button type="button" disabled={!view} onClick={() => action({ type: 'back' })} title="Page précédente"><ArrowLeft size={16}/></button>
+            <button type="button" onClick={() => setExpandedBrowser(value => !value)}
+              title={expandedBrowser ? 'Réduire le navigateur' : 'Agrandir le navigateur'}>
+              {expandedBrowser ? <Minimize2 size={16}/> : <Maximize2 size={16}/>}</button>
+            <button type="button" disabled={!viewing} onClick={() => { setViewing(false); setView(null); }}
+              title="Masquer la vue"><EyeOff size={16}/></button>
+            <button type="button" disabled={!selected || !!busy || !status?.ready}
+              title="Déconnecter et effacer la session conservée sur le serveur" onClick={() => {
+                if (confirm('Déconnecter ce profil et effacer sa session conservée sur le serveur ?')) void perform('Déconnecter', async () => {
+                  await api.post('/browser/profiles/' + selected + '/erase', {});
+                  setViewing(false); setView(null); control.current = ''; setNotice('Session effacée.');
+                });
+              }}><LogOut size={16}/></button>
+          </div>
+        </div>
+        <div className="cloud-browser-url"><ShieldCheck size={14}/>
+          <span>{view?.url || 'Ouvrez une recherche pour afficher la page de la source'}</span>
+          {view?.busy && <span className="cloud-browser-live-dot" title="Lecture en cours"/>}
+        </div>
+        {view ? <div tabIndex={0} aria-label="Navigateur distant interactif"
+          className="cloud-browser-remote" onKeyDown={e => {
+            if (e.altKey && e.key === 'Escape') { e.currentTarget.blur(); return; }
+            if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
+            const key = e.ctrlKey && e.key.toLowerCase() === 'a' ? 'Control+A' : e.key;
+            if (['Enter', 'Tab', 'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Escape', 'Home', 'End', 'Control+A'].includes(key)) {
+              e.preventDefault(); action({ type: 'key', key });
+            } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              e.preventDefault(); action({ type: 'text', text: e.key });
+            }
+          }} onPaste={e => { e.preventDefault(); action({ type: 'text', text: e.clipboardData.getData('text').slice(0, 2000) }); }}
+          onWheel={e => { action({ type: 'scroll', deltaY: Math.max(-1500, Math.min(1500, e.deltaY)) }); }}>
+          <img src={view.image} alt={view.title || 'Page de la source'} draggable={false}
+            onClick={e => {
+              e.currentTarget.parentElement?.focus();
+              const box = e.currentTarget.getBoundingClientRect();
+              action({ type: 'click', x: Math.min(1279, Math.floor((e.clientX - box.left) / box.width * 1280)),
+                y: Math.min(799, Math.floor((e.clientY - box.top) / box.height * 800)) });
+            }}/>
+        </div> : <div className="cloud-browser-empty-view">
+          <span><Globe2 size={36}/></span>
+          <strong>Votre navigateur est prêt</strong>
+          <p>Ouvrez une recherche pour voir et contrôler le site source directement depuis GrowthOS.</p>
+          <button type="button" className="cloud-browser-primary" disabled={!selected || !!busy || !status?.ready}
+            onClick={() => void open(false, true)}>Afficher / reprendre le contrôle</button>
+        </div>}
+        <div className="cloud-browser-browser-footer">
+          <span><ShieldCheck size={14}/> La session est isolée par profil et par agence.</span>
+          <small>Dans la vue : clic, molette, clavier · Alt + Échap libère le focus.</small>
+        </div>
+      </section>
+
+      <section id="cloud-browser-results" className="cloud-browser-results" aria-label="Résultats de collecte">
+        <header className="cloud-browser-results-header">
+          <span><Layers size={20}/></span>
+          <div><h2>Résultats de collecte</h2><p>{activeJob?.query || 'Aucune collecte sélectionnée'} {activeJob?.area ? '· ' + activeJob.area : ''}</p></div>
+        </header>
+        <div className="cloud-browser-results-summary">
+          <CheckCircle2 size={16}/>
+          <span>{captures.length} entreprise(s) trouvée(s){draftsCount ? ' · ' + draftsCount + ' à vérifier' : ''}</span>
+        </div>
+        {!!captures.length && <CaptureBatchControls captures={captures} chosen={chosen} busy={!!busy}
+          onChooseBatch={(items, value) => setChosen(current => selectCaptureBatch(current, items, value))}/>}
+        <div className="cloud-browser-results-list">
+          {activeJob && captures.length ? captures.map(capture => <label key={capture.id} className={'cloud-browser-result-row' + (chosen[capture.id] ? ' is-checked' : '')}>
+            <input type="checkbox" disabled={!!busy} checked={!!chosen[capture.id]} onChange={e => setChosen(current => selectCaptureBatch(current, [capture], e.target.checked))}/>
+            <span className="cloud-browser-result-info">
+              <strong>{capture.company || 'Entreprise sans nom'}</strong>
+              {[capture.address, capture.city].filter(Boolean).length > 0 && <small><MapPin size={12}/>{[capture.address, capture.city].filter(Boolean).join(' · ')}</small>}
+              {capture.phone && <small>{capture.phone}</small>}
+            </span>
+          </label>) : <div className="cloud-browser-no-results">
+            <Search size={26}/>
+            <strong>{activeJob ? 'Aucune fiche vérifiée disponible' : 'Vos résultats apparaîtront ici'}</strong>
+            <p>{activeJob ? 'Consultez le statut de la tâche ou relancez sa collecte si nécessaire.' : 'Lancez une collecte, puis sélectionnez les entreprises à importer.'}</p>
+          </div>}
+        </div>
+        {activeJob?.error && <p className="cloud-browser-results-note is-error">{activeJob.error}</p>}
+        {draftsCount > 0 && <p className="cloud-browser-results-note"><AlertCircle size={15}/> {draftsCount} fiche(s) partielle(s) conservée(s) : import impossible sans vérification.</p>}
+        <footer className="cloud-browser-results-footer">
+          <span><strong>{chosenCount}</strong> sélectionnée(s)</span>
+          <button type="button" className="cloud-browser-primary" disabled={!activeJob || !chosenCount || !!busy}
+            onClick={() => activeJob && void importSelected(activeJob)}>
+            <Check size={16}/>{busy === 'Importer' ? 'Import en cours…' : 'Importer dans Prospects'}
+          </button>
+        </footer>
+      </section>
+    </div>
+
+    <CloudJobHistory jobs={jobs} busy={!!busy} onRemove={ids => void removeHistory(ids)} renderJob={jobCard}/>
+    <Link className="cloud-browser-external-help" to={'/outils' + (prospectId ? '?mode=enrich&prospectId=' + prospectId : '')}>
+      Catalogue et secours externe Chrome <ExternalLink size={14}/>
+    </Link>
   </main>;
 }
