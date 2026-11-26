@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearch } from 'wouter';
 import {
   AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown,
@@ -6,6 +6,7 @@ import {
   MapPin, Maximize2, Minimize2, Play, Plus, Search, ShieldCheck,
 } from 'lucide-react';
 import api from '@/lib/api-client';
+import CloudJobHistory,{CaptureBatchControls,selectCaptureBatch} from '@/components/cloud-browser/CloudJobHistory';
 import { SourceLogo } from '@/components/atlas/ProspectLogos';
 import modules from '../../../../extensions/growthos-pagesjaunes/modules.json';
 import '@/cloud-browser.css';
@@ -14,7 +15,7 @@ type Profile = { id: string; source: string; label: string; mode: 'public' | 'ac
 type Capture = { id: string; company?: string; address?: string; city?: string; phone?: string };
 type Job = {
   id: string; profile_id: string; prospect_id: string | null;
-  mode: 'enrich' | 'discover'; query: string; status: string; error: string | null;
+  mode: 'enrich' | 'discover'; query: string; area?: string; status: string; error: string | null;
   result: {
     message?: string; captures?: Capture[]; drafts?: unknown[];
     applied?: { filled: string[]; conflicts: number };
@@ -28,7 +29,7 @@ const labels: Record<string, string> = {
 };
 const sourceName = (source: string) => modules.find(module => module.source === source)?.name || source;
 const activeStatuses = ['queued', 'running', 'awaiting_user', 'needs_review', 'failed'];
-const canResume = ['awaiting_user', 'needs_review', 'failed'];
+const canResume = ['awaiting_user', 'needs_review', 'failed', 'cancelled'];
 
 export default function CloudBrowserPage() {
   const params = new URLSearchParams(useSearch()), prospectId = params.get('prospectId');
@@ -49,7 +50,6 @@ export default function CloudBrowserPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [activeJobId, setActiveJobId] = useState('');
-  const [showAllJobs, setShowAllJobs] = useState(false);
   const [expandedBrowser, setExpandedBrowser] = useState(false);
   const [chosen, setChosen] = useState<Record<string, boolean>>({});
   const control = useRef('');
@@ -58,19 +58,24 @@ export default function CloudBrowserPage() {
   const latestSelected = useRef(selected);
   latestSelected.current = selected;
 
+  const jobsRequest = useRef(0);
+  async function readJobs() {
+    const version = ++jobsRequest.current;
+    const result = await api.get<Job[]>('/browser/jobs');
+    if (version === jobsRequest.current) setJobs(result);
+  }
   async function refresh() {
-    const [p, j, s] = await Promise.all([
+    const [p, s] = await Promise.all([
       api.get<Profile[]>('/browser/profiles'),
-      api.get<Job[]>('/browser/jobs'),
-      api.get<{ ready: boolean; configured: boolean; automatic: string[] }>('/browser/status'),
+      api.get<{ ready: boolean; configured: boolean; automatic: string[] }>('/browser/status'), readJobs(),
     ]);
-    setProfiles(p); setJobs(j); setStatus(s);
+    setProfiles(p); setStatus(s);
   }
 
   useEffect(() => {
     void refresh().catch(e => setError(e.message));
     const timer = window.setInterval(() => {
-      void api.get<Job[]>('/browser/jobs').then(setJobs).catch(() => undefined);
+      void readJobs().catch(() => undefined);
     }, 3000);
     return () => window.clearInterval(timer);
   }, []);
@@ -126,7 +131,7 @@ export default function CloudBrowserPage() {
   const activeJob = discoveryJobs.find(job => job.id === activeJobId)
     || discoveryJobs.find(job => job.result?.captures?.length)
     || discoveryJobs[0];
-  const captures = activeJob?.result?.captures || [];
+  const captures = activeJob?.status === 'completed' ? (activeJob.result?.captures || []) : [];
   const draftsCount = activeJob?.result?.drafts?.length || 0;
   const chosenCount = captures.filter(capture => chosen[capture.id]).length;
 
@@ -185,8 +190,26 @@ export default function CloudBrowserPage() {
       if (!candidates.length) throw new Error('Sélectionnez au moins une fiche vérifiée.');
       const result = await api.post<any>('/sourcing/device/import-prospects',
         { verified: candidates, drafts: [] }, { timeoutMs: 60000 });
+      const processed = new Set<string>(result.processedIds || []);
+      setChosen(current => Object.fromEntries(Object.entries(current).filter(([id]) => !processed.has(id))));
       setNotice((result.imported || 0) + ' prospect(s) créé(s), ' + (result.enriched || 0)
-        + ' enrichi(s). Les éventuels désaccords restent à vérifier dans le CRM.');
+        + ' enrichi(s), ' + (result.skipped || 0) + ' ignoré(s). Les éventuels désaccords restent à vérifier dans le CRM.');
+    });
+  }
+
+  async function removeHistory(ids?: string[]) {
+    const subject = ids ? (ids.length === 1 ? 'cette recherche' : `ces ${ids.length} recherches`)
+      : 'toutes vos recherches terminées, échouées ou annulées, y compris les anciennes non affichées';
+    if (!confirm(`Supprimer ${subject} et leurs résultats non importés ? Les prospects importés, leurs activités et vos profils restent conservés. Cette suppression est définitive.`)) return;
+    await perform('Supprimer', async () => {
+      const result = await api.post<{deleted: number; deletedIds: string[]}>('/browser/jobs/history/delete', ids ? {scope: 'selected', ids} : {scope: 'all'});
+      const removed = new Set(result.deletedIds); ++jobsRequest.current;
+      const oldCaptures = jobs.filter(job => removed.has(job.id)).flatMap(job => job.result?.captures || []);
+      setChosen(current => selectCaptureBatch(current, oldCaptures, false));
+      setJobs(current => current.filter(job => !removed.has(job.id)));
+      setActiveJobId(current => removed.has(current) ? '' : current);
+      await refresh();
+      setNotice(`${result.deleted} recherche(s) supprimée(s). Les prospects et leurs activités sont conservés.`);
     });
   }
 
@@ -195,11 +218,12 @@ export default function CloudBrowserPage() {
     if (job.mode === 'discover') document.getElementById('cloud-browser-results')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function jobCard(job: Job) {
+  function jobCard(job: Job, historySelection: ReactNode, removeAction: ReactNode) {
     const jobProfile = profiles.find(p => p.id === job.profile_id);
     const jobCaptures = job.result?.captures?.length || 0;
     return <article key={job.id} className={'cloud-browser-job-card' + (activeJob?.id === job.id ? ' is-active' : '')}>
       <div className="cloud-browser-job-top">
+        {historySelection}
         <span className="cloud-browser-job-logo"><SourceLogo source={jobProfile?.source || source} size="sm"/></span>
         <div className="cloud-browser-job-title">
           <strong>{job.query || 'Recherche sans titre'}</strong>
@@ -217,11 +241,13 @@ export default function CloudBrowserPage() {
         }}>Voir le profil</button>
         {job.prospect_id && <Link to={'/prospects/' + job.prospect_id}>Voir le prospect <ExternalLink size={12}/></Link>}
         {canResume.includes(job.status) && <button type="button" disabled={!!busy} onClick={() => void perform('Reprendre', async () => {
-          await api.post('/browser/jobs/' + job.id + '/retry', { resume: true }); await refresh();
+          await api.post('/browser/jobs/' + job.id + '/retry', { resume: true });
+          setChosen(current => selectCaptureBatch(current, job.result?.captures || [], false)); await refresh();
         })}>Reprendre</button>}
         {activeStatuses.includes(job.status) && <button type="button" disabled={!!busy} onClick={() => void perform('Annuler', async () => {
           await api.post('/browser/jobs/' + job.id + '/cancel', {}); await refresh();
         })}>Annuler</button>}
+        {removeAction}
       </div>
     </article>;
   }
@@ -381,15 +407,17 @@ export default function CloudBrowserPage() {
       <section id="cloud-browser-results" className="cloud-browser-results" aria-label="Résultats de collecte">
         <header className="cloud-browser-results-header">
           <span><Layers size={20}/></span>
-          <div><h2>Résultats de collecte</h2><p>{activeJob?.query || 'Aucune collecte sélectionnée'} {activeJob && area ? '· ' + area : ''}</p></div>
+          <div><h2>Résultats de collecte</h2><p>{activeJob?.query || 'Aucune collecte sélectionnée'} {activeJob?.area ? '· ' + activeJob.area : ''}</p></div>
         </header>
         <div className="cloud-browser-results-summary">
           <CheckCircle2 size={16}/>
           <span>{captures.length} entreprise(s) trouvée(s){draftsCount ? ' · ' + draftsCount + ' à vérifier' : ''}</span>
         </div>
+        {!!captures.length && <CaptureBatchControls captures={captures} chosen={chosen} busy={!!busy}
+          onChooseBatch={(items, value) => setChosen(current => selectCaptureBatch(current, items, value))}/>}
         <div className="cloud-browser-results-list">
           {activeJob && captures.length ? captures.map(capture => <label key={capture.id} className={'cloud-browser-result-row' + (chosen[capture.id] ? ' is-checked' : '')}>
-            <input type="checkbox" checked={!!chosen[capture.id]} onChange={e => setChosen(value => ({ ...value, [capture.id]: e.target.checked }))}/>
+            <input type="checkbox" disabled={!!busy} checked={!!chosen[capture.id]} onChange={e => setChosen(current => selectCaptureBatch(current, [capture], e.target.checked))}/>
             <span className="cloud-browser-result-info">
               <strong>{capture.company || 'Entreprise sans nom'}</strong>
               {[capture.address, capture.city].filter(Boolean).length > 0 && <small><MapPin size={12}/>{[capture.address, capture.city].filter(Boolean).join(' · ')}</small>}
@@ -413,13 +441,7 @@ export default function CloudBrowserPage() {
       </section>
     </div>
 
-    <section className="cloud-browser-history" aria-label="Tâches récentes">
-      <div className="cloud-browser-history-heading"><h2><History size={19}/> Tâches récentes</h2>
-        {jobs.length > 3 && <button type="button" onClick={() => setShowAllJobs(value => !value)}>
-          {showAllJobs ? 'Réduire' : 'Voir tout l’historique (' + jobs.length + ')'} <ArrowRight size={15}/></button>}</div>
-      {jobs.length ? <div className="cloud-browser-history-grid">{(showAllJobs ? jobs : jobs.slice(0, 3)).map(jobCard)}</div>
-        : <div className="cloud-browser-history-empty"><Clock3 size={22}/> Aucune tâche cloud lancée pour le moment.</div>}
-    </section>
+    <CloudJobHistory jobs={jobs} busy={!!busy} onRemove={ids => void removeHistory(ids)} renderJob={jobCard}/>
     <Link className="cloud-browser-external-help" to={'/outils' + (prospectId ? '?mode=enrich&prospectId=' + prospectId : '')}>
       Catalogue et secours externe Chrome <ExternalLink size={14}/>
     </Link>
