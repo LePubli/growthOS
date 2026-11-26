@@ -166,3 +166,5 @@ Dernière régression couverte : une panne du worker pendant une saisie de conne
 - À préserver côté UX : sélection par lot, compteurs, import groupé, choix individuel/multiple/tout de l'historique, confirmation et relecture après suppression. Aucune action DockPanel par l'agent. Notes temporaires conservées jusqu'à autorisation explicite de production.
 
 Précision ajoutée par le propriétaire : commandes Annuler / Reprendre / Supprimer dans les tâches du navigateur. L'API de reprise accepte maintenant `cancelled` et conserve le même identifiant/critères ; elle remet le résultat en attente pour ne pas importer une ancienne sélection. Le parent efface également la sélection de ce lot lors de la reprise. Ne pas perdre cette prise en charge lors du redesign.
+
+Validation locale du lot PR51 : **314 contrôles API verts** sur PostgreSQL16 jetable (sources simulées), TypeScript API/Web et builds, tests des sélections React et régressions Harmony/logos. La suppression est limitée à la ligne de tâche ; aucune suppression de prospect, activité ou profil. Publication GHCR à attendre avant feu vert.
