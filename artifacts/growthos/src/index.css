@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "leaflet/dist/leaflet.css";
 @import "./atlas-orbit.css";
+@import "./atlas-prospect-360.css";
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
