@@ -154,6 +154,6 @@ Le [document de référence Linked Helper](docs/REFERENCE-LINKED-HELPER.md) cons
 ## 43 · Premier navigateur Web cloud (26/11/2026)
 
 - Implémenté : vue interactive dans GrowthOS, profils personnels séparés, stockage persistant, déconnexion, file de tâches, reprise/annulation, sélection avant import et enrichissement ciblé avec historique.
-- Testé en isolation : 298 contrôles API sur PostgreSQL 16 (sources simulées), protocole navigateur, contrat UI et tests du thème ; TypeScript et builds API/Web. Chromium réel exécuté par la CI sur des pages locales de recette : statut à suivre dans la PR.
+- Testé en isolation : 299 contrôles API sur PostgreSQL 16 (sources simulées), protocole navigateur, contrat UI et tests du thème ; TypeScript et builds API/Web. Chromium réel exécuté par la CI sur des pages locales de recette : statut à suivre dans la PR.
 - À recetter : connexion réelle acceptée par chaque fournisseur depuis le VPS, Maps au-delà d'une première page, données Societe.com réelles, consommation VPS et reprise après arrêt du conteneur.
 - À développer : collecteurs automatiques LinkedIn/FB/Instagram/TikTok, raccordement PagesJaunes au nouveau moteur ; Windows/Android différés. Les campagnes d'invitations/messages ne sont pas incluses.
