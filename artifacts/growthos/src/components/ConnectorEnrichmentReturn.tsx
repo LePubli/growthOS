@@ -37,7 +37,7 @@ export function ConnectorEnrichmentReturn({prospectId,onSaved,onBusyChange}:{pro
     <span className="atlas-enrichment-notice-icon"><Icon size={20} className={pending?'animate-spin':undefined}/></span>
     <div className="atlas-enrichment-notice-copy">
       <strong>{error?'Échec de l’enrichissement':pending?'Enregistrement en cours…':duplicate?'Enrichissement déjà enregistré':'Enrichissement enregistré'}</strong>
-      <p>{error?error:pending?'Les informations confirmées sont en cours d’intégration à la fiche.':duplicate?'Cette capture a déjà été intégrée au dossier. Aucun nouvel enregistrement n’est nécessaire.':result}</p>
+      <p>{error?error:pending?'Enregistrement des données confirmées dans l’extension…':duplicate?'Cette capture a déjà été intégrée au dossier. Aucun nouvel enregistrement n’est nécessaire.':result}</p>
       {error&&<><small>La capture reste disponible dans l’extension pendant 24 h. Vérifiez la connexion et le prospect ciblé.</small>
         <button type="button" className="atlas-enrichment-notice-action" onClick={()=>setRetry(n=>n+1)}>Réessayer l’enregistrement</button></>}
       {!error&&conflicts>0&&<a href="#enrichment-conflicts" className="atlas-enrichment-notice-action">Comparer les {conflicts} donnée(s) divergente(s)</a>}
