@@ -136,7 +136,16 @@ export function collectProspectContactPoints(prospect:ProspectPeopleInput&{addre
     const fieldSource=plainRecord(plainRecord(plainRecord(details.crossSource)?.fieldSources)?.[type]);
     const source=nonEmpty(fieldSource?.source)||(prospect.source&&!prospect.source.includes(',')?prospect.source:'crm');
     // Website snapshots already contain the exact proof URL for every value.
-    if(source==='website'&&site)continue;
+    if(source==='website'&&site){
+      const key=type==='email'?'emails':type==='phone'?'phones':'addresses';
+      const value=nonEmpty(prospect[type]);
+      const same=(v:unknown)=>type==='phone'?String(v||'').replace(/\D/g,'').replace(/^33/,'0')===String(value||'').replace(/\D/g,'').replace(/^33/,'0'):normalize(String(v||''))===normalize(value||'');
+      if(Array.isArray(site[key])&&(site[key] as unknown[]).some(raw=>same(plainRecord(raw)?.[type])))continue;
+      // A manual edit can leave the former source metadata behind. Preserve
+      // the value as CRM data without inventing a website proof for it.
+      if(!points.some(p=>p.type===type&&same(p.value)))add(type,value,'crm',null);
+      continue;
+    }
     add(type,prospect[type],source,fieldSource?.sourceUrl||prospect.sourceUrl);
   }
   const conflicts=plainRecord(details.crossSource)?.conflicts;

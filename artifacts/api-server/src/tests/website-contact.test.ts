@@ -34,4 +34,7 @@ assert(!websitePublisherMatches({...verifiedPublisher,phone:'0600000000'},offici
 assert(!websitePublisherMatches(verifiedPublisher,{...officialPublisher,siret:'96677709300020'}));
 assert(!websitePublisherMatches(verifiedPublisher,{...officialPublisher,address:'19 rue du Test 59100 Roubaix'}));
 assert(!websitePublisherMatches({...verifiedPublisher,siren:'999999999'},officialPublisher));
+const paragraphHost=readSiteHtml(`<p>Hébergement : Serveur Exemple</p><p>SIRET : 42476141900045</p><p>Contact : support hébergement</p><a href='mailto:host@hebergeur.fr'>Écrire</a><p>Éditeur du site :</p><p>Atelier Exemple</p><p>SIRET : 96677709300019</p><p>Email : contact.atelier@gmail.com</p>`,root);
+assert.deepEqual(paragraphHost.sirets,['96677709300019']);assert.deepEqual(paragraphHost.emails,['contact.atelier@gmail.com']);
+assert.deepEqual(readSiteHtml(`<p><strong>Hébergement</strong> : Serveur Exemple</p><p>SIRET : 42476141900045</p>`,root).sirets,[]);
 console.log('✓ Mentions légales : éditeur, Gmail, tous les contacts, identifiants et APE ; rapprochement commercial/juridique avec téléphone et adresse officiels, hébergeur exclu');

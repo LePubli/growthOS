@@ -12,8 +12,8 @@ export function ProspectContactPoints({prospect,onSaved}:{prospect:any;onSaved:(
     await onSaved();setNotice('Coordonnée principale mise à jour. Toutes les autres restent conservées.');
   }catch(e){setError(e instanceof Error?e.message:'Mise à jour impossible.');}finally{setBusy(false);}}
   if(!points.length)return null;
-  return <section className="space-y-2 mt-3" aria-label="Toutes les coordonnées publiées">
-    <h3 className="font-semibold text-sm">Toutes les coordonnées publiées</h3>
+  return <section className="space-y-2 mt-3" aria-label="Coordonnées enregistrées et publiées">
+    <h3 className="font-semibold text-sm">Coordonnées enregistrées et publiées</h3>
     <p className="text-xs">Les coordonnées générales restent rattachées à l’entreprise. Les lignes directes figurent auprès de la personne identifiée.</p>
     {notice&&<p role="status" className="text-sm">{notice}</p>}{error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
     <ul className="space-y-3 text-sm">{[...groups].map(([key,entries])=>{const p=entries.find(v=>v.state==='confirmed')||entries[0];const primary=p.type==='phone'?String(prospect.phone||'').replace(/\D/g,'').replace(/^33/,'0')===p.value.replace(/\D/g,'').replace(/^33/,'0'):String(prospect[p.type]||'').toLowerCase()===p.value.toLowerCase();

@@ -1802,6 +1802,11 @@ try {
     check(chosen.email===alternative.value&&chosen.sourceDetails.contactPoints.some(p=>p.value==='contact.atelier@gmail.com'),'Changer la principale conserve toutes les coordonnées');
     check((await request('POST','/contacts/'+multiTarget.body.id+'/coordinates/primary',choice,token)).body.alreadyApplied,'Coordonnée principale : double validation idempotente');
     check((await request('GET','/activities?prospectId='+multiTarget.body.id,undefined,token)).body.some(a=>a.description.includes('contact.atelier@gmail.com → devis@atelier-multiple.fr')),'Coordonnée principale : valeurs avant/après tracées');
+    await request('PATCH','/prospects/'+multiTarget.body.id,{email:'manuel@atelier-multiple.fr'},token);
+    const restoredPrimary=await request('POST','/contacts/'+multiTarget.body.id+'/coordinates/primary',{...choice,expectedCurrentValue:'manuel@atelier-multiple.fr'},token);
+    const afterManual=(await request('GET','/prospects/'+multiTarget.body.id,undefined,token)).body;
+    check(restoredPrimary.status===200&&afterManual.sourceDetails.contactPoints.some(p=>p.value==='manuel@atelier-multiple.fr'&&p.source==='crm'),'Coordonnée principale : ancienne saisie manuelle conservée avant remplacement');
+    check((await request('POST','/contacts/'+multiTarget.body.id+'/coordinates/primary',{type:'email',value:'manuel@atelier-multiple.fr',source:'crm',sourceUrl:null,expectedCurrentValue:choice.value,confirmed:true},token)).status===200,'Coordonnée précédente : réutilisable après le changement de principale');
     await runEnrichmentMaintenance(multiRun.body.id,2);
     const publisherCrm=(await request('GET','/prospects/'+multiTarget.body.id,undefined,token)).body;
     check(publisherCrm.siret==='96677709300019'&&publisherCrm.sourceDetails.identity.legalName==='ATELIER EDITEUR'&&publisherCrm.company==='Nom commercial atelier','Site puis Annuaire : éditeur légal rapproché par preuve, SIRET enregistré et enseigne conservée');

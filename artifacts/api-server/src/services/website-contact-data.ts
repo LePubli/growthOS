@@ -23,9 +23,11 @@ const clean=(s:string)=>entity(s).replace(/\s+/g,' ').trim();
 export function readSiteHtml(html:string,url:string){
   // Static public HTML only. Ignore scripts, forms, templates and explicitly hidden subtrees.
   const markup=html.replace(/<!--[\s\S]*?-->/g,'').replace(/<(script|style|template|noscript|svg|iframe|form)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,'');
+  const hostingLabel=(v:string)=>/^(?:\d+[.)]\s*)?(?:(?:l[’']|le\s+|notre\s+)?h[ée]berg(?:eur|ement)|hosting|conception du site|cr[ée]ation du site|(?:le\s+)?site[^\n]{0,60}h[ée]berg[ée])(?:\s|[:：-]|$)/i.test(clean(v));
+  const publisherLabel=(v:string)=>/^(?:\d+[.)]\s*)?(?:[ée]diteur|raison sociale|d[ée]nomination sociale|(?:le\s+)?site[^\n]{0,100}[ée]dit[ée]\s+par)(?:\s|[:：-]|$)/i.test(clean(v));
   const stack:{tag:string;hidden:boolean;anchor?:{href:string;label:string}}[]=[],links:{href:string;label:string}[]=[],parts:string[]=[];let heading='',headingDepth=0,sectionTitle='',sectionDepth=0,excludedSection=false;
   for(const m of markup.matchAll(/<\/?([a-z][\w:-]*)\b([^>]*?)>|([^<]+)/gi)){
-    if(m[3]!==undefined){if(!stack.some(s=>s.hidden)){const text=entity(m[3]);if(sectionDepth)sectionTitle+=text;if(!excludedSection)parts.push(text);if(headingDepth)heading+=text;const anchor=[...stack].reverse().find(s=>s.anchor)?.anchor;if(anchor)anchor.label+=text;}continue;}
+    if(m[3]!==undefined){if(!stack.some(s=>s.hidden)){const text=entity(m[3]);if(!sectionDepth){if(hostingLabel(text))excludedSection=true;else if(publisherLabel(text))excludedSection=false;}if(sectionDepth)sectionTitle+=text;if(!excludedSection)parts.push(text);if(headingDepth)heading+=text;const anchor=[...stack].reverse().find(s=>s.anchor)?.anchor;if(anchor)anchor.label+=text;}continue;}
     const tag=m[1].toLowerCase(),closing=m[0].startsWith('</');
     if(closing){const i=stack.map(s=>s.tag).lastIndexOf(tag);if(i>=0){for(const node of stack.splice(i))if(node.anchor&&!node.hidden&&!excludedSection)links.push({href:node.anchor.href,label:clean(node.anchor.label)});}if(tag==='h1')headingDepth=0;if(/^h[1-6]$/.test(tag)&&sectionDepth){excludedSection=/h[ée]berg|hosting|conception du site|cr[ée]ation du site/i.test(sectionTitle);sectionDepth=0;}if(/^(p|div|li|br|address|h[1-6]|section|article|tr)$/.test(tag))parts.push('\n');continue;}
     if(/^h[1-6]$/.test(tag)){sectionTitle='';sectionDepth=1;excludedSection=false;}

@@ -46,3 +46,6 @@ const multiplePeople=collectProspectPeople(multiple);assert.equal(multiplePeople
 const allPoints=collectProspectContactPoints(multiple);assert.equal(allPoints.filter(p=>p.type==='email'&&!p.personName).length,2);assert.equal(allPoints.filter(p=>p.type==='address').length,2);assert.equal(allPoints.filter(p=>p.personName==='Alice Exemple'&&p.type==='email').length,2);
 assert.equal(collectProspectContactPoints({sourceDetails:{contactPoints:allPoints}}).length,allPoints.length,'Les coordonnées multiples survivent à une relecture persistée');
 console.log('✓ Coordonnées multiples : emails et téléphones directs regroupés par personne, contacts Annuaire persistés, adresses et preuves conservées');
+const manualAfterWebsite=collectProspectContactPoints({email:'manuel@atelier.fr',source:'website',sourceDetails:{crossSource:{fieldSources:{email:{source:'website',sourceUrl:'https://atelier.fr/contact'}}},website:{snapshot:{emails:[{email:'contact@atelier.fr',sourceUrl:'https://atelier.fr/contact'}]}}}});
+assert(manualAfterWebsite.some(p=>p.value==='manuel@atelier.fr'&&p.source==='crm'&&!p.sourceUrl),'Une ancienne métadonnée website ne doit pas faire perdre la principale saisie manuellement');
+assert(manualAfterWebsite.some(p=>p.value==='contact@atelier.fr'&&p.source==='website'));

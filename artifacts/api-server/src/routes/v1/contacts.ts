@@ -36,14 +36,15 @@ router.post('/:id/coordinates/primary',async(req,res)=>{
   const outcome=await db.transaction(async tx=>{
     const [p]=await tx.select().from(prospectsTable).where(and(eq(prospectsTable.id,id),eq(prospectsTable.tenantId,tenant))).for('update');
     if(!p)return {status:404,error:'Prospect introuvable.'};
-    const point=collectProspectContactPoints(p).find(v=>!v.personName&&v.type===data.type&&v.value===data.value&&v.source===data.source&&v.sourceUrl===data.sourceUrl&&(v.establishmentSiret||null)===(data.establishmentSiret||null));
+    const retained=collectProspectContactPoints(p);
+    const point=retained.find(v=>!v.personName&&v.type===data.type&&v.value===data.value&&v.source===data.source&&v.sourceUrl===data.sourceUrl&&(v.establishmentSiret||null)===(data.establishmentSiret||null));
     if(!point)return {status:409,error:'Cette coordonnée ne figure plus dans les preuves. Rechargez la fiche.'};
     if(point.establishmentSiret&&p.siret&&point.establishmentSiret!==p.siret)return {status:409,error:'Cette adresse appartient à un autre établissement. Le SIRET et l’adresse du prospect sont conservés.'};
     if(point.state==='review'&&point.source==='website'&&(p.sourceDetails as any)?.website?.snapshot?.identity==='contradictory')return {status:409,error:'Le site publie une autre identité juridique. Vérifiez d’abord le bon site de l’entreprise.'};
     if((p[data.type]||null)===data.value)return {status:200,alreadyApplied:true};
     if((p[data.type]||null)!==data.expectedCurrentValue)return {status:409,error:'La coordonnée principale a été modifiée. Rechargez la fiche avant de choisir.'};
     const details:any=p.sourceDetails||{},cross=details.crossSource||{},stamp=new Date().toISOString();
-    await tx.update(prospectsTable).set({[data.type]:data.value,...(data.type==='address'?{lat:null,lng:null}:{}),sourceDetails:{...details,crossSource:{...cross,fieldSources:{...cross.fieldSources,[data.type]:{source:point.source,sourceUrl:point.sourceUrl,capturedAt:stamp,confirmedBy:req.auth!.userId}}}},updatedAt:new Date()}).where(and(eq(prospectsTable.id,id),eq(prospectsTable.tenantId,tenant)));
+    await tx.update(prospectsTable).set({[data.type]:data.value,...(data.type==='address'?{lat:null,lng:null}:{}),sourceDetails:{...details,contactPoints:retained,crossSource:{...cross,fieldSources:{...cross.fieldSources,[data.type]:{source:point.source,sourceUrl:point.sourceUrl,capturedAt:stamp,confirmedBy:req.auth!.userId}}}},updatedAt:new Date()}).where(and(eq(prospectsTable.id,id),eq(prospectsTable.tenantId,tenant)));
     await tx.insert(activitiesTable).values({type:'data_update',title:'Enrichissement · coordonnée principale',description:changeDescription(point.source,point.sourceUrl,{[data.type]:{before:p[data.type],after:data.value}},'Coordonnée publiée choisie explicitement par l’utilisateur.',stamp),status:'done',doneAt:new Date(),prospectId:id,tenantId:tenant,createdBy:req.auth!.userId});
     return {status:200,alreadyApplied:false};
   });
