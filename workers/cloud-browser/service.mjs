@@ -1,5 +1,5 @@
 import {mkdir,rm,readFile,writeFile,rename} from 'node:fs/promises';
-import {readers} from './readers.mjs';
+import {readers,societeSearchCards,pageEvidence,mapsDetailEvidence} from './readers.mjs';
 import {join} from 'node:path';
 import {randomUUID,randomBytes,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
 import {scope,searchUrl,sourceNavigation,sourceResource,publicRequest,actionInput,AUTOMATIC} from './protocol.mjs';
@@ -143,12 +143,14 @@ export class BrowserService{
     if(!url||!sourceNavigation(p.source,url))throw new BrowserError(400,'Suite de recherche invalide.');
     if(!input.resume||!previous?.awaitingUser||!sourceNavigation(p.source,p.page.url()))await p.page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});
     await pause(1200);
+    await p.page.locator(p.source==='bing'?'#b_results,#b_context':'#search,#rso,#rhs').first().waitFor({state:'attached',timeout:8000}).catch(()=>{});
     const read=await p.page.evaluate(readers.general);
-    if(!read.results?.length&&!read.drafts?.length)return {status:'awaiting_user',results:[],drafts:[],cursor:{...cursor,awaitingUser:true},message:'Aucune fiche lisible. Vérifiez la page dans le navigateur puis reprenez.'};
+    const evidence=await p.page.evaluate(pageEvidence);
+    if(!read.results?.length&&!read.drafts?.length&&(!evidence.references.length&&!evidence.empty || evidence.challenge || evidence.consent))return {status:'awaiting_user',results:[],drafts:[],cursor:{...cursor,awaitingUser:true},message:evidence.challenge?'La source demande un contrôle de sécurité. Effectuez-le dans le navigateur puis reprenez.':evidence.consent?'La source demande votre consentement dans le navigateur.':'La page n’a pas fourni de résultats lisibles. Vérifiez son chargement puis reprenez.'};
     cursor.awaitingUser=false;cursor.pages.push(p.page.url());
     const next=await p.page.locator(p.source==='bing'?'a.sb_pagN,a[rel="next"]':'a#pnnext,a[rel="next"]').evaluateAll(nodes=>nodes.map(n=>n.href));
     cursor.next=next.find(value=>sourceNavigation(p.source,value)&&!cursor.pages.includes(value))||null;
-    return {status:'completed',results:read.results||[],drafts:read.drafts||[],cursor,hasMore:!!cursor.next};
+    return {status:'completed',results:read.results||[],drafts:read.drafts||[],references:evidence.references,cursor,hasMore:!!cursor.next,message:evidence.references.length&&!read.results?.length?'Résultats Web consultés : '+evidence.references.length+' liens repérés, aucun nouveau champ confirmé.':evidence.empty?'Aucun résultat pour cette recherche.':undefined};
   }
   async collectDirectory(p,input,previous){
     const initial=searchUrl(p.source,input.query||'',input.area||'');
@@ -195,7 +197,10 @@ export class BrowserService{
         await p.page.locator('a[href*="/pros/"]').first().waitFor({state:'attached',timeout:8000}).catch(()=>{});
         const links=await p.page.locator('a[href*="/pros/"]').evaluateAll(nodes=>nodes.map(n=>n.href));
         for(const value of links)if(sourceNavigation(p.source,value)&&isDetail(value)&&!cursor.pending.includes(value)&&!cursor.visited.includes(value))cursor.pending.push(value);
-        if(!cursor.pending.length)return {status:'awaiting_user',results,drafts,cursor,message:'Aucune fiche PagesJaunes lisible. Vérifiez la recherche ou la demande de connexion dans le navigateur.'};
+        if(!cursor.pending.length){
+          const evidence=await p.page.evaluate(pageEvidence);
+          return {status:evidence.empty&&!evidence.challenge?'completed':'awaiting_user',results,drafts,cursor,message:evidence.challenge?'PagesJaunes bloque la collecte par un contrôle de sécurité Cloudflare. Ouvrez le navigateur pour effectuer le contrôle, puis reprenez. Les autres sources continuent.':'Aucune fiche PagesJaunes lisible. Vérifiez la recherche ou la demande de connexion dans le navigateur.'};
+        }
         cursor.pages.push(url);
         const choices=await p.page.locator('a[rel="next"],a[aria-label*="suivant" i],a[title*="suivant" i],.pagination a,#pagination a,a#pagination-next,nav[aria-label*="pagination" i] a').evaluateAll(nodes=>nodes.map(n=>({href:n.href,label:[n.innerText,n.getAttribute('aria-label'),n.title,n.id,n.className,n.rel].join(' ')})));
         const valid=choices.filter(n=>sourceNavigation(p.source,n.href)&&!cursor.pages.includes(n.href));
@@ -230,24 +235,27 @@ export class BrowserService{
         phone:profile.phone,email:profile.email,website:profile.website,siret:profile.siret,apeCode:ape||null,sourceUrl:profile.sourceUrl,pagesjaunesProfile:profile}],drafts:[]};
     }
     const read=await p.page.evaluate(readers.general);
+    const evidence=await p.page.evaluate(mapsDetailEvidence);
+    if(evidence)for(const item of read.results||[])if(item.company===evidence.title&&item.address===evidence.address)item.mapsDetail=evidence;
     return read.results?.length||read.drafts?.length?{results:read.results||[],drafts:read.drafts||[]}:null;
   }
   async societe(p,input){
     if(!/^https:\/\/(?:www\.)?societe\.com\/societe\//.test(p.page.url())){
       await p.page.locator('a[href*="/societe/"]').first().waitFor({state:'attached',timeout:10000}).catch(()=>{});
-      const all=[...new Set((await p.page.locator('a[href*="/societe/"]').evaluateAll(nodes=>nodes.map(n=>n.href))).map(value=>{const url=new URL(value);url.hash='';url.search='';return url.href;}))];
+      const cards=await p.page.evaluate(societeSearchCards);
       const known=String(input.target?.siret||input.target?.siren||'').slice(0,9);
-      const links=all.filter(url=>sourceNavigation('societe_com',url)&&/\/societe\/[a-z0-9-]+-\d{9}\.html\/?$/i.test(new URL(url).pathname))
-        .filter(url=>!known||new URL(url).pathname.replace(/\/$/,'').endsWith('-'+known+'.html'));
       const normalize=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
-      if(!known&&links.length===1){
-        const labels=await p.page.locator('a[href*="/societe/"]').evaluateAll(nodes=>nodes.map(n=>({url:n.href,label:n.innerText||n.textContent})));
-        if(!labels.some(n=>n.url.split(/[?#]/)[0]===links[0]&&normalize(n.label)===normalize(input.target?.company||input.query)))
-          return {status:'awaiting_user',results:[],drafts:[],message:'Aucune correspondance fiable avec le nom recherché. La fiche non concordante n’a pas été ouverte.'};
-      }
-      if(links.length!==1)return {ok:true,status:'awaiting_user',message:links.length?'Plusieurs fiches correspondent. Ouvrez le bon établissement dans le navigateur puis reprenez.':'La recherche nécessite une vérification dans le navigateur intégré.',results:[],drafts:[]};
+      const city=normalize(input.target?.city||input.area);
+      const candidates=cards.filter(card=>{
+        if(!sourceNavigation('societe_com',card.url)||!/\/societe\/[a-z0-9-]+-\d{9}\.html\/?$/i.test(new URL(card.url).pathname))return false;
+        if(known)return new URL(card.url).pathname.replace(/\/$/,'').endsWith('-'+known+'.html');
+        return normalize(card.label)===normalize(input.target?.company||input.query)&&(!city||normalize(card.location.replace(/^\d{5}\s*/,''))===city);
+      });
+      const links=[...new Set(candidates.map(card=>{const u=new URL(card.url);u.hash='';u.search='';return u.href;}))];
+      if(links.length!==1)return {ok:true,status:'awaiting_user',message:links.length?'Plusieurs sociétés de même nom et ville correspondent. Vérifiez l’établissement avant de reprendre.':'Aucune correspondance fiable dans les résultats par nom et ville. Aucune fiche non concordante ouverte.',results:[],drafts:[]};
       await p.page.goto(links[0],{waitUntil:'domcontentloaded',timeout:25000});await pause(1200);
     }
+    await p.page.locator('h1').first().waitFor({state:'visible',timeout:10000}).catch(()=>{});
     const read=await p.page.evaluate(readers.societe_com);
     if(read.error||!read.results?.length)return {ok:true,status:'awaiting_user',message:'La fiche est incomplète ou demande une intervention. Vérifiez-la dans le navigateur puis reprenez.',results:[],drafts:[]};
     return {ok:true,status:'completed',results:read.results.slice(0,1),drafts:[]};

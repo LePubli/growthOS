@@ -104,6 +104,40 @@ try{
   const rejected=await service.collect({...unrelated,query:'Nord Artisan',area:'Lille',target:{company:'Nord Artisan'}});
   assert.equal(rejected.status,'awaiting_user');assert.equal(rejected.results.length,0);
   assert.ok(p.page.url().includes('/recherche?'),'Une unique fiche sans nom concordant ne doit pas être ouverte automatiquement');
+  const realistic={...identity,profileId:'10000000-0000-4000-8000-000000000009'};
+  p=await service.profile(realistic);
+  await p.context.route('https://www.societe.com/**',route=>{
+    const url=new URL(route.request().url());
+    const body=url.pathname.includes('/societe/')?`<main><h1>NORD ARTISAN</h1><dl><div><dt>SIREN</dt><dd>979 965 506<button>Copier</button></dd></div><div><dt>SIRET DU SIEGE SOCIAL</dt><dd>979 965 506 00020<button>Copier</button></dd></div><div><dt>ADRESSE</dt><dd>34 PLACE DU GENERAL DE GAULLE BUREAU 3, 59800 LILLE</dd></div></dl>
+      <h2>Dirigeants de NORD ARTISAN</h2><ul><li><a href="/manager/Alice.RECETTE.123.html">Alice RECETTE</a><p>MANDAT</p><p>Présidente depuis le 19 novembre 2026</p><a href="/manager/Alice.RECETTE.123.html">Voir la fiche</a></li></ul><h2>Finances</h2></main>`
+      :`<style>.overlay{position:absolute;inset:0}li{position:relative;padding:10px}</style><ul>
+      <li data-type="c"><a class="overlay" href="/societe/nord-artisan-979965506.html" aria-label="NORD ARTISAN"></a><div><h2>NORD ARTISAN<span>979 965 506</span></h2><p>Travaux de menuiserie métallique</p><p>59000 LILLE</p></div></li>
+      <li data-type="c"><a class="overlay" href="/societe/nord-artisan-111111111.html" aria-label="NORD ARTISAN"></a><div><h2>NORD ARTISAN<span>111 111 111</span></h2><p>75001 PARIS</p></div></li>
+      <li data-type="c"><a class="overlay" href="/societe/artisan-du-nord-798461463.html" aria-label="ARTISAN DU NORD"></a><div><h2>ARTISAN DU NORD<span>798 461 463</span></h2><p>59000 LILLE</p></div></li></ul>`;
+    return route.fulfill({contentType:'text/html',body});
+  });
+  const real=await service.collect({...realistic,query:'Nord Artisan',area:'Lille',target:{company:'Nord Artisan',city:'Lille'}});
+  assert.equal(real.status,'completed');assert.equal(real.results[0].siret,'97996550600020');
+  assert.equal(real.results[0].companyDetails.managerContacts[0].role,'Présidente');
+  assert.ok(real.results[0].companyDetails.managerContacts[0].profileUrl.includes('/manager/'));
+  const rendered={...maps,profileId:'10000000-0000-4000-8000-000000000010'};
+  p=await service.profile(rendered);
+  await p.context.route('https://www.google.com/**',route=>route.fulfill({contentType:'text/html',body:'<main role="main"><h1 class="DUwDvf">Nord Artisan</h1><button data-item-id="address" aria-label="Adresse: 38 Bd Carnot, 59800 Lille">Adresse</button><button data-item-id="phone:tel" aria-label="Téléphone: 07 80 99 59 59">Téléphone</button></main>'}));
+  const detail=await service.collect({...rendered,query:'Nord Artisan',area:'Lille'});
+  assert.equal(detail.results[0].mapsDetail.title,'Nord Artisan');assert.ok(detail.results[0].sourceUrl.includes('/maps/search/'));
+  for(const source of ['google_search','bing']){
+    const organic={...identity,source,profileId:source==='bing'?'10000000-0000-4000-8000-000000000012':'10000000-0000-4000-8000-000000000011'};
+    p=await service.profile(organic);
+    await p.context.route('**/*',route=>route.fulfill({contentType:'text/html',body:source==='bing'?'<ol id="b_results"><li class="b_algo"><h2><a href="https://nordartisan.fr/">Nord Artisan</a></h2></li></ol>':'<div id="search"><a href="https://nordartisan.fr/"><h3>Nord Artisan</h3></a></div>'}));
+    const links=await service.collect({...organic,query:'Nord Artisan',area:'Lille'});
+    assert.equal(links.status,'completed');assert.equal(links.results.length,0);assert.equal(links.references[0].url,'https://nordartisan.fr/');
+  }
+  const blocked={...pj,profileId:'10000000-0000-4000-8000-000000000013'};
+  p=await service.profile(blocked);
+  await p.context.route('https://www.pagesjaunes.fr/**',route=>route.fulfill({status:403,contentType:'text/html',body:'<h1>Sécurité</h1><p>Afin de nous aider à lutter contre certaines attaques informatiques, veuillez compléter le "challenge" suivant.</p><div id="challenge-stage"></div>'}));
+  const challenge=await service.collect({...blocked,query:'Nord Artisan',area:'Lille'});
+  assert.equal(challenge.status,'awaiting_user');assert.ok(challenge.message.includes('Cloudflare'));assert.equal(challenge.results.length,0);
+  console.log('✓ Régressions DOM : Societe.com lien vide + ville + /manager/, Maps détaillé sur URL search, résultats organiques Google/Bing, blocage Cloudflare explicite');
   console.log('✓ Chromium réel : 35 fiches Maps en continuation et PagesJaunes recherche → détail → page suivante avec lecteurs canoniques');
   console.log('✓ Chromium réel : recherche → fiche Societe.com → extraction, vue JPEG, saisie, session persistante, séparation des comptes, contrôle et déconnexion');
 }finally{child.kill('SIGTERM');await service.close();await rm(directory,{recursive:true,force:true});}

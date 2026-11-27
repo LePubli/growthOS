@@ -195,3 +195,15 @@ Le [document de référence Linked Helper](docs/REFERENCE-LINKED-HELPER.md) cons
 - Design PR58 et CSS conservés. Migration additive d’une file de tâches en base. 359 contrôles d’intégration PostgreSQL16 verts (fournisseurs simulés), tests TypeScript/React/identité verts. Contrôle Chromium réel sur fixtures et publication des images à confirmer. Aucun déploiement DockPanel par l’agent.
 
 Revue PR59 : un SIREN commun exige des coordonnées d’établissement concordantes quand le SIRET entrant manque ; zone géographique recontrôlée pour chaque établissement (siège hors zone exclu) ; portée APE conservée et repli unité légale proposé sans écraser le code ou remplir un libellé incohérent. API INSEE directe et conservation de 65 résultats historiques testées. Chromium réel vert sur fixtures ; relance du contrôle sur le dernier correctif avant fusion.
+
+## Correctif en cours — lecteurs réels d’enrichissement (27/11/2026)
+
+- Societe.com : rechercher le nom seul, choisir dans les cartes par nom et ville ou SIREN exact, reconnaître les liens superposés sans texte et les dirigeants `/manager/`.
+- Annuaire : tolérer les compléments explicites de bureau et les abréviations de voie sans ignorer numéro/bis/ter ni accepter plusieurs établissements. Conserver et signaler l’ancien établissement fermé, sans substitution silencieuse du siège.
+- Societe.com, même SIREN et autre SIRET : reprendre uniquement les données légales et dirigeants ; conserver SIRET/adresse/coordonnées propres au prospect et la provenance du siège séparément.
+- Maps : valider les détails réellement affichés sous `/maps/search/` avec preuve DOM titre/adresse, puis comparaison d’identité conservée.
+- Google/Bing : distinguer résultats organiques sans nouveau champ et blocage ; conserver les liens repérés comme références non confirmées.
+- PagesJaunes : blocage Cloudflare reconnu et contrôle affichable ; disponibilité automatique non garantie tant que la source le demande. Aucun contournement.
+- Vérification manuelle : afficher la tâche et le profil de la source demandée, sans les tâches Bing des autres sources.
+
+Validation et publication en cours ; aucun déploiement DockPanel effectué.

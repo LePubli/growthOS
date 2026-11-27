@@ -6,6 +6,10 @@ assert.equal(scope({tenantId:id,profileId:id,source:'societe_com'}).profileId,id
 for(const payload of [{tenantId:'../data',profileId:id,source:'bing'},{tenantId:id,profileId:'../autre',source:'bing'},{tenantId:id,profileId:id,source:'unknown'}])assert.throws(()=>scope(payload));
 const search=new URL(searchUrl('societe_com','98107525200016','Roubaix'));
 assert.equal(search.searchParams.get('q'),'98107525200016');assert.equal(search.searchParams.get('ftStatus'),'0');
+assert.equal(new URL(searchUrl('societe_com','Nord Artisan','Lille')).searchParams.get('q'),'Nord Artisan','Societe.com : nom seul, ville réservée au choix de la société');
+assert.equal(sourceResource('pagesjaunes','https://challenges.cloudflare.com/turnstile/v0/api.js'),true);
+assert.equal(sourceNavigation('pagesjaunes','https://challenges.cloudflare.com/'),false);
+assert.equal(sourceResource('pagesjaunes','https://challenges.cloudflare.com.evil.invalid/'),false);
 assert.ok(searchUrl('google_maps','plombier','59100').includes(encodeURIComponent('plombier 59100')));
 assert.equal(searchUrl('linkedin','','',true),'https://www.linkedin.com/login');
 for(const url of ['https://www.societe.com.evil.example/','http://www.societe.com/','https://u:p@www.societe.com/','https://www.societe.com:444/','file:///data'])assert.equal(sourceNavigation('societe_com',url),false);

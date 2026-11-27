@@ -430,7 +430,7 @@ const companyDetailsSchema = z.object({
     name:z.string().trim().min(2).max(150),role:z.string().max(150).nullable(),
     phone:z.string().max(40).nullable(),email:z.string().email().max(254).nullable(),
     profileUrl:z.string().url().max(500).refine(value=>{
-      const url=new URL(value);return url.protocol==='https:' && ['societe.com','www.societe.com'].includes(url.hostname) && /^\/dirigeants?\//i.test(url.pathname);
+      const url=new URL(value);return url.protocol==='https:' && ['societe.com','www.societe.com'].includes(url.hostname) && /^\/(?:dirigeants?|manager)\//i.test(url.pathname);
     }).nullable(),
   }).strict()).max(50).optional(),
   establishments:z.array(z.object({siret:z.string().regex(/^\d{14}$/),address:z.string().max(320).nullable()}).strict()).max(30),
@@ -456,6 +456,7 @@ const deviceCandidateFieldsSchema = z.object({
   apeScope: z.enum(['etablissement','unite_legale']).optional(),
   nafVersion: z.string().trim().max(32).nullable().optional(),
   companyDetails: companyDetailsSchema.optional(),
+  mapsDetail:z.object({title:z.string().trim().min(2).max(160),address:z.string().trim().min(5).max(320)}).strict().optional(),
   pagesjaunesProfile: profileSchema.optional(),
   collectionMode: z.enum(['manual','visible']).optional(),
   capturedAt: z.number().int().positive().optional(),
@@ -769,7 +770,7 @@ const targetCaptureSchema=deviceCandidateFieldsSchema.extend({
   if(item.sourceUrl && validSource){
     const url=new URL(item.sourceUrl);
     if(url.username || url.password || (url.port && url.port!=='443') ||
-      (item.source==='google_maps' && !url.pathname.startsWith('/maps/place/')) ||
+      (item.source==='google_maps' && !url.pathname.startsWith('/maps/place/') && !(url.pathname.startsWith('/maps/search/') && item.collectionMode==='visible' && item.mapsDetail && normalizedIdentity(item.mapsDetail.title)===normalizedIdentity(item.company) && normalizedIdentity(item.mapsDetail.address)===normalizedIdentity(item.address||'') && !!item.codePostal)) ||
       (item.source==='pagesjaunes' && !/^\/pros\/\d{4,20}\/?$/.test(url.pathname)))
       ctx.addIssue({code:'custom',path:['sourceUrl'],message:'Ouvrez une fiche détaillée de cet établissement.'});
   }
@@ -790,7 +791,7 @@ const targetCaptureSchema=deviceCandidateFieldsSchema.extend({
 export async function applyTargetCapture(tenantId:string,userId:string,prospectId:string,taskId:string,rawCapture:unknown,automatic=false,cloud?:{lease:string;result:Record<string,unknown>}){
   const parsed=targetCaptureSchema.safeParse(rawCapture);
   if(!parsed.success || !z.string().uuid().safeParse(prospectId).success || !z.string().uuid().safeParse(taskId).success)
-    return {status:400,error:'Capture ou tâche invalide.'};
+    return {status:400,error:!parsed.success?'Capture invalide : '+[...new Set(parsed.error.issues.map(issue=>issue.path.join('.')+': '+issue.message))].join(' ; ').slice(0,450):'Identifiant de tâche ou de prospect invalide.'};
   const capture=parsed.data;
   if(capture.id!=='task_'+taskId)return {status:400,error:'Capture et tâche incohérentes.'};
   return db.transaction(async tx=>{
@@ -811,17 +812,22 @@ export async function applyTargetCapture(tenantId:string,userId:string,prospectI
         return complete({status:200,filled:[],conflicts:0,alreadyApplied:true});
       const knownSiren=prospect.siren || prospect.siret?.slice(0,9);
       const incomingSiren=capture.siren || capture.siret?.slice(0,9);
+      // A company page describes its headquarters. Reuse legal-entity details
+      // only when SIREN is already confirmed; never move the prospect's site.
+      const legalOnly=!!(automatic&&cloud&&capture.source==='societe_com'&&capture.companyDetails&&knownSiren&&knownSiren===incomingSiren&&prospect.siret&&capture.siret&&prospect.siret!==capture.siret);
       if((knownSiren && incomingSiren && knownSiren!==incomingSiren) ||
-        (prospect.siret && capture.siret && prospect.siret!==capture.siret))
+        (!legalOnly && prospect.siret && capture.siret && prospect.siret!==capture.siret))
         return {status:409,error:'L’identité juridique ou l’établissement diffère de ce prospect.'};
       const legalMatch=!!(knownSiren && incomingSiren===knownSiren);
       const exactSite=!!(prospect.siret && capture.siret===prospect.siret);
-      if(!exactSite && ((!legalMatch && normalizedIdentity(prospect.company||'')!==normalizedIdentity(capture.company)) ||
+      if(!legalOnly && !exactSite && ((!legalMatch && normalizedIdentity(prospect.company||'')!==normalizedIdentity(capture.company)) ||
         (prospect.city && capture.city && normalizedIdentity(prospect.city)!==normalizedIdentity(capture.city)))
       )
         return {status:409,error:'Le nom ou la ville diffère. Vérifiez la fiche et son établissement avant enrichissement.'};
-      if(automatic&&!captureIdentityMatches(prospect,capture))return {status:409,error:'L’établissement ne correspond pas avec certitude. Vérifiez ses coordonnées.'};
-      const merged=await mergeProspectCapture(prospect,{...capture,targetedIdentity:true},false,tenantId,tx,userId,automatic && exactSite && capture.source==='societe_com' ? ['company','address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);
+      if(automatic&&!legalOnly&&!captureIdentityMatches(prospect,capture))return {status:409,error:'L’établissement ne correspond pas avec certitude. Vérifiez ses coordonnées.'};
+      const projected=legalOnly?{...capture,siret:null,address:null,codePostal:null,city:null,phone:null,email:null,website:null,apeCode:null,nafLabel:null,nafVersion:null,
+        sourceDetails:{societe_com:{...jsonRecord(capture.sourceDetails.societe_com),scope:'unite_legale',headquarters:{siret:capture.siret,address:capture.address,city:capture.city}}}}:capture;
+      const merged=await mergeProspectCapture(prospect,{...projected,targetedIdentity:true},false,tenantId,tx,userId,automatic && exactSite && capture.source==='societe_com' ? ['company','address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);
       return complete({status:200,filled:merged.filled,conflicts:merged.conflicts,alreadyApplied:false});
     });
 }

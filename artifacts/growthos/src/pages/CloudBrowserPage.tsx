@@ -21,7 +21,7 @@ type Job = {
   id: string; profile_id: string; prospect_id: string | null;
   mode: 'enrich' | 'discover'; query: string; area?: string; status: string; error: string | null;
   result: {
-    message?: string; hasMore?:boolean; progress?:{captured:number;discovered:number}; captures?: Capture[]; drafts?: unknown[]; imports?: Record<string,CaptureImportState>;
+    references?:{url:string;label:string}[]; message?: string; hasMore?:boolean; progress?:{captured:number;discovered:number}; captures?: Capture[]; drafts?: unknown[]; imports?: Record<string,CaptureImportState>;
     applied?: { filled: string[]; conflicts: number };
   };
 };
@@ -71,6 +71,11 @@ function CloudBrowserWorkspace() {
   async function readJobs() {
     const version = ++jobsRequest.current;
     const result = await api.get<Job[]>('/browser/jobs');
+    const requested=params.get('jobId');
+    if(requested&&!result.some(job=>job.id===requested)){
+      const job=await api.get<Job>('/browser/jobs/'+requested).catch(()=>null);
+      if(job)result.unshift(job);
+    }
     if (version === jobsRequest.current) setJobs(result);
   }
   async function refresh() {
@@ -476,7 +481,9 @@ function CloudBrowserWorkspace() {
         <h2 className="font-semibold">Vérification de {prospect?.company||'ce prospect'}</h2>
         <p>L’enrichissement automatique se lance et se suit depuis la fiche. Cet espace sert à consulter une source lorsqu’une intervention est nécessaire.</p>
         <Link className="cloud-browser-primary" to={'/prospects/'+prospectId}>Retour à la fiche prospect</Link>
-        {jobs.filter(job=>job.prospect_id===prospectId).map(job=>jobCard(job,null,null))}
+        {jobs.filter(job=>job.prospect_id===prospectId&&job.profile_id===selected&&(!params.get('jobId')||job.id===params.get('jobId'))).map(job=><div key={job.id}>{jobCard(job,null,null)}
+          {!!job.result?.references?.length&&<details><summary>Liens Web repérés · identité à vérifier</summary>{job.result.references.map(r=><p key={r.url}><a href={r.url} target="_blank" rel="noopener noreferrer">{r.label||r.url}</a></p>)}</details>}
+        </div>)}
       </section>:<section id="cloud-browser-results" className="cloud-browser-results" aria-label="Résultats de collecte">
         <header className="cloud-browser-results-header">
           <span><Layers size={20}/></span>

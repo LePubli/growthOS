@@ -45,12 +45,12 @@ export async function runCloudJob(id:string){
     const result=appendCloudResult(latest.result,data,id,profile.source,!!prospect);
     let status=data.status==='awaiting_user'?'awaiting_user':data.hasMore?'queued':'completed';
     if(prospect){
-      const matches=result.captures.filter((c:any)=>{try{return captureIdentityMatches(prospect,c);}catch{return false;}});
+      const matches=result.captures.filter((c:any)=>{try{return captureIdentityMatches(prospect,c)||(c.source==='societe_com'&&c.companyDetails&&/^\d{14}$/.test(prospect.siret||'')&&/^\d{14}$/.test(c.siret||'')&&c.siret.slice(0,9)===prospect.siret.slice(0,9)&&new URL(c.sourceUrl).pathname.endsWith('-'+prospect.siret.slice(0,9)+'.html'));}catch{return false;}});
       if(matches.length===1){
         const applied=await applyTargetCapture(job.tenant_id,job.created_by,prospect.id,id,matches[0],true,{lease,result:{...result,pageCursor:null,hasMore:false}});
         if(applied.status===200)return;
         status='needs_review';result.message='error' in applied?applied.error:'Vérifiez la fiche cible.';
-      }else if(status==='completed'||matches.length>1){status='needs_review';result.message='Le rapprochement n’est pas certain. Vérifiez le bon établissement dans le navigateur avant de reprendre.';}
+      }else if((status==='completed'&&result.captures.length>0)||matches.length>1){status='needs_review';result.message='Le rapprochement n’est pas certain. Vérifiez le bon établissement dans le navigateur avant de reprendre.';}
     }
     const client=await pool.connect();
     try{

@@ -14,7 +14,7 @@ export function searchUrl(source,query='',area='',login=false){
   if(typeof query!=='string'||typeof area!=='string'||query.length>160||area.length>120)throw new InputError('Critères invalides');
   const term=[query.trim(),area.trim()].filter(Boolean).join(' '),q=encodeURIComponent(term);
   const urls={google_maps:'https://www.google.com/maps/search/'+q,google_search:'https://www.google.com/search?q='+q,
-    bing:'https://www.bing.com/search?q='+q,societe_com:'https://www.societe.com/recherche?q='+encodeURIComponent(/^\d{9}(?:\d{5})?$/.test(query.trim())?query.trim():term)+'&ftStatus=0',
+    bing:'https://www.bing.com/search?q='+q,societe_com:'https://www.societe.com/recherche?q='+encodeURIComponent(query.trim())+'&ftStatus=0',
     pagesjaunes:'https://www.pagesjaunes.fr/annuaire/chercherlespros?quoiqui='+encodeURIComponent(query.trim())+'&ou='+encodeURIComponent(area.trim()),
     linkedin:'https://www.linkedin.com/search/results/companies/?keywords='+q,
     facebook:'https://www.facebook.com/search/pages/?q='+q,instagram:'https://www.instagram.com/explore/search/keyword/?q='+q,
@@ -31,7 +31,7 @@ const assets={google_maps:['gstatic.com','googleapis.com','googleusercontent.com
   bing:['bing.net','microsoftonline.com','msauth.net'],societe_com:[],pagesjaunes:['pjms.fr','solocal.com'],linkedin:['licdn.com'],
   facebook:['fbcdn.net','fbsbx.com'],instagram:['cdninstagram.com','fbcdn.net'],tiktok:['tiktokcdn.com','tiktokcdn-eu.com','ttwstatic.com','byteoversea.com']};
 export function sourceResource(source,value){
-  try{const u=new URL(value);return [...(roots[source]||[]),...(assets[source]||[]),'didomi.io','privacy-center.org','captcha-delivery.com','datadome.co','geetest.com']
+  try{const u=new URL(value);if(u.protocol==='https:'&&u.hostname==='challenges.cloudflare.com'&&!u.port&&!u.username&&!u.password)return true;return [...(roots[source]||[]),...(assets[source]||[]),'didomi.io','privacy-center.org','captcha-delivery.com','datadome.co','geetest.com']
     .some(host=>u.hostname===host||u.hostname.endsWith('.'+host));}catch{return false;}
 }
 export function sourceNavigation(source,value){
