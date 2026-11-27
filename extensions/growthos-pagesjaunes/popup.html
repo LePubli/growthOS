@@ -38,10 +38,11 @@
     <section id="taskPanel" class="card task-panel" hidden>
       <h2 id="taskTitle"></h2><p id="taskTarget"></p><p class="hint" id="taskHint"></p>
       <p class="hint">Les champs manquants restent vides. Les données divergentes devront être vérifiées dans GrowthOS.</p>
-      <button type="button" class="primary" id="taskRead" hidden>Lire la fiche affichée</button>
+      <button type="button" class="link" id="taskOpenSource">Ouvrir la source pour choisir la bonne fiche</button>
+      <button type="button" class="primary" id="taskRead" hidden>Lire et comparer dans GrowthOS</button>
       <div id="taskPreview"></div>
-      <label class="task-confirm"><input type="checkbox" id="taskConfirmed"/> Je confirme la bonne entreprise et le bon établissement.</label>
-      <button type="button" class="primary" id="taskFinish">Confirmer et revenir au prospect</button>
+      <p class="hint">La validation et les mises à jour seront effectuées dans la fiche GrowthOS après comparaison.</p>
+      <button type="button" class="primary" id="taskFinish">Comparer dans GrowthOS</button>
       <button type="button" class="link" id="taskCancel">Quitter ce mode</button>
     </section>
 

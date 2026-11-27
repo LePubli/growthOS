@@ -28,7 +28,7 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 
 1. Récupérer **le dossier complet** `extensions/growthos-pagesjaunes` depuis la branche `fix/growthos-functional-redesign`, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`.
 2. Remplacer le contenu de votre dossier d'extension Chrome local (sans changer le chemin du dossier chargé dans Chrome).
-3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source est **0.11.1** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Gardez le même dossier local et évitez une deuxième installation : chaque extension Chrome possède ses propres captures locales.
+3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source est **0.11.2** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Gardez le même dossier local et évitez une deuxième installation : chaque extension Chrome possède ses propres captures locales.
 4. Garder Chrome et l'onglet `https://agile.le-publicitaire.fr` ouverts.
 5. Dans GrowthOS, ouvrir **Trouver des entreprises**, cliquer sur **Connecter cet appareil** si nécessaire, puis choisir les sources. Pour Google et Bing, le nouvel onglet doit être ouvert manuellement depuis le panneau de l'extension.
 6. Pour les fiches déjà importées depuis PagesJaunes, **Compléter depuis PagesJaunes** reste opérationnel.
@@ -43,11 +43,11 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 
 ### Secours d’un enrichissement bloqué dans le cloud
 
-Depuis **Vérifier cette source**, la tâche propose **Comparer et valider** si une fiche a déjà été lue. Comparez l’identité et les champs, cochez les valeurs à remplacer puis **Valider et enrichir la fiche**. Un SIREN ou SIRET incompatible avec l’identité connue reste bloqué ; une modification concurrente demande d’actualiser la comparaison.
+Depuis la fiche prospect, l’onglet **Enrichissements** propose **Comparer** directement sur la source. Les remplacements sont visibles et cochés par défaut, sauf le nom affiché. Cliquez sur **Valider et mettre à jour** pour enregistrer. Il n’y a plus de case de confirmation supplémentaire ni de retour obligatoire au navigateur cloud. Les identifiants incompatibles restent protégés.
 
-Si le navigateur serveur reste bloqué, choisissez **Lire avec Chrome sur cet appareil**. La recherche s’ouvre dans votre Chrome : le site utilise alors la connexion réseau et la session de ce PC. Ouvrez la bonne fiche, utilisez **Lire la fiche** puis confirmez la capture dans le panneau latéral. Le retour dans GrowthOS affiche la comparaison ci-dessus, rattachée à la même tâche. **Relire la fiche ouverte** dans le cloud ne constitue pas une validation d’identité.
+Si le navigateur serveur reste bloqué, **Lire avec Chrome sur cet appareil** ouvre la source **et les commandes du connecteur**. Chrome ouvre le panneau latéral ou, s’il refuse, un onglet du connecteur de secours. **Ouvrir la source** permet de choisir la bonne fiche ; **Lire et comparer dans GrowthOS** ramène sa capture dans la fiche prospect pour validation. Au premier usage d’une source, Chrome peut demander l’autorisation de lecture de ce site uniquement. Les accès Google, Bing et Societe.com sont optionnels et ne sont pas accordés à l’installation.
 
-Ce secours local nécessite l’extension à jour sur ordinateur. Il ne change pas l’IP du serveur, ne garantit pas la disparition des contrôles de sécurité et n’ajoute pas de client local Android.
+La lecture utilise la connexion et la session du PC. Elle ne change pas l’IP du serveur et ne garantit pas la disparition des contrôles des sites. Le mode local Android n’est pas encore développé. Les données restent locales jusqu’au retour et à la comparaison dans GrowthOS ; la seule lecture n’applique aucune mise à jour CRM.
 
 ### Quand Google affiche le nom et le téléphone mais pas l'adresse
 

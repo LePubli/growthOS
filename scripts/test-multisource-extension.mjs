@@ -114,12 +114,12 @@ let geocodeResponse={features:[]};
 const chrome={
   runtime:{getURL:(path='')=>'chrome-extension://unit-test/'+path,
     onMessage:{addListener:fn=>{listener=fn;}}},
-  sidePanel:{setPanelBehavior:async behavior=>{storage.panelBehavior=behavior;}},
+  sidePanel:{setPanelBehavior:async behavior=>{storage.panelBehavior=behavior;},open:async()=>{storage.panelOpened=true;}},
   storage:{local:{get:async key=>({[key]:storage[key]}),set:async changes=>{Object.assign(storage,changes);}}},
   tabs:{create:async data=>{opened.push(data);return{id:12};},
     query:async()=>[{id:42,url:activeTabUrl}],
     get:async()=>({id:42,url:activeTabUrl,status:'complete'}),
-    update:async (_id,data)=>{activeTabUrl=data.url;return{id:42,url:activeTabUrl,status:'complete'};}},
+    update:async (_id,data)=>{if(data.url)activeTabUrl=data.url;return{id:42,url:activeTabUrl,status:'complete'};}},
   scripting:{executeScript:async options=>[{result:options.func?mapLinks:(typeof injectedResult==='function'?injectedResult():injectedResult)}]},
 };
 vm.runInNewContext(readFileSync(new URL('background.js',root),'utf8'),
@@ -403,6 +403,13 @@ assert.equal(recovered.task.capture.website,partial.website);
 await send('ack-task',{taskId,prospectId:prospect.id},growthos);
 assert.equal((await send('task-current')).task,null);
 assert.equal((await send('get-task-result',{taskId,prospectId:prospect.id},growthos)).task.status,'done');
+chrome.sidePanel.open=async()=>{throw Error('User gesture unavailable');};
+const fallback=await send('begin-task',{source:'bing',mode:'enrich',query:prospect.company,prospect},growthos);
+assert.equal(fallback.controls,'tab');assert.ok(opened.at(-1).url.startsWith('chrome-extension://unit-test/popup.html?taskControls='));
+assert.equal(fallback.task.sourceTabId,12);
+activeTabUrl='https://www.bing.com/search?q=Atelier';
+assert.equal((await send('task-focus-source',{taskId:fallback.task.id})).ok,true);
+await send('task-cancel',{taskId:fallback.task.id});chrome.sidePanel.open=async()=>{};
 const cloudJobId='10000000-0000-4000-8000-000000000088';
 const bound=await send('begin-task',{source:'bing',mode:'enrich',query:prospect.company,prospect,cloudJobId},growthos);
 assert.equal(bound.ok,true);assert.equal(bound.task.cloudJobId,cloudJobId);

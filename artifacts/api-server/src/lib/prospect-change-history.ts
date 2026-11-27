@@ -1,4 +1,4 @@
-export const prospectFieldLabels:Record<string,string>={company:'Raison sociale',siren:'SIREN',siret:'SIRET',
+export const prospectFieldLabels:Record<string,string>={company:'Nom affiché',siren:'SIREN',siret:'SIRET',
   address:'Adresse',postalCode:'Code postal',city:'Ville',phone:'Téléphone',email:'Email',website:'Site web',
   linkedinUrl:'LinkedIn',apeCode:'Code APE / NAF',nafLabel:'Secteur d’activité',nafVersion:'Nomenclature'};
 export type FieldChanges=Record<string,{before:unknown;after:unknown}>;

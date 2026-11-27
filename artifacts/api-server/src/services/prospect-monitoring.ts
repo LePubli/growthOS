@@ -1,3 +1,5 @@
+import {businessIdentity,distinctBusinessNames} from '@workspace/api-zod';
+import {isDeepStrictEqual} from 'node:util';
 import { randomUUID } from "node:crypto";
 import { pool, activityLabel } from "@workspace/db";
 import { publishNotification } from "./notification.service";
@@ -139,6 +141,7 @@ export function companySnapshot(
       text(legal.date_mise_a_jour_insee) || text(legal.date_mise_a_jour),
     fields: {
       Dénomination: text(legal.nom_complet) || text(legal.nom_raison_sociale),
+      "Noms commerciaux de l’établissement": local?distinctBusinessNames([local.nom_commercial,local.noms_commerciaux,local.liste_enseignes,local.enseigne]).join(' · ')||null:null,
       "État de l’entreprise": status(legal.etat_administratif),
       "État de l’établissement": local
         ? status(local.etat_administratif, true)
@@ -400,7 +403,7 @@ export async function verifyProspect(
     if(watch.enabled){
       const exactSite=!!(p.siret && snapshot.fields['SIRET contrôlé']===p.siret);
       const ape=exactSite?snapshot.fields['Code APE de l’établissement']:!p.siret?snapshot.fields['Code APE de l’entreprise']:null;
-      const desired:Record<string,string|null>={company:snapshot.fields['Dénomination']?.slice(0,160)||null,siren:snapshot.siren,
+      const desired:Record<string,string|null>={...(!live.company?{company:snapshot.fields['Dénomination']?.slice(0,160)||null}:{}),siren:snapshot.siren,
         ...(exactSite?{address:snapshot.fields['Adresse de l’établissement']?.slice(0,320)||null,
           postalCode:/^\d{5}$/.test(snapshot.fields['Code postal de l’établissement']||'')?snapshot.fields['Code postal de l’établissement']:null,
           city:snapshot.fields['Ville de l’établissement']?.slice(0,120)||null}:{}),
@@ -409,21 +412,25 @@ export async function verifyProspect(
       const columns:Record<string,string>={company:'company',siren:'siren',address:'address',postalCode:'postal_code',city:'city',apeCode:'ape_code',nafLabel:'naf_label',nafVersion:'naf_version'};
       for(const [field,value] of Object.entries(desired))if(value && value!==(live[columns[field]]||null))
         synced[field]={before:live[columns[field]]||null,after:value};
+      const identity=businessIdentity(live.source_details?.identity,{legalName:snapshot.fields['Dénomination']||'',tradeNames:snapshot.fields['Noms commerciaux de l’établissement']?.split(' · ')||[],siren:snapshot.siren,source:'entreprises',sourceUrl:snapshot.sourceUrl,capturedAt:new Date().toISOString()});
+      const previousIdentity=live.source_details?.identity;
+      const namesChanged=!isDeepStrictEqual({...previousIdentity,capturedAt:null},{...identity,capturedAt:null});
+      if(namesChanged)synced['Identité · raison sociale et noms commerciaux']={before:previousIdentity||null,after:identity} as any;
       if(Object.keys(synced).length || Object.keys(sourceChanges).length){
         const details=live.source_details && typeof live.source_details==='object'?live.source_details:{};
         const cross=details.crossSource && typeof details.crossSource==='object'?details.crossSource:{};
         const fieldSources={...cross.fieldSources};
         const appliedAt=new Date().toISOString();
-        for(const field of Object.keys(synced))fieldSources[field]={source:'entreprises',sourceUrl:snapshot.sourceUrl,capturedAt:appliedAt,automatic:true};
+        for(const field of Object.keys(synced).filter(f=>columns[f]))fieldSources[field]={source:'entreprises',sourceUrl:snapshot.sourceUrl,capturedAt:appliedAt,automatic:true};
         const previousConflicts=Array.isArray(cross.conflicts)?cross.conflicts:[];
         const superseded=previousConflicts.filter((c:RecordData)=>c.field in synced);
-        const nextDetails={...details,officialSync:{appliedAt,sourceUrl:snapshot.sourceUrl,sourceUpdatedAt:snapshot.sourceUpdatedAt,
+        const nextDetails={...details,identity,officialSync:{appliedAt,sourceUrl:snapshot.sourceUrl,sourceUpdatedAt:snapshot.sourceUpdatedAt,
           fields:[...Object.keys(synced).map(f=>prospectFieldLabels[f]||f),...Object.keys(sourceChanges)]},crossSource:{...cross,fieldSources,
           conflicts:previousConflicts.filter((c:RecordData)=>!(c.field in synced)),
           resolutions:[...(Array.isArray(cross.resolutions)?cross.resolutions:[]),...superseded.map((c:RecordData)=>({...c,decision:'official_update',resolvedAt:appliedAt}))].slice(-80)}};
         const values:unknown[]=[id,tenantId,JSON.stringify(nextDetails)];
         const assignments=['source_details=$3','updated_at=NOW()'];
-        for(const [field,change] of Object.entries(synced)){values.push(change.after);assignments.push(columns[field]+'=$'+values.length);}
+        for(const [field,change] of Object.entries(synced).filter(([f])=>columns[f])){values.push(change.after);assignments.push(columns[field]+'=$'+values.length);}
         if(['address','postalCode','city'].some(field=>field in synced))assignments.push('lat=NULL','lng=NULL');
         await connection.query('UPDATE prospects SET '+assignments.join(',')+' WHERE id=$1 AND tenant_id=$2',values);
       }

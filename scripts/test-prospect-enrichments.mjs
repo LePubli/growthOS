@@ -54,7 +54,7 @@ try{
     }
     assert.equal((html.match(/class="atlas-enrichments-source is-/g)||[]).length,9);
     assert.equal((html.match(/class="atlas-enrichments-capture"/g)||[]).length,3);
-    assert.ok(html.includes('navigateur?source=pagesjaunes')&&html.includes('jobId=job-test'));
+    assert.ok(html.includes('aria-label="Comparer PagesJaunes"')&&html.includes('Comparer les informations'),'La vérification s’ouvre directement dans la fiche.');
     assert.ok(html.includes('5 source(s) à vérifier')&&html.includes('À vérifier (5)'));
     const empty=render({...properties,run:null,observations:[]});
     assert.ok(empty.includes('Aucune collecte multisource enregistrée')&&empty.includes('Aucune capture enregistrée'));

@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/playwright:v1.64.1-noble
 WORKDIR /opt/growthos
 RUN npm install --no-audit --no-fund --omit=dev --ignore-scripts --save-exact playwright-core@1.64.1
 COPY workers/cloud-browser/ ./workers/cloud-browser/
-COPY extensions/growthos-pagesjaunes/capture.js extensions/growthos-pagesjaunes/societe.js extensions/growthos-pagesjaunes/background.js ./extensions/growthos-pagesjaunes/
+COPY extensions/growthos-pagesjaunes/capture.js extensions/growthos-pagesjaunes/societe.js extensions/growthos-pagesjaunes/background.js extensions/growthos-pagesjaunes/popup.html extensions/growthos-pagesjaunes/popup.css extensions/growthos-pagesjaunes/popup.js extensions/growthos-pagesjaunes/modules.json ./extensions/growthos-pagesjaunes/
 RUN mkdir -p /data/profiles && chown -R pwuser:pwuser /data && chmod 700 /data/profiles
 ENV NODE_ENV=production PORT=3200 BROWSER_PROFILE_DIR=/data/profiles
 USER pwuser
