@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { Link, useSearch } from 'wouter';
 import {
   AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown,
   Clock3, ExternalLink, EyeOff, Globe2, History, Layers, LogOut,
-  MapPin, Maximize2, Minimize2, Play, Plus, Search, ShieldCheck,
+  MapPin, Maximize2, Minimize2, Phone, Play, Plus, Search, ShieldCheck,
 } from 'lucide-react';
 import api from '@/lib/api-client';
 import CloudImportFeedback,{CaptureImportBadge,pendingCloudCaptures,isCloudCaptureHandled,type CaptureImportState} from '@/components/cloud-browser/CloudImportFeedback';
@@ -52,7 +52,10 @@ export default function CloudBrowserPage() {
   const [notice, setNotice] = useState('');
   const [activeJobId, setActiveJobId] = useState('');
   const [expandedBrowser, setExpandedBrowser] = useState(false);
+  const [resultsShare, setResultsShare] = useState(28);
   const [chosen, setChosen] = useState<Record<string, boolean>>({});
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const resizing = useRef(false);
   const control = useRef('');
   const inputQueue = useRef(Promise.resolve());
   const viewProfile = useRef('');
@@ -224,6 +227,23 @@ export default function CloudBrowserPage() {
     if (job.mode === 'discover') document.getElementById('cloud-browser-results')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  function resizeWorkspace(clientX: number) {
+    const bounds = workspaceRef.current?.getBoundingClientRect();
+    if (!bounds || bounds.width < 700) return;
+    const minimum = Math.max(24, 320 / bounds.width * 100);
+    const maximum = Math.min(43, (bounds.width - 470) / bounds.width * 100);
+    if (minimum > maximum) return;
+    const percentage = (bounds.right - clientX) / bounds.width * 100;
+    setResultsShare(Math.round(Math.max(minimum, Math.min(maximum, percentage)) * 10) / 10);
+  }
+
+  function onDividerPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (expandedBrowser || event.button !== 0) return;
+    resizing.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizeWorkspace(event.clientX);
+  }
+
   function jobCard(job: Job, historySelection: ReactNode, removeAction: ReactNode) {
     const jobProfile = profiles.find(p => p.id === job.profile_id);
     const jobCaptures = job.result?.captures?.length || 0;
@@ -349,13 +369,20 @@ export default function CloudBrowserPage() {
       {(profile?.source || source) === 'societe_com' && !prospectId && <p className="cloud-browser-command-footnote">Pour Societe.com, ouvrez « Enrichir » depuis la fiche d'un prospect identifié.</p>}
     </section>
 
-    <div className={'cloud-browser-workspace' + (expandedBrowser ? ' is-expanded' : '')}>
+    <div ref={workspaceRef} className={'cloud-browser-workspace' + (expandedBrowser ? ' is-expanded' : '')}
+      style={{ '--cb-results-share': `${resultsShare}%` } as CSSProperties}>
       <section className="cloud-browser-view-panel" aria-label="Vue du navigateur cloud">
         <div className="cloud-browser-panel-toolbar">
           <div className="cloud-browser-browser-name">
             <SourceLogo source={profile?.source || source} size="md"/>
-            <div><strong>Navigateur · {sourceName(profile?.source || source)}</strong>
-              <small>{view?.busy ? 'Lecture automatique en cours' : viewing && view ? 'Session ouverte' : 'Vue en attente'}</small></div>
+            <div><strong>{sourceName(profile?.source || source)}</strong>
+              <small className={'cloud-browser-session-pill' + (viewing && view ? ' is-live' : '')}>
+                {view?.busy ? 'Navigation automatique' : viewing && view ? 'Session active' : 'Vue en attente'}</small></div>
+          </div>
+          <div className="cloud-browser-url" title={view?.url || 'Ouvrez une recherche pour afficher la source'}>
+            <ShieldCheck size={14}/>
+            <span>{view?.url || 'Ouvrez une recherche pour afficher la source'}</span>
+            {view?.busy && <span className="cloud-browser-live-dot" title="Lecture en cours"/>}
           </div>
           <div className="cloud-browser-browser-actions">
             <button type="button" disabled={!selected || !!busy || !status?.ready} onClick={() => void open(false, true)}
@@ -374,10 +401,6 @@ export default function CloudBrowserPage() {
                 });
               }}><LogOut size={16}/></button>
           </div>
-        </div>
-        <div className="cloud-browser-url"><ShieldCheck size={14}/>
-          <span>{view?.url || 'Ouvrez une recherche pour afficher la page de la source'}</span>
-          {view?.busy && <span className="cloud-browser-live-dot" title="Lecture en cours"/>}
         </div>
         {view ? <div tabIndex={0} aria-label="Navigateur distant interactif"
           className="cloud-browser-remote" onKeyDown={e => {
@@ -411,6 +434,24 @@ export default function CloudBrowserPage() {
         </div>
       </section>
 
+      {!expandedBrowser && <div role="separator" aria-label="Redimensionner les panneaux navigateur et résultats"
+        aria-orientation="vertical" aria-valuemin={24} aria-valuemax={43} aria-valuenow={Math.round(resultsShare)}
+        tabIndex={0} className="cloud-browser-divider" title="Glisser pour ajuster la largeur des panneaux"
+        onPointerDown={onDividerPointerDown}
+        onPointerMove={event => { if (resizing.current) resizeWorkspace(event.clientX); }}
+        onPointerUp={event => {
+          resizing.current = false;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onPointerCancel={() => { resizing.current = false; }}
+        onLostPointerCapture={() => { resizing.current = false; }}
+        onKeyDown={event => {
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            setResultsShare(current => Math.max(24, Math.min(43, current + (event.key === 'ArrowLeft' ? 2 : -2))));
+          }
+        }}><span aria-hidden="true"/></div>}
+
       <section id="cloud-browser-results" className="cloud-browser-results" aria-label="Résultats de collecte">
         <header className="cloud-browser-results-header">
           <span><Layers size={20}/></span>
@@ -421,15 +462,19 @@ export default function CloudBrowserPage() {
           <span>{allCaptures.length} entreprise(s) trouvée(s) · {captures.length} restante(s){draftsCount ? ' · ' + draftsCount + ' à vérifier' : ''}</span>
         </div>
         <CloudImportFeedback captures={allCaptures} imports={imports}/>
-        {!!captures.length && <CaptureBatchControls captures={captures} chosen={chosen} busy={!!busy}
-          onChooseBatch={(items, value) => setChosen(current => selectCaptureBatch(current, items, value))}/>}
+        {!!captures.length && <div className="cloud-browser-batch-wrap"><CaptureBatchControls captures={captures} chosen={chosen} busy={!!busy}
+          onChooseBatch={(items, value) => setChosen(current => selectCaptureBatch(current, items, value))}/></div>}
         <div className="cloud-browser-results-list">
           {activeJob && captures.length ? captures.map(capture => <label key={capture.id} className={'cloud-browser-result-row' + (chosen[capture.id] ? ' is-checked' : '')}>
             <input type="checkbox" disabled={!!busy} checked={!!chosen[capture.id]} onChange={e => setChosen(current => selectCaptureBatch(current, [capture], e.target.checked))}/>
             <span className="cloud-browser-result-info">
-              <strong>{capture.company || 'Entreprise sans nom'}</strong>
+              <span className="cloud-browser-result-title"><strong>{capture.company || 'Entreprise sans nom'}</strong>
+                <span className={'cloud-browser-result-status' + (capture.address && capture.phone ? ' is-complete' : ' is-partial')}>
+                  {capture.address && capture.phone ? 'Coordonnées' : 'Données partielles'}
+                </span>
+              </span>
               {[capture.address, capture.city].filter(Boolean).length > 0 && <small><MapPin size={12}/>{[capture.address, capture.city].filter(Boolean).join(' · ')}</small>}
-              {capture.phone && <small>{capture.phone}</small>}
+              {capture.phone && <small><Phone size={12}/>{capture.phone}</small>}
               <CaptureImportBadge state={imports[capture.id]}/>
               {imports[capture.id]?.prospectId&&<Link to={'/prospects/'+imports[capture.id].prospectId}>Vérifier la fiche CRM</Link>}
             </span>
@@ -445,13 +490,22 @@ export default function CloudBrowserPage() {
           <span><strong>{chosenCount}</strong> sélectionnée(s)</span>
           <button type="button" className="cloud-browser-primary" disabled={!activeJob || !chosenCount || !!busy}
             onClick={() => activeJob && void importSelected(activeJob)}>
-            <Check size={16}/>{busy === 'Importer' ? 'Import en cours…' : 'Importer dans Prospects'}
+            <Check size={16}/>{busy === 'Importer' ? 'Import en cours…' : `Importer dans Prospects (${chosenCount})`}
           </button>
         </footer>
       </section>
     </div>
 
-    <CloudJobHistory jobs={jobs} busy={!!busy} onRemove={ids => void removeHistory(ids)} renderJob={jobCard}/>
+    <details className="cloud-browser-history-drawer">
+      <summary><span className="cloud-browser-history-drawer-label"><History size={18}/> Tâches récentes <ChevronDown size={15}/></span>
+        <span className="cloud-browser-history-preview">{jobs.slice(0, 2).map(job => <span key={job.id} className="cloud-browser-history-preview-item">
+          <span className={'cloud-browser-history-preview-dot cloud-browser-job-status--' + job.status}/>
+          <strong>{job.query || 'Recherche'}</strong><small>{labels[job.status] || job.status}</small>
+        </span>)}</span>
+        <span className="cloud-browser-history-manage">Gérer l’historique</span>
+      </summary>
+      <CloudJobHistory jobs={jobs} busy={!!busy} onRemove={ids => void removeHistory(ids)} renderJob={jobCard}/>
+    </details>
     <Link className="cloud-browser-external-help" to={'/outils' + (prospectId ? '?mode=enrich&prospectId=' + prospectId : '')}>
       Catalogue et secours externe Chrome <ExternalLink size={14}/>
     </Link>
