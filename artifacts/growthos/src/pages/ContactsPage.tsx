@@ -190,7 +190,7 @@ export default function ContactsPage() {
 
   const filtered = contacts.filter(c => {
     const q = search.toLowerCase();
-    const matchSearch = !q || `${c.firstName} ${c.lastName} ${c.company} ${c.title} ${c.email}`.toLowerCase().includes(q);
+    const matchSearch = !q || `${c.firstName} ${c.lastName} ${c.company} ${c.title} ${c.emails.join(" ")} ${c.phones.join(" ")}`.toLowerCase().includes(q);
     const matchTag = selectedTag === 'Tous' || c.tags.includes(selectedTag);
     const matchStar = !showStarredOnly || c.starred;
     return matchSearch && matchTag && matchStar;

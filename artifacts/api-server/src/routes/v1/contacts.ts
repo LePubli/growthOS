@@ -12,10 +12,22 @@ router.get('/',async(req,res)=>{
   const parents=await db.select().from(prospectsTable).where(eq(prospectsTable.tenantId,req.auth!.tenantId)).orderBy(desc(prospectsTable.updatedAt));
   const watched=await pool.query('SELECT prospect_id,snapshot FROM prospect_monitoring WHERE tenant_id=$1',[req.auth!.tenantId]);
   const official=new Map(watched.rows.map(row=>[row.prospect_id,row.snapshot]));
-  const data=parents.flatMap(p=>collectProspectPeople(p,official.get(p.id)?.siren===(p.siren||p.siret?.slice(0,9))?official.get(p.id)?.managers||[]:[]).map(person=>({
-    ...person,...(person.source==='crm'?{phone:p.phone,email:p.email,phones:p.phone?[p.phone]:[],emails:p.email?[p.email]:[]}:{}),id:p.id+':'+person.id,prospectId:p.id,company:p.company,city:p.city,
-    isStarred:p.isStarred,score:p.score,
-  })));
+  const data=parents.flatMap(p=>{
+    const common={prospectId:p.id,company:p.company,city:p.city,isStarred:p.isStarred,score:p.score};
+    const people=collectProspectPeople(p,official.get(p.id)?.siren===(p.siren||p.siret?.slice(0,9))?official.get(p.id)?.managers||[]:[]).map(person=>({
+      ...person,...(person.source==='crm'?{phone:p.phone,email:p.email,phones:p.phone?[p.phone]:[],emails:p.email?[p.email]:[]}:{}),
+      ...common,id:p.id+':'+person.id,kind:'person',
+    }));
+    // Keep the general business contact accessible, including email-only CRM
+    // entries. It is a separate channel, never a director's direct number.
+    if(!p.firstName&&!p.lastName){
+      const points=collectProspectContactPoints(p).filter(v=>!v.personName&&v.state!=='review'&&!v.establishmentSiret);
+      const emails=[...new Set(points.filter(v=>v.type==='email').map(v=>v.value))];
+      const phones=[...new Map(points.filter(v=>v.type==='phone').map(v=>[v.value.replace(/\D/g,'').replace(/^33/,'0'),v.value])).values()];
+      if(emails.length||phones.length)people.push({...common,id:p.id+':company',kind:'company',name:p.company||p.email||'Contact général',role:'Coordonnées générales de l’entreprise',phone:p.phone||phones[0]||null,email:p.email||emails[0]||null,phones,emails,profileUrl:null,source:'crm',isManager:false});
+    }
+    return people;
+  });
   res.json({data,total:data.length});
 });
 router.post('/:id/coordinates/primary',async(req,res)=>{

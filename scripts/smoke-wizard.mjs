@@ -1808,6 +1808,8 @@ try {
     const sourceContacts=await request('GET','/contacts',undefined,token);
     check(sourceContacts.status===200&&sourceContacts.body.data.some(c=>c.name==='Denis LIQUARD'&&c.emails.includes('denis@atelier-recette.example.org')),'Répertoire Contacts : dirigeants des sources répercutés sans nouveau prospect');
     check(sourceContacts.body.data.some(c=>c.prospectId===multiTarget.body.id&&c.name==='Chloé Editeur'),'Répertoire Contacts : dirigeant officiel mis à jour après rapprochement du site');
+    check(sourceContacts.body.data.some(c=>c.prospectId===multiTarget.body.id&&c.kind==='company'&&c.emails.includes('devis@atelier-multiple.fr')&&c.emails.includes('contact.atelier@gmail.com')),'Répertoire Contacts : coordonnées générales multiples accessibles séparément des dirigeants');
+    check(sourceContacts.body.data.filter(c=>c.prospectId===multiTarget.body.id&&c.kind==='person').every(c=>!c.phone&&!c.email),'Répertoire Contacts : ne pas attribuer les coordonnées générales au dirigeant officiel');
     const waiting=await request('POST','/browser/jobs',{profileId:profile.id,prospectId:target.body.id,query:'cloud-wait'},token);
     await runCloudMaintenance(waiting.body.id);
     check((await request('GET','/browser/jobs/'+waiting.body.id,undefined,token)).body.status==='awaiting_user','Cloud : source demandant une intervention suspend le lot');
