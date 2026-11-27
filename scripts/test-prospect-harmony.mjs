@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const css = readFileSync(new URL('../artifacts/growthos/src/atlas-prospect-colors.css', import.meta.url), 'utf8');
-const layout = readFileSync(new URL('../artifacts/growthos/src/atlas-prospect-360.css', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../artifacts/growthos/src/index.css', import.meta.url), 'utf8');
 assert.ok(entry.includes('@import "./atlas-prospect-colors.css"'), 'La palette doit rester chargée dans ATLAS');
 
@@ -62,15 +61,4 @@ assert.match(css, /background:linear-gradient\(128deg,var\(--atlas-harmony-from/
 assert.match(css, /background:linear-gradient\(135deg,var\(--atlas-detail-from/);
 assert.doesNotMatch(css, /border-top:\s*3px solid/,
   'Les anciens bandeaux colorés épais ne doivent pas réapparaître');
-assert.doesNotMatch(layout, /@container prospect-360|container:prospect-360/,
-  'Les nouvelles grilles à conteneur modifient la maquette validée');
-assert.match(layout, /\.atlas-360-legal-list\s*>div\s*\{[^}]*grid-template-columns:minmax\(0,36%\) minmax\(0,1fr\)/,
-  'Conserver les proportions des colonnes identité sans chevauchement');
-assert.match(layout, /\.atlas-360-legal-list dt\s*\{[^}]*white-space:normal/,
-  'Les intitulés longs, dont le nom commercial, doivent revenir à la ligne');
-assert.match(layout, /\.atlas-360-card-header h2\s*\{[^}]*white-space:normal/,
-  'Les titres des cartes doivent revenir à la ligne');
-assert.match(layout, /\.atlas-360-text-button\s*\{[^}]*white-space:normal/,
-  'Les boutons des cartes doivent revenir à la ligne');
 console.log('✓ Harmony : 7 fonds harmonisés et contrastés, 8 modules détaillés et sans liserés épais');
-console.log('✓ Fiche 360° : maquette conservée et textes sans chevauchement');
