@@ -28,7 +28,7 @@ try{
     const discovery=render();
     assert.equal((discovery.match(/<article/g)||[]).length,modules.filter(m=>m.modes.includes('discover')).length);
     for(const source of modules.filter(m=>m.modes.includes('discover'))) assert.ok(discovery.includes(source.name));
-    assert.ok(discovery.includes('/sourcing?source=entreprises') && discovery.includes('/navigateur?source=pagesjaunes'));
+    assert.ok(discovery.includes('/navigateur?source=entreprises') && discovery.includes('/navigateur?source=pagesjaunes'));
     assert.ok(discovery.includes('Collecteur cloud') && discovery.includes('Connecteurs en préparation'));
     assert.ok(discovery.includes('/navigateur?source=google_maps') && discovery.includes('Secours externe'));
     assert.ok(discovery.indexOf('Ouvrir la source')<discovery.indexOf('Secours externe'));
@@ -39,7 +39,7 @@ try{
     }
     assert.ok(discovery.indexOf('collection-hub-cards')<discovery.indexOf('collection-hub-assistant'));
     const browserHtml=renderToStaticMarkup(createElement(Router,{ssrPath:'/navigateur',ssrSearch:'source=societe_com'},createElement(CloudBrowserPage)));
-    assert.ok(browserHtml.includes('Navigateur cloud') && browserHtml.includes('Sans compte') && browserHtml.includes('Mon compte'));
+    assert.ok(browserHtml.includes('Recherche et collecte') && browserHtml.includes('Sans compte') && browserHtml.includes('Mon compte'));
     assert.ok(browserHtml.includes('Mes profils de navigation') && browserHtml.includes('Tâches récentes'));
     assert.ok(browserHtml.includes('Tous les résultats accessibles')&&!browserHtml.includes('Nombre maximum de fiches'),'Pas de plafond total affiché');
     assert.ok(!browserHtml.includes('Compte connecté'),'Ne pas présenter une session non vérifiée comme connectée');
@@ -59,6 +59,10 @@ try{
       'La vue immersive replie les tâches tout en conservant leur accès');
     assert.ok(browserHtml.includes('cloud-browser-results-footer')&&browserHtml.includes('Importer dans Prospects (0)'),
       'Le bouton d’import doit rester fixé dans la colonne des résultats');
+    const officialHtml=renderToStaticMarkup(createElement(Router,{ssrPath:'/navigateur',ssrSearch:'source=entreprises'},createElement(CloudBrowserPage)));
+    assert.ok(officialHtml.includes('Régions')&&officialHtml.includes('Départements')&&officialHtml.includes('Codes postaux'));
+    assert.ok(officialHtml.includes('Aucune extension')&&!officialHtml.includes('Afficher / reprendre le contrôle'),'Annuaire natif dans le même espace, sans ancien assistant');
+    assert.ok(officialHtml.includes('Historique des recherches précédentes'));
     const enrich=render('mode=enrich');
     assert.equal((enrich.match(/<article/g)||[]).length,modules.filter(m=>m.modes.includes('enrich')).length);
     assert.ok(enrich.includes('collection-hub-prospect')&&enrich.includes('Voir la fiche 360°')===false);

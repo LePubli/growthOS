@@ -364,7 +364,7 @@ async function runMultiSearch(jobId: string, tenantId: string, params: MultiPara
 
 // Import des résultats collectés dans le Chrome local, après validation côté serveur.
 // L'extension n'obtient jamais le JWT : c'est la page GrowthOS authentifiée qui poste les données.
-const deviceSources = ['pagesjaunes','google_maps','google_search','bing','linkedin','societe_com','facebook','instagram','tiktok'] as const;
+const deviceSources = ['entreprises','pagesjaunes','google_maps','google_search','bing','linkedin','societe_com','facebook','instagram','tiktok'] as const;
 type DeviceSource = typeof deviceSources[number];
 function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
   try {
@@ -372,6 +372,7 @@ function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
     if (url.protocol !== 'https:') return false;
     const host = url.hostname.toLowerCase();
     switch (source) {
+      case 'entreprises': return host==='annuaire-entreprises.data.gouv.fr'&&/^\/entreprise\/\d{9}$/.test(url.pathname);
       case 'pagesjaunes': return ['pagesjaunes.fr','www.pagesjaunes.fr'].includes(host);
       case 'google_maps': return ['www.google.com','maps.google.com','google.com','www.google.fr','google.fr'].includes(host)
         && url.pathname.startsWith('/maps');
@@ -448,6 +449,7 @@ const deviceCandidateFieldsSchema = z.object({
   website: z.string().url().max(500).refine(url=>['https:','http:'].includes(new URL(url).protocol)).nullable().optional(),
   sourceUrl: z.string().url().max(500).nullable().optional(),
   siret: z.string().regex(/^\d{14}$/).nullable().optional(),
+  siren: z.string().regex(/^\d{9}$/).nullable().optional(),
   apeCode: z.string().regex(/^\d{2}\.\d{2}[A-Z]$/).nullable().optional(),
   nafLabel: z.string().trim().max(250).nullable().optional(),
   apeScope: z.enum(['etablissement','unite_legale']).optional(),
@@ -459,6 +461,8 @@ const deviceCandidateFieldsSchema = z.object({
 }).strict();
 function validatePagesJaunesProfile(item:{source:string;company:string;sourceUrl?:string|null;siret?:string|null;pagesjaunesProfile?:z.infer<typeof profileSchema>},ctx:z.RefinementCtx){
   const profile=item.pagesjaunesProfile;
+  if(item.siret&&'siren' in item&&item.siren&&!item.siret.startsWith(String(item.siren)))ctx.addIssue({code:'custom',path:['siren'],message:'SIREN et SIRET incohérents.'});
+  if(item.source==='entreprises'&&item.siret&&item.sourceUrl&&!item.sourceUrl.endsWith('/'+item.siret.slice(0,9)))ctx.addIssue({code:'custom',path:['sourceUrl'],message:'URL officielle incohérente.'});
   if(!profile)return;
   if(item.source!=='pagesjaunes'||profile.sourceUrl!==item.sourceUrl||normalizedIdentity(profile.name)!==normalizedIdentity(item.company)||
     (profile.siren&&profile.siret&&!profile.siret.startsWith(profile.siren))||
@@ -628,7 +632,7 @@ function ambiguousLinkedinProfiles(records: (typeof prospectsTable.$inferSelect)
     return !(city && existingCity && city!==existingCity);
   });
 }
-async function mergeProspectCapture(
+export async function mergeProspectCapture(
   existing:typeof prospectsTable.$inferSelect,item:ImportCapture,incomplete:boolean,
   tenantId:string, executor:Pick<typeof db,'update'|'insert'>=db,actorId?:string,autoFields:EnrichmentField[]=[],
 ):Promise<{updated:boolean;filled:string[];conflicts:number;newConflicts:EnrichmentConflict[]}>{
@@ -702,6 +706,14 @@ async function mergeProspectCapture(
       combinedDetails.pagesjaunes={...incoming,history:pagesJaunesChanged&&oldAt?[...history,{...oldData,capturedAt:oldAt}].slice(-10):history};
     }
   }
+  let officialDetailsChanged=false;
+  const officialSource=['entreprises','insee'].includes(item.source)?item.source:null;
+  if(officialSource&&incomingDetails[officialSource]){
+    const incoming=jsonRecord(incomingDetails[officialSource]),prior=jsonRecord(oldDetails[officialSource]);
+    officialDetailsChanged=!isDeepStrictEqual(prior.snapshot,incoming.snapshot);
+    const history=Array.isArray(prior.history)?prior.history:[];
+    combinedDetails[officialSource]={...incoming,history:officialDetailsChanged&&prior.snapshot?[...history,{snapshot:prior.snapshot,capturedAt:prior.capturedAt}].slice(-10):history};
+  }
   const updatedDetails={...combinedDetails,crossSource:{...oldMerge,
     fieldSources,
     observations:(alreadyObserved?oldObservations:[...oldObservations,observation]).slice(-60),
@@ -717,10 +729,11 @@ async function mergeProspectCapture(
   const oldSociete=jsonRecord(oldDetails.societe_com).companyDetails;
   const nextSociete=jsonRecord(combinedDetails.societe_com).companyDetails;
   const detailsChanged=!!nextSociete && !isDeepStrictEqual(oldSociete,nextSociete);
-  if(filled.length || newConflicts.length || detailsChanged || pagesJaunesChanged){
+  if(filled.length || newConflicts.length || detailsChanged || pagesJaunesChanged || officialDetailsChanged){
     const changes:FieldChanges=Object.fromEntries(filled.map(field=>[field,{before:existing[field as EnrichmentField],after:updates[field as EnrichmentField]}]));
     if(detailsChanged)changes['Informations détaillées Societe.com']={before:oldSociete||null,after:nextSociete};
     if(pagesJaunesChanged)changes['Informations détaillées PagesJaunes']={before:oldDetails.pagesjaunes||null,after:combinedDetails.pagesjaunes};
+    if(officialDetailsChanged&&officialSource)changes['Données officielles · '+officialSource]={before:oldDetails[officialSource]||null,after:combinedDetails[officialSource]};
     const proposals=newConflicts.length?'\nPropositions non appliquées : '+newConflicts.map(c=>`${prospectFieldLabels[c.field]||c.field} : ${c.existing} → ${c.incoming}`).join(' ; '):'';
     await executor.insert(activitiesTable).values({type:'data_update',title:'Enrichissement · '+item.source,
       description:changeDescription(item.source,item.sourceUrl||null,changes,autoFields.length?'Enrichissement automatique : identité exacte et données confirmées de la source.':'Champs vides complétés ; les valeurs divergentes restent à valider.',now)+proposals,
@@ -1453,7 +1466,7 @@ router.get("/jobs/:id/results", requireAuth, async (req, res) => {
   const params = savedParams(job);
 
   if (Array.isArray(params.results)) {
-    const candidates = params.results.slice(0, 50);
+    const candidates = params.results;
     const sirens = candidates.map(r => r.siren).filter(s => /^\d{9}$/.test(s));
     const existing = sirens.length ? await db.select({
       id: prospectsTable.id, siren: prospectsTable.siren,

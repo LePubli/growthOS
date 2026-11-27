@@ -1,3 +1,4 @@
+import {startProspectEnrichments} from './services/prospect-enrichment';
 import { startProspectWatch } from './services/prospect-monitoring';
 import {startCloudJobs} from './services/cloud-browser';
 import app from "./app";
@@ -79,6 +80,7 @@ runMigrations()
       startSignalCron();
       startProspectWatch();
       startCloudJobs();
+      startProspectEnrichments();
 
       // ── Démarrer l'AgentWorker (Autopilot IA)
       startAgentWorker();

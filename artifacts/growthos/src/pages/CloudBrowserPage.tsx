@@ -1,3 +1,6 @@
+import LegacySourcingArchive from '@/components/cloud-browser/LegacySourcingArchive';
+import GeoMultiSelect from '@/components/sourcing/GeoMultiSelect';
+import {FRENCH_REGIONS,FRENCH_DEPARTMENTS} from '@/lib/france-geo';
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { Link, useSearch } from 'wouter';
 import {
@@ -32,13 +35,16 @@ const sourceName = (source: string) => modules.find(module => module.source === 
 const activeStatuses = ['queued', 'running', 'awaiting_user', 'needs_review', 'failed'];
 const canResume = ['awaiting_user', 'needs_review', 'failed', 'cancelled'];
 
-export default function CloudBrowserPage() {
+export default function CloudBrowserPage(){return <CloudBrowserWorkspace key={useSearch()}/>;}
+function CloudBrowserWorkspace() {
   const params = new URLSearchParams(useSearch()), prospectId = params.get('prospectId');
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(params.get('profileId')||'');
   const [status, setStatus] = useState<{ ready: boolean; configured: boolean; automatic: string[] } | null>(null);
   const [source, setSource] = useState(params.get('source') || (prospectId ? 'societe_com' : 'google_maps'));
+  const native=source==='entreprises';
+  const [regions,setRegions]=useState<string[]>([]),[departements,setDepartements]=useState<string[]>([]),[postalInput,setPostalInput]=useState('');
   const [profileLabel, setProfileLabel] = useState('');
   const [mode, setMode] = useState<'public' | 'account'>('public');
   const [prospect, setProspect] = useState<any>(null);
@@ -129,9 +135,9 @@ export default function CloudBrowserPage() {
   }
 
   const profile = profiles.find(p => p.id === selected);
-  const automatic = status?.automatic.includes(profile?.source || source);
+  const automatic = native||status?.automatic.includes(profile?.source || source);
   const sourceProfiles = profiles.filter(p => p.source === source);
-  const discoveryJobs = jobs.filter(job => job.mode === 'discover');
+  const discoveryJobs = jobs.filter(job => job.mode === 'discover'&&!prospectId);
   const activeJob = discoveryJobs.find(job => job.id === activeJobId)
     || discoveryJobs.find(job => job.result?.captures?.length)
     || discoveryJobs[0];
@@ -189,7 +195,7 @@ export default function CloudBrowserPage() {
         setProfiles(value => [...value, target!]); setSelected(target.id);
       }
       const job = await api.post<Job>('/browser/jobs', {
-        profileId: target.id, query, area, ...(prospectId ? { prospectId } : {}),
+        profileId: target.id, query, area, ...(native?{filters:{regions,departements,codesPostaux:postalInput.split(/[\s,;]+/).filter(Boolean)}}:{}), ...(prospectId ? { prospectId } : {}),
       });
       setJobs(value => [job, ...value]);
       if (job.mode === 'discover') setActiveJobId(job.id);
@@ -292,16 +298,16 @@ export default function CloudBrowserPage() {
     <div className="cloud-browser-heading">
       <div>
         <Link to={prospectId ? '/prospects/' + prospectId : '/outils'} className="cloud-browser-back"><ArrowLeft size={14}/> {prospectId ? 'Retour au prospect' : 'Catalogue des outils'}</Link>
-        <h1><span className="cloud-browser-heading-icon"><Globe2 size={25}/></span> Navigateur cloud</h1>
+        <h1><span className="cloud-browser-heading-icon"><Globe2 size={25}/></span> Recherche et collecte</h1>
         <p>Rechercher, explorer et importer vos entreprises depuis GrowthOS.</p>
       </div>
-      <span className={'cloud-browser-health ' + (status?.ready ? 'is-ready' : status ? 'is-offline' : 'is-loading')}>
-        {status?.ready ? <CheckCircle2 size={16}/> : <AlertCircle size={16}/>}
-        {status?.ready ? 'Navigateur opérationnel' : status ? 'Navigateur indisponible' : 'Vérification du service…'}
+      <span className={'cloud-browser-health ' + ((native||status?.ready) ? 'is-ready' : status ? 'is-offline' : 'is-loading')}>
+        {(native||status?.ready) ? <CheckCircle2 size={16}/> : <AlertCircle size={16}/>}
+        {native?'Annuaire disponible':status?.ready ? 'Navigateur opérationnel' : status ? 'Navigateur indisponible' : 'Vérification du service…'}
       </span>
     </div>
 
-    {status && !status.ready && <div role="status" className="cloud-browser-alert is-warning">
+    {!native&&status && !status.ready && <div role="status" className="cloud-browser-alert is-warning">
       {status.configured ? 'Le navigateur cloud est actuellement indisponible.' : 'Ajoutez le service navigateur cloud à la stack GrowthOS pour activer ce parcours.'}
       <Link to={'/outils' + (prospectId ? '?mode=enrich&prospectId=' + prospectId : '')}>Outils et secours Chrome <ArrowRight size={14}/></Link>
     </div>}
@@ -321,7 +327,7 @@ export default function CloudBrowserPage() {
               setSource(e.target.value); setSelected('');
               if (prospect) setQuery(e.target.value === 'societe_com'
                 ? (prospect.siret || prospect.siren || prospect.company || '') : (prospect.company || ''));
-            }}>{modules.filter(m => m.source !== 'entreprises').map(m => <option key={m.source} value={m.source}>{m.name}</option>)}</select>
+            }}>{modules.map(m => <option key={m.source} value={m.source}>{m.name}</option>)}</select>
           </div>
         </label>
         <label className="cloud-browser-field"><span>Profil de navigation</span>
@@ -342,16 +348,16 @@ export default function CloudBrowserPage() {
         </label>
         <div className="cloud-browser-field cloud-browser-limit"><span>Résultats</span><strong>Tous les résultats accessibles</strong></div>
         <button type="button" className="cloud-browser-primary cloud-browser-launch"
-          disabled={!!busy || !status?.ready || (automatic&&query.trim().length < 2)
+          disabled={!!busy || (!native&&!status?.ready) || (automatic&&query.trim().length < 2)
             || ((profile?.source || source) === 'societe_com' && !prospectId)}
           onClick={() => void (automatic?launch():open())}><Play size={16}/>
           {busy === 'Collecter' ? 'Mise en file…' : !automatic?'Ouvrir cette source':prospectId ? 'Enrichir ce prospect' : 'Lancer la collecte'}
         </button>
       </div>
       <div className="cloud-browser-command-secondary">
-        <button type="button" className="cloud-browser-secondary" disabled={!!busy || !status?.ready}
-          onClick={() => void open()}><ExternalLink size={15}/> Ouvrir dans GrowthOS</button>
-        {profile?.mode === 'account' && <button type="button" className="cloud-browser-secondary" disabled={!!busy || !status?.ready}
+        {!native&&<button type="button" className="cloud-browser-secondary" disabled={!!busy || (!native&&!status?.ready)}
+          onClick={() => void open()}><ExternalLink size={15}/> Ouvrir dans GrowthOS</button>}
+        {!native&&profile?.mode === 'account' && <button type="button" className="cloud-browser-secondary" disabled={!!busy || (!native&&!status?.ready)}
           onClick={() => void open(true)}><LogOut size={15}/> Ouvrir la connexion à la source</button>}
         <details className="cloud-browser-profile-manager">
           <summary><Plus size={15}/> Nouveau profil <ChevronDown size={14}/></summary>
@@ -368,7 +374,7 @@ export default function CloudBrowserPage() {
           </div>
         </details>
         <span className="cloud-browser-command-helper">
-          {profile ? (profile.mode === 'account' ? 'Profil avec compte · connectez-vous directement sur la source.' : 'Profil public · sans connexion requise.') : 'Le profil public sera créé automatiquement à l’ouverture de la source.'}
+          {native?'Accès public direct · aucun compte ni extension requis.':profile ? (profile.mode === 'account' ? 'Profil avec compte · connectez-vous directement sur la source.' : 'Profil public · sans connexion requise.') : 'Le profil public sera créé automatiquement à l’ouverture de la source.'}
         </span>
       </div>
       {profile && !automatic && <p className="cloud-browser-command-footnote">Cette source peut être ouverte dans le navigateur. Son collecteur automatique n'est pas encore disponible.</p>}
@@ -383,15 +389,15 @@ export default function CloudBrowserPage() {
             <SourceLogo source={profile?.source || source} size="md"/>
             <div><strong>{sourceName(profile?.source || source)}</strong>
               <small className={'cloud-browser-session-pill' + (viewing && view ? ' is-live' : '')}>
-                {view?.busy ? 'Navigation automatique' : viewing && view ? 'Session active' : 'Vue en attente'}</small></div>
+                {native?'Recherche officielle':view?.busy ? 'Navigation automatique' : viewing && view ? 'Session active' : 'Vue en attente'}</small></div>
           </div>
-          <div className="cloud-browser-url" title={view?.url || 'Ouvrez une recherche pour afficher la source'}>
+          <div className="cloud-browser-url" title={native?'recherche-entreprises.api.gouv.fr':view?.url || 'Ouvrez une recherche pour afficher la source'}>
             <ShieldCheck size={14}/>
-            <span>{view?.url || 'Ouvrez une recherche pour afficher la source'}</span>
+            <span>{native?'recherche-entreprises.api.gouv.fr':view?.url || 'Ouvrez une recherche pour afficher la source'}</span>
             {view?.busy && <span className="cloud-browser-live-dot" title="Lecture en cours"/>}
           </div>
-          <div className="cloud-browser-browser-actions">
-            <button type="button" disabled={!!busy || !status?.ready} onClick={() => void open(false, true)}
+          {!native&&<div className="cloud-browser-browser-actions">
+            <button type="button" disabled={!!busy || (!native&&!status?.ready)} onClick={() => void open(false, true)}
               title="Afficher ou reprendre la session ouverte"><Globe2 size={15}/> Reprendre le contrôle</button>
             <button type="button" disabled={!view} onClick={() => action({ type: 'back' })} title="Page précédente"><ArrowLeft size={16}/></button>
             <button type="button" onClick={() => setExpandedBrowser(value => !value)}
@@ -399,16 +405,24 @@ export default function CloudBrowserPage() {
               {expandedBrowser ? <Minimize2 size={16}/> : <Maximize2 size={16}/>}</button>
             <button type="button" disabled={!viewing} onClick={() => { setViewing(false); setView(null); }}
               title="Masquer la vue"><EyeOff size={16}/></button>
-            <button type="button" disabled={!selected || !!busy || !status?.ready}
+            <button type="button" disabled={!selected || !!busy || (!native&&!status?.ready)}
               title="Déconnecter et effacer la session conservée sur le serveur" onClick={() => {
                 if (confirm('Déconnecter ce profil et effacer sa session conservée sur le serveur ?')) void perform('Déconnecter', async () => {
                   await api.post('/browser/profiles/' + selected + '/erase', {});
                   setViewing(false); setView(null); control.current = ''; setNotice('Session effacée.');
                 });
               }}><LogOut size={16}/></button>
-          </div>
+          </div>}
         </div>
-        {view ? <div tabIndex={0} aria-label="Navigateur distant interactif"
+        {native?<div className="p-5 space-y-4 overflow-auto">
+          <h2 className="font-semibold">Annuaire des Entreprises · données officielles publiques</h2>
+          <p>Recherchez par activité, nom, SIREN ou SIRET. Les résultats sont sélectionnables et importés dans le même espace que les autres sources.</p>
+          <GeoMultiSelect label="Régions" options={FRENCH_REGIONS} values={regions} onChange={setRegions} placeholder="Toutes les régions"/>
+          <GeoMultiSelect label="Départements" options={FRENCH_DEPARTMENTS} values={departements} onChange={setDepartements} placeholder="Tous les départements"/>
+          <label className="block">Codes postaux<input className="block border rounded-lg p-3 w-full" value={postalInput} onChange={e=>setPostalInput(e.target.value)} placeholder="59100, 59800…"/></label>
+          <p className="text-sm">Pagination automatique jusqu’à la fin des résultats accessibles ; aucun quota total de fiches dans GrowthOS.</p>
+          <small>L’Annuaire réunit notamment les données du répertoire INSEE. Aucune extension ni connexion à un navigateur n’est nécessaire.</small>
+        </div>:view ? <div tabIndex={0} aria-label="Navigateur distant interactif"
           className="cloud-browser-remote" onKeyDown={e => {
             if (e.altKey && e.key === 'Escape') { e.currentTarget.blur(); return; }
             if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
@@ -431,12 +445,12 @@ export default function CloudBrowserPage() {
           <span><Globe2 size={36}/></span>
           <strong>Votre navigateur est prêt</strong>
           <p>Ouvrez une recherche pour voir et contrôler le site source directement depuis GrowthOS.</p>
-          <button type="button" className="cloud-browser-primary" disabled={!!busy || !status?.ready}
+          <button type="button" className="cloud-browser-primary" disabled={!!busy || (!native&&!status?.ready)}
             onClick={() => void open(false, true)}>Afficher / reprendre le contrôle</button>
         </div>}
         <div className="cloud-browser-browser-footer">
-          <span><ShieldCheck size={14}/> La session est isolée par profil et par agence.</span>
-          <small>Dans la vue : clic, molette, clavier · Alt + Échap libère le focus.</small>
+          <span><ShieldCheck size={14}/> {native?'Données officielles · accès natif':'La session est isolée par profil et par agence.'}</span>
+          <small>{native?'Choisissez les résultats à importer dans Prospects.':'Dans la vue : clic, molette, clavier · Alt + Échap libère le focus.'}</small>
         </div>
       </section>
 
@@ -458,7 +472,12 @@ export default function CloudBrowserPage() {
           }
         }}><span aria-hidden="true"/></div>}
 
-      <section id="cloud-browser-results" className="cloud-browser-results" aria-label="Résultats de collecte">
+      {prospectId?<section id="cloud-browser-results" className="cloud-browser-results p-4 space-y-3" aria-label="Vérification de ce prospect">
+        <h2 className="font-semibold">Vérification de {prospect?.company||'ce prospect'}</h2>
+        <p>L’enrichissement automatique se lance et se suit depuis la fiche. Cet espace sert à consulter une source lorsqu’une intervention est nécessaire.</p>
+        <Link className="cloud-browser-primary" to={'/prospects/'+prospectId}>Retour à la fiche prospect</Link>
+        {jobs.filter(job=>job.prospect_id===prospectId).map(job=>jobCard(job,null,null))}
+      </section>:<section id="cloud-browser-results" className="cloud-browser-results" aria-label="Résultats de collecte">
         <header className="cloud-browser-results-header">
           <span><Layers size={20}/></span>
           <div><h2>Résultats de collecte</h2><p>{activeJob?.query || 'Aucune collecte sélectionnée'} {activeJob?.area ? '· ' + activeJob.area : ''}</p></div>
@@ -499,7 +518,7 @@ export default function CloudBrowserPage() {
             <Check size={16}/>{busy === 'Importer' ? 'Import en cours…' : `Importer dans Prospects (${chosenCount})`}
           </button>
         </footer>
-      </section>
+      </section>}
     </div>
 
     <details className="cloud-browser-history-drawer">
@@ -512,6 +531,7 @@ export default function CloudBrowserPage() {
       </summary>
       <CloudJobHistory jobs={jobs} busy={!!busy} onRemove={ids => void removeHistory(ids)} renderJob={jobCard}/>
     </details>
+    {!prospectId&&<LegacySourcingArchive initialId={params.get('legacyJobId')}/>}
     <Link className="cloud-browser-external-help" to={'/outils' + (prospectId ? '?mode=enrich&prospectId=' + prospectId : '')}>
       Catalogue et secours externe Chrome <ExternalLink size={14}/>
     </Link>

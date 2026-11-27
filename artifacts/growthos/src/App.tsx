@@ -1,4 +1,5 @@
-import { Switch, Route, Router as WouterRouter, useLocation, Redirect } from 'wouter';
+import {legacySourcingTarget} from '@/lib/legacy-sourcing';
+import { Switch, Route, Router as WouterRouter, useLocation, useSearch, useParams, Redirect } from 'wouter';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/providers/theme-provider';
@@ -28,7 +29,7 @@ const SequencesPage = lazy(() => import('@/pages/SequencesPage'));
 const SequenceDetailPage = lazy(() => import('@/pages/SequenceDetailPage'));
 const SignalsPage = lazy(() => import('@/pages/SignalsPage'));
 const SignalDetailPage = lazy(() => import('@/pages/SignalDetailPage'));
-const SourcingPage = lazy(() => import('@/pages/SourcingPage'));
+function LegacySourcingRedirect(){const params=useParams<{id?:string}>();return <Redirect to={legacySourcingTarget(useSearch(),params.id)}/>;}
 const SiteAuditPage = lazy(() => import('@/pages/SiteAuditPage'));
 const PluginsPage = lazy(() => import('@/pages/PluginsPage'));
 const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage'));
@@ -54,7 +55,7 @@ const ContactsPage = lazy(() => import('@/pages/ContactsPage'));
 const ImportPage = lazy(() => import('@/pages/ImportPage'));
 const ContactIntelPage = lazy(() => import('@/pages/ContactIntelPage'));
 const CRMSyncPage = lazy(() => import('@/pages/CRMSyncPage'));
-const SourcingJobPage = lazy(() => import('@/pages/SourcingJobPage'));
+
 const PluginDetailPage = lazy(() => import('@/pages/PluginDetailPage'));
 const AccountsPage = lazy(() => import('@/pages/AccountsPage'));
 const MemoryPage = lazy(() => import('@/pages/MemoryPage'));
@@ -213,13 +214,13 @@ function AppRoutes() {
       </Route>
 
       <Route path="/sourcing">
-        {() => <DashboardLayout><SourcingPage /></DashboardLayout>}
+        {() => <DashboardLayout><LegacySourcingRedirect /></DashboardLayout>}
       </Route>
       <Route path="/seo-check">
         {() => <DashboardLayout><SiteAuditPage /></DashboardLayout>}
       </Route>
       <Route path="/sourcing/:id">
-        {() => <DashboardLayout><SourcingJobPage /></DashboardLayout>}
+        {() => <DashboardLayout><LegacySourcingRedirect /></DashboardLayout>}
       </Route>
 
       <Route path="/plugins">

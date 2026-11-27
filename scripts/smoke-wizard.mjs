@@ -136,6 +136,19 @@ async function runCloudMaintenance(id){
   });
 }
 
+async function runEnrichmentMaintenance(id,count=25){
+  const code=`import {pool} from '@workspace/db';import {runProspectEnrichment} from './src/services/prospect-enrichment.ts';import {runCloudJob} from './src/services/cloud-browser.ts';
+    for(let n=0;n<Number(process.argv[2]);n++){
+      await runProspectEnrichment(process.argv[1]);
+      const q=await pool.query("SELECT id FROM cloud_browser_jobs WHERE result->>'enrichmentRunId'=$1 AND status='queued'",[process.argv[1]]);
+      for(const job of q.rows)await runCloudJob(job.id);
+    }await pool.end();`;
+  await new Promise((resolve,reject)=>{
+    const child=spawn('node',['--import','tsx','--input-type=module','-e',code,id,String(count)],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
+    let errors='';child.stderr.on('data',c=>errors+=String(c));child.on('error',reject);child.on('exit',s=>s===0?resolve():reject(Error('Enrichissement isolé : '+errors.slice(-1200))));
+  });
+}
+
 async function cloudReceiptFailure(action){
   const code=`import {pool} from '@workspace/db';
     if(process.argv[1]==='install')await pool.query(\`CREATE FUNCTION growthos_test_receipt_failure() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -247,6 +260,14 @@ let watchVersion=0,watchDown=false,watchWrongIdentity=false,watchRequests=0,watc
 const companies = createServer((req, res) => {
   if (!req.url?.startsWith("/search?")) { res.writeHead(404).end(); return; }
   const directoryQuery = new URL(req.url, 'http://localhost').searchParams.get("q");
+  if(directoryQuery?.startsWith('Nord Artisan Recette')||directoryQuery==='96677705500019'){
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777055',nom_complet:'ATELIER OFFICIEL NORD',activite_principale:'43.22A',etat_administratif:'A',
+      dirigeants:[{nom:'Recette',prenoms:'Alice',qualite:'Gérante'}],siege:{siret:'96677705500019',adresse:'8 rue du Test 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix',noms_commerciaux:['Nord Artisan Recette'],activite_principale:'43.22A'}}]}));return;
+  }
+  if(directoryQuery==='cloud-official-many'){
+    const page=Number(new URL(req.url,'http://localhost').searchParams.get('page')||1),start=page===1?0:25,end=page===1?25:35;
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({total_pages:2,results:Array.from({length:end-start},(_,n)=>{const i=start+n,siren=String(966778000+i);return {siren,nom_complet:'Annuaire continu '+i,siege:{siret:siren+'00019',adresse:(i+1)+' rue Officielle 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix'}};})}));return;
+  }
   if(directoryQuery?.startsWith('777000003')){
     res.setHeader('Content-Type','application/json');
     res.end(JSON.stringify({results:[{siren:'777000003',nom_complet:'Entreprise identité corrigée',etat_administratif:'A',
@@ -343,6 +364,12 @@ const cloudStub=createServer(async(req,res)=>{
     if(cloudDelay)await delay(cloudDelay);
     if(p.query==='cloud-wait'){res.end(JSON.stringify({status:'awaiting_user',message:'Connexion à vérifier',results:[]}));return;}
     if(p.query==='cloud-fail'){res.writeHead(503).end(JSON.stringify({error:'Source indisponible'}));return;}
+    if(p.target?.company==='Nord Artisan Recette'){
+      if(p.source==='societe_com'){res.end(JSON.stringify({status:'completed',results:[{source:'societe_com',company:'MONSIEUR KEVIN DUVILLE',siret:'79313784500019',city:'Roubaix',address:'8 rue du Test 59100 Roubaix',codePostal:'59100',sourceUrl:'https://www.societe.com/societe/monsieur-kevin-duville-793137845.html'}]}));return;}
+      res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:p.target.company,address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',
+        phone:p.source==='bing'?'03 20 55 66 99':'03 20 55 66 77',email:'contact@nord-recette.invalid',website:'https://nord-recette.invalid',
+        sourceUrl:p.source==='pagesjaunes'?'https://www.pagesjaunes.fr/pros/96677755':p.source==='google_maps'?'https://www.google.com/maps/place/Nord-Artisan-Recette/':p.source==='bing'?'https://www.bing.com/search?q=Nord':'https://www.google.com/search?q=Nord'}]}));return;
+    }
     if(p.query==='cloud-many'){
       const start=p.cursor?.step===1?25:0,end=start?38:25;
       const results=Array.from({length:end-start},(_,n)=>{const i=start+n;return {source:p.source,company:'Collecte continue '+i,address:(i+1)+' rue du Flux 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone:'03'+String(50000000+i),sourceUrl:'https://www.google.com/maps/place/Collecte-'+i+'/'};});
@@ -1625,6 +1652,35 @@ try {
     const captured=await request('GET','/browser/jobs/'+discovery.body.id,undefined,token);
     check(captured.body.status==='completed' && captured.body.mode==='discover' && captured.body.result.captures.length===1,
       'Cloud : collecte publique livre une sélection persistante avant création de prospects');
+    const automaticProspect=await request('POST','/prospects',{company:'Nord Artisan Recette',city:'Roubaix',address:'8 rue du Test 59100 Roubaix',phone:'03 20 55 66 77'},token);
+    const autoPath='/prospects/'+automaticProspect.body.id+'/enrichment';
+    check((await request('POST',autoPath,{})).status===401,'Enrichissement automatique : lancement refusé sans authentification');
+    check((await request('POST',autoPath,{},foreignToken)).status===404,'Enrichissement automatique : autre agence refusée avant recherche');
+    const automaticRun=await request('POST',autoPath,{},token),duplicateRun=await request('POST',autoPath,{},token);
+    check(automaticRun.status===202&&automaticRun.body.id===duplicateRun.body.id,'Enrichissement automatique : un clic lance une tâche persistante, double clic idempotent');
+    await runEnrichmentMaintenance(automaticRun.body.id,2);
+    const checkpoint=await request('GET',autoPath,undefined,token);
+    check(checkpoint.body.status==='queued'&&checkpoint.body.steps.entreprises.status==='completed'&&checkpoint.body.steps.google_maps.jobId,'Enrichissement automatique : identité Annuaire résolue avant les collecteurs, lien de reprise persisté');
+    await runEnrichmentMaintenance(automaticRun.body.id);
+    const autoDone=await request('GET',autoPath,undefined,token),autoCrm=await request('GET','/prospects/'+automaticProspect.body.id,undefined,token);
+    check(autoDone.body.status==='partial'&&autoDone.body.summary.sourcesDone>=4&&autoCrm.body.siren==='966777055'&&autoCrm.body.siret==='96677705500019'&&autoCrm.body.email==='contact@nord-recette.invalid',
+      'Enrichissement automatique : reprise du serveur, Annuaire et collecteurs croisés, données directement dans le CRM');
+    check(autoDone.body.steps.insee.status==='skipped'&&autoDone.body.steps.insee.message.includes('via l’Annuaire'),'Enrichissement automatique : INSEE indirect distingué de l’API directe non configurée');
+    check(autoDone.body.steps.societe_com.status==='needs_review'&&autoCrm.body.company==='Nord Artisan Recette'&&!JSON.stringify(autoCrm.body.sourceDetails).includes('KEVIN DUVILLE'),
+      'Enrichissement automatique : mauvais homonyme Societe.com exclu sans altérer le prospect');
+    check(autoCrm.body.phone==='03 20 55 66 77'&&autoCrm.body.sourceDetails.crossSource.conflicts.some(c=>c.source==='bing'&&c.field==='phone'),
+      'Enrichissement automatique : téléphone divergent proposé, coordonnées confirmées conservées');
+    const autoActivities=await request('GET','/activities?prospectId='+automaticProspect.body.id,undefined,token);
+    check(autoActivities.body.some(a=>a.type==='data_update'&&a.description.includes('966777055'))&&autoCrm.body.sourceDetails.entreprises.snapshot.managers[0].includes('Alice'),
+      'Enrichissement automatique : identité, dirigeants officiels et activité avant/après conservés');
+    const officialProfile=await request('POST','/browser/profiles',{source:'entreprises',label:'Annuaire natif'},token);
+    const officialTask=await request('POST','/browser/jobs',{profileId:officialProfile.body.id,query:'cloud-official-many',filters:{regions:['32'],departements:['59'],codesPostaux:[]}},token);
+    await runCloudMaintenance(officialTask.body.id);await runCloudMaintenance(officialTask.body.id);
+    const officialResults=await request('GET','/browser/jobs/'+officialTask.body.id,undefined,token);
+    check(officialResults.body.status==='completed'&&officialResults.body.result.captures.length===35&&officialResults.body.result.captures[0].siren,
+      'Collecte unifiée : Annuaire natif paginé au-delà de 25 avec filtres géographiques et identifiants');
+    const officialImport=await request('POST','/browser/jobs/'+officialTask.body.id+'/import',{captureIds:officialResults.body.result.captures.slice(0,2).map(c=>c.id)},token);
+    check(officialImport.body.imported===2&&Object.keys(officialImport.body.job.result.imports).length===2,'Collecte unifiée : import Annuaire avec les mêmes reçus CRM que les autres sources');
     check(state.body.automatic.includes('pagesjaunes'),'Cloud : PagesJaunes dispose du collecteur automatique dans le même navigateur');
     const pjProfile=await request('POST','/browser/profiles',{source:'pagesjaunes',label:'PagesJaunes public'},token);
     const pjTask=await request('POST','/browser/jobs',{profileId:pjProfile.body.id,query:'plombier',area:'Roubaix'},token);await runCloudMaintenance(pjTask.body.id);

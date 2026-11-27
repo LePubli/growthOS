@@ -4,7 +4,7 @@ Mis à jour le **27 novembre 2026**. Ce registre suit le parcours d’une agence
 
 **Coordination des agents** — un autre agent travaille uniquement sur le design. Voir les [notes temporaires de coordination](COORDINATION-AGENTS.md). Elles resteront jusqu’au lancement final en production autorisé par le propriétaire, puis seront supprimées lors de ce lancement.
 
-**Dernier retour utilisateur** — import Google confirmé en usage, retrait des résultats traités et reçus CRM opérationnels. Demande actuelle : PagesJaunes cloud, collecte sans plafond total 10/25 et boutons d’enrichissement du prospect fonctionnels, en conservant l’IA. **Windows et Android sont différés**, priorité au Web cloud.
+**Dernier retour utilisateur** — le bouton Enrichir doit agir directement depuis le prospect, croiser les sources disponibles et rejeter les faux rapprochements. Supprimer les anciens parcours de recherche parallèles à `/navigateur`. **Windows et Android sont différés**, priorité au Web cloud.
 
 **Lot en cours — [PR 57](https://github.com/LePubli/growthOS/pull/57)** — PagesJaunes rejoint le navigateur cloud, la collecte continue par lots persistants et les raccourcis prospect ouvrent l’enrichissement ciblé. Le design immersif PR55/56 et les reçus CRM sont conservés. Voir le point 46 ; publication des images à confirmer. [Installation et tests pas à pas](docs/NAVIGATEUR-CLOUD-INSTALLATION.md).
 
@@ -185,3 +185,11 @@ Le [document de référence Linked Helper](docs/REFERENCE-LINKED-HELPER.md) cons
 
 - Complément de revue PR57 : le profil détaillé PagesJaunes traverse la validation jusqu’au CRM, y compris SIREN sans SIRET, horaires, prestations, réseaux et avis. Les détails actualisés conservent dix versions précédentes et génèrent une activité avant/après. Reprise Google/Bing : la page sélectionnée lors d’une intervention est conservée. Trois régressions API supplémentaires passent (342 au total).
 - Synchronisation design PR58 : nouveau catalogue `/outils` conservé, seuls la destination PagesJaunes (cloud) et son badge de capacité changent. Les CSS du catalogue et du navigateur sont identiques à ceux livrés par l’agent design.
+
+## 47 · Enrichissement automatique multisource et collecte unifiée (27/11/2026)
+
+- Incident Nord Artisan / Kevin Duville : correction du rapprochement qui assimilait deux identifiants absents à une correspondance ; nom/ville seuls ou un résultat unique ne prouvent jamais l’identité. Enseignes officielles, adresse, téléphone et identifiants sont comparés, avec refus des établissements contradictoires et des ambiguïtés.
+- Le bouton principal et les raccourcis d’enrichissement du prospect lancent une tâche persistante depuis la fiche : Annuaire officiel, Maps, PagesJaunes, INSEE direct si configuré, Societe.com, Google Search et Bing. Profils de navigation existants réutilisés ; reprise après redémarrage ; un double clic ne crée pas deux tâches. Progression et bilan par source sur la fiche, activités avant/après et divergences conservées. Le Copilote IA reste présent.
+- L’Annuaire gratuit fournit notamment les données du répertoire INSEE ; cela n’est pas présenté comme une seconde vérification indépendante. L’API directe Sirene 3.11 exige une clé INSEE configurée et un SIRET confirmé. Les réseaux sans collecteur restent explicitement manuels.
+- Toutes les nouvelles recherches utilisent `/navigateur`, y compris l’Annuaire natif sans navigateur ni extension, avec filtres régions/départements/codes postaux, pagination et mêmes reçus d’import. `/sourcing` et ses anciennes fiches redirigent vers cet espace ; l’historique et les résultats précédents restent consultables/importables dans une archive. Aucune suppression du CRM.
+- Design PR58 et CSS conservés. Migration additive d’une file de tâches en base. 353 contrôles d’intégration PostgreSQL16 verts (fournisseurs simulés), tests TypeScript/React/identité verts. Contrôle Chromium réel sur fixtures et publication des images à confirmer. Aucun déploiement DockPanel par l’agent.

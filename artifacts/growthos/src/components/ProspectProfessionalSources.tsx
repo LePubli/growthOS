@@ -10,6 +10,7 @@ import { preferredCompanyQuery } from "@/lib/societe-search";
 import { SourceLogo } from "@/components/atlas/ProspectLogos";
 
 type Props = {
+  onEnrich?:()=>void;
   prospect: SourceLinkedProspect & {
     id?: string;
     company?: string | null;
@@ -18,7 +19,7 @@ type Props = {
     lastName?: string | null;
   };
 };
-export function ProspectProfessionalSources({ prospect }: Props) {
+export function ProspectProfessionalSources({ prospect,onEnrich }: Props) {
   const links = prospectSourceLinks(prospect);
   const hasName = Boolean(
     prospect.company?.trim() ||
@@ -100,13 +101,13 @@ export function ProspectProfessionalSources({ prospect }: Props) {
       <p className="text-xs" style={{ color: "var(--text-muted)" }}>
         Les sources s’ouvrent dans le navigateur cloud. Pour les réseaux sans collecteur automatique, la navigation reste disponible et Chrome sert de secours.
       </p>
-      <Link
+      {onEnrich?<button type="button" onClick={onEnrich} className="atlas-360-link-button atlas-360-link-button-primary"><Layers size={15}/> Enrichir automatiquement ce prospect</button>:<Link
         href={prospect.id?prospectEnrichmentUrl(prospect.id):'/prospects/connecteur'}
         className="atlas-360-link-button atlas-360-link-button-primary"
       >
         <Layers size={15} />
-        {prospect.id?'Enrichir ce prospect dans GrowthOS':'Comparer et importer les captures du connecteur'}
-      </Link>
+        {prospect.id?'Consulter les sources de ce prospect':'Comparer et importer les captures du connecteur'}
+      </Link>}
     </section>
   );
 }

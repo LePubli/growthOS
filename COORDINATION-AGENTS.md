@@ -218,3 +218,9 @@ Validation en cours du lot continu : 342 contrôles API PostgreSQL16 verts, dont
 - Tests `scripts/test-collection-tools.mjs` adaptés à la structure de la maquette tout en préservant les contrats de navigation. Ne pas écraser l'interface lors d'une modification fonctionnelle ; ne supprimer ces notes qu'à l'autorisation explicite du lancement final en production.
 
 Synchronisation fonctionnelle PR57 avec design PR58 (`418b39d`) : catalogue redessiné conservé, PagesJaunes discovery/enrich ouvre désormais `/navigateur` avec prospect/critères ; badge Collecteur cloud. Les réseaux restent en consultation manuelle. Correctifs de revue : reprise Google/Bing sur la page choisie ; profil détaillé PagesJaunes validé, SIREN seul conservé, mise à jour versionnée et activité avant/après.
+
+## Enrichissement automatique multisource depuis le prospect (27/11/2026)
+
+Branche `fix/prospect-one-click-enrichment`, base PR57 `ce976aa`. Corriger le faux rapprochement Societe.com (deux SIREN absents ne sont jamais égaux). Le bouton Enrichir reste sur la fiche, crée une tâche persistante et consulte Annuaire/INSEE puis les cinq collecteurs cloud disponibles ; progression et bilan sur la fiche. Garder tous les CSS/design PR58, conserver Copilote IA. Navigateur uniquement pour les interventions, jamais le premier clic du parcours automatique. Notes à conserver jusqu’au lancement final explicitement autorisé. Aucun déploiement DockPanel par l’agent.
+
+Validation locale du lot : 353 contrôles API PostgreSQL16 passent, dont le faux rapprochement Kevin Duville refusé, la résolution d’une enseigne par l’Annuaire, le double clic idempotent, la reprise du processus, les conflits entre sources et la pagination/import Annuaire native. L’archive conserve les anciennes recherches dans le même écran. Les CSS restent identiques à PR58. Contrôle Chromium et CI images à suivre avant feu vert.
