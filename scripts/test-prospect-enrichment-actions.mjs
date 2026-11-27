@@ -32,6 +32,7 @@ try{
     assert.equal(captureIdentityMatches(nord,{company:'Nord Artisan',city:'Lille'}),false,'Nom et ville seuls ne suffisent pas');
     const good={company:'Nom légal',aliases:['Nord Artisan'],siren:'966777055',siret:'96677705500019',city:'Lille',address:nord.address};
     assert.equal(captureIdentityMatches({...nord,address:'38 bd Carnot 59800 Lille'},good),true,'Une enseigne officielle et l’adresse exacte confirment le rapprochement');
+    assert.equal(captureIdentityMatches({...nord,siren:'966777055',siret:'96677705500019'},{...good,siret:null,address:'99 rue Autre 59800 Lille',phone:'0320112233'}),false,'Un SIREN commun ne prouve pas le même établissement');
     assert.equal(uniqueIdentityMatch(nord,[good,{...good,siret:'96677705500027'}]),null,'Deux établissements concordants restent ambigus');
     assert.ok(legacySourcingTarget('?source=entreprises&query=plombier&area=59').startsWith('/navigateur?'));
     assert.ok(legacySourcingTarget('',id).includes('legacyJobId='+id));

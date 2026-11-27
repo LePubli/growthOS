@@ -1,3 +1,4 @@
+import {captureIdentityMatches} from '../../lib/enrichment-identity';
 import { professionalSourceUrl } from '@workspace/api-zod';
 import { isDeepStrictEqual } from 'node:util';
 import { Router } from "express";
@@ -650,6 +651,10 @@ export async function mergeProspectCapture(
   const filled:string[]=[],newConflicts:EnrichmentConflict[]=[];
   const now=new Date(item.capturedAt||Date.now()).toISOString();
   const fields=incomingFields(item,incomplete);
+  if(existing.apeCode&&fields.apeCode&&existing.apeCode!==fields.apeCode&&!autoFields.includes('apeCode')){
+    if(!existing.nafLabel)delete fields.nafLabel;
+    if(!existing.nafVersion)delete fields.nafVersion;
+  }
   for(const field of FIELDS){
     const incoming=fields[field];if(!incoming)continue;
     const current=stringOrEmpty(existing[field]);
@@ -811,6 +816,7 @@ export async function applyTargetCapture(tenantId:string,userId:string,prospectI
         (prospect.city && capture.city && normalizedIdentity(prospect.city)!==normalizedIdentity(capture.city)))
       )
         return {status:409,error:'Le nom ou la ville diffère. Vérifiez la fiche et son établissement avant enrichissement.'};
+      if(automatic&&!captureIdentityMatches(prospect,capture))return {status:409,error:'L’établissement ne correspond pas avec certitude. Vérifiez ses coordonnées.'};
       const merged=await mergeProspectCapture(prospect,{...capture,targetedIdentity:true},false,tenantId,tx,userId,automatic && exactSite && capture.source==='societe_com' ? ['company','address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);
       return complete({status:200,filled:merged.filled,conflicts:merged.conflicts,alreadyApplied:false});
     });

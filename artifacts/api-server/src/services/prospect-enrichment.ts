@@ -37,8 +37,8 @@ async function mergeOfficial(job:any,candidate:any){
     const [p]=await tx.select().from(prospectsTable).where(and(eq(prospectsTable.id,job.prospect_id),eq(prospectsTable.tenantId,job.tenant_id))).for('update');
     if(!p||!captureIdentityMatches(p,candidate))throw Error('Identité non confirmée.');
     return mergeProspectCapture(p,{...candidate,id:'automatic_'+job.id+'_'+candidate.source,capturedAt:Date.now(),
-      sourceDetails:{[candidate.source]:{snapshot:candidate.snapshot,sourceUrl:candidate.sourceUrl,capturedAt:new Date().toISOString()}},targetedIdentity:false},false,job.tenant_id,tx,job.created_by,
-      p.siret&&p.siret===candidate.siret?['address','postalCode','city','apeCode','nafLabel','nafVersion']:[]);
+      sourceDetails:{...(candidate.apeScope?{annuaire:{apeScope:candidate.apeScope}}:{}),[candidate.source]:{snapshot:candidate.snapshot,sourceUrl:candidate.sourceUrl,capturedAt:new Date().toISOString()}},targetedIdentity:false},false,job.tenant_id,tx,job.created_by,
+      p.siret&&p.siret===candidate.siret?['address','postalCode','city',...(candidate.apeScope==='etablissement'?['apeCode','nafLabel','nafVersion'] as const:[])]:[]);
   });
 }
 async function officialStep(job:any,p:any):Promise<Step>{
@@ -61,7 +61,7 @@ async function inseeStep(job:any,p:any):Promise<Step>{
   const address=data.adresseEtablissement||{},period=data.periodesEtablissement?.find((v:any)=>!v.dateFin)||data.periodesEtablissement?.[0]||{};
   const candidate={source:'insee',siren:data.siren,siret:data.siret,company:p.company,city:address.libelleCommuneEtablissement,codePostal:address.codePostalEtablissement,
     address:[address.numeroVoieEtablissement,address.typeVoieEtablissement,address.libelleVoieEtablissement,address.codePostalEtablissement,address.libelleCommuneEtablissement].filter(Boolean).join(' '),
-    apeCode:period.activitePrincipaleEtablissement,nafVersion:period.nomenclatureActivitePrincipaleEtablissement,sourceUrl:'https://annuaire-entreprises.data.gouv.fr/etablissement/'+p.siret,
+    apeCode:period.activitePrincipaleEtablissement,apeScope:'etablissement',nafVersion:period.nomenclatureActivitePrincipaleEtablissement,sourceUrl:'https://annuaire-entreprises.data.gouv.fr/etablissement/'+p.siret,
     snapshot:{siret:data.siret,etat:period.etatAdministratifEtablissement,dateMiseAJour:data.dateDernierTraitementEtablissement}};
   const merged=await mergeOfficial(job,candidate);return {label,status:'completed',filled:merged.filled,conflicts:merged.conflicts,message:'SIRET confirmé directement par l’INSEE.'};
 }

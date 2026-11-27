@@ -51,6 +51,7 @@ const testEnv = {
   PAGESJAUNES_BROWSER_URL: `http://127.0.0.1:${browserPort}`,
   CLOUD_BROWSER_URL:`http://127.0.0.1:${cloudPort}`,
   CLOUD_BROWSER_TOKEN:randomBytes(32).toString('hex'),
+  INSEE_TEST_URL:`http://127.0.0.1:${cloudPort}/insee`,
   ENABLE_OUTBOUND_EMAIL: "false",
   ALLOW_PUBLIC_REGISTRATION: "false",
   PLATFORM_ADMIN_EMAILS: "admin@wizard.invalid",
@@ -112,6 +113,7 @@ async function monitoringMaintenance(action,id) {
   const code = `import {pool} from '@workspace/db';
     import {runProspectWatch} from './src/services/prospect-monitoring.ts';
     const [action,id]=process.argv.slice(1);
+    if(action==='legacy-empty-label')await pool.query('UPDATE prospects SET naf_label=NULL WHERE id=$1',[id]);
     if(action==='expire') await pool.query("UPDATE prospect_monitoring SET last_attempt_at=NOW()-INTERVAL '2 minutes',checked_at=NOW()-INTERVAL '2 minutes',next_check_at=NOW()-INTERVAL '1 second' WHERE prospect_id=$1",[id]);
     if(action==='cron') await runProspectWatch();
     if(action==='legacy-identity') {
@@ -264,6 +266,12 @@ const companies = createServer((req, res) => {
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777055',nom_complet:'ATELIER OFFICIEL NORD',activite_principale:'43.22A',etat_administratif:'A',
       dirigeants:[{nom:'Recette',prenoms:'Alice',qualite:'Gérante'}],siege:{siret:'96677705500019',adresse:'8 rue du Test 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix',noms_commerciaux:['Nord Artisan Recette'],activite_principale:'43.22A'}}]}));return;
   }
+  if(directoryQuery==='96677705600019'){
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777056',nom_complet:'Activité locale conservée',activite_principale:'70.10Z',siege:{siret:'96677705600019',adresse:'9 rue Scope 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix'}}]}));return;
+  }
+  if(directoryQuery==='cloud-official-area'){
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777058',nom_complet:'Agence Lille et siège Paris',siege:{siret:'96677705800019',adresse:'1 rue Paris 75001 Paris',code_postal:'75001',libelle_commune:'Paris'},matching_etablissements:[{siret:'96677705800027',adresse:'1 rue Lille 59000 Lille',code_postal:'59000',libelle_commune:'Lille'}]}]}));return;
+  }
   if(directoryQuery==='cloud-official-many'){
     const page=Number(new URL(req.url,'http://localhost').searchParams.get('page')||1),start=page===1?0:25,end=page===1?25:35;
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({total_pages:2,results:Array.from({length:end-start},(_,n)=>{const i=start+n,siren=String(966778000+i);return {siren,nom_complet:'Annuaire continu '+i,siege:{siret:siren+'00019',adresse:(i+1)+' rue Officielle 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix'}};})}));return;
@@ -348,9 +356,13 @@ const ollama = createServer((req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ models: [{ name: "llama3.1:8b" }] }));
 });
-const cloudCalls=[];let cloudDelay=0;
+const cloudCalls=[];let cloudDelay=0,inseeCalls=0;
 const cloudStub=createServer(async(req,res)=>{
   res.setHeader('Content-Type','application/json');
+  if(req.url==='/insee'){
+    if(req.headers['x-insee-api-key-integration']!=='isolated-insee-key'){res.writeHead(401).end('{}');return;}
+    inseeCalls++;res.end(JSON.stringify({etablissement:{siren:'966777055',siret:'96677705500019',adresseEtablissement:{numeroVoieEtablissement:'8',typeVoieEtablissement:'rue',libelleVoieEtablissement:'du Test',codePostalEtablissement:'59100',libelleCommuneEtablissement:'Roubaix'},periodesEtablissement:[{dateFin:null,etatAdministratifEtablissement:'A',activitePrincipaleEtablissement:'43.22A',nomenclatureActivitePrincipaleEtablissement:'NAFRev2'}]}}));return;
+  }
   if(req.headers['x-worker-token']!==testEnv.CLOUD_BROWSER_TOKEN){res.writeHead(401).end(JSON.stringify({error:'Token requis'}));return;}
   if(req.method==='GET'&&req.url==='/healthz'){res.end(JSON.stringify({ok:true}));return;}
   let raw='';for await(const chunk of req)raw+=chunk;
@@ -369,6 +381,9 @@ const cloudStub=createServer(async(req,res)=>{
       res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:p.target.company,address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',
         phone:p.source==='bing'?'03 20 55 66 99':'03 20 55 66 77',email:'contact@nord-recette.invalid',website:'https://nord-recette.invalid',
         sourceUrl:p.source==='pagesjaunes'?'https://www.pagesjaunes.fr/pros/96677755':p.source==='google_maps'?'https://www.google.com/maps/place/Nord-Artisan-Recette/':p.source==='bing'?'https://www.bing.com/search?q=Nord':'https://www.google.com/search?q=Nord'}]}));return;
+    }
+    if(p.query==='cloud-siren-only'){
+      res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:'Établissement ciblé',siren:'966777057',siret:null,city:'Roubaix',address:'99 rue Autre 59100 Roubaix',codePostal:'59100',phone:'03 20 55 00 99',email:'autre@recette.invalid',sourceUrl:'https://www.pagesjaunes.fr/pros/96677757'}]}));return;
     }
     if(p.query==='cloud-many'){
       const start=p.cursor?.step===1?25:0,end=start?38:25;
@@ -1673,6 +1688,13 @@ try {
     const autoActivities=await request('GET','/activities?prospectId='+automaticProspect.body.id,undefined,token);
     check(autoActivities.body.some(a=>a.type==='data_update'&&a.description.includes('966777055'))&&autoCrm.body.sourceDetails.entreprises.snapshot.managers[0].includes('Alice'),
       'Enrichissement automatique : identité, dirigeants officiels et activité avant/après conservés');
+    const inseeKey=await request('POST','/admin/api-keys',{provider:'insee',apiKey:'isolated-insee-key'},token);
+    check(inseeKey.status===201,'Enrichissement automatique : clé INSEE chiffrée et isolée dans l’agence');
+    const directRun=await request('POST',autoPath,{},token);await runEnrichmentMaintenance(directRun.body.id);
+    const directResult=await request('GET',autoPath,undefined,token);
+    check(inseeCalls===1&&directResult.body.steps.insee.status==='completed','Enrichissement automatique : API INSEE 3.11 appelée avec son en-tête de clé et SIRET contrôlé');
+    const archiveJob=await storeTestSourcingJob(automaticProspect.body.id,Array.from({length:65},(_,i)=>({siren:String(966779000+i),company:'Archive entreprise '+i,address:i+' rue Archive 59100 Roubaix',codePostal:'59100'})));
+    check((await request('GET','/sourcing/jobs/'+archiveJob+'/results',undefined,token)).body.data.length===65,'Collecte unifiée : 65 anciens résultats consultables, sans coupure de l’historique à 50');
     const officialProfile=await request('POST','/browser/profiles',{source:'entreprises',label:'Annuaire natif'},token);
     const officialTask=await request('POST','/browser/jobs',{profileId:officialProfile.body.id,query:'cloud-official-many',filters:{regions:['32'],departements:['59'],codesPostaux:[]}},token);
     await runCloudMaintenance(officialTask.body.id);await runCloudMaintenance(officialTask.body.id);
@@ -1698,6 +1720,19 @@ try {
       'Cloud PagesJaunes : enrichissement ciblé actualise les détails et conserve la version précédente');
     check(JSON.stringify(pjHistory.body).includes('Informations détaillées PagesJaunes')&&JSON.stringify(pjHistory.body).includes('10h00'),
       'Cloud PagesJaunes : modification détaillée tracée dans l’activité du prospect');
+    const branchTarget=await request('POST','/prospects',{company:'Établissement ciblé',siret:'96677705700019',city:'Roubaix',address:'1 rue Cible 59100 Roubaix',phone:'03 20 55 00 01'},token);
+    const branchTask=await request('POST','/browser/jobs',{profileId:pjProfile.body.id,prospectId:branchTarget.body.id,query:'cloud-siren-only'},token);await runCloudMaintenance(branchTask.body.id);
+    check((await request('GET','/browser/jobs/'+branchTask.body.id,undefined,token)).body.status==='needs_review'&&!(await request('GET','/prospects/'+branchTarget.body.id,undefined,token)).body.email,
+      'Enrichissement automatique : SIREN commun sans coordonnées concordantes ne fusionne pas un autre établissement');
+    const areaTask=await request('POST','/browser/jobs',{profileId:officialProfile.body.id,query:'cloud-official-area',area:'59000'},token);await runCloudMaintenance(areaTask.body.id);
+    const areaResults=await request('GET','/browser/jobs/'+areaTask.body.id,undefined,token);
+    check(areaResults.body.result.captures.length===1&&areaResults.body.result.captures[0].city==='Lille','Collecte Annuaire : code postal de la zone vérifié localement, siège parisien exclu');
+    const scopeProspect=await request('POST','/prospects',{company:'Activité locale conservée',siret:'96677705600019',city:'Roubaix',address:'9 rue Scope 59100 Roubaix',apeCode:'43.21A'},token);
+    await monitoringMaintenance('legacy-empty-label',scopeProspect.body.id);
+    const scopeRun=await request('POST','/prospects/'+scopeProspect.body.id+'/enrichment',{},token);await runEnrichmentMaintenance(scopeRun.body.id,1);
+    const scopeCrm=await request('GET','/prospects/'+scopeProspect.body.id,undefined,token);
+    check(scopeCrm.body.apeCode==='43.21A'&&!scopeCrm.body.nafLabel&&scopeCrm.body.sourceDetails.annuaire.apeScope==='unite_legale'&&scopeCrm.body.sourceDetails.crossSource.conflicts.some(c=>c.field==='apeCode'&&c.incoming==='70.10Z'),
+      'Enrichissement officiel : APE de l’établissement conservé face au repli d’activité de l’unité légale');
     const many=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'cloud-many'},token);await runCloudMaintenance(many.body.id);
     const firstMany=await request('GET','/browser/jobs/'+many.body.id,undefined,token);
     check(firstMany.body.status==='queued'&&firstMany.body.result.hasMore&&firstMany.body.result.captures.length===25,'Cloud : la collecte de 25 fiches poursuit automatiquement sa suite');

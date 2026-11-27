@@ -22,7 +22,7 @@ const company=`<html><head><title>ATELIER CLOUD</title></head><body><main><h1>AT
   </dl><input id="proof" aria-label="Texte de recette"/><button>Valider</button></main></body></html>`;
 async function fixture(scope){
   const p=await service.profile(scope);
-  await p.context.route('https://www.societe.com/**',route=>route.fulfill({contentType:'text/html',body:route.request().url().includes('/societe/')?company:`<html><body><a href="${companyUrl}">ATELIER CLOUD</a></body></html>`}));return p;
+  await p.context.route('https://www.societe.com/**',route=>route.fulfill({contentType:'text/html',body:route.request().url().includes('/societe/')?company:`<html><body><a href="${companyUrl}">ATELIER CLOUD</a><a href="${companyUrl}#__establishments">Établissements</a></body></html>`}));return p;
 }
 try{
   let health;

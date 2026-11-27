@@ -10,7 +10,7 @@ export function directoryCandidates(legal:any){
     const ape=site.activite_principale||legal.activite_principale;
     return [site.siret,{source:'entreprises',company:String(legal.nom_complet||legal.nom_raison_sociale||aliases[0]||'').slice(0,160),aliases,
       siren:legal.siren,siret:site.siret,address:site.adresse||null,codePostal:site.code_postal||null,city:site.libelle_commune||null,
-      apeCode:ape||null,nafLabel:activityLabel(ape)||null,nafVersion:site.nomenclature_activite_principale||legal.nomenclature_activite_principale||null,
+      apeCode:ape||null,apeScope:site.activite_principale?'etablissement':'unite_legale',nafLabel:activityLabel(ape)||null,nafVersion:site.nomenclature_activite_principale||legal.nomenclature_activite_principale||null,
       region:site.code_region||DEPARTMENT_TO_REGION[site.code_departement||departmentFromPostalCode(site.code_postal||'')],departement:site.code_departement||departmentFromPostalCode(site.code_postal||''),
       sourceUrl:'https://annuaire-entreprises.data.gouv.fr/entreprise/'+legal.siren,
       snapshot:companySnapshot(legal,site.siret)}];
@@ -33,7 +33,9 @@ export async function fetchDirectory(query:string,area='',page=1,filters?:{regio
   return {legals:data.results,candidates:data.results.flatMap(directoryCandidates),hasMore:page<Number(data.total_pages||1)};
 }
 export async function collectDirectoryPage(job:any){
-  const page=Number(job.result?.pageCursor?.page||1),filters=job.result?.criteria;
+  const page=Number(job.result?.pageCursor?.page||1),filters={regions:[],departements:[],codesPostaux:[],...job.result?.criteria};
+  if(!filters.codesPostaux.length&&/^\d{5}$/.test(job.area))filters.codesPostaux=[job.area];
+  if(!filters.departements.length&&/^(?:\d{2,3}|2[AB])$/.test(job.area))filters.departements=[job.area];
   const data=await fetchDirectory(job.query,job.area,page,filters);
   const captures=data.candidates.filter((c:any)=>c.company&&c.address&&/^\d{5}$/.test(c.codePostal||'')&&
     (!/^\d{14}$/.test(job.query)||c.siret===job.query)&&

@@ -14,14 +14,15 @@ export function captureIdentityMatches(p:any,c:any):boolean{
   if(knownSiret&&incomingSiret)return knownSiret===incomingSiret;
   const city=normalizedIdentity(p.city),otherCity=normalizedIdentity(c.city);
   if(city&&otherCity&&city!==otherCity)return false;
-  if(known&&incoming&&known===incoming)return true;
+  const address=addressIdentity(p.address),otherAddress=addressIdentity(c.address);
+  const addressMatch=address.length>=9&&otherAddress===address;
+  const phone=digits(p.phone).replace(/^33/,'0'),otherPhone=digits(c.phone).replace(/^33/,'0');
+  const phoneMatch=!!city&&city===otherCity&&phone.length>=9&&phone===otherPhone;
+  if(known&&incoming&&known===incoming)
+    return (!knownSiret&&!p.address&&!p.phone)||addressMatch||phoneMatch;
   const candidates=[c.company,...(Array.isArray(c.aliases)?c.aliases:[])].flatMap(names);
   const name=normalizedIdentity(p.company);
-  if(!name||!candidates.includes(name))return false;
-  const address=addressIdentity(p.address),otherAddress=addressIdentity(c.address);
-  if(address.length>=9&&otherAddress===address)return true;
-  const phone=digits(p.phone).replace(/^33/,'0'),otherPhone=digits(c.phone).replace(/^33/,'0');
-  return !!city&&city===otherCity&&phone.length>=9&&phone===otherPhone;
+  return !!name&&candidates.includes(name)&&(addressMatch||phoneMatch);
 }
 export function uniqueIdentityMatch(p:any,candidates:any[]){
   const matches=candidates.filter(c=>captureIdentityMatches(p,c));
