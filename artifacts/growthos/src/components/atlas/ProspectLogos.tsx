@@ -23,6 +23,7 @@ const SOURCES: Record<string, SourceIdentity> = {
 export function SourceLogo({ source, size = 'md' }: { source: string; size?: 'sm' | 'md' | 'lg' }) {
   const aliases: Record<string,string> = {
     'annuaire-entreprises':'annuaire', 'annuaire_entreprises':'annuaire',
+    'entreprises':'annuaire', 'insee_sirene':'insee',
     'societe.com':'societe_com', 'societe':'societe_com', 'pages_jaunes':'pagesjaunes',
     'google_search':'google', 'google_maps':'google_maps', 'maps':'google_maps',
   };
