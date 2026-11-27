@@ -1,6 +1,6 @@
 import {db} from '@workspace/db';
 import {sql} from 'drizzle-orm';
-import {deviceImportSchema,importParsedCaptures,type CaptureImportOutcome} from '../routes/v1/sourcing';
+import {deviceImportSchema,importParsedCaptures,captureHasPendingConflict,type CaptureImportOutcome} from '../routes/v1/sourcing';
 import {CloudBrowserError} from './cloud-browser';
 import {isProspectIdentityDuplicate} from '../lib/prospect-identity';
 
@@ -14,7 +14,7 @@ export async function withCloudImportStates(jobs:Job[],tenantId:string,reader:Re
   const receipts=jobs.flatMap(j=>Object.values(j.result?.imports||{})) as CaptureImportOutcome[];
   const prospectIds=[...new Set(receipts.map(r=>r.prospectId).filter((id):id is string=>!!id))];
   if(!ids.length)return jobs;
-  const q=await reader.execute(sql`SELECT id,source_details FROM prospects WHERE tenant_id=${tenantId} AND (
+  const q=await reader.execute(sql`SELECT id,source_details,company,address,postal_code AS "postalCode",city,phone,email,website,siret,siren,ape_code AS "apeCode",naf_label AS "nafLabel",naf_version AS "nafVersion",linkedin_url AS "linkedinUrl" FROM prospects WHERE tenant_id=${tenantId} AND (
     id::text=ANY(${sql.param(prospectIds)}::text[]) OR
     source_details->'browserCapture'->>'localCaptureId'=ANY(${sql.param(ids)}::text[]) OR EXISTS(
       SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(source_details->'crossSource'->'observations')='array'
@@ -40,8 +40,7 @@ export async function withCloudImportStates(jobs:Job[],tenantId:string,reader:Re
         if(found.length===1){
           // Old imports can contain unresolved proposals: keep them available for review.
           const prospect=q.rows.find(p=>String(p.id)===found[0]);
-          const conflicts=(prospect?.source_details as any)?.crossSource?.conflicts;
-          const pending=Array.isArray(conflicts)&&conflicts.some(c=>c.source===capture.source);
+          const pending=!!prospect&&captureHasPendingConflict({...prospect,sourceDetails:prospect.source_details},capture);
           imports[capture.id]={captureId:capture.id,status:pending?'needs_review':'already_present',prospectId:found[0],
             message:pending?'Des valeurs différentes restent à vérifier sur la fiche CRM.':'Déjà enregistré dans le CRM.'};
         }else if(found.length>1)imports[capture.id]={captureId:capture.id,status:'needs_review',message:'Plusieurs fiches CRM contiennent cette capture : vérifiez les doublons.'};

@@ -343,10 +343,10 @@ const cloudStub=createServer(async(req,res)=>{
     if(cloudDelay)await delay(cloudDelay);
     if(p.query==='cloud-wait'){res.end(JSON.stringify({status:'awaiting_user',message:'Connexion à vérifier',results:[]}));return;}
     if(p.query==='cloud-fail'){res.writeHead(503).end(JSON.stringify({error:'Source indisponible'}));return;}
-    if(['receipt-mixed','receipt-legacy','receipt-rollback'].includes(p.query)){
+    if(['receipt-mixed','receipt-legacy','receipt-legacy-conflict','receipt-rollback'].includes(p.query)){
       const row=(company,number,phone)=>({source:'google_maps',company,address:number+' rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone,sourceUrl:'https://www.google.com/maps/place/'+encodeURIComponent(company)+'/'});
       const values=p.query==='receipt-mixed'?[row('Import cloud neuf',10,'03 00 41 01 01'),row('CRM cloud existant',20,'03 00 41 01 02'),row('CRM cloud contradictoire',30,'03 00 41 01 03'),{...row('Import cloud incomplet',35,null),codePostal:null}]
-        :[row(p.query==='receipt-legacy'?'Ancien import cloud':'Import cloud transaction',40,'03 00 41 01 04')];
+        :[row(p.query.startsWith('receipt-legacy')?'Ancien import cloud':'Import cloud transaction',40,p.query==='receipt-legacy-conflict'?'03 00 41 09 99':'03 00 41 01 04')];
       res.end(JSON.stringify({status:'completed',results:values,drafts:[]}));return;
     }
     const siret=p.query==='cloud-wrong'?'96677700900019':p.target?.siret||'96677700200019';
@@ -1646,6 +1646,14 @@ try {
     const legacyAfter=await request('GET','/browser/jobs/'+legacyJob.body.id,undefined,token);
     check(legacyImport.body.imported===1&&legacyAfter.body.result.imports[legacyCapture.id].status==='already_present'&&legacyAfter.body.result.imports[legacyCapture.id].prospectId,
       'Cloud import : anciennes captures importées reconnues depuis la preuve CRM existante');
+    const legacyConflictJob=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'receipt-legacy-conflict'},token);await runCloudMaintenance(legacyConflictJob.body.id);
+    const legacyConflictBefore=await request('GET','/browser/jobs/'+legacyConflictJob.body.id,undefined,token),legacyConflictCapture=legacyConflictBefore.body.result.captures[0];
+    await request('POST','/sourcing/device/import-prospects',{verified:[legacyConflictCapture],drafts:[]},token);
+    const legacyGood=await request('GET','/browser/jobs/'+legacyJob.body.id,undefined,token);
+    const legacyBad=await request('GET','/browser/jobs/'+legacyConflictJob.body.id,undefined,token);
+    check(legacyGood.body.result.imports[legacyCapture.id].status==='already_present'&&legacyBad.body.result.imports[legacyConflictCapture.id].status==='needs_review',
+      'Cloud import : seul le désaccord correspondant aux valeurs de la capture la remet en revue');
+
     const refreshedList=await request('GET','/browser/jobs',undefined,token);
     check(refreshedList.body.find(j=>j.id===mixedJob.body.id).result.imports[mixedIds[0]].status==='imported'&&
       refreshedList.body.find(j=>j.id===legacyJob.body.id).result.imports[legacyCapture.id].status==='already_present',
