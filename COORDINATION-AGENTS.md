@@ -208,7 +208,7 @@ Branche `fix/cloud-sources-enrichment-unlimited`, base design PR55/56 (`dfa184a`
 
 Prévoir des lots techniques persistants et enchaînés jusqu'à fin de source, sans quota total de résultats ; garder les reçus/identifiants lors des reprises et autoriser l'import des résultats déjà lus. PagesJaunes réutilise les lecteurs de l'extension sans modifier le ZIP. Les commandes prospect doivent toutes conduire au même parcours cloud ciblé ; supprimer ou renommer les anciens raccourcis trompeurs, sans supprimer le bouton IA. Ne pas supprimer ces notes avant l'autorisation finale de production. Aucun déploiement DockPanel par l'agent.
 
-Validation en cours du lot continu : 339 contrôles API PostgreSQL16 verts, dont 38 résultats enchaînés et reçus conservés après annulation/reprise ; TypeScript et builds verts. Chromium réel vert : 35 détails Maps et pagination PagesJaunes (run 45967168729). Publication des quatre images encore à confirmer avant feu vert.
+Validation en cours du lot continu : 342 contrôles API PostgreSQL16 verts, dont 38 résultats enchaînés et reçus conservés après annulation/reprise ; TypeScript et builds verts. Chromium réel vert : 35 détails Maps et pagination PagesJaunes (run 45967168729). Publication des quatre images encore à confirmer avant feu vert.
 ## Lot design : centre « Collecte et enrichissement » (27/11/2026)
 
 - Le propriétaire valide explicitement la nouvelle maquette ATLAS × ORBIT de `/outils`. Branche isolée `feat/atlas-collection-hub-20261127`, basée sur `fix/growthos-functional-redesign` à `dfa184a` avant modification. Fichiers visuels : `artifacts/growthos/src/pages/CollectionToolsPage.tsx`, nouveau `src/collection-tools.css`, tests SSR du catalogue.
