@@ -153,7 +153,8 @@ try{
   const popupHtml=(await readFile(new URL('popup.html',extensionRoot),'utf8')).replace(/<script[^>]*src="popup.js"[^>]*><\/script>/,'').replace(/<link[^>]*popup.css[^>]*>/,'');
   const popupScript=await readFile(new URL('popup.js',extensionRoot),'utf8');
   const connectorModules=JSON.parse(await readFile(new URL('modules.json',extensionRoot),'utf8'));
-  const panel=p.page;await panel.setContent(popupHtml,{waitUntil:'domcontentloaded'});
+  const panel=p.page;await panel.setViewportSize({width:400,height:780});await panel.setContent(popupHtml,{waitUntil:'domcontentloaded'});
+  await panel.addStyleTag({content:await readFile(new URL('popup.css',extensionRoot),'utf8')});
   await panel.evaluate(({connectorModules})=>{
     const task={id:'10000000-0000-4000-8000-000000000099',source:'societe_com',mode:'enrich',status:'active',query:'Atelier',area:'Roubaix',prospect:{id:'10000000-0000-4000-8000-000000000098',company:'Atelier'}};
     window.connectorActions=[];window.requestedOrigins=[];
@@ -168,7 +169,8 @@ try{
   await panel.addScriptTag({content:popupScript});
   await panel.locator('#taskRead').waitFor({state:'visible'});
   assert.ok(await panel.locator('#taskOpenSource').isVisible(),'Les commandes de la source sont accessibles dans le mode local');
-  assert.ok(await panel.locator('#collectionView').isVisible(),'La saisie assistée n’est pas cachée par son conteneur');
+  assert.ok(await panel.locator('#manualPanel').isVisible(),'La saisie assistée reste accessible avec les vrais styles du panneau');
+  const readButton=await panel.locator('#taskRead').boundingBox();assert.ok(readButton&&readButton.y+readButton.height<780,'La commande de lecture est visible sans chercher en bas du panneau');
   await panel.locator('#taskRead').click();
   await panel.waitForFunction(()=>window.connectorActions.includes('task-complete'));
   assert.deepEqual(await panel.evaluate(()=>window.connectorActions.filter(a=>['permission-request','task-preview','task-complete'].includes(a))),['permission-request','task-preview','task-complete']);

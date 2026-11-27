@@ -25,7 +25,7 @@ function setPhase(next){
   $('searchFooter').hidden=next!=='search';
   $('collectFooter').hidden=next!=='collect';
   if(next==='collect')$('manualPanel').hidden=source==='pagesjaunes';
-  if(next==='task'){$('collectionView').hidden=false;$('manualPanel').hidden=false;}
+  if(next==='task')$('manualPanel').hidden=false;
   document.querySelectorAll('[data-step]').forEach(el=>{
     const order=['source','search','collect','import'];
     const active=next==='search'?'search':'collect';
