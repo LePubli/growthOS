@@ -22,7 +22,7 @@ const company=`<html><head><title>ATELIER CLOUD</title></head><body><main><h1>AT
   </dl><input id="proof" aria-label="Texte de recette"/><button>Valider</button></main></body></html>`;
 async function fixture(scope){
   const p=await service.profile(scope);
-  await p.context.route('https://www.societe.com/**',route=>route.fulfill({contentType:'text/html',body:route.request().url().includes('/societe/')?company:`<html><body><a href="${companyUrl}">ATELIER CLOUD</a><a href="${companyUrl}#__establishments">Établissements</a></body></html>`}));return p;
+  await p.context.route('https://www.societe.com/**',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:route.request().url().includes('/societe/')?company:`<html><body><a href="${companyUrl}">ATELIER CLOUD</a><a href="${companyUrl}#__establishments">Établissements</a></body></html>`}));return p;
 }
 try{
   let health;
@@ -65,7 +65,7 @@ try{
     const url=route.request().url(),index=Number(new URL(url).pathname.match(/Atelier-(\d+)/)?.[1]||0);
     const body=url.includes('/maps/place/')?`<main role="main"><h1>Atelier ${index}</h1><button data-item-id="address" aria-label="Adresse: ${index+1} rue du Test 59100 Roubaix">Adresse</button><button data-item-id="phone:tel" aria-label="Téléphone: 03 20 11 22 33">Téléphone</button></main>`
       :`<div role="feed">${Array.from({length:35},(_,i)=>`<a href="https://www.google.com/maps/place/Atelier-${i}">Atelier ${i}</a>`).join('')}<p>Vous êtes arrivé à la fin de la liste.</p></div>`;
-    return route.fulfill({contentType:'text/html',body});
+    return route.fulfill({contentType:'text/html; charset=utf-8',body});
   });
   const mapBatch1=await service.collect({...maps,query:'plombier',area:'Roubaix'});
   assert.equal(mapBatch1.results.length,25);assert.equal(mapBatch1.hasMore,true);
@@ -74,7 +74,7 @@ try{
   assert.equal(new Set([...mapBatch1.results,...mapBatch2.results].map(c=>c.sourceUrl)).size,35,'Plus de 25 fiches réellement lues sans répétition');
   const search={...identity,profileId:'10000000-0000-4000-8000-000000000007',source:'google_search'};
   p=await service.profile(search);
-  await p.context.route('https://www.google.com/**',route=>route.fulfill({contentType:'text/html',body:new URL(route.request().url()).searchParams.get('q')==='selected-panel'
+  await p.context.route('https://www.google.com/**',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:new URL(route.request().url()).searchParams.get('q')==='selected-panel'
     ?'<div id="rhs"><h2>Atelier choisi</h2><p>8 rue du Test 59100 Roubaix</p><a href="tel:0320112233">03 20 11 22 33</a></div>'
     :'<p>Ouvrez une fiche lisible</p>'}));
   const waiting=await service.collect({...search,query:'plombier'});
@@ -90,7 +90,7 @@ try{
     const details={"@type":"LocalBusiness",name:'Atelier PagesJaunes '+number,address:{streetAddress:number+' rue du Test',postalCode:'59100',addressLocality:'Roubaix'},telephone:'03 20 11 22 33',email:'contact@atelier-recette.invalid',url:'https://atelier-recette.invalid'};
     const body=url.pathname.includes('/pros/')?`<main><h1>${details.name}</h1><p>${number} rue du Test 59100 Roubaix</p><a href="tel:0320112233">Téléphone</a><a href="mailto:contact@atelier-recette.invalid">Email professionnel</a><script type="application/ld+json">${JSON.stringify(details)}</script></main>`
       :`<ul><li class="bi"><a class="bi-denomination" href="/pros/${100000000+number}"><h3>${details.name}</h3></a><span class="bi-address">${number} rue du Test 59100 Roubaix</span></li></ul>${number===1?'<a rel="next" href="/annuaire/chercherlespros?quoiqui=plombier&ou=Roubaix&page=2">Suivant</a>':''}`;
-    return route.fulfill({contentType:'text/html',body});
+    return route.fulfill({contentType:'text/html; charset=utf-8',body});
   });
   const pjBatch1=await service.collect({...pj,query:'plombier',area:'Roubaix'});
   assert.equal(pjBatch1.results[0].company,'Atelier PagesJaunes 1');assert.equal(pjBatch1.results[0].codePostal,'59100');assert.equal(pjBatch1.hasMore,true);
@@ -100,7 +100,7 @@ try{
   assert.equal(pjBatch2.results[0].pagesjaunesProfile.name,'Atelier PagesJaunes 2');
   const unrelated={...identity,profileId:'10000000-0000-4000-8000-000000000008'};
   p=await service.profile(unrelated);
-  await p.context.route('https://www.societe.com/**',route=>route.fulfill({contentType:'text/html',body:'<a href="https://www.societe.com/societe/monsieur-kevin-duville-793137845.html">MONSIEUR KEVIN DUVILLE</a>'}));
+  await p.context.route('https://www.societe.com/**',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<a href="https://www.societe.com/societe/monsieur-kevin-duville-793137845.html">MONSIEUR KEVIN DUVILLE</a>'}));
   const rejected=await service.collect({...unrelated,query:'Nord Artisan',area:'Lille',target:{company:'Nord Artisan'}});
   assert.equal(rejected.status,'awaiting_user');assert.equal(rejected.results.length,0);
   assert.ok(p.page.url().includes('/recherche?'),'Une unique fiche sans nom concordant ne doit pas être ouverte automatiquement');
@@ -114,7 +114,7 @@ try{
       <li data-type="c"><a class="overlay" href="/societe/nord-artisan-979965506.html" aria-label="NORD ARTISAN"></a><div><h2>NORD ARTISAN<span>979 965 506</span></h2><p>Travaux de menuiserie métallique</p><p>59000 LILLE</p></div></li>
       <li data-type="c"><a class="overlay" href="/societe/nord-artisan-111111111.html" aria-label="NORD ARTISAN"></a><div><h2>NORD ARTISAN<span>111 111 111</span></h2><p>75001 PARIS</p></div></li>
       <li data-type="c"><a class="overlay" href="/societe/artisan-du-nord-798461463.html" aria-label="ARTISAN DU NORD"></a><div><h2>ARTISAN DU NORD<span>798 461 463</span></h2><p>59000 LILLE</p></div></li></ul>`;
-    return route.fulfill({contentType:'text/html',body});
+    return route.fulfill({contentType:'text/html; charset=utf-8',body});
   });
   const real=await service.collect({...realistic,query:'Nord Artisan',area:'Lille',target:{company:'Nord Artisan',city:'Lille'}});
   assert.equal(real.status,'completed');assert.equal(real.results[0].siret,'97996550600020');
@@ -122,19 +122,19 @@ try{
   assert.ok(real.results[0].companyDetails.managerContacts[0].profileUrl.includes('/manager/'));
   const rendered={...maps,profileId:'10000000-0000-4000-8000-000000000010'};
   p=await service.profile(rendered);
-  await p.context.route('https://www.google.com/**',route=>route.fulfill({contentType:'text/html',body:'<main role="main"><h1 class="DUwDvf">Nord Artisan</h1><button data-item-id="address" aria-label="Adresse: 38 Bd Carnot, 59800 Lille">Adresse</button><button data-item-id="phone:tel" aria-label="Téléphone: 07 80 99 59 59">Téléphone</button></main>'}));
+  await p.context.route('https://www.google.com/**',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<main role="main"><h1 class="DUwDvf">Nord Artisan</h1><button data-item-id="address" aria-label="Adresse: 38 Bd Carnot, 59800 Lille">Adresse</button><button data-item-id="phone:tel" aria-label="Téléphone: 07 80 99 59 59">Téléphone</button></main>'}));
   const detail=await service.collect({...rendered,query:'Nord Artisan',area:'Lille'});
   assert.equal(detail.results[0].mapsDetail.title,'Nord Artisan');assert.ok(detail.results[0].sourceUrl.includes('/maps/search/'));
   for(const source of ['google_search','bing']){
     const organic={...identity,source,profileId:source==='bing'?'10000000-0000-4000-8000-000000000012':'10000000-0000-4000-8000-000000000011'};
     p=await service.profile(organic);
-    await p.context.route('**/*',route=>route.fulfill({contentType:'text/html',body:source==='bing'?'<ol id="b_results"><li class="b_algo"><h2><a href="https://nordartisan.fr/">Nord Artisan</a></h2></li></ol>':'<div id="search"><a href="https://nordartisan.fr/"><h3>Nord Artisan</h3></a></div>'}));
+    await p.context.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:source==='bing'?'<ol id="b_results"><li class="b_algo"><h2><a href="https://nordartisan.fr/">Nord Artisan</a></h2></li></ol>':'<div id="search"><a href="https://nordartisan.fr/"><h3>Nord Artisan</h3></a></div>'}));
     const links=await service.collect({...organic,query:'Nord Artisan',area:'Lille'});
     assert.equal(links.status,'completed');assert.equal(links.results.length,0);assert.equal(links.references[0].url,'https://nordartisan.fr/');
   }
   const blocked={...pj,profileId:'10000000-0000-4000-8000-000000000013'};
   p=await service.profile(blocked);
-  await p.context.route('https://www.pagesjaunes.fr/**',route=>route.fulfill({status:403,contentType:'text/html',body:'<h1>Sécurité</h1><p>Afin de nous aider à lutter contre certaines attaques informatiques, veuillez compléter le "challenge" suivant.</p><div id="challenge-stage"></div>'}));
+  await p.context.route('https://www.pagesjaunes.fr/**',route=>route.fulfill({status:403,contentType:'text/html; charset=utf-8',body:'<h1>Sécurité</h1><p>Afin de nous aider à lutter contre certaines attaques informatiques, veuillez compléter le "challenge" suivant.</p><div id="challenge-stage"></div>'}));
   const challenge=await service.collect({...blocked,query:'Nord Artisan',area:'Lille'});
   assert.equal(challenge.status,'awaiting_user');assert.ok(challenge.message.includes('Cloudflare'));assert.equal(challenge.results.length,0);
   console.log('✓ Régressions DOM : Societe.com lien vide + ville + /manager/, Maps détaillé sur URL search, résultats organiques Google/Bing, blocage Cloudflare explicite');

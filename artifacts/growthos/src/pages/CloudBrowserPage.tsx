@@ -57,6 +57,7 @@ function CloudBrowserWorkspace() {
   const [notice, setNotice] = useState('');
   const [activeJobId, setActiveJobId] = useState('');
   const [verificationJobId,setVerificationJobId]=useState(params.get('jobId')||'');
+  const latestVerification=useRef(verificationJobId);latestVerification.current=verificationJobId;
   const verificationContext=useRef(source+'|'+selected);
   useEffect(()=>{const key=source+'|'+selected;if(verificationContext.current!==key){setVerificationJobId('');verificationContext.current=key;}},[source,selected]);
   const [expandedBrowser, setExpandedBrowser] = useState(false);
@@ -74,7 +75,7 @@ function CloudBrowserWorkspace() {
   async function readJobs() {
     const version = ++jobsRequest.current;
     const result = await api.get<Job[]>('/browser/jobs');
-    const requested=verificationJobId;
+    const requested=latestVerification.current;
     if(requested&&!result.some(job=>job.id===requested)){
       const job=await api.get<Job>('/browser/jobs/'+requested).catch(()=>null);
       if(job)result.unshift(job);
