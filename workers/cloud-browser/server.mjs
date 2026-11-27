@@ -15,7 +15,7 @@ const server=createServer(async(req,res)=>{
   const operations={'/open':'open','/view':'view','/action':'action','/erase':'erase','/collect':'collect','/stop':'stop'};
   if(req.method!=='POST'||!operations[req.url])return json(res,404,{error:'Action introuvable'});
   try{
-    let raw='';for await(const chunk of req){raw+=chunk.toString('utf8');if(Buffer.byteLength(raw)>24000)return json(res,413,{error:'Requête trop volumineuse'});}
+    let raw='';for await(const chunk of req){raw+=chunk.toString('utf8');if(Buffer.byteLength(raw)>(req.url==='/collect'?4*1024*1024:24000))return json(res,413,{error:'Requête trop volumineuse'});}
     const value=await service[operations[req.url]](JSON.parse(raw));json(res,200,value);
   }catch(error){
     // Do not log request bodies, screenshots, typed text, credentials or cookies.

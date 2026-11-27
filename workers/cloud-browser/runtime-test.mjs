@@ -59,5 +59,45 @@ try{
   await assert.rejects(()=>service.collect({...other,source:'linkedin',query:'test'}),e=>e.status===422);
   await service.erase(identity);await fixture(identity);await service.open({...identity,query:'test'});
   assert.ok(!(await service.current.context.cookies()).some(c=>c.name==='growthos_proof'),'Déconnexion efface réellement la session');
+  const maps={...identity,profileId:'10000000-0000-4000-8000-000000000005',source:'google_maps'};
+  p=await service.profile(maps);
+  await p.context.route('https://www.google.com/**',route=>{
+    const url=route.request().url(),index=Number(new URL(url).pathname.match(/Atelier-(\d+)/)?.[1]||0);
+    const body=url.includes('/maps/place/')?`<main role="main"><h1>Atelier ${index}</h1><button data-item-id="address" aria-label="Adresse: ${index+1} rue du Test 59100 Roubaix">Adresse</button><button data-item-id="phone:tel" aria-label="Téléphone: 03 20 11 22 33">Téléphone</button></main>`
+      :`<div role="feed">${Array.from({length:35},(_,i)=>`<a href="https://www.google.com/maps/place/Atelier-${i}">Atelier ${i}</a>`).join('')}<p>Vous êtes arrivé à la fin de la liste.</p></div>`;
+    return route.fulfill({contentType:'text/html',body});
+  });
+  const mapBatch1=await service.collect({...maps,query:'plombier',area:'Roubaix'});
+  assert.equal(mapBatch1.results.length,25);assert.equal(mapBatch1.hasMore,true);
+  const mapBatch2=await service.collect({...maps,query:'plombier',area:'Roubaix',cursor:mapBatch1.cursor,resume:true});
+  assert.equal(mapBatch2.results.length,10);assert.equal(mapBatch2.hasMore,false);
+  assert.equal(new Set([...mapBatch1.results,...mapBatch2.results].map(c=>c.sourceUrl)).size,35,'Plus de 25 fiches réellement lues sans répétition');
+  const search={...identity,profileId:'10000000-0000-4000-8000-000000000007',source:'google_search'};
+  p=await service.profile(search);
+  await p.context.route('https://www.google.com/**',route=>route.fulfill({contentType:'text/html',body:new URL(route.request().url()).searchParams.get('q')==='selected-panel'
+    ?'<div id="rhs"><h2>Atelier choisi</h2><p>8 rue du Test 59100 Roubaix</p><a href="tel:0320112233">03 20 11 22 33</a></div>'
+    :'<p>Ouvrez une fiche lisible</p>'}));
+  const waiting=await service.collect({...search,query:'plombier'});
+  assert.equal(waiting.status,'awaiting_user');
+  await p.page.goto('https://www.google.com/search?q=selected-panel');
+  const resumed=await service.collect({...search,query:'plombier',resume:true,cursor:waiting.cursor});
+  assert.equal(resumed.status,'completed');assert.equal(resumed.results[0].company,'Atelier choisi');
+  assert.ok(p.page.url().includes('selected-panel'),'La reprise conserve le panneau choisi manuellement');
+  const pj={...identity,profileId:'10000000-0000-4000-8000-000000000006',source:'pagesjaunes'};
+  p=await service.profile(pj);
+  await p.context.route('https://www.pagesjaunes.fr/**',route=>{
+    const url=new URL(route.request().url()),number=url.pathname.includes('/pros/')?Number(url.pathname.split('/').pop())-100000000:Number(url.searchParams.get('page')||1);
+    const details={"@type":"LocalBusiness",name:'Atelier PagesJaunes '+number,address:{streetAddress:number+' rue du Test',postalCode:'59100',addressLocality:'Roubaix'},telephone:'03 20 11 22 33',email:'contact@atelier-recette.invalid',url:'https://atelier-recette.invalid'};
+    const body=url.pathname.includes('/pros/')?`<main><h1>${details.name}</h1><p>${number} rue du Test 59100 Roubaix</p><a href="tel:0320112233">Téléphone</a><a href="mailto:contact@atelier-recette.invalid">Email professionnel</a><script type="application/ld+json">${JSON.stringify(details)}</script></main>`
+      :`<ul><li class="bi"><a class="bi-denomination" href="/pros/${100000000+number}"><h3>${details.name}</h3></a><span class="bi-address">${number} rue du Test 59100 Roubaix</span></li></ul>${number===1?'<a rel="next" href="/annuaire/chercherlespros?quoiqui=plombier&ou=Roubaix&page=2">Suivant</a>':''}`;
+    return route.fulfill({contentType:'text/html',body});
+  });
+  const pjBatch1=await service.collect({...pj,query:'plombier',area:'Roubaix'});
+  assert.equal(pjBatch1.results[0].company,'Atelier PagesJaunes 1');assert.equal(pjBatch1.results[0].codePostal,'59100');assert.equal(pjBatch1.hasMore,true);
+  const pjBatch2=await service.collect({...pj,query:'plombier',area:'Roubaix',cursor:pjBatch1.cursor,resume:true});
+  assert.equal(pjBatch2.results[0].company,'Atelier PagesJaunes 2');assert.equal(pjBatch2.hasMore,false);
+  assert.equal(pjBatch2.results[0].email,'contact@atelier-recette.invalid');
+  assert.equal(pjBatch2.results[0].pagesjaunesProfile.name,'Atelier PagesJaunes 2');
+  console.log('✓ Chromium réel : 35 fiches Maps en continuation et PagesJaunes recherche → détail → page suivante avec lecteurs canoniques');
   console.log('✓ Chromium réel : recherche → fiche Societe.com → extraction, vue JPEG, saisie, session persistante, séparation des comptes, contrôle et déconnexion');
 }finally{child.kill('SIGTERM');await service.close();await rm(directory,{recursive:true,force:true});}

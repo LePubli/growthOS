@@ -2,7 +2,7 @@ import {lookup} from 'node:dns/promises';
 import {isIP} from 'node:net';
 
 export const SOURCES=['google_maps','google_search','bing','societe_com','pagesjaunes','linkedin','facebook','instagram','tiktok'];
-export const AUTOMATIC=['google_maps','google_search','bing','societe_com'];
+export const AUTOMATIC=['google_maps','google_search','bing','societe_com','pagesjaunes'];
 export const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export class InputError extends Error{constructor(message){super(message);this.status=400;}}
 export function scope(input){
@@ -14,7 +14,7 @@ export function searchUrl(source,query='',area='',login=false){
   if(typeof query!=='string'||typeof area!=='string'||query.length>160||area.length>120)throw new InputError('Critères invalides');
   const term=[query.trim(),area.trim()].filter(Boolean).join(' '),q=encodeURIComponent(term);
   const urls={google_maps:'https://www.google.com/maps/search/'+q,google_search:'https://www.google.com/search?q='+q,
-    bing:'https://www.bing.com/search?q='+q,societe_com:'https://www.societe.com/recherche?q='+encodeURIComponent(query.trim())+'&ftStatus=0',
+    bing:'https://www.bing.com/search?q='+q,societe_com:'https://www.societe.com/recherche?q='+encodeURIComponent(/^\d{9}(?:\d{5})?$/.test(query.trim())?query.trim():term)+'&ftStatus=0',
     pagesjaunes:'https://www.pagesjaunes.fr/annuaire/chercherlespros?quoiqui='+encodeURIComponent(query.trim())+'&ou='+encodeURIComponent(area.trim()),
     linkedin:'https://www.linkedin.com/search/results/companies/?keywords='+q,
     facebook:'https://www.facebook.com/search/pages/?q='+q,instagram:'https://www.instagram.com/explore/search/keyword/?q='+q,

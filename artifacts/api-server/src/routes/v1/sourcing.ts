@@ -383,6 +383,44 @@ function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
     }
   } catch { return false; }
 }
+const pagesJaunesProfileUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && ["pagesjaunes.fr", "www.pagesjaunes.fr"].includes(parsed.hostname)
+      && /^\/pros\/\d{4,20}\/?$/.test(parsed.pathname);
+  } catch { return false; }
+};
+const profileUrl = z.string().max(500).url().refine(pagesJaunesProfileUrl, "Fiche PagesJaunes attendue");
+const profileSchema = z.object({
+  sourceUrl: profileUrl,
+  name: z.string().trim().min(2).max(160),
+  address: z.string().trim().max(320).nullable(),
+  codePostal: z.string().regex(/^\d{5}$/).nullable(),
+  city: z.string().trim().max(120).nullable(),
+  phone: z.string().trim().max(40).nullable(),
+  email: z.string().email().max(250).nullable(),
+  website: z.string().url().max(500).refine(v => ["https:", "http:"].includes(new URL(v).protocol)).nullable(),
+  siret: z.string().regex(/^\d{14}$/).nullable(),
+  siren: z.string().regex(/^\d{9}$/).nullable(),
+  description: z.string().trim().max(1500).nullable(),
+  openingHours: z.string().trim().max(1500).nullable(),
+  services: z.string().trim().max(1400).nullable(),
+  legal: z.string().trim().max(1500).nullable(),
+  socials: z.object({
+    facebook: z.string().url().max(500).optional(),
+    instagram: z.string().url().max(500).optional(),
+    linkedin: z.string().url().max(500).optional(),
+  }).strict(),
+  rating: z.number().min(0).max(5).nullable(),
+  reviewCount: z.number().int().min(0).max(1000000).nullable(),
+  reviews: z.array(z.object({
+    author: z.string().trim().max(100).nullable(),
+    date: z.string().trim().max(40).nullable(),
+    text: z.string().trim().min(20).max(800),
+  }).strict()).max(12).optional().default([]),
+  capturedAt: z.string().datetime().optional(),
+}).strict();
+
 const companyDetailsSchema = z.object({
   fields:z.record(z.string().max(100),z.string().max(1000)).refine(value=>Object.keys(value).length<=30),
   managers:z.array(z.string().max(150)).max(50),
@@ -415,10 +453,27 @@ const deviceCandidateFieldsSchema = z.object({
   apeScope: z.enum(['etablissement','unite_legale']).optional(),
   nafVersion: z.string().trim().max(32).nullable().optional(),
   companyDetails: companyDetailsSchema.optional(),
+  pagesjaunesProfile: profileSchema.optional(),
   collectionMode: z.enum(['manual','visible']).optional(),
   capturedAt: z.number().int().positive().optional(),
 }).strict();
+function validatePagesJaunesProfile(item:{source:string;company:string;sourceUrl?:string|null;siret?:string|null;pagesjaunesProfile?:z.infer<typeof profileSchema>},ctx:z.RefinementCtx){
+  const profile=item.pagesjaunesProfile;
+  if(!profile)return;
+  if(item.source!=='pagesjaunes'||profile.sourceUrl!==item.sourceUrl||normalizedIdentity(profile.name)!==normalizedIdentity(item.company)||
+    (profile.siren&&profile.siret&&!profile.siret.startsWith(profile.siren))||
+    (profile.siret&&profile.siret!==item.siret)||
+    (profile.siren&&item.siret&&!item.siret.startsWith(profile.siren)))
+    ctx.addIssue({code:'custom',path:['pagesjaunesProfile'],message:'Détails PagesJaunes incohérents avec la fiche capturée.'});
+}
+function capturedSourceDetails(item:{source:string;sourceUrl?:string|null;capturedAt?:number;companyDetails?:unknown;pagesjaunesProfile?:z.infer<typeof profileSchema>}){
+  return {
+    ...(item.source==='societe_com'&&item.companyDetails?{societe_com:{companyDetails:item.companyDetails,sourceUrl:item.sourceUrl,capturedAt:item.capturedAt}}:{}),
+    ...(item.source==='pagesjaunes'&&item.pagesjaunesProfile?{pagesjaunes:{...item.pagesjaunesProfile,capturedAt:new Date(item.capturedAt||Date.now()).toISOString()}}:{}),
+  };
+}
 const deviceCandidateSchema = deviceCandidateFieldsSchema.superRefine((item, context) => {
+  validatePagesJaunesProfile(item,context);
   if (item.sourceUrl ? !validDeviceSourceUrl(item.source,item.sourceUrl) : item.source!=='pagesjaunes') {
     context.addIssue({code:'custom',path:['sourceUrl'],message:'URL de source obligatoire et conforme à la source'});
   }
@@ -435,8 +490,9 @@ const deviceCandidateSchema = deviceCandidateFieldsSchema.superRefine((item, con
   ...item,
   sourceDetails:{
     ...(item.apeCode && item.apeScope ? {annuaire:{apeScope:item.apeScope}} : {}),
-    ...(item.source==='societe_com' && item.companyDetails ? {societe_com:{companyDetails:item.companyDetails,sourceUrl:item.sourceUrl,capturedAt:item.capturedAt}} : {}),
+    ...capturedSourceDetails(item),
   },
+  ...(item.source==='pagesjaunes'&&item.pagesjaunesProfile?.siren?{siren:item.pagesjaunesProfile.siren}:{}),
   ...(item.source === 'societe_com' && item.sourceUrl
     ? {siren: new URL(item.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1]} : {}),
 }));
@@ -609,7 +665,7 @@ async function mergeProspectCapture(
   const sourceAdded=incomingSources.some(source=>!sources.has(source));
   for(const source of incomingSources)sources.add(source);
   if(!filled.length&&!newConflicts.length&&!sourceAdded&&alreadyObserved &&
-    !jsonRecord(item.sourceDetails).societe_com)
+    !jsonRecord(item.sourceDetails).societe_com&&!jsonRecord(item.sourceDetails).pagesjaunes)
     return {updated:false,filled,conflicts:0,newConflicts:[]};
   const observation={captureId:item.id,source:item.source,sourceUrl:item.sourceUrl||null,
     capturedAt:now,fieldsFilled:filled};
@@ -635,6 +691,17 @@ async function mergeProspectCapture(
         history:changed && oldProfile.companyDetails ? [...history,{capturedAt:oldProfile.capturedAt,companyDetails:oldProfile.companyDetails}].slice(-10) : history};
     }
   }
+  let pagesJaunesChanged=false;
+  if(item.source==='pagesjaunes'&&incomingDetails.pagesjaunes){
+    const incoming=jsonRecord(incomingDetails.pagesjaunes),prior=jsonRecord(oldDetails.pagesjaunes);
+    if(Date.parse(String(incoming.capturedAt||''))>=(Date.parse(String(prior.capturedAt||''))||0)){
+      const {capturedAt:oldAt,history:oldHistory,...oldData}=prior;
+      const {capturedAt:newAt,history:ignored,...newData}=incoming;
+      pagesJaunesChanged=!isDeepStrictEqual(oldData,newData);
+      const history=Array.isArray(oldHistory)?oldHistory:[];
+      combinedDetails.pagesjaunes={...incoming,history:pagesJaunesChanged&&oldAt?[...history,{...oldData,capturedAt:oldAt}].slice(-10):history};
+    }
+  }
   const updatedDetails={...combinedDetails,crossSource:{...oldMerge,
     fieldSources,
     observations:(alreadyObserved?oldObservations:[...oldObservations,observation]).slice(-60),
@@ -650,9 +717,10 @@ async function mergeProspectCapture(
   const oldSociete=jsonRecord(oldDetails.societe_com).companyDetails;
   const nextSociete=jsonRecord(combinedDetails.societe_com).companyDetails;
   const detailsChanged=!!nextSociete && !isDeepStrictEqual(oldSociete,nextSociete);
-  if(filled.length || newConflicts.length || detailsChanged){
+  if(filled.length || newConflicts.length || detailsChanged || pagesJaunesChanged){
     const changes:FieldChanges=Object.fromEntries(filled.map(field=>[field,{before:existing[field as EnrichmentField],after:updates[field as EnrichmentField]}]));
     if(detailsChanged)changes['Informations détaillées Societe.com']={before:oldSociete||null,after:nextSociete};
+    if(pagesJaunesChanged)changes['Informations détaillées PagesJaunes']={before:oldDetails.pagesjaunes||null,after:combinedDetails.pagesjaunes};
     const proposals=newConflicts.length?'\nPropositions non appliquées : '+newConflicts.map(c=>`${prospectFieldLabels[c.field]||c.field} : ${c.existing} → ${c.incoming}`).join(' ; '):'';
     await executor.insert(activitiesTable).values({type:'data_update',title:'Enrichissement · '+item.source,
       description:changeDescription(item.source,item.sourceUrl||null,changes,autoFields.length?'Enrichissement automatique : identité exacte et données confirmées de la source.':'Champs vides complétés ; les valeurs divergentes restent à valider.',now)+proposals,
@@ -672,6 +740,7 @@ const targetCaptureSchema=deviceCandidateFieldsSchema.extend({
   address:z.string().trim().max(320).nullable().optional(),
   codePostal:z.string().regex(/^\d{5}$/).nullable().optional(),
 }).superRefine((item,ctx)=>{
+  validatePagesJaunesProfile(item,ctx);
   const validSource=!!item.sourceUrl && validDeviceSourceUrl(item.source,item.sourceUrl);
   if(!validSource)
     ctx.addIssue({code:'custom',path:['sourceUrl'],message:'Ouvrez une fiche professionnelle conforme à la source.'});
@@ -692,9 +761,9 @@ const targetCaptureSchema=deviceCandidateFieldsSchema.extend({
   if(item.capturedAt && (item.capturedAt>Date.now()+60000 || Date.now()-item.capturedAt>86400000))
     ctx.addIssue({code:'custom',path:['capturedAt'],message:'Capture expirée (24 h).'});
 }).transform(item=>({...item,
+  ...(item.source==='pagesjaunes'&&item.pagesjaunesProfile?.siren?{siren:item.pagesjaunesProfile.siren}:{}),
   ...(item.source==='societe_com' && item.sourceUrl ? {siren:new URL(item.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1]}:{}),
-  sourceDetails:item.source==='societe_com' && item.companyDetails
-    ? {societe_com:{companyDetails:item.companyDetails,sourceUrl:item.sourceUrl,capturedAt:item.capturedAt}} : {},
+  sourceDetails:capturedSourceDetails(item),
 }));
 export async function applyTargetCapture(tenantId:string,userId:string,prospectId:string,taskId:string,rawCapture:unknown,automatic=false,cloud?:{lease:string;result:Record<string,unknown>}){
   const parsed=targetCaptureSchema.safeParse(rawCapture);
@@ -1208,44 +1277,6 @@ router.post('/device/jobs/:id/import-drafts',requireAuth,async(req,res)=>{
   res.json({imported,skipped,selected:selected.length});
 });
 
-
-const pagesJaunesProfileUrl = (url: string) => {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" && ["pagesjaunes.fr", "www.pagesjaunes.fr"].includes(parsed.hostname)
-      && /^\/pros\/\d{4,20}\/?$/.test(parsed.pathname);
-  } catch { return false; }
-};
-const profileUrl = z.string().max(500).url().refine(pagesJaunesProfileUrl, "Fiche PagesJaunes attendue");
-const profileSchema = z.object({
-  sourceUrl: profileUrl,
-  name: z.string().trim().min(2).max(160),
-  address: z.string().trim().max(320).nullable(),
-  codePostal: z.string().regex(/^\d{5}$/).nullable(),
-  city: z.string().trim().max(120).nullable(),
-  phone: z.string().trim().max(40).nullable(),
-  email: z.string().email().max(250).nullable(),
-  website: z.string().url().max(500).refine(v => ["https:", "http:"].includes(new URL(v).protocol)).nullable(),
-  siret: z.string().regex(/^\d{14}$/).nullable(),
-  siren: z.string().regex(/^\d{9}$/).nullable(),
-  description: z.string().trim().max(1500).nullable(),
-  openingHours: z.string().trim().max(1500).nullable(),
-  services: z.string().trim().max(1400).nullable(),
-  legal: z.string().trim().max(1500).nullable(),
-  socials: z.object({
-    facebook: z.string().url().max(500).optional(),
-    instagram: z.string().url().max(500).optional(),
-    linkedin: z.string().url().max(500).optional(),
-  }).strict(),
-  rating: z.number().min(0).max(5).nullable(),
-  reviewCount: z.number().int().min(0).max(1000000).nullable(),
-  reviews: z.array(z.object({
-    author: z.string().trim().max(100).nullable(),
-    date: z.string().trim().max(40).nullable(),
-    text: z.string().trim().min(20).max(800),
-  }).strict()).max(12).optional().default([]),
-  capturedAt: z.string().datetime().optional(),
-}).strict();
 
 router.post("/device/prospects/:id/enrich", requireAuth, async (req,res) => {
   const parsed = profileSchema.safeParse(req.body?.profile);

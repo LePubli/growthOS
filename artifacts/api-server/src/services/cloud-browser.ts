@@ -1,10 +1,11 @@
+import {appendCloudResult} from './cloud-results';
 import {pool} from '@workspace/db';
 import {randomUUID} from 'node:crypto';
 import {applyTargetCapture} from '../routes/v1/sourcing';
 import {logger} from '../lib/logger';
 
 export const CLOUD_SOURCES=['google_maps','google_search','bing','societe_com','pagesjaunes','linkedin','facebook','instagram','tiktok'] as const;
-export const CLOUD_AUTOMATIC=['google_maps','google_search','bing','societe_com'];
+export const CLOUD_AUTOMATIC=['google_maps','google_search','bing','societe_com','pagesjaunes'];
 export class CloudBrowserError extends Error{constructor(public status:number,message:string){super(message);}}
 export function cloudConfigured(){return !!process.env.CLOUD_BROWSER_URL && (process.env.CLOUD_BROWSER_TOKEN||'').length>=32;}
 export async function browserCall(path:string,payload?:object,timeout=35000):Promise<any>{
@@ -13,7 +14,7 @@ export async function browserCall(path:string,payload?:object,timeout=35000):Pro
   if(!['http:','https:'].includes(base.protocol)||base.username||base.password||base.search||base.hash)throw new CloudBrowserError(503,'Configuration du navigateur invalide.');
   const response=await fetch(new URL(path,base),{method:payload?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
     headers:{'Content-Type':'application/json','X-Worker-Token':process.env.CLOUD_BROWSER_TOKEN!},...(payload?{body:JSON.stringify(payload)}:{})});
-  const raw=await response.text();if(raw.length>2200000)throw new CloudBrowserError(502,'Réponse du navigateur trop volumineuse.');
+  const raw=await response.text();if(raw.length>8*1024*1024)throw new CloudBrowserError(502,'Réponse du navigateur trop volumineuse.');
   let data;try{data=JSON.parse(raw);}catch{throw new CloudBrowserError(502,'Réponse navigateur invalide.');}
   if(!response.ok)throw new CloudBrowserError(response.status,data.error||'Navigateur indisponible.');return data;
 }
@@ -28,7 +29,7 @@ export async function cloudJob(tenantId:string,id:string,userId?:string){
 const normalize=(v:unknown)=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const phone=(v:unknown)=>String(v||'').replace(/^\+33/,'0').replace(/\D/g,'');
 function targetMatches(p:any,c:any){
-  const known=p.siren||p.siret?.slice(0,9),incoming=c.siret?.slice(0,9)||new URL(c.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1];
+  const known=p.siren||p.siret?.slice(0,9),incoming=c.pagesjaunesProfile?.siren||c.siret?.slice(0,9)||new URL(c.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1];
   if(known&&incoming&&known!==incoming)return false;
   if(p.siret&&c.siret)return p.siret===c.siret;
   if(c.source==='societe_com'&&known===incoming)return !p.city||!c.city||normalize(p.city)===normalize(c.city);
@@ -47,27 +48,32 @@ export async function runCloudJob(id:string){
     if(job.mode==='enrich'&&!job.prospect_id)throw new CloudBrowserError(404,'Le prospect cible a été supprimé.');
     if(job.prospect_id){const q=await pool.query('SELECT * FROM prospects WHERE id=$1 AND tenant_id=$2',[job.prospect_id,job.tenant_id]);prospect=q.rows[0];if(!prospect)throw new CloudBrowserError(404,'Prospect cible introuvable.');}
     const data=await browserCall('/collect',{tenantId:job.tenant_id,profileId:profile.id,source:profile.source,
-      query:job.query,area:job.area,limit:job.limit_count,resume:job.resume,
+      query:job.query,area:job.area,limit:job.limit_count,resume:job.resume,cursor:job.result?.pageCursor,
       target:prospect?{company:prospect.company,siren:prospect.siren,siret:prospect.siret}:undefined},600000);
-    const latest=await cloudJob(job.tenant_id,id);if(latest.status==='cancelled')return;
-    const allowed=['source','company','address','codePostal','city','phone','email','website','sourceUrl','siret','apeCode','nafLabel','nafVersion','apeScope','companyDetails'];
-    const captures=(Array.isArray(data.results)?data.results:[]).slice(0,25).map((c:any,index:number)=>{
-      const out:any={id:prospect?'task_'+id:'cloud_'+id+'_'+index,collectionMode:'visible',capturedAt:Date.now()};
-      for(const key of allowed)if(c[key]!==undefined)out[key]=c[key];return out;
-    });
-    let result:any={captures,drafts:(data.drafts||[]).slice(0,25),message:String(data.message||'').slice(0,500)};
-    let status=data.status==='awaiting_user'?'awaiting_user':'completed';
-    if(prospect&&captures.length){
-      const matches=captures.filter((c:any)=>{try{return targetMatches(prospect,c);}catch{return false;}});
-      if(matches.length!==1){status='needs_review';result.message='Le rapprochement n’est pas certain. Vérifiez le bon établissement dans le navigateur avant de reprendre.';}
-      else{
-        const applied=await applyTargetCapture(job.tenant_id,job.created_by,prospect.id,id,matches[0],true,{lease,result});
-        if(applied.status!==200){status='needs_review';result.message='error' in applied?applied.error:'Vérifiez la fiche cible.';}
-        else result.applied=applied;
-      }
+    const latest=await cloudJob(job.tenant_id,id);if(latest.status==='cancelled'||latest.lease!==lease)return;
+    const result=appendCloudResult(latest.result,data,id,profile.source,!!prospect);
+    let status=data.status==='awaiting_user'?'awaiting_user':data.hasMore?'queued':'completed';
+    if(prospect){
+      const matches=result.captures.filter((c:any)=>{try{return targetMatches(prospect,c);}catch{return false;}});
+      if(matches.length===1){
+        const applied=await applyTargetCapture(job.tenant_id,job.created_by,prospect.id,id,matches[0],true,{lease,result:{...result,pageCursor:null,hasMore:false}});
+        if(applied.status===200)return;
+        status='needs_review';result.message='error' in applied?applied.error:'Vérifiez la fiche cible.';
+      }else if(status==='completed'||matches.length>1){status='needs_review';result.message='Le rapprochement n’est pas certain. Vérifiez le bon établissement dans le navigateur avant de reprendre.';}
     }
-    await pool.query(`UPDATE cloud_browser_jobs SET status=$3,result=$4,lease=NULL,lease_until=NULL,updated_at=NOW()
-      WHERE id=$1 AND tenant_id=$2 AND lease=$5 AND status='running'`,[id,job.tenant_id,status,JSON.stringify(result),lease]);
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      const locked=await client.query("SELECT * FROM cloud_browser_jobs WHERE id=$1 AND tenant_id=$2 FOR UPDATE",[id,job.tenant_id]);
+      const current=locked.rows[0];
+      if(current?.status==='running'&&current.lease===lease){
+        // Imports may complete while Chromium reads the next batch. Preserve their receipts.
+        const merged=prospect?result:appendCloudResult(current.result,data,id,profile.source);
+        await client.query(`UPDATE cloud_browser_jobs SET status=$3,result=$4,lease=NULL,lease_until=NULL,resume=true,updated_at=NOW()
+          WHERE id=$1 AND tenant_id=$2 AND lease=$5 AND status='running'`,[id,job.tenant_id,status,JSON.stringify(merged),lease]);
+      }
+      await client.query('COMMIT');
+    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   }catch(error){
     const detail=error instanceof CloudBrowserError?error.message:'La collecte n’a pas pu se terminer. Consultez le navigateur puis réessayez.';
     const waiting=error instanceof CloudBrowserError&&[409,423,429].includes(error.status);

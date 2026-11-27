@@ -55,7 +55,7 @@ export async function importCloudJob(tenantId:string,userId:string,jobId:string,
     const query=await tx.execute(sql`SELECT * FROM cloud_browser_jobs WHERE id=${jobId} AND tenant_id=${tenantId} AND created_by=${userId} FOR UPDATE`);
     const raw=query.rows[0] as Job|undefined;
     if(!raw)throw new CloudBrowserError(404,'Recherche introuvable.');
-    if(raw.mode!=='discover'||raw.status!=='completed')throw new CloudBrowserError(409,'Import disponible uniquement pour une collecte terminée.');
+    if(raw.mode!=='discover')throw new CloudBrowserError(409,'Choisissez une tâche de collecte pour importer des prospects.');
     const [job]=await withCloudImportStates([raw],tenantId,tx);
     const captures=new Map<string,any>((job.result.captures||[]).map((c:any)=>[c.id,c]));
     const ids=[...new Set(captureIds)];

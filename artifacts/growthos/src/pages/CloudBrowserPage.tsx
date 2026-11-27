@@ -18,7 +18,7 @@ type Job = {
   id: string; profile_id: string; prospect_id: string | null;
   mode: 'enrich' | 'discover'; query: string; area?: string; status: string; error: string | null;
   result: {
-    message?: string; captures?: Capture[]; drafts?: unknown[]; imports?: Record<string,CaptureImportState>;
+    message?: string; hasMore?:boolean; progress?:{captured:number;discovered:number}; captures?: Capture[]; drafts?: unknown[]; imports?: Record<string,CaptureImportState>;
     applied?: { filled: string[]; conflicts: number };
   };
 };
@@ -38,7 +38,6 @@ export default function CloudBrowserPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState('');
   const [status, setStatus] = useState<{ ready: boolean; configured: boolean; automatic: string[] } | null>(null);
-  const [limit, setLimit] = useState(10);
   const [source, setSource] = useState(params.get('source') || (prospectId ? 'societe_com' : 'google_maps'));
   const [profileLabel, setProfileLabel] = useState('');
   const [mode, setMode] = useState<'public' | 'account'>('public');
@@ -98,6 +97,7 @@ export default function CloudBrowserPage() {
     }).catch(e => setError(e.message));
   }, [prospectId]);
   useEffect(() => {
+    if(viewProfile.current===selected)return;
     setView(null); setViewing(false); control.current = ''; viewProfile.current = '';
   }, [selected]);
   useEffect(() => {
@@ -135,7 +135,7 @@ export default function CloudBrowserPage() {
   const activeJob = discoveryJobs.find(job => job.id === activeJobId)
     || discoveryJobs.find(job => job.result?.captures?.length)
     || discoveryJobs[0];
-  const allCaptures = activeJob?.status === 'completed' ? (activeJob.result?.captures || []) : [];
+  const allCaptures = activeJob?.result?.captures || [];
   const imports = activeJob?.result?.imports || {};
   const captures = pendingCloudCaptures(allCaptures,imports);
   const draftsCount = activeJob?.result?.drafts?.length || 0;
@@ -150,12 +150,19 @@ export default function CloudBrowserPage() {
     });
   }
 
+  async function ensureProfile(){
+    if(profile)return profile;
+    const made=await api.post<Profile>('/browser/profiles',{source,label:profileLabel.trim()||sourceName(source)+' · '+(mode==='public'?'public':'mon compte'),mode});
+    setProfiles(current=>[...current,made]);
+    viewProfile.current=made.id;setView(null);setViewing(false);setSelected(made.id);return made;
+  }
   async function open(login = false, keepPage = false) {
     await perform('Ouvrir', async () => {
-      const result = await api.post<any>('/browser/profiles/' + selected + '/open',
+      const target=await ensureProfile();
+      const result = await api.post<any>('/browser/profiles/' + target.id + '/open',
         { query, area, login, keepPage }, { timeoutMs: 35000 });
       control.current = result.controlId;
-      viewProfile.current = selected;
+      viewProfile.current = target.id;
       setViewing(true);
       setNotice('Session ouverte. Les connexions éventuelles restent dans ce profil ; une session ouverte ne garantit pas que le site vous a authentifié.');
     });
@@ -182,7 +189,7 @@ export default function CloudBrowserPage() {
         setProfiles(value => [...value, target!]); setSelected(target.id);
       }
       const job = await api.post<Job>('/browser/jobs', {
-        profileId: target.id, query, area, limit, ...(prospectId ? { prospectId } : {}),
+        profileId: target.id, query, area, ...(prospectId ? { prospectId } : {}),
       });
       setJobs(value => [job, ...value]);
       if (job.mode === 'discover') setActiveJobId(job.id);
@@ -194,15 +201,17 @@ export default function CloudBrowserPage() {
     await perform('Importer', async () => {
       const candidates = pendingCloudCaptures(job.result?.captures || [],job.result?.imports).filter(capture => chosen[capture.id]);
       if (!candidates.length) throw new Error('Sélectionnez au moins une fiche vérifiée.');
-      const result = await api.post<any>('/browser/jobs/'+job.id+'/import',
-        {captureIds:candidates.map(capture=>capture.id)}, { timeoutMs: 60000 });
-      ++jobsRequest.current;
-      setJobs(current=>current.map(item=>item.id===job.id?result.job:item));
-      const processed = new Set<string>(result.processedIds || []);
-      setChosen(current => Object.fromEntries(Object.entries(current).filter(([id]) => !processed.has(id))));
-      setNotice((result.imported || 0) + ' prospect(s) créé(s), ' + (result.enriched || 0)
-        + ' enrichi(s), ' + (result.alreadyPresent || 0) + ' déjà présent(s), ' + (result.needsReview || 0)
-        + ' à vérifier, ' + (result.failed || 0) + ' en échec. Les fiches traitées sont consultables dans le CRM.');
+      const totals={imported:0,enriched:0,alreadyPresent:0,needsReview:0,failed:0};
+      for(let start=0;start<candidates.length;start+=25){
+        const result=await api.post<any>('/browser/jobs/'+job.id+'/import',
+          {captureIds:candidates.slice(start,start+25).map(capture=>capture.id)}, {timeoutMs:60000});
+        ++jobsRequest.current;
+        setJobs(current=>current.map(item=>item.id===job.id?result.job:item));
+        const processed=new Set<string>(result.processedIds||[]);
+        setChosen(current=>Object.fromEntries(Object.entries(current).filter(([id])=>!processed.has(id))));
+        for(const field of Object.keys(totals) as Array<keyof typeof totals>)totals[field]+=result[field]||0;
+        setNotice(`${Math.min(start+25,candidates.length)} / ${candidates.length} fiches traitées · ${totals.imported} créée(s), ${totals.enriched} enrichie(s), ${totals.alreadyPresent} déjà présente(s), ${totals.needsReview} à vérifier, ${totals.failed} en échec.`);
+      }
     });
   }
 
@@ -331,19 +340,16 @@ export default function CloudBrowserPage() {
             <input aria-label="Ville ou code postal" value={area} onChange={e => setArea(e.target.value)} placeholder="Ville ou département" maxLength={120}/>
           </span>
         </label>
-        <label className="cloud-browser-field cloud-browser-limit"><span>Nombre de fiches</span>
-          <input aria-label="Nombre maximum de fiches dans ce lot" type="number" min={1} max={25}
-            value={limit} onChange={e => setLimit(Math.max(1, Math.min(25, Number(e.target.value) || 1)))}/>
-        </label>
+        <div className="cloud-browser-field cloud-browser-limit"><span>Résultats</span><strong>Tous les résultats accessibles</strong></div>
         <button type="button" className="cloud-browser-primary cloud-browser-launch"
-          disabled={!automatic || !!busy || !status?.ready || query.trim().length < 2
+          disabled={!!busy || !status?.ready || (automatic&&query.trim().length < 2)
             || ((profile?.source || source) === 'societe_com' && !prospectId)}
-          onClick={() => void launch()}><Play size={16}/>
-          {busy === 'Collecter' ? 'Mise en file…' : prospectId ? 'Enrichir ce prospect' : 'Lancer la collecte'}
+          onClick={() => void (automatic?launch():open())}><Play size={16}/>
+          {busy === 'Collecter' ? 'Mise en file…' : !automatic?'Ouvrir cette source':prospectId ? 'Enrichir ce prospect' : 'Lancer la collecte'}
         </button>
       </div>
       <div className="cloud-browser-command-secondary">
-        <button type="button" className="cloud-browser-secondary" disabled={!selected || !!busy || !status?.ready}
+        <button type="button" className="cloud-browser-secondary" disabled={!!busy || !status?.ready}
           onClick={() => void open()}><ExternalLink size={15}/> Ouvrir dans GrowthOS</button>
         {profile?.mode === 'account' && <button type="button" className="cloud-browser-secondary" disabled={!!busy || !status?.ready}
           onClick={() => void open(true)}><LogOut size={15}/> Ouvrir la connexion à la source</button>}
@@ -362,7 +368,7 @@ export default function CloudBrowserPage() {
           </div>
         </details>
         <span className="cloud-browser-command-helper">
-          {profile ? (profile.mode === 'account' ? 'Profil avec compte · connectez-vous directement sur la source.' : 'Profil public · sans connexion requise.') : 'Sélectionnez ou créez un profil pour ouvrir la source.'}
+          {profile ? (profile.mode === 'account' ? 'Profil avec compte · connectez-vous directement sur la source.' : 'Profil public · sans connexion requise.') : 'Le profil public sera créé automatiquement à l’ouverture de la source.'}
         </span>
       </div>
       {profile && !automatic && <p className="cloud-browser-command-footnote">Cette source peut être ouverte dans le navigateur. Son collecteur automatique n'est pas encore disponible.</p>}
@@ -385,7 +391,7 @@ export default function CloudBrowserPage() {
             {view?.busy && <span className="cloud-browser-live-dot" title="Lecture en cours"/>}
           </div>
           <div className="cloud-browser-browser-actions">
-            <button type="button" disabled={!selected || !!busy || !status?.ready} onClick={() => void open(false, true)}
+            <button type="button" disabled={!!busy || !status?.ready} onClick={() => void open(false, true)}
               title="Afficher ou reprendre la session ouverte"><Globe2 size={15}/> Reprendre le contrôle</button>
             <button type="button" disabled={!view} onClick={() => action({ type: 'back' })} title="Page précédente"><ArrowLeft size={16}/></button>
             <button type="button" onClick={() => setExpandedBrowser(value => !value)}
@@ -425,7 +431,7 @@ export default function CloudBrowserPage() {
           <span><Globe2 size={36}/></span>
           <strong>Votre navigateur est prêt</strong>
           <p>Ouvrez une recherche pour voir et contrôler le site source directement depuis GrowthOS.</p>
-          <button type="button" className="cloud-browser-primary" disabled={!selected || !!busy || !status?.ready}
+          <button type="button" className="cloud-browser-primary" disabled={!!busy || !status?.ready}
             onClick={() => void open(false, true)}>Afficher / reprendre le contrôle</button>
         </div>}
         <div className="cloud-browser-browser-footer">
@@ -459,7 +465,7 @@ export default function CloudBrowserPage() {
         </header>
         <div className="cloud-browser-results-summary">
           <CheckCircle2 size={16}/>
-          <span>{allCaptures.length} entreprise(s) trouvée(s) · {captures.length} restante(s){draftsCount ? ' · ' + draftsCount + ' à vérifier' : ''}</span>
+          <span>{allCaptures.length} entreprise(s) trouvée(s) · {captures.length} restante(s){activeJob?.result?.hasMore?['awaiting_user','cancelled','failed'].includes(activeJob.status)?' · suite en attente':' · collecte de la suite en cours':''}{draftsCount ? ' · ' + draftsCount + ' à vérifier' : ''}</span>
         </div>
         <CloudImportFeedback captures={allCaptures} imports={imports}/>
         {!!captures.length && <div className="cloud-browser-batch-wrap"><CaptureBatchControls captures={captures} chosen={chosen} busy={!!busy}
@@ -480,7 +486,7 @@ export default function CloudBrowserPage() {
             </span>
           </label>) : <div className="cloud-browser-no-results">
             <Search size={26}/>
-            <strong>{allCaptures.length ? 'Toutes les fiches de ce lot sont traitées' : activeJob ? 'Aucune fiche vérifiée disponible' : 'Vos résultats apparaîtront ici'}</strong>
+            <strong>{allCaptures.length ? activeJob?.result?.hasMore?'Les fiches disponibles sont traitées ; la suite reste à collecter':'Toutes les fiches de ce lot sont traitées' : activeJob ? 'Aucune fiche vérifiée disponible' : 'Vos résultats apparaîtront ici'}</strong>
             <p>{allCaptures.length ? 'Retrouvez-les dans les fiches traitées ci-dessus ou dans Prospects.' : activeJob ? 'Consultez le statut de la tâche ou relancez sa collecte si nécessaire.' : 'Lancez une collecte, puis sélectionnez les entreprises à importer.'}</p>
           </div>}
         </div>

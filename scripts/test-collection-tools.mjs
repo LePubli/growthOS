@@ -28,7 +28,7 @@ try{
     const discovery=render();
     assert.equal((discovery.match(/<article/g)||[]).length,modules.filter(m=>m.modes.includes('discover')).length);
     for(const source of modules.filter(m=>m.modes.includes('discover'))) assert.ok(discovery.includes(source.name));
-    assert.ok(discovery.includes('/sourcing?source=entreprises') && discovery.includes('/sourcing?source=pagesjaunes'));
+    assert.ok(discovery.includes('/sourcing?source=entreprises') && discovery.includes('/navigateur?source=pagesjaunes'));
     assert.ok(discovery.includes('Collecteur cloud') && discovery.includes('Connecteurs en préparation'));
     assert.ok(discovery.includes('/navigateur?source=google_maps') && discovery.includes('Secours externe'));
     assert.ok(discovery.indexOf('Ouvrir la source')<discovery.indexOf('Secours externe'));
@@ -41,10 +41,11 @@ try{
     const browserHtml=renderToStaticMarkup(createElement(Router,{ssrPath:'/navigateur',ssrSearch:'source=societe_com'},createElement(CloudBrowserPage)));
     assert.ok(browserHtml.includes('Navigateur cloud') && browserHtml.includes('Sans compte') && browserHtml.includes('Mon compte'));
     assert.ok(browserHtml.includes('Mes profils de navigation') && browserHtml.includes('Tâches récentes'));
+    assert.ok(browserHtml.includes('Tous les résultats accessibles')&&!browserHtml.includes('Nombre maximum de fiches'),'Pas de plafond total affiché');
     assert.ok(!browserHtml.includes('Compte connecté'),'Ne pas présenter une session non vérifiée comme connectée');
     for(const marker of ['cloud-browser-command-grid','cloud-browser-workspace','cloud-browser-view-panel',
       'cloud-browser-results-list','cloud-browser-history','Importer dans Prospects',
-      'Reprendre le contrôle','Lancer la collecte','Déconnecter et effacer la session']){
+      'Reprendre le contrôle','Ouvrir cette source','Déconnecter et effacer la session']){
       assert.ok(browserHtml.includes(marker),'Espace navigateur manquant : '+marker);
     }
     assert.ok(browserHtml.indexOf('cloud-browser-command-grid')<browserHtml.indexOf('cloud-browser-workspace'));

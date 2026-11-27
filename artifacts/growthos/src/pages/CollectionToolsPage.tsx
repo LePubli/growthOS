@@ -17,7 +17,7 @@ const shortDescriptions:Record<string,string>={
   bing:'Fiches locales complémentaires.',
   societe_com:'Identité légale, SIREN et dirigeants.',
 };
-const localSearch=(source:string,mode:Mode)=>source==='entreprises'||(source==='pagesjaunes'&&mode==='discover');
+const localSearch=(source:string,_mode:Mode)=>source==='entreprises';
 
 export default function CollectionToolsPage(){
   const params=new URLSearchParams(useSearch()),prospectId=params.get('prospectId');
@@ -118,7 +118,7 @@ export default function CollectionToolsPage(){
             <div className="collection-hub-source-top">
               <span className="collection-hub-source-logo"><SourceLogo source={m.source==='entreprises'?'annuaire':m.source} size="lg"/></span>
               <div className="collection-hub-source-title"><h3>{m.name}</h3>
-                <span className="collection-hub-source-capability">{m.kind==='official'?'Données officielles':m.source==='pagesjaunes'?'Lecture de fiche':'Collecteur cloud'}</span></div>
+                <span className="collection-hub-source-capability">{m.kind==='official'?'Données officielles':'Collecteur cloud'}</span></div>
               <button type="button" className={'collection-hub-source-choice'+(active?' is-selected':'')}
                 aria-label={'Sélectionner '+m.name} aria-pressed={active} onClick={()=>setSelectedSource(m.source)}>
                 {active?<><Check size={12}/>Sélectionnée</>:<span className="collection-hub-radio"/>}</button>

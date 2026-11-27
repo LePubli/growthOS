@@ -1,3 +1,5 @@
+import {prospectEnrichmentUrl} from '@/lib/prospect-enrichment';
+import {Link} from 'wouter';
 import { useEffect, useState, useRef } from "react";
 import apiClient from "@/lib/api-client";
 import type { CompanyDetails } from "@/lib/pagesjaunes-device";
@@ -225,14 +227,14 @@ export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compa
         <h2 className="font-semibold">
           Statut de l’entreprise et surveillance
         </h2>
-        <button
+        {!identifiable?<Link to={prospectEnrichmentUrl(prospect.id)} className="atlas-360-link-button atlas-360-link-button-primary">Rechercher le SIREN / SIRET</Link>:<button
           type="button"
           className="text-sm border rounded-xl px-3 py-2 disabled:opacity-50"
           disabled={loading || !identifiable}
           onClick={() => void refresh()}
         >
           {loading ? "Vérification…" : "Vérifier maintenant"}
-        </button>
+        </button>}
       </div>
       <div className="flex flex-wrap gap-3 text-sm">
         <span

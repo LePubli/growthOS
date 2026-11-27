@@ -5,6 +5,7 @@ on:
     paths:
       - workers/cloud-browser/**
       - Dockerfile.browser
+      - extensions/growthos-pagesjaunes/background.js
       - extensions/growthos-pagesjaunes/capture.js
       - extensions/growthos-pagesjaunes/societe.js
       - .github/workflows/growthos-cloud-browser-check.yml
