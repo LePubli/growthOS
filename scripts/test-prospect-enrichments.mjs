@@ -33,7 +33,7 @@ try{
         steps:{
           google_maps:{label:'Google Maps',status:'completed',message:'Correspondance confirmée'},
           pagesjaunes:{label:'PagesJaunes',status:'awaiting_user',message:'Contrôle Cloudflare',jobId:'job-test'},
-          societe_com:{label:'Societe.com',status:'needs_review',message:'Rapprochement incertain'},
+          societe_com:{label:'Societe.com',status:'needs_review',message:'Rapprochement incertain',jobId:'job-review'},
           pappers:{label:'Pappers',status:'awaiting_user',message:'Ouvrir la fiche'},
           google_search:{label:'Google Search',status:'awaiting_user',message:'Résultats à contrôler'},
           bing:{label:'Bing',status:'awaiting_user',message:'Résultats à contrôler'},
@@ -54,7 +54,9 @@ try{
     }
     assert.equal((html.match(/class="atlas-enrichments-source is-/g)||[]).length,9);
     assert.equal((html.match(/class="atlas-enrichments-capture"/g)||[]).length,3);
-    assert.ok(html.includes('aria-label="Comparer PagesJaunes"')&&html.includes('Comparer les informations'),'La vérification s’ouvre directement dans la fiche.');
+    assert.ok(html.includes('aria-label="Ouvrir PagesJaunes pour reprendre la collecte"')&&html.includes('aria-label="Comparer Societe.com"'),
+      'Une source sans capture doit ouvrir le navigateur ; seules les données à vérifier ouvrent la comparaison.');
+    assert.ok(html.includes('Ouvrir la source à vérifier'), 'Le raccourci prioritaire ne doit pas proposer une comparaison prématurée.');
     assert.ok(html.includes('5 source(s) à vérifier')&&html.includes('À vérifier (5)'));
     const empty=render({...properties,run:null,observations:[]});
     assert.ok(empty.includes('Aucune collecte multisource enregistrée')&&empty.includes('Aucune capture enregistrée'));

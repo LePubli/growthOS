@@ -126,6 +126,9 @@ router.post('/local-review',async(req,res)=>{
 });
 router.get('/jobs/:id/review',async(req,res)=>{
   const job=await cloudJob(req.auth!.tenantId,idSchema.parse(req.params.id),req.auth!.userId);
+  res.locals.jobId=job.id;res.locals.prospectId=job.prospect_id;
+  const sourceRow=await pool.query('SELECT source FROM cloud_browser_profiles WHERE id=$1 AND tenant_id=$2',[job.profile_id,req.auth!.tenantId]);
+  res.locals.source=sourceRow.rows[0]?.source||null;
   if(job.mode!=='enrich'||!job.prospect_id)throw new CloudBrowserError(409,'Cette tâche ne cible pas de prospect.');
   const index=z.coerce.number().int().min(0).parse(req.query.captureIndex||0),capture=job.result?.captures?.[index];
   if(!capture)throw new CloudBrowserError(409,'Aucune fiche capturée. Ouvrez la bonne fiche source puis relancez sa lecture.');
@@ -137,6 +140,7 @@ router.post('/jobs/:id/confirm',async(req,res)=>{
   const tenant=req.auth!.tenantId,user=req.auth!.userId,id=idSchema.parse(req.params.id);
   const data=z.object({captureIndex:z.number().int().min(0),confirmed:z.literal(true),expectedUpdatedAt:z.string().datetime(),expectedCaptureDigest:z.string().regex(/^[a-f0-9]{64}$/),expectedValues:expectedValuesSchema.optional(),replaceFields:z.array(z.enum(['company','address','postalCode','city','phone','email','website','linkedinUrl','apeCode','nafLabel','nafVersion'])).max(11).default([])}).strict().parse(req.body);
   const job=await cloudJob(tenant,id,user);
+  res.locals.jobId=job.id;res.locals.prospectId=job.prospect_id;
   if(job.result?.applied&&job.status==='completed'){res.json({job,alreadyApplied:true});return;}
   if(job.mode!=='enrich'||!job.prospect_id||!['needs_review','awaiting_user'].includes(job.status))throw new CloudBrowserError(409,'Cette tâche ne peut pas être confirmée dans son état actuel.');
   const capture=job.result?.captures?.[data.captureIndex];if(!capture)throw new CloudBrowserError(404,'Capture introuvable.');
@@ -168,10 +172,14 @@ router.post('/jobs/:id/cancel',async(req,res)=>{
 router.use((error:unknown,req:any,res:any,_next:any)=>{
   const source=typeof res.locals.source==='string'?res.locals.source:null;
   const invalidInput=error instanceof z.ZodError;
+  const expectedConflict=error instanceof CloudBrowserError&&error.status>=400&&error.status<500;
+  const captureRequired=expectedConflict&&/Aucune fiche capturée|Capture introuvable/i.test(error.message);
   const diagnosis=diagnoseSourceIssue({source,status:error instanceof CloudBrowserError?'failed':undefined,httpStatus:error instanceof CloudBrowserError?error.status:undefined,reason:invalidInput?'Paramètres invalides':error instanceof Error?error.message:''});
   void recordDiagnosticEvent({tenantId:req.auth?.tenantId,userId:req.auth?.userId,traceId:req.traceId,
-    level:invalidInput?'warn':'error',component:'cloud-browser',code:invalidInput?'INVALID_BROWSER_INPUT':'BROWSER_OPERATION_FAILED',
-    message:'Opération navigateur en erreur',source,details:{...(invalidInput?{errorType:'ZodError',issueCount:error.issues.length}:errorDiagnosticDetails(error)),...diagnosis}});
+    level:invalidInput||expectedConflict?'warn':'error',component:'cloud-browser',code:invalidInput?'INVALID_BROWSER_INPUT':captureRequired?'CAPTURE_REQUIRED':expectedConflict?'BROWSER_ACTION_CONFLICT':'BROWSER_OPERATION_FAILED',
+    message:expectedConflict?'Action navigateur non réalisable dans cet état':'Opération navigateur en erreur',source,
+    jobId:typeof res.locals.jobId==='string'?res.locals.jobId:null,prospectId:typeof res.locals.prospectId==='string'?res.locals.prospectId:null,
+    details:{...(invalidInput?{errorType:'ZodError',issueCount:error.issues.length}:errorDiagnosticDetails(error)),...diagnosis}});
   if(error instanceof z.ZodError){res.status(400).json({error:'Paramètres du navigateur invalides.'});return;}
   if(error instanceof CloudBrowserError){res.status(error.status).json({error:error.message});return;}
   // Never log browser input: it may include user-entered credentials.

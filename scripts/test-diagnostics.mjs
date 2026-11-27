@@ -43,6 +43,7 @@ for (const [sample, expected] of [
   [{ source: 'bodacc', status: 'skipped', reason: 'Un SIREN confirmé est nécessaire pour rattacher les annonces.' }, 'SOURCE_IDENTITY_REQUIRED'],
   [{ source: 'bodacc', status: 'empty', reason: '0 annonce(s) officielles rattachées au SIREN' }, 'SOURCE_EMPTY'],
   [{ source: 'website', status: 'skipped', reason: 'Aucun site web renseigné sur le prospect.' }, 'SOURCE_WEBSITE_MISSING'],
+  [{ source: 'pappers', reason: 'Aucune fiche capturée. Ouvrez la bonne fiche source.' }, 'SOURCE_CAPTURE_REQUIRED'],
   [{ source: 'google_search', status: 'failed', reason: 'Le navigateur n’a pas pu effectuer cette opération.' }, 'SOURCE_WORKER_FAILURE'],
 ]) assert.equal(diagnoseSourceIssue(sample).causeCode, expected, `Cause for ${JSON.stringify(sample)}`);
 
@@ -60,6 +61,8 @@ assert(routes.includes("j.result->>'message' AS result_message"), 'Archived brow
 assert(source('artifacts/api-server/src/services/prospect-enrichment.ts').includes('diagnoseSourceIssue'));
 assert(source('artifacts/api-server/src/services/cloud-browser.ts').includes('diagnoseSourceIssue'));
 assert(source('artifacts/api-server/src/routes/v1/cloud-browser.ts').includes('WORKER_UNAVAILABLE'));
+assert(source('artifacts/api-server/src/routes/v1/cloud-browser.ts').includes("code:invalidInput?'INVALID_BROWSER_INPUT':captureRequired?'CAPTURE_REQUIRED'"), 'Missing captures must not be misclassified as worker failures');
+assert(source('artifacts/growthos/src/components/cloud-browser/CloudCaptureReview.tsx').includes('if(!job.result?.captures?.[index])'), 'Only compare after a real persisted capture');
 assert(source('artifacts/growthos/src/pages/DiagnosticsPage.tsx').includes('Pourquoi ?'));
 assert(source('docs/DIAGNOSTICS-CONTRACT.md').includes('chaque développement futur'));
 console.log('Diagnostic safety, source causes, tenant isolation and coverage contracts: OK');

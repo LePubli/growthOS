@@ -21,6 +21,8 @@ export function diagnoseSourceIssue(input: { source?: string | null; status?: st
     return { causeCode: 'SOURCE_UNAVAILABLE', certainty: 'likely', cause: `Le service ${source} ou son navigateur de collecte est momentanément indisponible.`, action: 'Consulter les logs du conteneur navigateur avec l’identifiant de tâche, vérifier son état, puis relancer.' };
   if (/aucun site web renseigné|site web absent/i.test(reason))
     return { causeCode: 'SOURCE_WEBSITE_MISSING', certainty: 'observed', cause: 'Aucune adresse de site web n’est renseignée sur ce prospect.', action: 'Renseigner un site web confirmé avant de lancer la lecture de ses contacts et mentions légales.' };
+  if (/aucune fiche captur[ée]e|capture introuvable/i.test(reason))
+    return { causeCode: 'SOURCE_CAPTURE_REQUIRED', certainty: 'observed', cause: 'La comparaison a été demandée avant la capture d’une fiche source.', action: 'Ouvrir la source dans le navigateur cloud, sélectionner la fiche du bon établissement puis reprendre sa lecture avant de comparer.' };
   if (/un siren confirmé est nécessaire|un siret confirmé est nécessaire|identifiant.*nécessaire/i.test(reason))
     return { causeCode: 'SOURCE_IDENTITY_REQUIRED', certainty: 'observed', cause: `Un identifiant légal vérifié est nécessaire avant de rattacher les données de ${source}.`, action: 'Vérifier le SIREN ou SIRET de l’établissement dans l’Annuaire officiel, puis reprendre la source.' };
   if (input.status === 'empty')
