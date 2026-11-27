@@ -355,12 +355,12 @@ const cloudStub=createServer(async(req,res)=>{
       res.end(JSON.stringify({status:'completed',results:values,drafts:[]}));return;
     }
     const siret=p.query==='cloud-wrong'?'96677700900019':p.target?.siret||'96677700200019';
-    res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:p.target?p.target.company:'Entreprise trouvée',siret:p.source==='societe_com'?siret:null,
+    res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:p.source==='pagesjaunes'&&p.target?p.target.company:p.target?'ATELIER CLOUD':'Entreprise trouvée',siret:p.source==='societe_com'?siret:null,
       address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone:'03 20 99 88 77',
       website:'https://cloud-recette.example.org',apeCode:'43.22A',
-      sourceUrl:p.source==='societe_com'?'https://www.societe.com/societe/atelier-cloud-'+siret.slice(0,9)+'.html':p.source==='pagesjaunes'?'https://www.pagesjaunes.fr/pros/12345678':'https://www.google.com/maps/place/Entreprise/',
+      sourceUrl:p.source==='societe_com'?'https://www.societe.com/societe/atelier-cloud-'+siret.slice(0,9)+'.html':p.source==='pagesjaunes'?'https://www.pagesjaunes.fr/pros/87654321':'https://www.google.com/maps/place/Entreprise/',
       ...(p.source==='societe_com'?{companyDetails:{fields:{'Forme juridique':'SAS'},managers:['Alice CLOUD'],establishments:[],links:[]}}:{}),
-      ...(p.source==='pagesjaunes'?{pagesjaunesProfile:{sourceUrl:'https://www.pagesjaunes.fr/pros/12345678',name:p.target?p.target.company:'Entreprise trouvée',
+      ...(p.source==='pagesjaunes'?{pagesjaunesProfile:{sourceUrl:'https://www.pagesjaunes.fr/pros/87654321',name:p.target?p.target.company:'Entreprise trouvée',
         address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone:'03 20 99 88 77',email:null,website:'https://cloud-recette.example.org',
         siret:null,siren:'966777008',description:'Atelier de plomberie avec entretien et dépannage',openingHours:p.query==='cloud-pj-refresh'?'Lundi : 10h00–19h00':'Lundi : 09h00–18h00',
         services:'Entretien · Dépannage',legal:'SIREN : 966777008',socials:{facebook:'https://www.facebook.com/atelier-recette'},rating:4.6,reviewCount:3,

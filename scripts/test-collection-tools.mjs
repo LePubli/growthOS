@@ -29,9 +29,15 @@ try{
     assert.equal((discovery.match(/<article/g)||[]).length,modules.filter(m=>m.modes.includes('discover')).length);
     for(const source of modules.filter(m=>m.modes.includes('discover'))) assert.ok(discovery.includes(source.name));
     assert.ok(discovery.includes('/sourcing?source=entreprises') && discovery.includes('/navigateur?source=pagesjaunes'));
-    assert.ok(discovery.includes('Collecteur cloud') && discovery.includes('collecteur en préparation'));
+    assert.ok(discovery.includes('Collecteur cloud') && discovery.includes('Connecteurs en préparation'));
     assert.ok(discovery.includes('/navigateur?source=google_maps') && discovery.includes('Secours externe'));
-    assert.ok(discovery.indexOf('Rechercher dans GrowthOS')<discovery.indexOf('Secours externe'));
+    assert.ok(discovery.indexOf('Ouvrir la source')<discovery.indexOf('Secours externe'));
+    for(const marker of ['collection-hub-mode','collection-hub-search',
+      'collection-hub-cards','collection-hub-assistant','Parcours conseillé','collection-hub-upcoming-grid',
+      'aria-pressed="true"','Automatisation à venir','Validation humaine avant modification du CRM']){
+      assert.ok(discovery.includes(marker),'Catalogue redessiné incomplet : '+marker);
+    }
+    assert.ok(discovery.indexOf('collection-hub-cards')<discovery.indexOf('collection-hub-assistant'));
     const browserHtml=renderToStaticMarkup(createElement(Router,{ssrPath:'/navigateur',ssrSearch:'source=societe_com'},createElement(CloudBrowserPage)));
     assert.ok(browserHtml.includes('Navigateur cloud') && browserHtml.includes('Sans compte') && browserHtml.includes('Mon compte'));
     assert.ok(browserHtml.includes('Mes profils de navigation') && browserHtml.includes('Tâches récentes'));
@@ -55,6 +61,8 @@ try{
       'Le bouton d’import doit rester fixé dans la colonne des résultats');
     const enrich=render('mode=enrich');
     assert.equal((enrich.match(/<article/g)||[]).length,modules.filter(m=>m.modes.includes('enrich')).length);
+    assert.ok(enrich.includes('collection-hub-prospect')&&enrich.includes('Voir la fiche 360°')===false);
+    assert.ok(enrich.includes('Choisir un prospect')&&enrich.includes('aria-pressed="true"'));
     assert.ok(enrich.includes('Societe.com') && enrich.includes('ouvrez un prospect'));
     assert.ok(!enrich.includes('/sourcing?source=entreprises'));
     assert.ok(!enrich.includes('Importer la sélection'));
