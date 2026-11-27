@@ -15,6 +15,8 @@ export function ProspectPublicRecords({details}:{details?:Record<string,any>}){
       {!site.emails?.length&&<p className="text-sm my-2">Aucun email publié trouvé dans les pages lues.</p>}
       {!!site.suggestions?.length&&<div className="mt-3"><strong className="text-sm">Hypothèses d’email · non confirmées</strong><p className="text-xs">Ces variantes ne sont pas ajoutées à l’email du CRM. Le DNS ne confirme pas l’existence de la boîte ; aucun email de test n’a été envoyé.</p><ul className="text-sm">{site.suggestions.map((s:any)=><li key={s.email}>{s.email} · {s.check.detail}</li>)}</ul></div>}
       <details className="mt-3"><summary className="text-sm">Pages consultées ({site.pages?.length||0})</summary>{(site.pages||[]).map((p:any)=><p className="text-xs" key={p.url}><a className="underline" href={p.url} target="_blank" rel="noreferrer">{p.url}</a></p>)}</details>
+      {(site.attempts||[]).some((v:any)=>v.status==='failed')&&<details className="mt-3"><summary>Pages non lues</summary>{site.attempts.filter((v:any)=>v.status==='failed').map((v:any,i:number)=><p className="text-xs" key={i}><a className="underline" href={v.url} target="_blank" rel="noreferrer">{v.url}</a> · {v.reason||'Lecture indisponible.'}</p>)}</details>}
+      {site.truncated&&<p className="text-xs">La lecture a atteint sa durée ou son volume maximum ; d’autres pages du site peuvent contenir des informations.</p>}
     </details>}
 
     {pappers?.companyDetails&&<details><summary className="cursor-pointer font-medium text-sm"><SourceLogo source="pappers" size="sm"/> Informations publiques Pappers</summary>
