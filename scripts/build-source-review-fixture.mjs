@@ -30,6 +30,10 @@ const apiClient={
   if(url==='/prospects/'+id+'/enrichment')return run();
   if(url==='/prospects/'+id+'/monitoring')return {snapshot:null};
   if(url==='/notifications')return [];
+  // The public discovery view also mounts LegacySourcingArchive. Its jobs
+  // endpoint must return an array, just like the actual API, or React crashes
+  // before the history drawer becomes available in Chromium.
+  if(url==='/sourcing/jobs')return [];
   if(url.includes('history')||url.startsWith('/activities')||url.startsWith('/pipeline')||url.includes('comments'))return [];
   return {};
  },
