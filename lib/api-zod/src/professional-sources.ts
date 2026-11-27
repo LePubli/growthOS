@@ -12,6 +12,25 @@ export const PROFESSIONAL_SOURCES = [
 ] as const;
 export type ProfessionalSource = (typeof PROFESSIONAL_SOURCES)[number]["id"];
 
+/** A website can link a person as well as a company. This does not turn a
+ * personal profile into the company's LinkedIn URL, or prove a manager role. */
+export function publicSocialReference(value:unknown):{source:string;kind:'person'|'company';url:string;nameHint?:string}|null{
+  if(typeof value!=='string'||value.length>500)return null;
+  try{
+    const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||u.port)return null;
+    const host=u.hostname.toLowerCase().replace(/^www\./,'');
+    if(host==='linkedin.com'||/^[a-z]{2}\.linkedin\.com$/.test(host)){
+      const person=u.pathname.match(/^\/in\/([a-z0-9_%\-]+)\/?$/i);
+      if(person){const slug=decodeURIComponent(person[1]);const words=slug.split('-').filter(Boolean);while(words.length&&/\d/.test(words[words.length-1]))words.pop();
+        const nameHint=words.length>=2&&words.length<=5&&words.every(w=>/^[a-zÀ-ÿ]{2,30}$/i.test(w))?words.map(w=>w[0].toUpperCase()+w.slice(1)).join(' '):undefined;
+        return {source:'linkedin',kind:'person',url:'https://www.linkedin.com/in/'+person[1].toLowerCase()+'/',...(nameHint?{nameHint}:{})};}
+      u.hostname='www.linkedin.com';const company=professionalSourceUrl('linkedin',u.href);return company?{source:'linkedin',kind:'company',url:company}:null;
+    }
+    for(const source of ['facebook','instagram','tiktok']){const url=professionalSourceUrl(source,u.href);if(url)return {source,kind:'company',url};}
+    return null;
+  }catch{return null;}
+}
+
 export function professionalSourceUrl(
   source: unknown,
   value: unknown,

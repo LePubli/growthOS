@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {db,pool,prospectsTable} from '@workspace/db';
 import {and,eq,sql} from 'drizzle-orm';
 import {fetchDirectory} from './official-directory';
-import {websitePublisherMatches,uniqueIdentityMatch,captureIdentityMatches} from '../lib/enrichment-identity';
+import {websiteInvestigationMatches,websitePublisherMatches,uniqueIdentityMatch,captureIdentityMatches} from '../lib/enrichment-identity';
 import {mergeProspectCapture} from '../routes/v1/sourcing';
 import {cloudConfigured,CloudBrowserError} from './cloud-browser';
 import {providerKeysService} from '../lib/provider-keys/ProviderKeysService';
@@ -12,7 +12,7 @@ import {recordDiagnosticEvent,errorDiagnosticDetails} from '../lib/diagnostics';
 import {logger} from '../lib/logger';
 import {diagnoseSourceIssue} from '../lib/source-diagnosis';
 
-type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number;offset?:number;siren?:string;legalCandidates?:boolean};
+type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number;offset?:number;siren?:string;researchCandidates?:boolean;legalCandidates?:boolean};
 const definitions=[['entreprises','Annuaire des Entreprises · données INSEE'],['website','Site web du prospect'],['google_maps','Google Maps'],['pagesjaunes','PagesJaunes'],['insee','INSEE Sirene · accès direct'],['societe_com','Societe.com'],['pappers','Pappers · données publiques'],['bodacc','BODACC · annonces officielles'],['google_search','Google Search'],['bing','Bing']] as const;
 const active=(status:string)=>['queued','running'].includes(status);
 const normalizedProspect=(p:any)=>({...p,postalCode:p.postal_code,sourceDetails:p.source_details,apeCode:p.ape_code,nafLabel:p.naf_label,nafVersion:p.naf_version});
@@ -63,7 +63,7 @@ async function mergeOfficial(job:any,candidate:any){
     const locked=await tx.execute(sql`SELECT status,lease FROM prospect_enrichment_jobs WHERE id=${job.id} AND tenant_id=${job.tenant_id} FOR UPDATE`);
     if(locked.rows[0]?.status!=='running'||locked.rows[0]?.lease!==job.lease)throw Error('Tâche interrompue.');
     const [p]=await tx.select().from(prospectsTable).where(and(eq(prospectsTable.id,job.prospect_id),eq(prospectsTable.tenantId,job.tenant_id))).for('update');
-    if(!p||!(captureIdentityMatches(p,candidate)||websitePublisherMatches(p,candidate)))throw Error('Identité non confirmée.');
+    if(!p||!(captureIdentityMatches(p,candidate)||websitePublisherMatches(p,candidate)||websiteInvestigationMatches(p,candidate)))throw Error('Identité non confirmée.');
     return mergeProspectCapture(p,{...candidate,id:'automatic_'+job.id+'_'+candidate.source,capturedAt:Date.now(),
       sourceDetails:{...(candidate.apeScope&&(!p.apeCode||p.apeCode===candidate.apeCode||candidate.apeScope==='etablissement')?{annuaire:{apeScope:candidate.apeScope}}:{}),[candidate.source]:{apeScope:candidate.apeScope,snapshot:candidate.snapshot,sourceUrl:candidate.sourceUrl,capturedAt:new Date().toISOString()}},targetedIdentity:false},false,job.tenant_id,tx,job.created_by,
       p.siret&&p.siret===candidate.siret?['address','postalCode','city',...(candidate.apeScope==='etablissement'?['apeCode','nafLabel','nafVersion'] as const:[])]:[]);
@@ -73,6 +73,18 @@ async function officialStep(job:any,p:any):Promise<Step>{
   const data=await fetchDirectory(p.siret||p.siren||p.company,p.postal_code||p.city||'');
   let candidate=uniqueIdentityMatch(normalizedProspect(p),data.candidates);
   if(!candidate&&!p.siret&&!p.siren){const site=p.source_details?.website?.snapshot;if(site&&site.identity!=='contradictory')for(const id of [...(site.sirets||[]),...(site.sirens||[])].slice(0,3)){const found=await fetchDirectory(id,p.postal_code||p.city||'');candidate=uniqueIdentityMatch(normalizedProspect(p),found.candidates);if(!candidate){const publishers=found.candidates.filter((c:any)=>websitePublisherMatches(p,c));if(publishers.length===1)candidate=publishers[0];}if(candidate)break;}}
+  if(!candidate&&!p.siret&&!p.siren){
+    const site=p.source_details?.website?.snapshot;
+    const queries=site?.people?.some((v:any)=>v.name)?[p.company,...site.people.filter((v:any)=>v.name).map((v:any)=>v.name)]:[];
+    const matches=new Map<string,any>();let incomplete=false;
+    for(const query of [...new Set<string>(queries)].slice(0,4)){
+      const found=await fetchDirectory(query,'');incomplete ||= found.hasMore;
+      for(const c of found.candidates)if(websiteInvestigationMatches(p,c))matches.set(c.siret,c);
+      void recordDiagnosticEvent({tenantId:job.tenant_id,userId:job.created_by,level:'info',component:'identity-investigation',code:'INVESTIGATION_QUERY_COMPLETED',message:'Piste du site recoupée avec les établissements officiels',source:'entreprises',prospectId:job.prospect_id,jobId:job.id,details:{candidateCount:found.candidates.length,matchedCount:matches.size,exhaustive:!found.hasMore}});
+    }
+    if(matches.size===1&&!incomplete){candidate=[...matches.values()][0];void recordDiagnosticEvent({tenantId:job.tenant_id,userId:job.created_by,level:'info',component:'identity-investigation',code:'INVESTIGATION_IDENTITY_MATCHED',message:'Identité officielle recoupée depuis les indices du site',source:'entreprises',prospectId:job.prospect_id,jobId:job.id,details:{matchedCount:1,evidenceCount:3}});}
+    else if(matches.size>1||incomplete)return {label:job.steps.entreprises.label,status:'needs_review',message:'Plusieurs établissements ou résultats officiels restent possibles. Choisissez le bon établissement avant enrichissement.'};
+  }
   if(!candidate)return {label:job.steps.entreprises.label,status:data.candidates.length?'needs_review':'empty',message:data.candidates.length?'Aucun établissement unique confirmé par les identifiants ou le nom et les coordonnées. Aucune donnée appliquée.':'Aucune correspondance officielle.'};
   const merged=await mergeOfficial(job,candidate);
   return {label:job.steps.entreprises.label,status:'completed',filled:merged.filled,conflicts:merged.conflicts,message:'Identité officielle confirmée · '+candidate.siret+' · '+(candidate.snapshot?.fields?.['État de l’établissement']==='Fermé'?'Attention : cet établissement est fermé. Le siège actuel reste distinct. ':'')+'données issues notamment du répertoire INSEE.'};
@@ -118,7 +130,7 @@ async function browserStep(job:any,p:any,source:string,step:Step):Promise<Step>{
     if(lock.rows[0]?.status!=='running'||lock.rows[0]?.lease!==job.lease)throw Error('Tâche interrompue.');
     let profile=(await client.query(`SELECT * FROM cloud_browser_profiles WHERE tenant_id=$1 AND created_by=$2 AND source=$3 AND deleted_at IS NULL ORDER BY CASE mode WHEN 'account' THEN 0 ELSE 1 END,created_at DESC LIMIT 1`,[job.tenant_id,job.created_by,source])).rows[0];
     if(!profile)profile=(await client.query('INSERT INTO cloud_browser_profiles(tenant_id,created_by,source,label) VALUES($1,$2,$3,$4) RETURNING *',[job.tenant_id,job.created_by,source,step.label+' · automatique'])).rows[0];
-    const query=['societe_com','pappers'].includes(source)?(p.siret||p.siren||p.company):p.company;
+    const query=['societe_com','pappers'].includes(source)?(p.siret||p.siren||p.source_details?.website?.snapshot?.people?.find((v:any)=>v.name)?.name||p.company):p.company;
     if(!query) {await client.query('COMMIT');return {...step,status:'skipped',message:'Nom d’entreprise absent.'};}
     const child=(await client.query(`INSERT INTO cloud_browser_jobs(tenant_id,created_by,profile_id,prospect_id,mode,query,area,result) VALUES($1,$2,$3,$4,'enrich',$5,$6,$7) RETURNING id`,[job.tenant_id,job.created_by,profile.id,p.id,String(query).slice(0,160),p.city||'',JSON.stringify({enrichmentRunId:job.id})])).rows[0];
     const next={...step,status:'collecting',jobId:child.id,profileId:profile.id,message:'Recherche en arrière-plan…'};
@@ -155,8 +167,8 @@ export async function runProspectEnrichment(id:string){
             ...(['failed','needs_review','awaiting_user','empty','skipped'].includes(steps[source].status)
               ? {...diagnoseSourceIssue({source,status:steps[source].status,reason:steps[source].message}),reason:steps[source].message} : {})}});
     }
-    if(source==='entreprises'&&steps.entreprises.status==='completed'&&steps.website?.legalCandidates){steps.website={label:steps.website.label,status:'pending',message:'Identité officielle confirmée : nouvelle lecture des coordonnées publiées.'};}
-    if(source==='website'&&steps.website.legalCandidates&&['empty','needs_review'].includes(steps.entreprises?.status))steps.entreprises={label:steps.entreprises.label,status:'pending',message:'Identifiant publié sur le site : vérification officielle avant utilisation.'};
+    if(source==='entreprises'&&steps.entreprises.status==='completed'&&(steps.website?.legalCandidates||steps.website?.researchCandidates)){steps.website={label:steps.website.label,status:'pending',message:'Identité officielle confirmée : nouvelle lecture des coordonnées publiées.'};}
+    if(source==='website'&&(steps.website.legalCandidates||steps.website.researchCandidates)&&['empty','needs_review','failed'].includes(steps.entreprises?.status))steps.entreprises={label:steps.entreprises.label,status:'pending',message:'Indices publiés sur le site : nouvelle recherche et vérification officielles.'};
     const pending=Object.values(steps).some(s=>['pending','collecting'].includes(s.status));
     const completed=Object.values(steps).some(s=>s.status==='completed');
     const incomplete=Object.values(steps).some(s=>['failed','needs_review','awaiting_user'].includes(s.status));

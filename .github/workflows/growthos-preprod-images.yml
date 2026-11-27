@@ -112,8 +112,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Set up Node for real React flow fixtures
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.26.1
+          run_install: false
+      - name: Install fixture bundler and actual interface dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Bundle actual React source review and prospect pages
+        run: node scripts/build-source-review-fixture.mjs /tmp/growthos-review-ui
       - name: Build the isolated cloud browser
         run: docker build -f Dockerfile.browser -t growthos-browser-test .
+      - name: Click source review through to the actual prospect enrichment tab
+        run: docker run --rm --ipc=host -v /tmp/growthos-review-ui:/fixtures:ro --entrypoint node growthos-browser-test workers/cloud-browser/review-ui-test.mjs
+
       - name: Exercise persistent profiles and collection with real Chromium and local page fixtures
         run: docker run --rm --ipc=host --entrypoint node growthos-browser-test workers/cloud-browser/runtime-test.mjs
 

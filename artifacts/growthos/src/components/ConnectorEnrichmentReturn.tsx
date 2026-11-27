@@ -1,11 +1,12 @@
 import {CloudCaptureReview} from './cloud-browser/CloudCaptureReview';
 import {useEffect,useRef,useState} from 'react';
-import {useSearch} from 'wouter';
+import {useSearch,useLocation} from 'wouter';
 import {AlertTriangle,CheckCircle2,Info,Loader2,X} from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import {getConnectorTask,acknowledgeConnectorTask} from '@/lib/pagesjaunes-device';
 
 export function ConnectorEnrichmentReturn({prospectId,onSaved,onBusyChange}:{prospectId:string;onSaved:()=>void|Promise<void>;onBusyChange?:(busy:boolean)=>void}){
+  const [,navigate]=useLocation();
   const search=useSearch(),taskId=new URLSearchParams(search).get('enrichmentTask');
   const [reviewJob,setReviewJob]=useState<string|null>(null);
   const [retry,setRetry]=useState(0),[error,setError]=useState(''),[result,setResult]=useState('');
@@ -32,7 +33,7 @@ export function ConnectorEnrichmentReturn({prospectId,onSaved,onBusyChange}:{pro
   const duplicate=!error&&result==='Cet enrichissement a déjà été enregistré.';
   const pending=!error&&!result&&!reviewJob;
   const tone=error?'error':pending?'pending':duplicate?'duplicate':'success';
-  if(reviewJob&&!result)return <CloudCaptureReview jobId={reviewJob} onClose={()=>setDismissed(true)} onSaved={async()=>{await acknowledgeConnectorTask(taskId!,prospectId);setReviewJob(null);setResult('Enrichissement confirmé et enregistré.');await saved.current();}}/>;
+  if(reviewJob&&!result)return <CloudCaptureReview jobId={reviewJob} onClose={()=>setDismissed(true)} onSaved={async(result)=>{await acknowledgeConnectorTask(taskId!,prospectId);setReviewJob(null);setResult('Enrichissement confirmé et enregistré.');await saved.current();navigate(result.url,{replace:true});}}/>;
   const Icon=error?AlertTriangle:pending?Loader2:duplicate?Info:CheckCircle2;
   return <section className={'atlas-enrichment-notice atlas-enrichment-notice--'+tone} role={error?'alert':'status'} aria-live="polite">
     <span className="atlas-enrichment-notice-icon"><Icon size={20} className={pending?'animate-spin':undefined}/></span>

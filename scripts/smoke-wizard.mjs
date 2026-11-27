@@ -299,7 +299,9 @@ const companies = createServer((req, res) => {
   if(req.url?.startsWith('/website?')){
     const url=new URL(new URL(req.url,'http://localhost').searchParams.get('url'));
     const multiSite='<h1>Mentions légales</h1><p>Le site est édité par :</p><p><strong>ATELIER EDITEUR</strong></p><p>Siège social : 18 rue du Test, 59100 Roubaix</p><p>SIREN : <strong>966 777 093</strong></p><p>SIRET : <span>966 777 093 00019</span></p><p>Code APE/NAF : <b>43.22A</b></p><p>Téléphone : 03 20 11 22 33</p><p>Téléphone dépannage : 06 11 22 33 44</p><p>Email : contact.atelier@gmail.com</p><p>Email : devis@atelier-multiple.fr</p><p>Agence : 19 rue du Test, 59100 Roubaix</p><h2>Hébergeur</h2><p>SIRET : 96688888800019</p><p>Email : support@host.example</p>';
-    const html=url.hostname==='atelier-multiple.fr'?multiSite:url.hostname==='atelier-site.fr'?'<h1>Atelier Site</h1><a href="/contact">Contact</a><p>SIRET : 96677709200019</p><p>8 rue du Test 59100 Roubaix</p><a href="tel:0320112233">Téléphone</a>'+(url.pathname==='/contact'?'<a href="mailto:contact@atelier-site.fr">Email</a><a href="https://www.linkedin.com/company/atelier-site">LinkedIn</a>':''):'';
+    const investigation='<h1>Expert plombier chauffagiste métropole</h1><p>Hydreo intervient dans la métropole.</p><a href="/plomberie">Plomberie</a><a href="/contact">Contact</a><footer><p>hydreo59@gmail.com</p><p>03 20 11 22 33</p><p>Du lundi au samedi de 9h à 19h</p><a href="https://www.linkedin.com/in/alice-martin-12ab34cd"><svg><title>LinkedIn</title></svg></a></footer>';
+    const publicPerson='<h1>Alice Martin</h1><p>Plombier chauffagiste chez Hydreo</p>';
+    const html=url.hostname==='www.linkedin.com'?publicPerson:url.hostname==='hydreo-site.fr'?investigation:url.hostname==='atelier-multiple.fr'?multiSite:url.hostname==='atelier-site.fr'?'<h1>Atelier Site</h1><a href="/contact">Contact</a><p>SIRET : 96677709200019</p><p>8 rue du Test 59100 Roubaix</p><a href="tel:0320112233">Téléphone</a>'+(url.pathname==='/contact'?'<a href="mailto:contact@atelier-site.fr">Email</a><a href="https://www.linkedin.com/company/atelier-site">LinkedIn</a>':''):'';
     res.setHeader('Content-Type','text/html');res.end(html);return;
   }
   if(req.url?.startsWith('/bodacc?')){
@@ -323,6 +325,10 @@ const companies = createServer((req, res) => {
   }
   if(directoryQuery==='96677709300019'||directoryQuery==='966777093'){
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777093',nom_complet:'ATELIER EDITEUR',activite_principale:'43.22A',dirigeants:[{nom:'Editeur',prenoms:'Chloé',qualite:'Gérante'}],siege:{siret:'96677709300019',adresse:'18 rue du Test 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix'}}]}));return;
+  }
+  if(directoryQuery==='Hydreo'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[]}));return;}
+  if(directoryQuery==='Alice Martin'){
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777094',nom_complet:'ALICE MARTIN',etat_administratif:'A',activite_principale:'43.22A',dirigeants:[{nom:'Martin',prenoms:'Alice',qualite:'Gérante'}],siege:{siret:'96677709400019',etat_administratif:'A',adresse:'28 rue de la Source 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix',noms_commerciaux:['Hydreo']}}]}));return;
   }
   if(directoryQuery==='cloud-official-area'){
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777058',nom_complet:'Agence Lille et siège Paris',siege:{siret:'96677705800019',adresse:'1 rue Paris 75001 Paris',code_postal:'75001',libelle_commune:'Paris'},matching_etablissements:[{siret:'96677705800027',adresse:'1 rue Lille 59000 Lille',code_postal:'59000',libelle_commune:'Lille'}]}]}));return;
@@ -1780,6 +1786,22 @@ try {
     check(localBound.status===200&&localBound.body.job.id===wrong.body.id&&localBound.body.job.result.localCapture,'Chrome local : secours rattaché à la tâche cloud existante');
     const wrongSource=await request('POST','/browser/local-review',{taskId:randomUUID(),cloudJobId:wrong.body.id,prospectId:target.body.id,capture:{...localCapture,source:'pagesjaunes',sourceUrl:'https://www.pagesjaunes.fr/pros/12345678'}},token);
     check(wrongSource.status===409,'Chrome local : capture d’une autre source refusée');
+    const finishBefore=await request('POST',manualPath+'/finish-review',{},token);
+    check(finishBefore.status===200&&finishBefore.body.prospectId===manualTarget.body.id&&finishBefore.body.url.includes('view=enrichments')&&finishBefore.body.url.includes(staged.body.job.id),'Parcours source : retour interne au bon prospect et onglet après enregistrement réel');
+    check((await request('POST',reviewPath+'/finish-review',{},token)).status===409,'Parcours source : aucune redirection de succès avant sauvegarde');
+    check((await request('POST',manualPath+'/finish-review',{},foreignToken)).status===404&&(await request('POST',manualPath+'/finish-review',{},colleague)).status===404,'Parcours source : retour isolé par agence et utilisateur');
+    const investigationTarget=await request('POST','/prospects',{company:'Hydreo',city:'Lille',phone:'03 20 11 22 33',website:'https://hydreo-site.fr/mentions-legales'},token);
+    const investigationRun=await request('POST','/prospects/'+investigationTarget.body.id+'/enrichment',{},token);await runEnrichmentMaintenance(investigationRun.body.id,2);
+    const investigationRead=(await request('GET','/prospects/'+investigationTarget.body.id,undefined,token)).body;
+    check(investigationRead.email==='hydreo59@gmail.com'&&investigationRead.sourceDetails.website.snapshot.pages[0].url==='https://hydreo-site.fr/','Enquête site : accueil lu même si l’URL initiale est une mention légale ; Gmail publié rapproché hors H1');
+    check(!investigationRead.linkedinUrl&&investigationRead.sourceDetails.website.snapshot.socials.some(s=>s.kind==='person'&&s.url.includes('/in/alice-martin')),'Enquête site : profil LinkedIn personnel conservé comme indice, jamais rangé comme page entreprise');
+    const peopleBefore=(await request('GET','/contacts',undefined,token)).body.data;
+    check(peopleBefore.some(c=>c.prospectId===investigationTarget.body.id&&c.name==='Alice Martin'&&!c.isManager&&!c.phone&&!c.email),'Enquête sociale : nom public visible sans inventer gérance ni coordonnées directes');
+    await runEnrichmentMaintenance(investigationRun.body.id,2);
+    const investigated=(await request('GET','/prospects/'+investigationTarget.body.id,undefined,token)).body;
+    check(investigated.siret==='96677709400019'&&investigated.sourceDetails.identity.legalName==='ALICE MARTIN'&&investigated.company==='Hydreo','Enquête multisource : piste nominative du site → recherche officielle par nom → enseigne et identité juridique recoupées');
+    check(investigated.city==='Lille'&&investigated.sourceDetails.crossSource.conflicts.some(c=>c.field==='city'&&c.incoming==='Roubaix'),'Enquête : une divergence de ville reste proposée à vérifier après identification, sans effacement silencieux');
+    check((await request('GET','/contacts',undefined,token)).body.data.some(c=>c.prospectId===investigationTarget.body.id&&c.name==='Alice Martin'&&c.isManager&&c.role==='Gérante'),'Enquête : le rôle de dirigeant vient ensuite de la source officielle');
     const websiteTarget=await request('POST','/prospects',{company:'Atelier Site',website:'https://atelier-site.fr',phone:'03 20 11 22 33',address:'8 rue du Test 59100 Roubaix',city:'Roubaix',postalCode:'59100'},token);
     const websiteRun=await request('POST','/prospects/'+websiteTarget.body.id+'/enrichment',{},token);
     await runEnrichmentMaintenance(websiteRun.body.id,3);

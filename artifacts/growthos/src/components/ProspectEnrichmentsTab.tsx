@@ -17,7 +17,7 @@ type Filter='all'|'review'|'confirmed';
 const sourceOrder=['google_maps','pagesjaunes','societe_com','pappers','google_search','bing','entreprises','website','insee','bodacc'];
 const sourceNames:Record<string,string>={website:'Site web du prospect',entreprises:'Annuaire des Entreprises',google_maps:'Google Maps',pagesjaunes:'PagesJaunes',
   insee:'INSEE Sirene',societe_com:'Societe.com',pappers:'Pappers',bodacc:'BODACC',google_search:'Google Search',bing:'Bing'};
-const statusNames:Record<string,string>={pending:'En attente',collecting:'Recherche en cours',completed:'Confirmée',
+const statusNames:Record<string,string>={pending:'En attente',collecting:'Recherche en cours',completed:'Enregistrée',
   empty:'Aucune correspondance',skipped:'Non disponible',needs_review:'À vérifier',
   awaiting_user:'Action requise',failed:'Indisponible',cancelled:'Annulée'};
 const fieldNames:Record<string,string>={address:'Adresse',city:'Ville',phone:'Téléphone',website:'Site web',postalCode:'Code postal',
@@ -50,8 +50,8 @@ function CaptureCard({entry,index}:{entry:Observation;index:number}){
   </article>;
 }
 
-export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSources,observations,activities,sourceDetails,onReviewed}:{
-  prospectId:string;run:EnrichmentRun|null;busy:boolean;onEnrich:()=>void;onOpenSources:()=>void;
+export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSources,observations,activities,sourceDetails,onReviewed,initialNotice}:{
+  initialNotice?:string;prospectId:string;run:EnrichmentRun|null;busy:boolean;onEnrich:()=>void;onOpenSources:()=>void;
   observations:Observation[];activities:any[];sourceDetails?:Record<string,any>;onReviewed?:()=>Promise<void>;
 }){
   const [savedNotice,setSavedNotice]=useState('');
@@ -93,7 +93,7 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
           'Aucune collecte multisource enregistrée pour ce prospect.'}</p></div>
       {run&&<button type="button" className="atlas-enrichments-banner-action" onClick={onOpenSources}>Voir les données détaillées <ArrowRight size={14}/></button>}
     </div>
-    {savedNotice&&<p role="status" className="atlas-enrichments-banner is-success">{savedNotice}</p>}
+    {(savedNotice||initialNotice)&&<p role="status" className="atlas-enrichments-banner is-success">{savedNotice||initialNotice}</p>}
     {reviewJob&&<div id="prospect-source-review"><Suspense fallback={<p>Chargement de la comparaison…</p>}><CloudCaptureReview key={reviewJob.id} jobId={reviewJob.id} fallbackUrl={jobUrl(reviewJob.source,reviewJob.step,prospectId)} onClose={()=>setReviewJob(null)} onSaved={async()=>{setSavedNotice('Informations enregistrées. La fiche prospect a été mise à jour.');await onReviewed?.();}}/></Suspense>
       <Link className="atlas-enrichments-priority-link" to={jobUrl(reviewJob.source,reviewJob.step,prospectId)}>Ouvrir la source si la fiche n’a pas encore pu être lue <ExternalLink size={14}/></Link></div>}
     <div className="atlas-enrichments-metrics" aria-label="Synthèse des sources">

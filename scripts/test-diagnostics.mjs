@@ -25,6 +25,9 @@ assert(!JSON.stringify(details).includes('secret'));
 assert.equal(details.source, 'pappers');
 assert(!diagnostics.safeDiagnosticText('Failed query: UPDATE prospects set company=PRIVATE_COMPANY').includes('PRIVATE_COMPANY'));
 assert(source('artifacts/api-server/src/routes/v1/cloud-browser.ts').includes('CONFIRMATION_SAVED'));
+assert(source('artifacts/api-server/src/routes/v1/cloud-browser.ts').includes('REVIEW_READY')&&source('artifacts/api-server/src/routes/v1/cloud-browser.ts').includes('RETURN_TO_PROSPECT'));
+assert(source('artifacts/api-server/src/services/prospect-enrichment.ts').includes('INVESTIGATION_QUERY_COMPLETED'));
+assert(source('artifacts/api-server/src/services/website-enrichment.ts').includes('LINKED_PROFILE_CLUES_READ'));
 assert(source('artifacts/api-server/src/routes/v1/contacts.ts').includes('PRIMARY_COORDINATE_CONFLICT'));
 assert(source('artifacts/api-server/src/services/website-enrichment.ts').includes('WEBSITE_CONTACTS_READ'));
 

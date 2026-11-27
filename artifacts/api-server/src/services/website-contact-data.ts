@@ -2,7 +2,7 @@ import {resolve4,Resolver} from 'node:dns/promises';
 import {request as httpsRequest} from 'node:https';
 import {request as httpRequest} from 'node:http';
 import {validatePublicWebsite,isPublicIPv4} from '../lib/seo/inspectWebsite';
-import {professionalSourceUrl} from '@workspace/api-zod';
+import {publicSocialReference} from '@workspace/api-zod';
 export function siteUrl(raw:string){const value=raw.trim();const url=new URL(/^https?:\/\//i.test(value)?value:'https://'+value);if(!['http:','https:'].includes(url.protocol)||url.port)throw Error('Adresse du site non prise en charge.');const checked=new URL(url);checked.protocol='https:';validatePublicWebsite(checked.href);url.hash='';return url;}
 export const siteHost=(url:URL)=>url.hostname.replace(/^www\./,'');
 export async function publicSiteHtml(url:URL,host:string,redirects=0,dependencies={resolve4,httpsRequest,httpRequest}):Promise<{url:string;html:string}>{
@@ -46,10 +46,12 @@ export function readSiteHtml(html:string,url:string){
   const ids=(label:string,length:number)=>[...new Set([...text.matchAll(new RegExp('\\b'+label+'\\s*(?:[nN]°)?\\s*[:#-]?\\s*((?:\\d[ .-]?){'+length+'})(?!\\d)','gi'))].map(m=>m[1].replace(/\D/g,'')))];
   const publisherNames=[...text.matchAll(/(?:raison\s+sociale|d[ée]nomination\s+(?:sociale|de\s+l[’']entreprise)|(?:le\s+)?site[^\n]{0,100}(?:est\s+)?[ée]dit[ée]\s+par|[ée]diteur(?:\s+du\s+site)?)\s*[:：]\s*([^\n]{2,160})/gi)].map(m=>clean(m[1])).filter(v=>!/^https?:|siret|siren/i.test(v));
   const apeCodes=[...new Set([...text.matchAll(/(?:code\s+)?(?:APE|NAF)(?:\s*\/\s*(?:APE|NAF))?\s*[:：-]\s*(\d{2}[ .]?\d{2}[A-Z])/gi)].map(m=>m[1].replace(/[ .]/g,'').replace(/^(\d{2})(\d{2}[A-Z])$/,'$1.$2')))];
+  const openingHours=[...new Set([...text.matchAll(/(?:du\s+)?(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)[^\n]{0,100}\d{1,2}\s*(?:h|:)\s*\d{0,2}[^\n]{0,40}/gi)].map(m=>clean(m[0])))];
   const addresses=[...text.matchAll(/\b\d{1,4}\s*(?:(?:bis|ter)\s+)?(?:rue|boulevard|bd\.?|avenue|av\.?|route|place|chemin|impasse|all[ée]e|quai)\s+[^\n]{3,180}?[, \n]+\b\d{5}[ \t]+[^\n,;]{2,70}/gi)].map(m=>clean(m[0]));
-  const socials:{source:string;url:string;sourceUrl:string}[]=[];
-  for(const link of links)for(const source of ['linkedin','facebook','instagram','tiktok']){let target:string|null=null;try{target=professionalSourceUrl(source,new URL(link.href,url).href);}catch{}if(target&&!socials.some(s=>s.source===source&&s.url===target))socials.push({source,url:target,sourceUrl:url});}
-  return {heading:clean(heading),text,publisherNames,apeCodes,emails:[...emails].slice(0,30),phones:[...phones].slice(0,20),sirets:ids('SIRET',14),sirens:ids('SIREN',9),addresses:addresses.slice(0,10),socials,links};
+  const socials:{source:string;kind:'person'|'company';url:string;sourceUrl:string;nameHint?:string}[]=[];
+  for(const link of links){let target:ReturnType<typeof publicSocialReference>=null;try{target=publicSocialReference(new URL(link.href,url).href);}catch{}if(target&&!socials.some(s=>s.url===target!.url))socials.push({...target,sourceUrl:url});}
+
+  return {heading:clean(heading),text,publisherNames,apeCodes,openingHours,emails:[...emails].slice(0,30),phones:[...phones].slice(0,20),sirets:ids('SIRET',14),sirens:ids('SIREN',9),addresses:addresses.slice(0,10),socials,links};
 }
 export type MailDomainCheck={status:'mx'|'implicit_mx'|'no_mail'|'unknown';detail:string};
 export async function mailDomainCheck(domain:string,resolver:Pick<Resolver,'resolveMx'|'resolve4'|'resolve6'>=new Resolver({timeout:1500,tries:1})):Promise<MailDomainCheck>{
@@ -61,24 +63,33 @@ export async function mailDomainCheck(domain:string,resolver:Pick<Resolver,'reso
   return answers.some(r=>r.status==='fulfilled'&&r.value.length)?{status:'implicit_mx',detail:'Adresse réseau présente, réception de courrier et boîte non confirmées.'}:{status:'unknown',detail:'Aucun serveur de réception confirmé.'};
 }
 export async function collectSite(raw:string,options:{load?:(url:URL)=>Promise<{url:string;html:string}>;mail?:(domain:string)=>Promise<MailDomainCheck>}={}){
-  const initial=siteUrl(raw),host=siteHost(initial),load=options.load||((url:URL)=>publicSiteHtml(url,host));
-  const pending=[initial],seen=new Set<string>(),pages:any[]=[],deadline=Date.now()+45000;
-  while(pending.length&&pages.length<7&&Date.now()<deadline){
-    const target=pending.shift()!;if(seen.has(target.href))continue;seen.add(target.href);
-    try{const response=await load(target),actual=siteUrl(response.url);if(siteHost(actual)!==host)throw Error('Le domaine du site a changé.');
-      const read=readSiteHtml(response.html,actual.href);pages.push({url:actual.href,read});
-      for(const link of [...read.links].sort((a,b)=>Number(/mentions|legal/i.test(b.href+' '+b.label))-Number(/mentions|legal/i.test(a.href+' '+a.label)))){if(!/contact|mentions?[-_ /]?l[eé]gal|qui[-_ /]?sommes|[àa][- ]propos|about/i.test(link.label+' '+link.href))continue;try{const u=siteUrl(new URL(link.href,actual).href);if(siteHost(u)===host&&!seen.has(u.href)&&!pending.some(p=>p.href===u.href))pending.push(u);}catch{}}
-      if(pages.length===1&&!pending.length)for(const path of ['/mentions-legales/','/contact/']){const fallback=siteUrl(new URL(path,initial).href);if(!seen.has(fallback.href))pending.push(fallback);}
-    }catch(error){if(!pages.length)throw error;}
+  const initial=siteUrl(raw),host=siteHost(initial),root=siteUrl(new URL('/',initial).href),load=options.load||((url:URL)=>publicSiteHtml(url,host));
+  const key=(u:URL)=>u.origin+(u.pathname.replace(/\/$/,'')||'/')+u.search;
+  const pending=[root,...(key(initial)!==key(root)?[initial]:[])],seen=new Set<string>(),pages:any[]=[],attempts:{url:string;status:string;reason?:string}[]=[],deadline=Date.now()+45000;
+  while(pending.length&&pages.length<8&&seen.size<12&&Date.now()<deadline){
+    const target=pending.shift()!;if(seen.has(key(target)))continue;seen.add(key(target));
+    try{
+      const response=await load(target),actual=siteUrl(response.url);if(siteHost(actual)!==host)throw Error('Le domaine du site a changé.');
+      const read=readSiteHtml(response.html,actual.href);pages.push({url:actual.href,read});seen.add(key(actual));attempts.push({url:target.href,status:'read'});
+      const ranked=read.links.map(link=>({link,rank:/contact|devis/i.test(link.label+' '+link.href)?0:/mentions|legal/i.test(link.label+' '+link.href)?1:/propos|equipe|team|qui[-_ /]?sommes|about/i.test(link.label+' '+link.href)?2:3})).sort((a,b)=>a.rank-b.rank);
+      for(const {link} of ranked){
+        if(!/contact|devis|mentions?[-_ /]?l[eé]gal|qui[-_ /]?sommes|[àa][- ]propos|about|equipe|team|chauffag|plomber|services?/i.test(link.label+' '+link.href)||/logout|wp-admin|panier|cart|unsubscribe|delete/i.test(link.href))continue;
+        try{const u=siteUrl(new URL(link.href,actual).href);if(siteHost(u)===host&&!seen.has(key(u))&&!pending.some(p=>key(p)===key(u)))pending.push(u);}catch{}
+      }
+      if(key(target)===key(root))for(const path of ['/contact','/mentions-legales']){
+        const u=siteUrl(new URL(path,root).href);if(!seen.has(key(u))&&!pending.some(p=>key(p)===key(u)))pending.push(u);
+      }
+    }catch(error){attempts.push({url:target.href,status:'failed',reason:error instanceof Error?error.message:'Lecture impossible.'});}
   }
+  if(!pages.length)throw Error('Aucune page publique du site n’a pu être lue.');
   const emails=[...new Map(pages.flatMap(p=>p.read.emails.map((email:string)=>[email,{email,sourceUrl:p.url,origin:'published'}]))).values()] as {email:string;sourceUrl:string;origin:string;check?:MailDomainCheck}[];
   const cache=new Map<string,MailDomainCheck>(),mail=options.mail||mailDomainCheck;
-  for(const domain of [...new Set([host,...emails.map(e=>e.email.split('@')[1])])].slice(0,6))cache.set(domain,await mail(domain));
+  await Promise.all([...new Set([host,...emails.map(e=>e.email.split('@')[1])])].slice(0,6).map(async domain=>{try{cache.set(domain,await mail(domain));}catch{cache.set(domain,{status:'unknown',detail:'Contrôle DNS indisponible, boîte non confirmée.'});}}));
   for(const email of emails)email.check=cache.get(email.email.split('@')[1])||{status:'unknown',detail:'Contrôle DNS non effectué.'};
   const domainCheck=cache.get(host)!;
-  return {url:initial.href,pages:pages.map(p=>({url:p.url,heading:p.read.heading})),publishers:pages.flatMap(p=>p.read.publisherNames.map((name:string)=>({name,sourceUrl:p.url}))),apeCodes:[...new Set(pages.flatMap(p=>p.read.apeCodes))] as string[],emails,
+  return {url:initial.href,attempts,truncated:pending.length>0,openingHours:[...new Map(pages.flatMap(p=>p.read.openingHours.map((hours:string)=>[hours,{hours,sourceUrl:p.url}]))).values()] as {hours:string;sourceUrl:string}[],pages:pages.map(p=>({url:p.url,heading:p.read.heading})),publishers:pages.flatMap(p=>p.read.publisherNames.map((name:string)=>({name,sourceUrl:p.url}))),apeCodes:[...new Set(pages.flatMap(p=>p.read.apeCodes))] as string[],emails,
     phones:[...new Map(pages.flatMap(p=>p.read.phones.map((phone:string)=>[phone,{phone,sourceUrl:p.url}]))).values()] as {phone:string;sourceUrl:string}[],
-    socials:[...new Map<string,{source:string;url:string;sourceUrl:string}>(pages.flatMap(p=>p.read.socials.map((v:any)=>[v.source+':'+v.url,v] as [string,{source:string;url:string;sourceUrl:string}]))).values()],sirets:[...new Set(pages.flatMap(p=>p.read.sirets))] as string[],sirens:[...new Set(pages.flatMap(p=>p.read.sirens))] as string[],
+    socials:[...new Map<string,{source:string;kind:'person'|'company';url:string;sourceUrl:string;nameHint?:string}>(pages.flatMap(p=>p.read.socials.map((v:any)=>[v.source+':'+v.url,v] as [string,{source:string;kind:'person'|'company';url:string;sourceUrl:string;nameHint?:string}]))).values()],sirets:[...new Set(pages.flatMap(p=>p.read.sirets))] as string[],sirens:[...new Set(pages.flatMap(p=>p.read.sirens))] as string[],
     addresses:[...new Map(pages.flatMap(p=>p.read.addresses.map((address:string)=>[address,{address,sourceUrl:p.url}]))).values()] as {address:string;sourceUrl:string}[],
     text:pages.map(p=>p.read.text).join('\n'),domainCheck,
     suggestions:!emails.length&&domainCheck.status!=='no_mail'?['contact','info','bonjour','service-client'].map(local=>({email:local+'@'+host,origin:'hypothesis',mailboxStatus:'unconfirmed',check:domainCheck})):[]};
