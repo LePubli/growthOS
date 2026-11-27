@@ -14,12 +14,30 @@ const server=createServer(async(req,res)=>{
   if(req.method==='GET'&&req.url==='/healthz')return json(res,200,{ok:true,sources:SOURCES,automatic:AUTOMATIC});
   const operations={'/open':'open','/view':'view','/action':'action','/erase':'erase','/collect':'collect','/stop':'stop'};
   if(req.method!=='POST'||!operations[req.url])return json(res,404,{error:'Action introuvable'});
+  let requestSource=null;
   try{
     let raw='';for await(const chunk of req){raw+=chunk.toString('utf8');if(Buffer.byteLength(raw)>(req.url==='/collect'?4*1024*1024:24000))return json(res,413,{error:'Requête trop volumineuse'});}
-    const value=await service[operations[req.url]](JSON.parse(raw));json(res,200,value);
+    const input=JSON.parse(raw);
+    if(SOURCES.includes(input?.source))requestSource=input.source;
+    const value=await service[operations[req.url]](input);json(res,200,value);
   }catch(error){
     // Do not log request bodies, screenshots, typed text, credentials or cookies.
     const status=error instanceof BrowserError||error?.status===400?error.status:error instanceof SyntaxError?400:502;
+    // Keep a correlation key in DockPanel logs without exposing account/session data.
+    const diagnosticId=String(req.headers['x-diagnostic-id']||'');
+    // Playwright exceptions may embed selectors or page text. Never persist their
+    // raw message: classify technical symptoms, preserve exact BrowserError only.
+    const rawReason=String(error?.message||'');
+    const networkCode=rawReason.match(/net::ERR_[A-Z_]+/);
+    const safeReason=error instanceof BrowserError?rawReason.slice(0,200)
+      :networkCode?`Navigation réseau : ${networkCode[0]}`
+      :/timeout|timed out/i.test(rawReason)?'Délai de réponse Chromium dépassé'
+      :/target closed|page closed|context.*closed/i.test(rawReason)?'Onglet ou session du navigateur fermé'
+      :error instanceof SyntaxError?'Requête JSON invalide'
+      :'Erreur interne du moteur de navigation (voir type et code)';
+    console.error(JSON.stringify({at:new Date().toISOString(),component:'cloud-worker',operation:operations[req.url],source:requestSource,
+      diagnosticId:/^[0-9a-f-]{36}$/i.test(diagnosticId)?diagnosticId:null,status,
+      errorType:error?.name||'Error',errorCode:typeof error?.code==='string'?error.code.slice(0,70):null,reason:safeReason}));
     json(res,status,{error:status===502?'Le navigateur n’a pas pu effectuer cette opération. Réessayez ou ouvrez sa session.':String(error.message).slice(0,240)});
   }
 });

@@ -89,6 +89,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/api-keys', label: 'Clés API Providers', icon: <KeyRound size={16} /> },
       { href: '/admin/quotas', label: 'Quotas & Limites', icon: <BarChart2 size={16} /> },
       { href: '/admin/deep-audit', label: 'Santé technique', icon: <ShieldCheck size={16} /> },
+      { href: '/admin/diagnostics', label: 'Centre de diagnostic', icon: <Activity size={16} /> },
       { href: '/admin/users', label: 'Utilisateurs et rôles', icon: <Users size={16} /> },
     ],
   },

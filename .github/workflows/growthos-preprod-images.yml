@@ -62,6 +62,9 @@ jobs:
       - name: Check interface TypeScript
         run: pnpm --filter @workspace/growthos typecheck
 
+      - name: Verify diagnostic coverage and source explanations
+        run: node scripts/test-diagnostics.mjs
+
       - name: Validate in-house Chromium worker syntax
         run: node --check workers/pagesjaunes-browser/server.mjs
 

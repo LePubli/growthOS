@@ -1152,3 +1152,28 @@ export async function runSignalEnhanceMigration(): Promise<void> {
     ALTER TABLE signals ADD COLUMN IF NOT EXISTS prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL;
   `);
 }
+
+/** Historique technique tenant-aware, indépendant des données métier et des journaux Docker. */
+export async function runDiagnosticsMigration(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS diagnostic_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      user_id UUID,
+      trace_id TEXT,
+      level TEXT NOT NULL CHECK (level IN ('info','warn','error')),
+      component TEXT NOT NULL,
+      code TEXT NOT NULL,
+      message TEXT NOT NULL,
+      source TEXT,
+      prospect_id UUID,
+      job_id UUID,
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS diagnostic_events_tenant_time ON diagnostic_events(tenant_id,created_at DESC);
+    CREATE INDEX IF NOT EXISTS diagnostic_events_tenant_level ON diagnostic_events(tenant_id,level,created_at DESC);
+    CREATE INDEX IF NOT EXISTS diagnostic_events_prospect ON diagnostic_events(tenant_id,prospect_id,created_at DESC);
+    CREATE INDEX IF NOT EXISTS diagnostic_events_job ON diagnostic_events(tenant_id,job_id,created_at DESC);
+  `);
+}

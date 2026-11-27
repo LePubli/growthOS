@@ -11,6 +11,7 @@ import LoginPage from '@/pages/LoginPage';
 import { GenericPage } from '@/pages/GenericPage';
 import OnboardingWizardPage from '@/pages/OnboardingWizardPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import apiClient from '@/lib/api-client';
 import { useSignalNotifications } from '@/hooks/useSignalNotifications';
 import { ClientShell } from '@/plugins/client-portal/ClientShell';
 import LandingPage from '@/pages/public/LandingPage';
@@ -75,6 +76,7 @@ const SharedDashboardsPage = lazy(() => import('@/pages/SharedDashboardsPage'));
 const RouteAuditPage = lazy(() => import('@/pages/RouteAuditPage'));
 const PluginUploadPage = lazy(() => import('@/pages/PluginUploadPage'));
 const DeepAuditPage = lazy(() => import('@/pages/DeepAuditPage'));
+const DiagnosticsPage = lazy(() => import('@/pages/DiagnosticsPage'));
 const EnrichmentPage = lazy(() => import('@/pages/EnrichmentPage'));
 const ERepDashboardPage = lazy(() => import('@/plugins/ereputation/ERepDashboardPage'));
 const ERepCampaignsPage = lazy(() => import('@/plugins/ereputation/CampaignsPage'));
@@ -134,6 +136,17 @@ function HomeEntry({ authenticated }: { authenticated: boolean }) {
 
 function AppRoutes() {
   useSignalNotifications();
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => apiClient.reportClientError('WINDOW_ERROR', 'Erreur Javascript non interceptée', {
+      errorType: event.error?.name || 'Error', reason: event.message,
+    });
+    const onRejection = (event: PromiseRejectionEvent) => apiClient.reportClientError('UNHANDLED_REJECTION', 'Promesse non traitée', {
+      errorType: event.reason?.name || 'Error', reason: String(event.reason?.message || event.reason || 'Unknown').slice(0, 300),
+    });
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => { window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onRejection); };
+  }, []);
   const { isAuthenticated } = useAuthStore();
 
   return (
@@ -364,6 +377,9 @@ function AppRoutes() {
       </Route>
       <Route path="/admin/deep-audit">
         {() => <DashboardLayout><DeepAuditPage /></DashboardLayout>}
+      </Route>
+      <Route path="/admin/diagnostics">
+        {() => <DashboardLayout><DiagnosticsPage /></DashboardLayout>}
       </Route>
 
       <Route path="/tasks">

@@ -8,6 +8,9 @@ import {uniqueIdentityMatch,captureIdentityMatches} from '../lib/enrichment-iden
 import {mergeProspectCapture} from '../routes/v1/sourcing';
 import {cloudConfigured,CloudBrowserError} from './cloud-browser';
 import {providerKeysService} from '../lib/provider-keys/ProviderKeysService';
+import {recordDiagnosticEvent,errorDiagnosticDetails} from '../lib/diagnostics';
+import {logger} from '../lib/logger';
+import {diagnoseSourceIssue} from '../lib/source-diagnosis';
 
 type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number;offset?:number;siren?:string;legalCandidates?:boolean};
 const definitions=[['entreprises','Annuaire des Entreprises · données INSEE'],['website','Site web du prospect'],['google_maps','Google Maps'],['pagesjaunes','PagesJaunes'],['insee','INSEE Sirene · accès direct'],['societe_com','Societe.com'],['pappers','Pappers · données publiques'],['bodacc','BODACC · annonces officielles'],['google_search','Google Search'],['bing','Bing']] as const;
@@ -129,12 +132,28 @@ export async function runProspectEnrichment(id:string){
     WHERE id=$1 AND (status='queued' OR (status='running' AND lease_until<NOW())) RETURNING *`,[id,lease]);
   const job=claimed.rows[0];if(!job)return;
   const steps=job.steps as Record<string,Step>;
+  const started=Date.now();
   try{
     const p=await getProspect(job.tenant_id,job.prospect_id);
     const source=definitions.map(([s])=>s).find(s=>['pending','collecting'].includes(steps[s]?.status));
     if(source){
+      const previous=steps[source]?.status;
+      let exceptionRecorded=false;
       try{steps[source]=source==='entreprises'?await officialStep(job,p):source==='website'?await websiteEnrichmentStep(job,p):source==='insee'?await inseeStep(job,p):source==='bodacc'?await bodaccStep(job,p,steps[source]):await browserStep(job,p,source,steps[source]);}
-      catch{steps[source]={...steps[source],status:'failed',message:'Source indisponible ou identité non confirmée. Les autres sources continuent.'};}
+      catch(error){
+        exceptionRecorded=true;
+        steps[source]={...steps[source],status:'failed',message:'Source indisponible ou identité non confirmée. Les autres sources continuent.'};
+        const diagnosis=diagnoseSourceIssue({source,status:'failed',httpStatus:error instanceof CloudBrowserError?error.status:undefined,reason:error instanceof Error?error.message:''});
+        void recordDiagnosticEvent({tenantId:job.tenant_id,userId:job.created_by,level:'error',component:'enrichment',code:'SOURCE_FAILED',message:'Source en échec',source,prospectId:job.prospect_id,jobId:id,details:{durationMs:Date.now()-started,...errorDiagnosticDetails(error)}});
+        void recordDiagnosticEvent({tenantId:job.tenant_id,userId:job.created_by,level:'warn',component:'source-diagnosis',code:diagnosis.causeCode,message:diagnosis.cause,source,prospectId:job.prospect_id,jobId:id,details:{...diagnosis,reason:error instanceof Error?error.message:'Non documenté'}});
+      }
+      if (steps[source].status!==previous && !exceptionRecorded)
+        void recordDiagnosticEvent({tenantId:job.tenant_id,userId:job.created_by,
+          level:steps[source].status==='failed'?'error':['needs_review','awaiting_user'].includes(steps[source].status)?'warn':'info',component:'enrichment',code:`SOURCE_${steps[source].status.toUpperCase()}`,
+          message:'Étape enrichissement mise à jour',source,prospectId:job.prospect_id,jobId:id,
+          details:{status:steps[source].status,durationMs:Date.now()-started,filledFields:steps[source].filled?.length||0,conflicts:steps[source].conflicts||0,
+            ...(['failed','needs_review','awaiting_user','empty','skipped'].includes(steps[source].status)
+              ? {...diagnoseSourceIssue({source,status:steps[source].status,reason:steps[source].message}),reason:steps[source].message} : {})}});
     }
     if(source==='website'&&steps.website.legalCandidates&&['empty','needs_review'].includes(steps.entreprises?.status))steps.entreprises={label:steps.entreprises.label,status:'pending',message:'Identifiant publié sur le site : vérification officielle avant utilisation.'};
     const pending=Object.values(steps).some(s=>['pending','collecting'].includes(s.status));
@@ -142,7 +161,11 @@ export async function runProspectEnrichment(id:string){
     const incomplete=Object.values(steps).some(s=>['failed','needs_review','awaiting_user'].includes(s.status));
     const status=pending?'queued':completed?(incomplete?'partial':'completed'):'needs_review';
     await pool.query("UPDATE prospect_enrichment_jobs SET steps=$3,status=$4,lease=NULL,lease_until=NULL,updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND lease=$5 AND status='running'",[id,job.tenant_id,JSON.stringify(steps),status,lease]);
-  }catch{await pool.query("UPDATE prospect_enrichment_jobs SET status='failed',lease=NULL,lease_until=NULL,updated_at=NOW() WHERE id=$1 AND lease=$2 AND status='running'",[id,lease]);}
+    if(status!=='queued')void recordDiagnosticEvent({tenantId:job.tenant_id,userId:job.created_by,level:status==='completed'?'info':'warn',component:'enrichment',code:`RUN_${status.toUpperCase()}`,message:'Bilan enrichissement',prospectId:job.prospect_id,jobId:id,details:{durationMs:Date.now()-started,status,sourcesDone:Object.values(steps).filter(s=>s.status==='completed').length,sourcesTotal:Object.keys(steps).length}});
+  }catch(error){
+    void recordDiagnosticEvent({tenantId:job.tenant_id,userId:job.created_by,level:'error',component:'enrichment',code:'RUN_FAILED',message:'Enrichissement interrompu',prospectId:job.prospect_id,jobId:id,details:{durationMs:Date.now()-started,...errorDiagnosticDetails(error)}});
+    await pool.query("UPDATE prospect_enrichment_jobs SET status='failed',lease=NULL,lease_until=NULL,updated_at=NOW() WHERE id=$1 AND lease=$2 AND status='running'",[id,lease]);
+  }
 }
 let ticking=false;
 export async function tickProspectEnrichments(){
@@ -151,5 +174,5 @@ export async function tickProspectEnrichments(){
 }
 export function startProspectEnrichments(){
   if(process.env.GROWTHOS_SMOKE_TEST==='true')return;
-  const tick=()=>void tickProspectEnrichments().catch(()=>{});tick();setInterval(tick,3000).unref();
+  const tick=()=>void tickProspectEnrichments().catch(error=>logger.error({err:error},'Enrichment scheduler failed'));tick();setInterval(tick,3000).unref();
 }

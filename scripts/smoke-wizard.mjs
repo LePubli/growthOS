@@ -499,6 +499,22 @@ try {
   const admin = await request("POST", "/setup/bootstrap", setup);
   check(admin.status === 201 && !!admin.body.accessToken, "Premier administrateur créé");
   const token = admin.body.accessToken;
+  // Persistent, tenant-scoped diagnostics must be ready on the very first boot.
+  check((await request('GET','/diagnostics/summary')).status===401,'Diagnostics : lecture interdite hors connexion');
+  const diagnosticSummary=await request('GET','/diagnostics/summary',undefined,token);
+  check(diagnosticSummary.status===200&&Array.isArray(diagnosticSummary.body.levels),'Diagnostics : tableau de bord accessible à l’administrateur');
+  const diagnosticClient=await request('POST','/diagnostics/client-events',{
+    code:'SMOKE_FRONTEND_FAILURE',message:'Erreur simulée côté navigateur',details:{reason:'Cloudflare challenge',secret:'never-store-me',cookie:'never-store-cookie'},
+  },token);
+  check(diagnosticClient.status===202,'Diagnostics : signalements frontend enregistrables');
+  const diagnosticEvents=await request('GET','/diagnostics/events?search=SMOKE_FRONTEND_FAILURE',undefined,token);
+  check(diagnosticEvents.status===200&&diagnosticEvents.body.events.length===1&&
+    !JSON.stringify(diagnosticEvents.body.events[0].details).includes('never-store'),
+    'Diagnostics : recherche tenant-aware et expurgation des secrets');
+  check((await request('GET','/diagnostics/sources',undefined,token)).status===200,'Diagnostics : état des sources consultable');
+  const diagnosticExport=await request('GET','/diagnostics/export?search=SMOKE_FRONTEND_FAILURE',undefined,token);
+  check(diagnosticExport.status===200&&diagnosticExport.body.diagnosticEvents.length===1,
+    'Diagnostics : export JSON exploitable par les agents');
   const browserStatus = await request("GET", "/sourcing/sources/status", undefined, token);
   check(browserStatus.status === 200 && browserStatus.body.pagesjaunes.mode === "browser" &&
     browserStatus.body.pagesjaunes.browserReady === true,
