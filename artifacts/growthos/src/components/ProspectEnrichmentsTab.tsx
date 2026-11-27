@@ -54,8 +54,9 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
   prospectId:string;run:EnrichmentRun|null;busy:boolean;onEnrich:()=>void;onOpenSources:()=>void;
   observations:Observation[];activities:any[];sourceDetails?:Record<string,any>;onReviewed?:()=>Promise<void>;
 }){
+  const [savedNotice,setSavedNotice]=useState('');
   const [reviewJob,setReviewJob]=useState<{id:string;source:string;step:SourceStep}|null>(null);
-  const openReview=(source:string,step:SourceStep)=>{setReviewJob({id:step.jobId!,source,step});window.setTimeout(()=>document.getElementById('prospect-source-review')?.scrollIntoView({behavior:'smooth',block:'start'}),0);};
+  const openReview=(source:string,step:SourceStep)=>{setSavedNotice('');setReviewJob({id:step.jobId!,source,step});window.setTimeout(()=>document.getElementById('prospect-source-review')?.scrollIntoView({behavior:'smooth',block:'start'}),0);};
   const [filter,setFilter]=useState<Filter>('all');
   const steps=Object.entries(run?.steps||{}).sort(([a],[b])=>{
     const ai=sourceOrder.indexOf(a),bi=sourceOrder.indexOf(b);
@@ -92,7 +93,8 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
           'Aucune collecte multisource enregistrée pour ce prospect.'}</p></div>
       {run&&<button type="button" className="atlas-enrichments-banner-action" onClick={onOpenSources}>Voir les données détaillées <ArrowRight size={14}/></button>}
     </div>
-    {reviewJob&&<div id="prospect-source-review"><Suspense fallback={<p>Chargement de la comparaison…</p>}><CloudCaptureReview key={reviewJob.id} jobId={reviewJob.id} onClose={()=>setReviewJob(null)} onSaved={async()=>{await onReviewed?.();}}/></Suspense>
+    {savedNotice&&<p role="status" className="atlas-enrichments-banner is-success">{savedNotice}</p>}
+    {reviewJob&&<div id="prospect-source-review"><Suspense fallback={<p>Chargement de la comparaison…</p>}><CloudCaptureReview key={reviewJob.id} jobId={reviewJob.id} onClose={()=>setReviewJob(null)} onSaved={async()=>{setSavedNotice('Informations enregistrées. La fiche prospect a été mise à jour.');await onReviewed?.();}}/></Suspense>
       <Link className="atlas-enrichments-priority-link" to={jobUrl(reviewJob.source,reviewJob.step,prospectId)}>Ouvrir la source si la fiche n’a pas encore pu être lue <ExternalLink size={14}/></Link></div>}
     <div className="atlas-enrichments-metrics" aria-label="Synthèse des sources">
       <div className="atlas-enrichments-metric is-sources"><span><Layers3 size={23}/></span><div><strong>{steps.length}</strong><small>Sources consultées</small></div></div>

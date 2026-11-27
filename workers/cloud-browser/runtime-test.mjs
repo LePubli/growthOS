@@ -153,17 +153,17 @@ try{
   const popupHtml=(await readFile(new URL('popup.html',extensionRoot),'utf8')).replace(/<script[^>]*src="popup.js"[^>]*><\/script>/,'').replace(/<link[^>]*popup.css[^>]*>/,'');
   const popupScript=await readFile(new URL('popup.js',extensionRoot),'utf8');
   const connectorModules=JSON.parse(await readFile(new URL('modules.json',extensionRoot),'utf8'));
-  const panel=await p.context.newPage();await panel.setContent(popupHtml);
+  const panel=p.page;await panel.setContent(popupHtml,{waitUntil:'domcontentloaded'});
   await panel.evaluate(({connectorModules})=>{
     const task={id:'10000000-0000-4000-8000-000000000099',source:'societe_com',mode:'enrich',status:'active',query:'Atelier',area:'Roubaix',prospect:{id:'10000000-0000-4000-8000-000000000098',company:'Atelier'}};
-    window.connectorActions=[];
+    window.connectorActions=[];window.requestedOrigins=[];
     window.fetch=async()=>({json:async()=>connectorModules});
     window.chrome={runtime:{id:'unit-runtime',getManifest:()=>({version:'test'}),getURL:path=>'https://extension.invalid/'+path,sendMessage:(message,reply)=>{
       window.connectorActions.push(message.action);
       if(message.action==='task-preview')reply({ok:true,task:{...task,preview:[{source:'societe_com',company:'Atelier',siret:'96677700200019'}]}});
       else if(message.action==='task-complete')reply({ok:true,task:{...task,status:'pending'}});
       else reply({ok:true,task});
-    }},permissions:{request:async()=>{window.connectorActions.push('permission-request');return true;}},tabs:{query:async()=>[{url:'https://www.societe.com/societe/atelier-966777002.html',id:4,windowId:1}],onActivated:{addListener(){}},onUpdated:{addListener(){}}},storage:{local:{get:async()=>({})},onChanged:{addListener(){}}}};
+    }},permissions:{request:async value=>{window.requestedOrigins.push(value.origins);window.connectorActions.push('permission-request');return true;}},tabs:{query:async()=>[{url:'https://www.societe.com/societe/atelier-966777002.html',id:4,windowId:1}],onActivated:{addListener(){}},onUpdated:{addListener(){}}},storage:{local:{get:async()=>({})},onChanged:{addListener(){}}}};
   },{connectorModules});
   await panel.addScriptTag({content:popupScript});
   await panel.locator('#taskRead').waitFor({state:'visible'});
@@ -172,6 +172,7 @@ try{
   await panel.locator('#taskRead').click();
   await panel.waitForFunction(()=>window.connectorActions.includes('task-complete'));
   assert.deepEqual(await panel.evaluate(()=>window.connectorActions.filter(a=>['permission-request','task-preview','task-complete'].includes(a))),['permission-request','task-preview','task-complete']);
+  assert.deepEqual(await panel.evaluate(()=>window.requestedOrigins),[['https://www.societe.com/*','https://societe.com/*']]);
   await panel.close();
   console.log('✓ Connecteur local réel : commandes visibles, permission limitée, lecture puis retour à la comparaison CRM sans seconde case de confirmation');
   console.log('✓ Pappers : fiche publique par SIREN, identité visible, données légales, finances datées et dirigeants ; contacts réservés laissés absents');

@@ -20,7 +20,7 @@ export function previousProspectDisplayName(company:string|null|undefined,activi
   for(const activity of activities){
     if(activity.type!=='data_update'||!/Enrichissement automatique|Veille activée/.test(activity.description||''))continue;
     for(const line of (activity.description||'').split('\n')){
-      const match=line.match(/^(?:Raison sociale|Nom affiché) : (.+) → (.+)$/);
+      const match=line.match(/^(?:Fiche · )?(?:Raison sociale|Nom affiché) : (.+) → (.+)$/);
       if(match&&match[2]===company&&match[1]!==company&&match[1]!=='Non renseigné'&&match[1].length<=160)return match[1];
     }
   }
