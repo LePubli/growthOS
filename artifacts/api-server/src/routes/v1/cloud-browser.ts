@@ -62,14 +62,14 @@ router.post('/jobs/history/delete',async(req,res)=>{
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 });
 router.post('/jobs',async(req,res)=>{
-  if(!cloudConfigured())throw new CloudBrowserError(503,'Configurez le navigateur cloud pour lancer une tâche.');
-  const data=z.object({profileId:idSchema,query:z.string().trim().min(2).max(160),area:z.string().trim().max(120).default(''),limit:z.number().int().min(1).max(25).default(25),prospectId:idSchema.optional()}).strict().parse(req.body);
+  const data=z.object({profileId:idSchema,query:z.string().trim().min(2).max(160),area:z.string().trim().max(120).default(''),limit:z.number().int().min(1).max(25).default(25),prospectId:idSchema.optional(),filters:z.object({regions:z.array(z.string().regex(/^\d{2}$/)).max(18),departements:z.array(z.string().regex(/^(?:\d{2,3}|2[AB])$/)).max(101),codesPostaux:z.array(z.string().regex(/^\d{5}$/)).max(25)}).strict().optional()}).strict().parse(req.body);
   const profile=await cloudProfile(req.auth!.tenantId,data.profileId,req.auth!.userId);
+  if(profile.source!=='entreprises'&&!cloudConfigured())throw new CloudBrowserError(503,'Configurez le navigateur cloud pour lancer une tâche.');
   if(!CLOUD_AUTOMATIC.includes(profile.source))throw new CloudBrowserError(422,'Cette source est navigable ; son collecteur automatique reste à développer.');
   if(profile.source==='societe_com'&&!data.prospectId)throw new CloudBrowserError(422,'Choisissez le prospect à enrichir depuis Societe.com.');
   if(data.prospectId){const p=await pool.query('SELECT id FROM prospects WHERE id=$1 AND tenant_id=$2',[data.prospectId,req.auth!.tenantId]);if(!p.rowCount)throw new CloudBrowserError(404,'Prospect cible introuvable.');}
-  const q=await pool.query(`INSERT INTO cloud_browser_jobs(tenant_id,created_by,profile_id,prospect_id,query,area,limit_count,mode)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[req.auth!.tenantId,req.auth!.userId,data.profileId,data.prospectId||null,data.query,data.area,data.limit,data.prospectId?'enrich':'discover']);
+  const q=await pool.query(`INSERT INTO cloud_browser_jobs(tenant_id,created_by,profile_id,prospect_id,query,area,limit_count,mode,result)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[req.auth!.tenantId,req.auth!.userId,data.profileId,data.prospectId||null,data.query,data.area,data.limit,data.prospectId?'enrich':'discover',JSON.stringify({criteria:data.filters||{}})]);
   res.status(201).json(q.rows[0]);schedule();
 });
 router.get('/jobs/:id',async(req,res)=>{

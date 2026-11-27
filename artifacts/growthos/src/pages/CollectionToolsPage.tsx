@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {Link,useSearch} from 'wouter';
+import {Link,useSearch,useLocation} from 'wouter';
 import {ArrowLeft,ArrowRight,Check,Compass,ExternalLink,FileSearch,Globe2,Info,Layers3,MoreHorizontal,Search,ShieldCheck,Sparkles,Building2} from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import {beginConnectorTask} from '@/lib/pagesjaunes-device';
@@ -17,10 +17,11 @@ const shortDescriptions:Record<string,string>={
   bing:'Fiches locales complémentaires.',
   societe_com:'Identité légale, SIREN et dirigeants.',
 };
-const localSearch=(source:string,_mode:Mode)=>source==='entreprises';
+const localSearch=(_source:string,_mode:Mode)=>false;
 
 export default function CollectionToolsPage(){
   const params=new URLSearchParams(useSearch()),prospectId=params.get('prospectId');
+  const [,navigate]=useLocation();
   const [mode,setMode]=useState<Mode>(params.get('mode')==='enrich'?'enrich':'discover');
   const [prospect,setProspect]=useState<any>(null);
   const [query,setQuery]=useState(''),[area,setArea]=useState('');
@@ -47,6 +48,11 @@ export default function CollectionToolsPage(){
     const terms='&query='+encodeURIComponent(query)+'&area='+encodeURIComponent(area);
     return localSearch(source,mode)?'/sourcing?source='+source+terms
       :'/navigateur?source='+source+terms+(mode==='enrich'&&prospectId?'&prospectId='+prospectId:'');
+  }
+  async function enrichAutomatically(){
+    if(!prospectId)return;setBusy('automatic');setError('');
+    try{await apiClient.post('/prospects/'+prospectId+'/enrichment',{});navigate('/prospects/'+prospectId);}
+    catch(e){setError(e instanceof Error?e.message:'Enrichissement indisponible');}finally{setBusy(null);}
   }
   async function launch(source:string){
     setBusy(source);setError('');setNotice('');
@@ -129,8 +135,8 @@ export default function CollectionToolsPage(){
                 ?<Link to="/prospects" className="collection-hub-source-button">Choisir un prospect <ArrowRight size={15}/></Link>
                 :<Link to={targetFor(m.source)} className={'collection-hub-source-button'+(active?' is-primary':'')}
                   onClick={()=>setSelectedSource(m.source)}>
-                  {localSearch(m.source,mode)?'Configurer la recherche':active?'Ouvrir la source':'Utiliser cette source'} <ArrowRight size={15}/></Link>}
-              {!localSearch(m.source,mode)&&<details className="collection-hub-source-more">
+                  {localSearch(m.source,mode)?'Configurer la recherche':mode==='enrich'?'Consulter cette source':active?'Ouvrir la source':'Utiliser cette source'} <ArrowRight size={15}/></Link>}
+              {m.source!=='entreprises'&&!localSearch(m.source,mode)&&<details className="collection-hub-source-more">
                 <summary title={'Options pour '+m.name} aria-label={'Options pour '+m.name}><MoreHorizontal size={17}/></summary>
                 <div><p>{m.hint}</p><button type="button"
                   disabled={!!busy||(mode==='enrich'&&!prospect)||query.trim().length<3}
@@ -156,7 +162,7 @@ export default function CollectionToolsPage(){
         </ol>
         {mode==='enrich'&&!prospect
           ?<Link to="/prospects" className="collection-hub-primary collection-hub-assistant-action">Choisir un prospect <ArrowRight size={16}/></Link>
-          :<Link to={selectedModule?targetFor(selectedModule.source):'/navigateur'} className="collection-hub-primary collection-hub-assistant-action">
+          :mode==='enrich'?<button type="button" disabled={!!busy} onClick={()=>void enrichAutomatically()} className="collection-hub-primary collection-hub-assistant-action">{busy==='automatic'?'Lancement…':'Enrichir automatiquement'} <ArrowRight size={16}/></button>:<Link to={selectedModule?targetFor(selectedModule.source):'/navigateur'} className="collection-hub-primary collection-hub-assistant-action">
             <ExternalLink size={16}/>{selectedModule&&localSearch(selectedModule.source,mode)?'Configurer cette source':'Lancer dans le navigateur'}</Link>}
         <p className="collection-hub-assistant-footnote"><ShieldCheck size={13}/> Validation humaine avant modification du CRM.</p>
       </aside>

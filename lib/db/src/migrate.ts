@@ -179,6 +179,19 @@ CREATE TABLE IF NOT EXISTS cloud_browser_jobs (
 CREATE INDEX IF NOT EXISTS cloud_browser_jobs_tenant ON cloud_browser_jobs(tenant_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS cloud_browser_jobs_queue ON cloud_browser_jobs(created_at) WHERE status='queued';
 
+CREATE TABLE IF NOT EXISTS prospect_enrichment_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  prospect_id UUID NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','completed','partial','needs_review','failed','cancelled')),
+  steps JSONB NOT NULL DEFAULT '{}',
+  lease UUID, lease_until TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS prospect_enrichment_active ON prospect_enrichment_jobs(tenant_id,prospect_id) WHERE status IN ('queued','running');
+CREATE INDEX IF NOT EXISTS prospect_enrichment_queue ON prospect_enrichment_jobs(created_at) WHERE status IN ('queued','running');
+
 CREATE TABLE IF NOT EXISTS prospect_monitoring (
   prospect_id UUID PRIMARY KEY REFERENCES prospects(id) ON DELETE CASCADE,
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

@@ -1,3 +1,4 @@
+import {ProspectEnrichmentStatus,type EnrichmentRun} from '@/components/ProspectEnrichmentStatus';
 import {prospectEnrichmentUrl} from '@/lib/prospect-enrichment';
 import { ConnectorEnrichmentReturn } from '@/components/ConnectorEnrichmentReturn';
 import { ProspectProfessionalSources } from '@/components/ProspectProfessionalSources';
@@ -319,6 +320,8 @@ export default function ProspectDetailPage() {
   const [geocoding, setGeocoding] = useState(false);
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [enrichmentRun,setEnrichmentRun]=useState<EnrichmentRun|null>(null);
+  const enrichmentStamp=useRef('');
   const [enrichingActivity, setEnrichingActivity] = useState(false);
   const [lastEnrichedAt, setLastEnrichedAt] = useState<Date | null>(null);
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -371,20 +374,33 @@ export default function ProspectDetailPage() {
     } catch { /* plugin may not be active */ }
   };
 
+  useEffect(()=>{
+    let alive=true,pending=false;
+    const read=async()=>{
+      if(pending)return;pending=true;
+      try{
+        const run=await apiClient.get<EnrichmentRun|null>('/prospects/'+id+'/enrichment');
+        if(!alive)return;
+        setEnrichmentRun(run);setEnriching(!!run&&['queued','running'].includes(run.status));
+        const stamp=JSON.stringify(Object.values(run?.steps||{}).map(step=>[step.status,step.filled]));
+        if(enrichmentStamp.current&&enrichmentStamp.current!==stamp){void fetchProspect();void fetchActivities();}
+        enrichmentStamp.current=stamp;
+        if(run?.summary.sourcesDone)setLastEnrichedAt(new Date(run.updated_at));
+      }catch{/* Une panne de suivi n'efface pas le dernier résultat connu. */}finally{pending=false;}
+    };
+    enrichmentStamp.current='';setEnrichmentRun(null);void read();
+    const timer=window.setInterval(()=>void read(),3500);
+    return()=>{alive=false;window.clearInterval(timer);};
+  },[id]);
   const handleEnrich = async () => {
+    if(saving||enriching)return;
+    if(editing){toast.info('Enregistrez les modifications de la fiche avant l’enrichissement automatique.');return;}
     setEnriching(true);
     try {
-      const result = await apiClient.post(`/enrich/${id}`, {}) as any;
-      const count = result.sourcesSucceeded ?? result.sourcesAttempted ?? 0;
-      if(count>0)setLastEnrichedAt(new Date());
-      await fetchProspect();
-      if(count>0)toast.success(`Enrichissement terminé — ${count} source(s) mise(s) à jour`);
-      else toast.info('Aucune donnée vérifiée récupérée. Utilisez l’enrichissement par sources.');
-    } catch {
-      toast.error("Erreur lors de l'enrichissement");
-    } finally {
-      setEnriching(false);
-    }
+      const run=await apiClient.post<EnrichmentRun>('/prospects/'+id+'/enrichment',{});
+      setEnrichmentRun(run);
+      toast.info('Enrichissement lancé : les sources disponibles sont recherchées et croisées en arrière-plan.');
+    } catch(error:any) {setEnriching(false);toast.error(error.message||'Enrichissement indisponible');}
   };
 
   const isRecentlyEnriched = lastEnrichedAt
@@ -600,6 +616,7 @@ export default function ProspectDetailPage() {
       </div>}
       {prospect.identityMismatch && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 text-red-900 p-4 mb-4">Le SIREN et le SIRET de cette fiche ne correspondent pas. Vérifiez les identifiants avant de poursuivre.</p>}
 
+      <ProspectEnrichmentStatus run={enrichmentRun} prospectId={id}/>
       {showAddActivity && (
         <AddActivityModal prospectId={id} onClose={() => setShowAddActivity(false)} onSaved={fetchActivities} />
       )}
@@ -711,8 +728,8 @@ export default function ProspectDetailPage() {
         <div className="atlas-360-hero-actions flex flex-wrap gap-2">
           {prospect.phone?<a href={'tel:'+prospect.phone} className="atlas-360-hero-button"><Phone size={18}/> Appeler</a>
             :<button className="atlas-360-hero-button" disabled title="Téléphone non renseigné"><Phone size={18}/> Appeler</button>}
-          <button type="button" disabled={saving} onClick={() => openSourceEnrichment()}
-            className="atlas-360-hero-button"><Database size={17}/> Enrichir</button>
+          <button type="button" disabled={saving||enriching} onClick={() => void handleEnrich()}
+            className="atlas-360-hero-button">{enriching?<Loader2 size={17} className="animate-spin"/>:<Database size={17}/>} {enriching?'Enrichissement…':'Enrichir automatiquement'}</button>
           <button onClick={() => linkedDeals.length > 0 ? navigate(`/pipeline/${linkedDeals[0].id}`) : openConvertModal()}
             className="atlas-360-hero-button primary"><Plus size={20}/>{linkedDeals.length > 0 ? 'Voir le deal' : 'Créer un deal'}</button>
           {editing ? (
@@ -764,7 +781,7 @@ export default function ProspectDetailPage() {
           onOpenActivities={()=>openDetailedSection('atlas-prospect-activities')}
           onOpenSources={()=>openDetailedSection('atlas-prospect-sources')}
           onOpenMonitoring={()=>openDetailedSection('atlas-prospect-monitoring')}
-          onEnrich={()=>openSourceEnrichment()}
+          onEnrich={()=>void handleEnrich()}
           onOpenCrmMap={()=>navigate('/crm-map')}
           locationPreview={prospect.address&&hasLocationPoint
             ?<ProspectMiniMap lat={prospect.lat} lng={prospect.lng} height={155}
@@ -799,7 +816,7 @@ export default function ProspectDetailPage() {
         {/* Left — Info */}
         <div className="atlas-360-detail-main">
           <div id="atlas-prospect-monitoring" className="atlas-scroll-target atlas-360-detail-module atlas-360-detail-monitoring">
-            <ProspectCompanyProfile key={id} prospect={prospect} compactManagers onOpenContacts={()=>openDetailedSection('atlas-prospect-contacts')} onManagerNames={setOfficialManagers}
+            <ProspectCompanyProfile onEnrich={()=>void handleEnrich()} key={id} prospect={prospect} compactManagers onOpenContacts={()=>openDetailedSection('atlas-prospect-contacts')} onManagerNames={setOfficialManagers}
               onUpdated={async()=>{await fetchProspect();await fetchActivities();}} />
           </div>
           {/* Informations légales structurées, accessibles sans enrichissement */}
@@ -1037,7 +1054,7 @@ export default function ProspectDetailPage() {
             </div>
           </div>
 
-          {!editing && <div id="atlas-prospect-sources" className="atlas-scroll-target atlas-360-detail-module atlas-360-professional-sources"><ProspectProfessionalSources prospect={prospect}/></div>}
+          {!editing && <div id="atlas-prospect-sources" className="atlas-scroll-target atlas-360-detail-module atlas-360-professional-sources"><ProspectProfessionalSources prospect={prospect} onEnrich={()=>void handleEnrich()}/></div>}
 
           {/* Données enrichies */}
           <EnrichedDataPanel prospectId={prospect.id} />
@@ -1110,10 +1127,10 @@ export default function ProspectDetailPage() {
               Enrichissement récent · {lastEnrichedAt?'il y a '+Math.max(0,Math.floor((Date.now()-lastEnrichedAt.getTime())/86400000))+'j':''}</div>}
               <button type="button" className="atlas-360-enrich-direct" onClick={handleEnrich} disabled={enriching}>
                 {enriching?<Loader2 size={16} className="animate-spin"/>:<Zap size={16}/>}
-                {enriching?'Enrichissement en cours…':'Enrichissement complémentaire'}
+                {enriching?'Enrichissement en cours…':'Enrichir automatiquement'}
               </button>
             <button type="button" className="atlas-360-enrich-sources" onClick={()=>openSourceEnrichment()}>
-              Choisir une source d’enrichissement <ExternalLink size={13}/>
+              Consulter une source manuellement <ExternalLink size={13}/>
             </button>
           </section>
         </aside>

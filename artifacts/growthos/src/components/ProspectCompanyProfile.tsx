@@ -34,6 +34,7 @@ type Monitoring = {
   }[];
 };
 type Props = {
+  onEnrich?:()=>void;
   onUpdated?:()=>void|Promise<void>;
   onManagerNames?:(names:string[])=>void;
   compactManagers?:boolean;
@@ -119,7 +120,7 @@ export function CompanyDetailsView({ details }: { details: CompanyDetails }) {
     </div>
   );
 }
-export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compactManagers=false,onOpenContacts }: Props) {
+export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compactManagers=false,onOpenContacts,onEnrich }: Props) {
   const [data, setData] = useState<Monitoring | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -227,7 +228,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compa
         <h2 className="font-semibold">
           Statut de l’entreprise et surveillance
         </h2>
-        {!identifiable?<Link to={prospectEnrichmentUrl(prospect.id)} className="atlas-360-link-button atlas-360-link-button-primary">Rechercher le SIREN / SIRET</Link>:<button
+        {!identifiable&&onEnrich?<button type="button" className="atlas-360-link-button atlas-360-link-button-primary" onClick={onEnrich}>Identifier et enrichir automatiquement</button>:!identifiable?<Link to={prospectEnrichmentUrl(prospect.id)} className="atlas-360-link-button atlas-360-link-button-primary">Rechercher le SIREN / SIRET</Link>:<button
           type="button"
           className="text-sm border rounded-xl px-3 py-2 disabled:opacity-50"
           disabled={loading || !identifiable}

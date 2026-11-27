@@ -22,7 +22,7 @@ const company=`<html><head><title>ATELIER CLOUD</title></head><body><main><h1>AT
   </dl><input id="proof" aria-label="Texte de recette"/><button>Valider</button></main></body></html>`;
 async function fixture(scope){
   const p=await service.profile(scope);
-  await p.context.route('https://www.societe.com/**',route=>route.fulfill({contentType:'text/html',body:route.request().url().includes('/societe/')?company:`<html><body><a href="${companyUrl}">ATELIER CLOUD</a></body></html>`}));return p;
+  await p.context.route('https://www.societe.com/**',route=>route.fulfill({contentType:'text/html',body:route.request().url().includes('/societe/')?company:`<html><body><a href="${companyUrl}">ATELIER CLOUD</a><a href="${companyUrl}#__establishments">Établissements</a></body></html>`}));return p;
 }
 try{
   let health;
@@ -98,6 +98,12 @@ try{
   assert.equal(pjBatch2.results[0].company,'Atelier PagesJaunes 2');assert.equal(pjBatch2.hasMore,false);
   assert.equal(pjBatch2.results[0].email,'contact@atelier-recette.invalid');
   assert.equal(pjBatch2.results[0].pagesjaunesProfile.name,'Atelier PagesJaunes 2');
+  const unrelated={...identity,profileId:'10000000-0000-4000-8000-000000000008'};
+  p=await service.profile(unrelated);
+  await p.context.route('https://www.societe.com/**',route=>route.fulfill({contentType:'text/html',body:'<a href="https://www.societe.com/societe/monsieur-kevin-duville-793137845.html">MONSIEUR KEVIN DUVILLE</a>'}));
+  const rejected=await service.collect({...unrelated,query:'Nord Artisan',area:'Lille',target:{company:'Nord Artisan'}});
+  assert.equal(rejected.status,'awaiting_user');assert.equal(rejected.results.length,0);
+  assert.ok(p.page.url().includes('/recherche?'),'Une unique fiche sans nom concordant ne doit pas être ouverte automatiquement');
   console.log('✓ Chromium réel : 35 fiches Maps en continuation et PagesJaunes recherche → détail → page suivante avec lecteurs canoniques');
   console.log('✓ Chromium réel : recherche → fiche Societe.com → extraction, vue JPEG, saisie, session persistante, séparation des comptes, contrôle et déconnexion');
 }finally{child.kill('SIGTERM');await service.close();await rm(directory,{recursive:true,force:true});}

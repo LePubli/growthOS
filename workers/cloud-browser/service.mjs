@@ -235,10 +235,16 @@ export class BrowserService{
   async societe(p,input){
     if(!/^https:\/\/(?:www\.)?societe\.com\/societe\//.test(p.page.url())){
       await p.page.locator('a[href*="/societe/"]').first().waitFor({state:'attached',timeout:10000}).catch(()=>{});
-      const all=[...new Set(await p.page.locator('a[href*="/societe/"]').evaluateAll(nodes=>nodes.map(n=>n.href)))];
+      const all=[...new Set((await p.page.locator('a[href*="/societe/"]').evaluateAll(nodes=>nodes.map(n=>n.href))).map(value=>{const url=new URL(value);url.hash='';url.search='';return url.href;}))];
       const known=String(input.target?.siret||input.target?.siren||'').slice(0,9);
       const links=all.filter(url=>sourceNavigation('societe_com',url)&&/\/societe\/[a-z0-9-]+-\d{9}\.html\/?$/i.test(new URL(url).pathname))
         .filter(url=>!known||new URL(url).pathname.replace(/\/$/,'').endsWith('-'+known+'.html'));
+      const normalize=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      if(!known&&links.length===1){
+        const labels=await p.page.locator('a[href*="/societe/"]').evaluateAll(nodes=>nodes.map(n=>({url:n.href,label:n.innerText||n.textContent})));
+        if(!labels.some(n=>n.url.split(/[?#]/)[0]===links[0]&&normalize(n.label)===normalize(input.target?.company||input.query)))
+          return {status:'awaiting_user',results:[],drafts:[],message:'Aucune correspondance fiable avec le nom recherché. La fiche non concordante n’a pas été ouverte.'};
+      }
       if(links.length!==1)return {ok:true,status:'awaiting_user',message:links.length?'Plusieurs fiches correspondent. Ouvrez le bon établissement dans le navigateur puis reprenez.':'La recherche nécessite une vérification dans le navigateur intégré.',results:[],drafts:[]};
       await p.page.goto(links[0],{waitUntil:'domcontentloaded',timeout:25000});await pause(1200);
     }
