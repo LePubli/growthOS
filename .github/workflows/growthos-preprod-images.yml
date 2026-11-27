@@ -81,6 +81,7 @@ jobs:
           node scripts/test-collection-tools.mjs
           node scripts/test-cloud-job-history.mjs
           node scripts/test-cloud-import-feedback.mjs
+          node scripts/test-prospect-enrichment-actions.mjs
           node scripts/test-cloud-browser.mjs
           node scripts/test-prospect-people.mjs
           node scripts/test-prospect-completeness.mjs

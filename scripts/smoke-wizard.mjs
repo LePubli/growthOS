@@ -343,6 +343,11 @@ const cloudStub=createServer(async(req,res)=>{
     if(cloudDelay)await delay(cloudDelay);
     if(p.query==='cloud-wait'){res.end(JSON.stringify({status:'awaiting_user',message:'Connexion à vérifier',results:[]}));return;}
     if(p.query==='cloud-fail'){res.writeHead(503).end(JSON.stringify({error:'Source indisponible'}));return;}
+    if(p.query==='cloud-many'){
+      const start=p.cursor?.step===1?25:0,end=start?38:25;
+      const results=Array.from({length:end-start},(_,n)=>{const i=start+n;return {source:p.source,company:'Collecte continue '+i,address:(i+1)+' rue du Flux 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone:'03'+String(50000000+i),sourceUrl:'https://www.google.com/maps/place/Collecte-'+i+'/'};});
+      res.end(JSON.stringify({status:'completed',results,drafts:[],hasMore:start===0,cursor:{source:p.source,step:1}}));return;
+    }
     if(['receipt-mixed','receipt-legacy','receipt-legacy-conflict','receipt-rollback'].includes(p.query)){
       const row=(company,number,phone)=>({source:'google_maps',company,address:number+' rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone,sourceUrl:'https://www.google.com/maps/place/'+encodeURIComponent(company)+'/'});
       const values=p.query==='receipt-mixed'?[row('Import cloud neuf',10,'03 00 41 01 01'),row('CRM cloud existant',20,'03 00 41 01 02'),row('CRM cloud contradictoire',30,'03 00 41 01 03'),{...row('Import cloud incomplet',35,null),codePostal:null}]
@@ -353,7 +358,7 @@ const cloudStub=createServer(async(req,res)=>{
     res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:p.target?'ATELIER CLOUD':'Entreprise trouvée',siret:p.source==='societe_com'?siret:null,
       address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone:'03 20 99 88 77',
       website:'https://cloud-recette.example.org',apeCode:'43.22A',
-      sourceUrl:p.source==='societe_com'?'https://www.societe.com/societe/atelier-cloud-'+siret.slice(0,9)+'.html':'https://www.google.com/maps/place/Entreprise/',
+      sourceUrl:p.source==='societe_com'?'https://www.societe.com/societe/atelier-cloud-'+siret.slice(0,9)+'.html':p.source==='pagesjaunes'?'https://www.pagesjaunes.fr/pros/12345678':'https://www.google.com/maps/place/Entreprise/',
       ...(p.source==='societe_com'?{companyDetails:{fields:{'Forme juridique':'SAS'},managers:['Alice CLOUD'],establishments:[],links:[]}}:{}),
     }],drafts:[]}));return;
   }
@@ -1615,6 +1620,28 @@ try {
     const captured=await request('GET','/browser/jobs/'+discovery.body.id,undefined,token);
     check(captured.body.status==='completed' && captured.body.mode==='discover' && captured.body.result.captures.length===1,
       'Cloud : collecte publique livre une sélection persistante avant création de prospects');
+    check(state.body.automatic.includes('pagesjaunes'),'Cloud : PagesJaunes dispose du collecteur automatique dans le même navigateur');
+    const pjProfile=await request('POST','/browser/profiles',{source:'pagesjaunes',label:'PagesJaunes public'},token);
+    const pjTask=await request('POST','/browser/jobs',{profileId:pjProfile.body.id,query:'plombier',area:'Roubaix'},token);await runCloudMaintenance(pjTask.body.id);
+    const pjResult=await request('GET','/browser/jobs/'+pjTask.body.id,undefined,token);
+    check(pjResult.body.status==='completed'&&pjResult.body.result.captures[0].source==='pagesjaunes','Cloud : résultats PagesJaunes disponibles sans passer par l’extension');
+    const many=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'cloud-many'},token);await runCloudMaintenance(many.body.id);
+    const firstMany=await request('GET','/browser/jobs/'+many.body.id,undefined,token);
+    check(firstMany.body.status==='queued'&&firstMany.body.result.hasMore&&firstMany.body.result.captures.length===25,'Cloud : la collecte de 25 fiches poursuit automatiquement sa suite');
+    const firstIds=firstMany.body.result.captures.map(c=>c.id);
+    const earlyImport=await request('POST','/browser/jobs/'+many.body.id+'/import',{captureIds:firstIds},token);
+    check(earlyImport.body.imported===25,'Cloud : résultats déjà lus importables pendant que la suite est en file');
+    await request('POST','/browser/jobs/'+many.body.id+'/cancel',{},token);
+    const continued=await request('POST','/browser/jobs/'+many.body.id+'/retry',{resume:true},token);
+    check(continued.body.result.captures.length===25&&Object.keys(continued.body.result.imports).length===25,'Cloud : annuler et reprendre conserve les résultats et les reçus des lots précédents');
+    await runCloudMaintenance(many.body.id);
+    const finalMany=await request('GET','/browser/jobs/'+many.body.id,undefined,token);
+    check(finalMany.body.status==='completed'&&finalMany.body.result.captures.length===38&&finalMany.body.result.captures[0].id===firstIds[0],
+      'Cloud : 38 résultats accumulés sans plafond total et sans renommer les anciennes captures');
+    check(firstIds.every(id=>finalMany.body.result.imports[id]?.status==='imported'),'Cloud : les reçus CRM restent présents après ajout de la suite');
+    const remainingIds=finalMany.body.result.captures.slice(25).map(c=>c.id);
+    check((await request('POST','/browser/jobs/'+many.body.id+'/import',{captureIds:remainingIds},token)).body.imported===13,'Cloud : les fiches après la vingt-cinquième sont importables');
+
     const existingReceipt=await request('POST','/prospects',{company:'CRM cloud existant',address:'20 rue du Test 59100 Roubaix',postalCode:'59100',city:'Roubaix',phone:'03 00 41 01 02'},token);
     const conflictingReceipt=await request('POST','/prospects',{company:'CRM cloud contradictoire',address:'30 rue du Test 59100 Roubaix',postalCode:'59100',city:'Roubaix',phone:'03 00 41 01 99'},token);
     const mixedJob=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'receipt-mixed'},token);await runCloudMaintenance(mixedJob.body.id);

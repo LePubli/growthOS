@@ -1,3 +1,4 @@
+import {prospectEnrichmentUrl} from '@/lib/prospect-enrichment';
 import { ConnectorEnrichmentReturn } from '@/components/ConnectorEnrichmentReturn';
 import { ProspectProfessionalSources } from '@/components/ProspectProfessionalSources';
 import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
@@ -6,7 +7,6 @@ import { Prospect360Dashboard, ProspectOrbitBanner } from '@/components/atlas/Pr
 import { CompanyLogo, SourceLogo } from '@/components/atlas/ProspectLogos';
 import { collectProspectPeople } from '@/lib/prospect-people';
 import { hasValidGeoPosition } from '@/lib/prospect-completeness';
-import { SocieteEnrichmentDialog } from '@/components/SocieteEnrichment';
 import { EditNote } from '@/components/EditNote';
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useParams, useLocation } from 'wouter';
@@ -19,7 +19,6 @@ import {
   Building, Database, BarChart2, Users, Newspaper, GitMerge, Copy, Network, LayoutGrid, MoreHorizontal,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
-import { enrichLocalPagesJaunes } from '@/lib/pagesjaunes-device';
 import { toast } from 'sonner';
 import { CommentsPanel } from '@/components/common/CommentsPanel';
 import { AddressAutocomplete } from '@/components/common/AddressAutocomplete';
@@ -320,8 +319,6 @@ export default function ProspectDetailPage() {
   const [geocoding, setGeocoding] = useState(false);
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [enriching, setEnriching] = useState(false);
-  const [enrichingPagesJaunes, setEnrichingPagesJaunes] = useState(false);
-  const [showSocieteEnrichment, setShowSocieteEnrichment] = useState(false);
   const [enrichingActivity, setEnrichingActivity] = useState(false);
   const [lastEnrichedAt, setLastEnrichedAt] = useState<Date | null>(null);
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -339,22 +336,11 @@ export default function ProspectDetailPage() {
     finally { setLoading(false); }
   };
 
-  const enrichFromPagesJaunes = async () => {
-    if (!prospect?.sourceUrl) return;
-    setEnrichingPagesJaunes(true);
-    try {
-      toast.info('Ouverture de la fiche PagesJaunes dans votre navigateur…');
-      const profile = await enrichLocalPagesJaunes(prospect.sourceUrl);
-      const updated = await apiClient.post<any>(`/sourcing/device/prospects/${id}/enrich`,
-        {profile}, {timeoutMs: 60000});
-      setProspect(updated);
-      setForm(updated);
-      toast.success('Fiche PagesJaunes consultée : informations disponibles enregistrées.');
-    } catch (error: any) {
-      toast.error(error.message || 'Enrichissement PagesJaunes impossible', {duration:10000});
-    } finally {setEnrichingPagesJaunes(false);}
+  const openSourceEnrichment=(source='societe_com')=>{
+    if(saving)return;
+    if(editing&&!window.confirm('Les modifications non enregistrées seront abandonnées. Ouvrir l’enrichissement par sources ?'))return;
+    navigate(prospectEnrichmentUrl(id,source));
   };
-
   const enrichOfficialActivity = async () => {
     setEnrichingActivity(true);
     try {
@@ -390,9 +376,10 @@ export default function ProspectDetailPage() {
     try {
       const result = await apiClient.post(`/enrich/${id}`, {}) as any;
       const count = result.sourcesSucceeded ?? result.sourcesAttempted ?? 0;
-      setLastEnrichedAt(new Date());
+      if(count>0)setLastEnrichedAt(new Date());
       await fetchProspect();
-      toast.success(`Enrichissement terminé — ${count} source${count > 1 ? 's' : ''} mise${count > 1 ? 's' : ''} à jour`);
+      if(count>0)toast.success(`Enrichissement terminé — ${count} source(s) mise(s) à jour`);
+      else toast.info('Aucune donnée vérifiée récupérée. Utilisez l’enrichissement par sources.');
     } catch {
       toast.error("Erreur lors de l'enrichissement");
     } finally {
@@ -612,8 +599,6 @@ export default function ProspectDetailPage() {
         {prospect.identityConflicts.map((other:any) => <Link key={other.id} className="block underline mt-1" to={'/prospects/' + other.id}>{other.company || 'Prospect sans nom'} · {other.siret}</Link>)}
       </div>}
       {prospect.identityMismatch && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 text-red-900 p-4 mb-4">Le SIREN et le SIRET de cette fiche ne correspondent pas. Vérifiez les identifiants avant de poursuivre.</p>}
-      <SocieteEnrichmentDialog key={id} open={showSocieteEnrichment} onOpenChange={setShowSocieteEnrichment}
-        prospect={prospect} onSaved={() => void fetchProspect()}/>
 
       {showAddActivity && (
         <AddActivityModal prospectId={id} onClose={() => setShowAddActivity(false)} onSaved={fetchActivities} />
@@ -726,7 +711,7 @@ export default function ProspectDetailPage() {
         <div className="atlas-360-hero-actions flex flex-wrap gap-2">
           {prospect.phone?<a href={'tel:'+prospect.phone} className="atlas-360-hero-button"><Phone size={18}/> Appeler</a>
             :<button className="atlas-360-hero-button" disabled title="Téléphone non renseigné"><Phone size={18}/> Appeler</button>}
-          <button type="button" disabled={editing||returnProcessing} onClick={() => navigate(`/outils?mode=enrich&prospectId=${id}`)}
+          <button type="button" disabled={saving} onClick={() => openSourceEnrichment()}
             className="atlas-360-hero-button"><Database size={17}/> Enrichir</button>
           <button onClick={() => linkedDeals.length > 0 ? navigate(`/pipeline/${linkedDeals[0].id}`) : openConvertModal()}
             className="atlas-360-hero-button primary"><Plus size={20}/>{linkedDeals.length > 0 ? 'Voir le deal' : 'Créer un deal'}</button>
@@ -742,7 +727,7 @@ export default function ProspectDetailPage() {
             <summary aria-label="Plus d'actions" title="Plus d'actions"><MoreHorizontal size={21}/></summary>
             <div className="atlas-360-extra-popover">
               <button type="button" disabled={editing||returnProcessing} onClick={()=>openEditor()}><Edit2 size={16}/> Modifier la fiche</button>
-              <button type="button" disabled={editing||returnProcessing} onClick={()=>setShowSocieteEnrichment(true)}><Database size={16}/> Enrichir via Societe.com</button>
+              <button type="button" disabled={saving} onClick={()=>openSourceEnrichment()}><Database size={16}/> Rechercher l’identité légale</button>
               <button onClick={toggleStar}><Star size={16}/>{prospect.isStarred?'Retirer des favoris':'Ajouter aux favoris'}</button>
               <button onClick={archiveProspect}><Archive size={16}/>{prospect.status==='archived'?'Restaurer':'Archiver'}</button>
             </div>
@@ -779,7 +764,7 @@ export default function ProspectDetailPage() {
           onOpenActivities={()=>openDetailedSection('atlas-prospect-activities')}
           onOpenSources={()=>openDetailedSection('atlas-prospect-sources')}
           onOpenMonitoring={()=>openDetailedSection('atlas-prospect-monitoring')}
-          onEnrich={()=>navigate('/outils?mode=enrich&prospectId='+id)}
+          onEnrich={()=>openSourceEnrichment()}
           onOpenCrmMap={()=>navigate('/crm-map')}
           locationPreview={prospect.address&&hasLocationPoint
             ?<ProspectMiniMap lat={prospect.lat} lng={prospect.lng} height={155}
@@ -873,10 +858,10 @@ export default function ProspectDetailPage() {
             <span className="font-semibold">Source :</span>
             <span>{prospect.source === 'pagesjaunes' ? 'PagesJaunes.fr' : prospect.source === 'annuaire-entreprises' ? 'Annuaire des entreprises' : prospect.source}</span>
             {pagesJaunesProfile && <a href={prospect.sourceUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline">Voir la fiche source</a>}
-            {pagesJaunesProfile && <button onClick={enrichFromPagesJaunes} disabled={enrichingPagesJaunes}
+            {pagesJaunesProfile && <button onClick={()=>openSourceEnrichment('pagesjaunes')} disabled={saving}
               className="ml-auto px-3 py-2 rounded-lg bg-teal-600 text-white font-semibold disabled:opacity-50 flex gap-1.5 items-center">
-              {enrichingPagesJaunes ? <Loader2 size={13} className="animate-spin"/> : <RefreshCw size={13}/>}
-              {enrichingPagesJaunes ? 'Lecture de la fiche…' : 'Compléter depuis PagesJaunes'}
+              <RefreshCw size={13}/>
+              Rechercher sur PagesJaunes
             </button>}
           </div>}
           {pagesJaunesDetails && <section className="atlas-360-detail-module atlas-360-pj-details rounded-2xl border p-4 sm:p-5 space-y-4" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
@@ -1121,14 +1106,14 @@ export default function ProspectDetailPage() {
           <section className="atlas-360-detail-aside-card atlas-360-enrichment-tool">
             <header><Database size={18}/><h2>Enrichissement du dossier</h2></header>
             <p>Mettre à jour les données disponibles, avec contrôle des sources et conservation de l'historique.</p>
-            {isRecentlyEnriched?<div className="atlas-360-enrichment-recent"><BadgeCheck size={16}/>
-              Enrichissement récent · {lastEnrichedAt?'il y a '+Math.max(0,Math.floor((Date.now()-lastEnrichedAt.getTime())/86400000))+'j':''}</div>
-              :<button type="button" className="atlas-360-enrich-direct" onClick={handleEnrich} disabled={enriching}>
+            {isRecentlyEnriched&&<div className="atlas-360-enrichment-recent"><BadgeCheck size={16}/>
+              Enrichissement récent · {lastEnrichedAt?'il y a '+Math.max(0,Math.floor((Date.now()-lastEnrichedAt.getTime())/86400000))+'j':''}</div>}
+              <button type="button" className="atlas-360-enrich-direct" onClick={handleEnrich} disabled={enriching}>
                 {enriching?<Loader2 size={16} className="animate-spin"/>:<Zap size={16}/>}
-                {enriching?'Enrichissement en cours…':'Enrichir automatiquement'}
-              </button>}
-            <button type="button" className="atlas-360-enrich-sources" onClick={()=>navigate('/outils?mode=enrich&prospectId='+id)}>
-              Ouvrir les outils de sourcing <ExternalLink size={13}/>
+                {enriching?'Enrichissement en cours…':'Enrichissement complémentaire'}
+              </button>
+            <button type="button" className="atlas-360-enrich-sources" onClick={()=>openSourceEnrichment()}>
+              Choisir une source d’enrichissement <ExternalLink size={13}/>
             </button>
           </section>
         </aside>

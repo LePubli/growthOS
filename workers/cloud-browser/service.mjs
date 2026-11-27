@@ -1,11 +1,9 @@
 import {mkdir,rm,readFile,writeFile,rename} from 'node:fs/promises';
-import {readFileSync} from 'node:fs';
+import {readers} from './readers.mjs';
 import {join} from 'node:path';
 import {randomUUID,randomBytes,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
 import {scope,searchUrl,sourceNavigation,sourceResource,publicRequest,actionInput,AUTOMATIC} from './protocol.mjs';
 
-const readers={societe_com:readFileSync(new URL('../../extensions/growthos-pagesjaunes/societe.js',import.meta.url),'utf8'),
-  general:readFileSync(new URL('../../extensions/growthos-pagesjaunes/capture.js',import.meta.url),'utf8')};
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 export class BrowserError extends Error{constructor(status,message){super(message);this.status=status;}}
 export class BrowserService{
@@ -37,7 +35,7 @@ export class BrowserService{
       await context.route('**/*',async route=>{
         const request=route.request(),url=request.url();
         if(url.startsWith('data:')||url.startsWith('blob:'))return route.abort();
-        if(request.isNavigationRequest() && !sourceNavigation(identity.source,url))return route.abort();
+        if(request.isNavigationRequest() && !request.frame().parentFrame() && !sourceNavigation(identity.source,url))return route.abort();
         if(!sourceResource(identity.source,url)||!await this.requestAllowed(url))return route.abort();
         if(['media','font'].includes(request.resourceType()))return route.abort();
         return route.continue();
@@ -130,32 +128,105 @@ export class BrowserService{
     if(this.busy)throw new BrowserError(423,'Le navigateur traite déjà une collecte.');
     const p=await this.profile(input);if(this.busy)throw new BrowserError(423,'Une autre opération est en cours.');this.busy=true;this.touch();
     try{
-      if(input.resume!==true || !sourceNavigation(p.source,p.page.url())){
-        await p.page.goto(searchUrl(p.source,input.query||'',input.area||''),{waitUntil:'domcontentloaded',timeout:25000});
+      const cursor=input.cursor&&input.cursor.source===p.source?structuredClone(input.cursor):null;
+      if(p.source==='societe_com'){
+        if(!input.resume||!sourceNavigation(p.source,p.page.url()))await p.page.goto(searchUrl(p.source,input.query||'',input.area||''),{waitUntil:'domcontentloaded',timeout:25000});
+        await pause(1200);return await this.societe(p,input);
       }
-      await pause(1200);
-      if(p.source==='societe_com')return await this.societe(p,input);
-      const results=[],drafts=[];
-      if(p.source==='google_maps'&&!p.page.url().includes('/maps/place/')){
-        await p.page.locator('a[href*="/maps/place/"]').first().waitFor({state:'attached',timeout:10000}).catch(()=>{});
-        const seen=new Set();let stalled=0;
-        const limit=Math.min(Number(input.limit)||10,25);
-        for(let pass=0;pass<10&&seen.size<limit&&stalled<3;pass++){
-          const before=seen.size;
-          for(const url of await p.page.locator('a[href*="/maps/place/"]').evaluateAll(nodes=>nodes.map(n=>n.href)))if(sourceNavigation(p.source,url))seen.add(url);
-          stalled=seen.size===before?stalled+1:0;
-          if(seen.size<limit){await p.page.locator('[role="feed"]').first().evaluate(node=>{node.scrollTop=node.scrollHeight;}).catch(()=>{});await pause(650);}
-        }
-        const links=[...seen].slice(0,limit);
-        for(const url of links){
-          try{await p.page.goto(url,{waitUntil:'domcontentloaded',timeout:18000});await pause(1000);const read=await p.page.evaluate(readers.general);results.push(...(read.results||[]));drafts.push(...(read.drafts||[]));}catch{}
-        }
-      }else{
-        const read=await p.page.evaluate(readers.general);results.push(...(read.results||[]));drafts.push(...(read.drafts||[]));
-      }
-      if(!results.length&&!drafts.length)return {ok:true,status:'awaiting_user',message:'Aucune fiche locale lisible. Consultez le navigateur pour vérifier la page ou la connexion.',results:[],drafts:[]};
-      return {ok:true,status:'completed',results:results.slice(0,Math.max(1,Math.min(Number(input.limit)||10,25))),drafts:drafts.slice(0,25)};
+      if(['google_maps','pagesjaunes'].includes(p.source))return await this.directory(p,input,cursor);
+      return await this.searchPage(p,input,cursor);
     }finally{this.busy=false;this.touch();}
+  }
+  async searchPage(p,input,previous){
+    const cursor=previous||{source:p.source,pages:[],next:searchUrl(p.source,input.query||'',input.area||'')};
+    const url=cursor.next;
+    if(!url||!sourceNavigation(p.source,url))throw new BrowserError(400,'Suite de recherche invalide.');
+    if(!input.resume||previous||!sourceNavigation(p.source,p.page.url()))await p.page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});
+    await pause(1200);
+    const read=await p.page.evaluate(readers.general);
+    if(!read.results?.length&&!read.drafts?.length)return {status:'awaiting_user',results:[],drafts:[],cursor,message:'Aucune fiche lisible. Vérifiez la page dans le navigateur puis reprenez.'};
+    cursor.pages.push(url);
+    const next=await p.page.locator(p.source==='bing'?'a.sb_pagN,a[rel="next"]':'a#pnnext,a[rel="next"]').evaluateAll(nodes=>nodes.map(n=>n.href));
+    cursor.next=next.find(value=>sourceNavigation(p.source,value)&&!cursor.pages.includes(value))||null;
+    return {status:'completed',results:read.results||[],drafts:read.drafts||[],cursor,hasMore:!!cursor.next};
+  }
+  async directory(p,input,previous){
+    const initial=searchUrl(p.source,input.query||'',input.area||'');
+    const isDetail=url=>p.source==='pagesjaunes'?/^https:\/\/(?:www\.)?pagesjaunes\.fr\/pros\/\d+/.test(url):new URL(url).pathname.startsWith('/maps/place/');
+    if(!previous&&input.resume&&sourceNavigation(p.source,p.page.url())&&isDetail(p.page.url())){
+      const read=await this.readDirectoryProfile(p);
+      return read?{status:'completed',results:read.results,drafts:read.drafts,hasMore:false}:{status:'awaiting_user',results:[],drafts:[],message:'Vérifiez cette fiche dans le navigateur avant de reprendre.'};
+    }
+    const cursor=previous||{source:p.source,phase:'scan',pending:[],visited:[],pages:[],next:initial};
+    const results=[],drafts=[],batch=Math.max(1,Math.min(Number(input.limit)||25,p.source==='pagesjaunes'?10:25));
+    if(cursor.phase==='scan'){
+      const url=cursor.next||initial;
+      if(!sourceNavigation(p.source,url))throw new BrowserError(400,'Page de recherche invalide.');
+      const current=p.page.url();
+      const keepMap=p.source==='google_maps'&&sourceNavigation(p.source,current)&&new URL(current).pathname.startsWith('/maps/search')&&cursor.scanning===true;
+      if(!keepMap)await p.page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});
+      await pause(900);
+      if(p.source==='google_maps'){
+        await p.page.locator('a[href*="/maps/place/"]').first().waitFor({state:'attached',timeout:10000}).catch(()=>{});
+        const seen=new Set([...cursor.visited,...cursor.pending]);let stalls=0,ended=false;
+        const began=Date.now();
+        while(Date.now()-began<25000){
+          const before=seen.size;
+          for(const value of await p.page.locator('a[href*="/maps/place/"]').evaluateAll(nodes=>nodes.map(n=>n.href))){
+            if(sourceNavigation(p.source,value)&&!seen.has(value)){seen.add(value);cursor.pending.push(value);}
+          }
+          const feed=p.page.locator('[role="feed"]').first();
+          const endText=await feed.innerText().catch(()=> '');
+          if(/(?:arriv[ée].*fin de la liste|reached the end of the list)/i.test(endText)){ended=true;break;}
+          const scrolled=await feed.evaluate(node=>{const old=node.scrollTop;node.scrollTop=node.scrollHeight;return node.scrollTop!==old;}).catch(()=>false);
+          stalls=seen.size===before&&!scrolled?stalls+1:0;
+          if(stalls>=3){ended=true;break;}
+          await pause(650);
+        }
+        if(!seen.size)return {status:'awaiting_user',results,drafts,cursor,message:'La recherche Maps nécessite une vérification dans le navigateur.'};
+        cursor.scanning=!ended;
+        if(!ended)return {status:'completed',results,drafts,cursor,hasMore:true,message:cursor.pending.length+' fiches repérées. Parcours de la liste en cours.'};
+        cursor.next=null;cursor.phase='read';
+      }else{
+        await p.page.locator('a[href*="/pros/"]').first().waitFor({state:'attached',timeout:8000}).catch(()=>{});
+        const links=await p.page.locator('a[href*="/pros/"]').evaluateAll(nodes=>nodes.map(n=>n.href));
+        for(const value of links)if(sourceNavigation(p.source,value)&&isDetail(value)&&!cursor.pending.includes(value)&&!cursor.visited.includes(value))cursor.pending.push(value);
+        if(!cursor.pending.length)return {status:'awaiting_user',results,drafts,cursor,message:'Aucune fiche PagesJaunes lisible. Vérifiez la recherche ou la demande de connexion dans le navigateur.'};
+        cursor.pages.push(url);
+        const choices=await p.page.locator('a[rel="next"],a[aria-label*="suivant" i],a[title*="suivant" i],.pagination a,#pagination a,a#pagination-next,nav[aria-label*="pagination" i] a').evaluateAll(nodes=>nodes.map(n=>({href:n.href,label:[n.innerText,n.getAttribute('aria-label'),n.title,n.id,n.className,n.rel].join(' ')})));
+        const valid=choices.filter(n=>sourceNavigation(p.source,n.href)&&!cursor.pages.includes(n.href));
+        const currentPage=Number(new URL(url).searchParams.get('page')||1);
+        cursor.next=valid.find(n=>/suivant|next/i.test(n.label))?.href||valid.map(n=>({href:n.href,page:Number(new URL(n.href).searchParams.get('page')||n.label.trim())})).filter(n=>n.page>currentPage).sort((a,b)=>a.page-b.page)[0]?.href||null;
+        cursor.phase='read';
+      }
+    }
+    for(let index=0;index<batch&&cursor.pending.length;index++){
+      const url=cursor.pending[0];
+      if(!sourceNavigation(p.source,url)||!isDetail(url))throw new BrowserError(400,'Fiche de source invalide.');
+      try{
+        if(p.page.url()!==url)await p.page.goto(url,{waitUntil:'domcontentloaded',timeout:18000});
+        await pause(700);
+        const read=await this.readDirectoryProfile(p);
+        if(!read) return {status:'awaiting_user',results,drafts,cursor,hasMore:true,message:'Une fiche demande une vérification. Les résultats déjà lus sont conservés ; ouvrez le navigateur puis reprenez.'};
+        results.push(...read.results);drafts.push(...read.drafts);
+      }catch{return {status:'awaiting_user',results,drafts,cursor,hasMore:true,message:'Lecture interrompue. Les résultats déjà lus sont conservés. Vérifiez la page puis reprenez.'};}
+      cursor.pending.shift();cursor.visited.push(url);
+    }
+    if(!cursor.pending.length&&cursor.next)cursor.phase='scan';
+    return {status:'completed',results,drafts,cursor,hasMore:!!cursor.pending.length||!!cursor.next,
+      message:cursor.visited.length+' fiches parcourues'+(cursor.pending.length||cursor.next?' · collecte en cours.':' · fin des résultats accessibles.')};
+  }
+  async readDirectoryProfile(p){
+    if(p.source==='pagesjaunes'){
+      await p.page.locator('main h1,[role="main"] h1,h1').first().waitFor({timeout:5000}).catch(()=>{});
+      const profile=await p.page.evaluate(readers.pagesjaunesProfile);
+      if(!profile.name||!profile.address||!profile.codePostal)return null;
+      const ape=String(profile.legal||'').match(/(?:APE|NAF)[^0-9]{0,20}(\d{2}\.\d{2}[A-Z])/i)?.[1];
+      return {results:[{source:'pagesjaunes',company:profile.name,address:profile.address,codePostal:profile.codePostal,city:profile.city,
+        phone:profile.phone,email:profile.email,website:profile.website,siret:profile.siret,apeCode:ape||null,sourceUrl:profile.sourceUrl}],drafts:[]};
+    }
+    const read=await p.page.evaluate(readers.general);
+    return read.results?.length||read.drafts?.length?{results:read.results||[],drafts:read.drafts||[]}:null;
   }
   async societe(p,input){
     if(!/^https:\/\/(?:www\.)?societe\.com\/societe\//.test(p.page.url())){

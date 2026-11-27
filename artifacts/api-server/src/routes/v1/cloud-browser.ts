@@ -63,7 +63,7 @@ router.post('/jobs/history/delete',async(req,res)=>{
 });
 router.post('/jobs',async(req,res)=>{
   if(!cloudConfigured())throw new CloudBrowserError(503,'Configurez le navigateur cloud pour lancer une tâche.');
-  const data=z.object({profileId:idSchema,query:z.string().trim().min(2).max(160),area:z.string().trim().max(120).default(''),limit:z.number().int().min(1).max(25).default(10),prospectId:idSchema.optional()}).strict().parse(req.body);
+  const data=z.object({profileId:idSchema,query:z.string().trim().min(2).max(160),area:z.string().trim().max(120).default(''),limit:z.number().int().min(1).max(25).default(25),prospectId:idSchema.optional()}).strict().parse(req.body);
   const profile=await cloudProfile(req.auth!.tenantId,data.profileId,req.auth!.userId);
   if(!CLOUD_AUTOMATIC.includes(profile.source))throw new CloudBrowserError(422,'Cette source est navigable ; son collecteur automatique reste à développer.');
   if(profile.source==='societe_com'&&!data.prospectId)throw new CloudBrowserError(422,'Choisissez le prospect à enrichir depuis Societe.com.');
@@ -85,7 +85,7 @@ router.post('/jobs/:id/retry',async(req,res)=>{
   const id=idSchema.parse(req.params.id);const data=z.object({resume:z.boolean().default(true)}).strict().parse(req.body||{});
   const job=await cloudJob(req.auth!.tenantId,id,req.auth!.userId);
   if(!['awaiting_user','needs_review','failed','cancelled'].includes(job.status))throw new CloudBrowserError(409,'Cette tâche ne peut pas être reprise dans son état actuel.');
-  const q=await pool.query(`UPDATE cloud_browser_jobs SET status='queued',resume=$3,error=NULL,result='{}'::jsonb,updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status IN ('awaiting_user','needs_review','failed','cancelled') RETURNING *`,[id,req.auth!.tenantId,data.resume]);
+  const q=await pool.query(`UPDATE cloud_browser_jobs SET status='queued',resume=$3,error=NULL,updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status IN ('awaiting_user','needs_review','failed','cancelled') RETURNING *`,[id,req.auth!.tenantId,data.resume]);
   if(!q.rows[0])throw new CloudBrowserError(409,'La tâche a changé d’état. Actualisez la liste.');
   res.json(q.rows[0]);schedule();
 });

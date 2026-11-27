@@ -1,3 +1,4 @@
+import {prospectEnrichmentUrl} from '@/lib/prospect-enrichment';
 import { Link } from "wouter";
 import { ExternalLink, Globe, Search, Layers } from "lucide-react";
 import { PROFESSIONAL_SOURCES } from "../../../../lib/api-zod/src/professional-sources";
@@ -97,16 +98,14 @@ export function ProspectProfessionalSources({ prospect }: Props) {
         })}
       </div>
       <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-        LinkedIn, Facebook, Instagram et TikTok utilisent la saisie assistée du
-        connecteur Chrome. Vérifiez la page de l’entreprise avant de confirmer
-        ses informations.
+        Les sources s’ouvrent dans le navigateur cloud. Pour les réseaux sans collecteur automatique, la navigation reste disponible et Chrome sert de secours.
       </p>
       <Link
-        href={prospect.id?'/outils?mode=enrich&prospectId='+prospect.id:'/prospects/connecteur'}
+        href={prospect.id?prospectEnrichmentUrl(prospect.id):'/prospects/connecteur'}
         className="atlas-360-link-button atlas-360-link-button-primary"
       >
         <Layers size={15} />
-        {prospect.id?'Compléter ce prospect avec le connecteur':'Comparer et importer les captures du connecteur'}
+        {prospect.id?'Enrichir ce prospect dans GrowthOS':'Comparer et importer les captures du connecteur'}
       </Link>
     </section>
   );

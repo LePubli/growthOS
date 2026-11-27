@@ -60,12 +60,12 @@ export default function CollectionToolsPage(){
     <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
       {modules.filter(m=>m.modes.includes(mode) && (m.name+' '+m.description).toLocaleLowerCase('fr').includes(filter.toLocaleLowerCase('fr'))).map(m=><article key={m.source} className="p-5 rounded-2xl border flex flex-col gap-3" style={{background:'var(--card-bg)'}}>
         <div className="flex items-center gap-2"><Building2 size={20}/><h2 className="font-semibold">{m.name}</h2></div>
-        <span className="text-xs font-medium text-teal-700">{m.kind==='official'?'Données officielles':['societe_com','google_maps','google_search','bing'].includes(m.source)?'Collecteur cloud · données visibles':m.kind==='assisted'?'Navigateur cloud · collecteur en préparation':'Lecture de la fiche visible'}</span>
+        <span className="text-xs font-medium text-teal-700">{m.kind==='official'?'Données officielles':['societe_com','google_maps','google_search','bing','pagesjaunes'].includes(m.source)?'Collecteur cloud · données visibles':m.kind==='assisted'?'Navigateur cloud · collecteur en préparation':'Lecture de la fiche visible'}</span>
         <p className="text-sm">{m.description}</p><p className="text-xs grow" style={{color:'var(--text-muted)'}}>{m.hint}</p>
-        {m.source==='entreprises' || (m.source==='pagesjaunes' && mode==='discover')
+        {m.source==='entreprises'
           ? <Link className="border rounded-lg p-3 text-sm text-center" to={'/sourcing?source='+m.source+'&query='+encodeURIComponent(query)+'&area='+encodeURIComponent(area)}>Configurer la recherche <ExternalLink className="inline ml-1" size={14}/></Link>
           : <><Link className="border border-teal-300 bg-teal-50 text-teal-900 rounded-lg p-3 text-sm text-center" to={'/navigateur?source='+m.source+'&query='+encodeURIComponent(query)+'&area='+encodeURIComponent(area)+(mode==='enrich'&&prospectId?'&prospectId='+prospectId:'')}>
-            {mode==='enrich'?'Enrichir dans GrowthOS':'Rechercher dans GrowthOS'}</Link>
+            {m.kind==='assisted'?'Consulter la source dans GrowthOS':mode==='enrich'?'Enrichir dans GrowthOS':'Rechercher dans GrowthOS'}</Link>
             <button className="text-xs underline disabled:opacity-50" disabled={!!busy || (mode==='enrich'&&!prospect) || query.trim().length<3} onClick={()=>void launch(m.source)}>{busy===m.source?'Ouverture…':'Secours externe · Chrome'}</button></>}
       </article>)}
     </div>

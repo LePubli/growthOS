@@ -201,3 +201,9 @@ Validation du suivi : 331 contrôles API PostgreSQL16 verts ; le cas conforme/co
 - Le propriétaire signale un encart bleu trop vif à l'activation du champ de localisation (et des autres champs de commande). Branche `fix/atlas-cloud-fields-focus-20261127`, basée sur le design immersif V2 fusionné.
 - Retirer **uniquement** la bordure `outline` intense des champs `input/select` de `cloud-browser.css` ; montrer un contour discret `#a5bedf` sur le conteneur `:focus-within`, avec ombre très légère. Les liens, boutons, contrôles du navigateur et le séparateur gardent leur repère `:focus-visible` accessible au clavier. Aucun comportement de saisie ni d'import modifié.
 - Ajout d'une assertion CSS anti-régression dans `scripts/test-collection-tools.mjs`. Préserver cette convention lors des futures retouches ; garder les notes jusqu'à l'autorisation du lancement production.
+
+## Lot fonctionnel : PagesJaunes cloud, collecte continue et enrichissement prospect (27/11/2026)
+
+Branche `fix/cloud-sources-enrichment-unlimited`, base design PR55/56 (`dfa184a`). Demande du propriétaire : raccorder PagesJaunes au cloud, retirer le plafond total 10/25 des résultats, rebrancher/nettoyer les boutons d'enrichissement du prospect en conservant celui de l'IA. Le split immersif redimensionnable, le focus discret, les reçus d'import et l'historique restent préservés.
+
+Prévoir des lots techniques persistants et enchaînés jusqu'à fin de source, sans quota total de résultats ; garder les reçus/identifiants lors des reprises et autoriser l'import des résultats déjà lus. PagesJaunes réutilise les lecteurs de l'extension sans modifier le ZIP. Les commandes prospect doivent toutes conduire au même parcours cloud ciblé ; supprimer ou renommer les anciens raccourcis trompeurs, sans supprimer le bouton IA. Ne pas supprimer ces notes avant l'autorisation finale de production. Aucun déploiement DockPanel par l'agent.
