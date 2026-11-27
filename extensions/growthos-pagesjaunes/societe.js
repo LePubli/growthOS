@@ -90,11 +90,12 @@
   for(const anchor of managerAnchors){
     const name=clean(anchor.innerText);
     if(!managers.includes(name) || managerContacts.some(contact=>contact.name===name))continue;
-    let card=typeof anchor.closest==='function'?anchor.closest('article, li, [data-dirigeant], .card'):null;
+    const explicitCard=typeof anchor.closest==='function'?anchor.closest('article, li, [data-dirigeant], .card'):null;
+    let card=explicitCard;
     if(!card)card=anchor.parentElement;
     // Les cartes peuvent être des div sans classe stable. Remonter uniquement
     // tant que la zone contient un seul dirigeant et aucune autre rubrique.
-    for(let parent=card?.parentElement,depth=0;parent && parent!==root && depth<4;parent=parent.parentElement,depth++){
+    for(let parent=card?.parentElement,depth=0;!explicitCard && parent && parent!==root && depth<4;parent=parent.parentElement,depth++){
       if(typeof parent.querySelectorAll!=='function' || clean(parent.innerText).length>1500)break;
       const local=[...parent.querySelectorAll('a[href]')].filter(visible);
       if(new Set(local.filter(managerLink).map(managerKey)).size!==1 || [...parent.querySelectorAll('h2, h3')].some(element=>/^(?:dirigeants?|contacter?|ces entreprises)\b/i.test(clean(element.innerText))))break;

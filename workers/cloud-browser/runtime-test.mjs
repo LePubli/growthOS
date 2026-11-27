@@ -118,7 +118,7 @@ try{
   });
   const real=await service.collect({...realistic,query:'Nord Artisan',area:'Lille',target:{company:'Nord Artisan',city:'Lille'}});
   assert.equal(real.status,'completed');assert.equal(real.results[0].siret,'97996550600020');
-  assert.equal(real.results[0].companyDetails.managerContacts[0].role,'Présidente');
+  assert.equal(real.results[0].companyDetails.managerContacts[0].role,'Présidente',JSON.stringify({contacts:real.results[0].companyDetails.managerContacts,dom:await p.page.locator('li').allTextContents()}));
   assert.ok(real.results[0].companyDetails.managerContacts[0].profileUrl.includes('/manager/'));
   const rendered={...maps,profileId:'10000000-0000-4000-8000-000000000010'};
   p=await service.profile(rendered);
