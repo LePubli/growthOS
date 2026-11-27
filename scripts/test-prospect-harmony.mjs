@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const css = readFileSync(new URL('../artifacts/growthos/src/atlas-prospect-colors.css', import.meta.url), 'utf8');
+const layout = readFileSync(new URL('../artifacts/growthos/src/atlas-prospect-360.css', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../artifacts/growthos/src/index.css', import.meta.url), 'utf8');
 assert.ok(entry.includes('@import "./atlas-prospect-colors.css"'), 'La palette doit rester chargée dans ATLAS');
 
@@ -61,4 +62,15 @@ assert.match(css, /background:linear-gradient\(128deg,var\(--atlas-harmony-from/
 assert.match(css, /background:linear-gradient\(135deg,var\(--atlas-detail-from/);
 assert.doesNotMatch(css, /border-top:\s*3px solid/,
   'Les anciens bandeaux colorés épais ne doivent pas réapparaître');
+assert.match(layout, /container:prospect-360\s*\/\s*inline-size/,
+  'La fiche 360° doit réagir à sa largeur réelle (menu/side panel ouverts)');
+for (const size of [1250, 850, 600, 440]) {
+  assert.ok(layout.includes(`@container prospect-360 (max-width:${size}px)`),
+    `Breakpoints de contenu manquants : ${size}px`);
+}
+assert.match(layout, /\.atlas-360-legal-list\s*>div\s*\{[^}]*grid-template-columns:minmax\(0,42%\) minmax\(0,1fr\)/,
+  'Les colonnes identité doivent tenir dans la largeur de la carte');
+assert.match(layout, /\.atlas-360-legal-list dt\s*\{[^}]*white-space:normal/,
+  'Les intitulés longs, dont le nom commercial, doivent revenir à la ligne');
 console.log('✓ Harmony : 7 fonds harmonisés et contrastés, 8 modules détaillés et sans liserés épais');
+console.log('✓ Fiche 360° : grille responsive au conteneur et intitulés sans chevauchement');
