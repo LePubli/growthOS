@@ -757,7 +757,7 @@ export async function mergeProspectCapture(
     const changes:FieldChanges=Object.fromEntries(filled.map(field=>[field,{before:existing[field as EnrichmentField],after:updates[field as EnrichmentField]}]));
     if(detailsChanged)changes['Informations détaillées '+(legalSource==='pappers'?'Pappers':'Societe.com')]={before:oldSociete||null,after:nextSociete};
     if(pagesJaunesChanged)changes['Informations détaillées PagesJaunes']={before:oldDetails.pagesjaunes||null,after:combinedDetails.pagesjaunes};
-    if(officialDetailsChanged&&officialSource)changes['Données officielles · '+officialSource]={before:oldDetails[officialSource]||null,after:combinedDetails[officialSource]};
+    if(officialDetailsChanged&&officialSource)changes[officialSource==='website'?'Coordonnées publiées sur le site web':'Données officielles · '+officialSource]={before:oldDetails[officialSource]||null,after:combinedDetails[officialSource]};
     const proposals=newConflicts.length?'\nPropositions non appliquées : '+newConflicts.map(c=>`${prospectFieldLabels[c.field]||c.field} : ${c.existing} → ${c.incoming}`).join(' ; '):'';
     await executor.insert(activitiesTable).values({type:'data_update',title:'Enrichissement · '+item.source,
       description:changeDescription(item.source,item.sourceUrl||null,changes,item.identityConfirmation?'Mise à jour confirmée par l’utilisateur après comparaison.':autoFields.length?'Enrichissement automatique : identité exacte et données confirmées de la source.':'Champs vides complétés ; les valeurs divergentes restent à valider.',now)+(item.identityConfirmation?'\nIdentité confirmée explicitement après comparaison par l’utilisateur '+item.identityConfirmation.userId+'.':'')+proposals,
