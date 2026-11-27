@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {targetCaptureReview,applyTargetCapture} from './sourcing';
 import {Router} from 'express';
 import {z} from 'zod';
@@ -7,6 +7,7 @@ import {importCloudJob,withCloudImportStates} from '../../services/cloud-imports
 import {logger} from '../../lib/logger';
 import {CLOUD_SOURCES,CLOUD_AUTOMATIC,CloudBrowserError,browserCall,cloudConfigured,cloudProfile,cloudJob,tickCloudJobs} from '../../services/cloud-browser';
 const router=Router();
+const captureDigest=(capture:unknown)=>createHash('sha256').update(JSON.stringify(capture)).digest('hex');
 const idSchema=z.string().uuid();
 const schedule=()=>{if(process.env.GROWTHOS_SMOKE_TEST!=='true')void tickCloudJobs().catch(()=>logger.error('Cloud browser scheduler failed'));};
 router.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
@@ -115,16 +116,17 @@ router.get('/jobs/:id/review',async(req,res)=>{
   if(!capture)throw new CloudBrowserError(409,'Aucune fiche capturée. Ouvrez la bonne fiche source puis relancez sa lecture.');
   const preview=await targetCaptureReview(req.auth!.tenantId,job.prospect_id,capture);
   if(preview.status!==200)throw new CloudBrowserError(preview.status,'error' in preview?preview.error||'Comparaison indisponible.':'Comparaison indisponible.');
-  res.json({...preview.review,captureIndex:index,captureCount:job.result.captures.length,alreadyApplied:!!job.result.applied});
+  res.json({...preview.review,captureDigest:captureDigest(capture),captureIndex:index,captureCount:job.result.captures.length,alreadyApplied:!!job.result.applied});
 });
 router.post('/jobs/:id/confirm',async(req,res)=>{
   const tenant=req.auth!.tenantId,user=req.auth!.userId,id=idSchema.parse(req.params.id);
-  const data=z.object({captureIndex:z.number().int().min(0),confirmed:z.literal(true),expectedUpdatedAt:z.string().datetime(),replaceFields:z.array(z.enum(['company','address','postalCode','city','phone','email','website','linkedinUrl','apeCode','nafLabel','nafVersion'])).max(11).default([])}).strict().parse(req.body);
+  const data=z.object({captureIndex:z.number().int().min(0),confirmed:z.literal(true),expectedUpdatedAt:z.string().datetime(),expectedCaptureDigest:z.string().regex(/^[a-f0-9]{64}$/),replaceFields:z.array(z.enum(['company','address','postalCode','city','phone','email','website','linkedinUrl','apeCode','nafLabel','nafVersion'])).max(11).default([])}).strict().parse(req.body);
   const job=await cloudJob(tenant,id,user);
   if(job.result?.applied&&job.status==='completed'){res.json({job,alreadyApplied:true});return;}
   if(job.mode!=='enrich'||!job.prospect_id||!['needs_review','awaiting_user'].includes(job.status))throw new CloudBrowserError(409,'Cette tâche ne peut pas être confirmée dans son état actuel.');
   const capture=job.result?.captures?.[data.captureIndex];if(!capture)throw new CloudBrowserError(404,'Capture introuvable.');
-  const lease=randomUUID(),claimed=await pool.query("UPDATE cloud_browser_jobs SET status='running',lease=$3,lease_until=NOW()+INTERVAL '2 minutes' WHERE id=$1 AND tenant_id=$2 AND status=$4 RETURNING id",[id,tenant,lease,job.status]);
+  if(captureDigest(capture)!==data.expectedCaptureDigest)throw new CloudBrowserError(409,'La capture a changé depuis la comparaison. Rechargez les données avant de confirmer.');
+  const lease=randomUUID(),claimed=await pool.query("UPDATE cloud_browser_jobs SET status='running',lease=$3,lease_until=NOW()+INTERVAL '2 minutes' WHERE id=$1 AND tenant_id=$2 AND status=$4 AND result->'captures'->($5::integer)=$6::jsonb RETURNING id",[id,tenant,lease,job.status,data.captureIndex,JSON.stringify(capture)]);
   if(!claimed.rows.length)throw new CloudBrowserError(409,'La tâche a changé d’état. Rechargez-la.');
   try{
     const applied=await applyTargetCapture(tenant,user,job.prospect_id,id,capture,false,{lease,result:{...job.result,manualConfirmation:{userId:user,captureIndex:data.captureIndex,confirmedAt:new Date().toISOString()}}},{expectedUpdatedAt:data.expectedUpdatedAt,confirmed:true,replaceFields:data.replaceFields});
