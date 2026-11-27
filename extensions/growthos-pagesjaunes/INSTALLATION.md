@@ -1,6 +1,6 @@
-# Connecteur multisource GrowthOS — version 0.8.0
+# Connecteur multisource GrowthOS — panneau latéral Chrome
 
-L'extension fonctionne dans **Chrome sur l'appareil de l'utilisateur** (ordinateur).
+L'extension fonctionne dans **Chrome 141 ou plus récent** sur l'appareil de l'utilisateur (ordinateur).
 Les images Docker de GrowthOS sont construites par GitHub Actions, pas sur le VPS.
 
 ## Mises à jour automatiques — Chrome Web Store (option non activée)
@@ -28,16 +28,24 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 
 1. Récupérer **le dossier complet** `extensions/growthos-pagesjaunes` depuis la branche `fix/growthos-functional-redesign`, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`.
 2. Remplacer le contenu de votre dossier d'extension Chrome local (sans changer le chemin du dossier chargé dans Chrome).
-3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source doit être **0.8.0** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Gardez le même dossier local et évitez une deuxième installation : chaque extension Chrome possède ses propres captures locales.
+3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source est **0.11.1** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Gardez le même dossier local et évitez une deuxième installation : chaque extension Chrome possède ses propres captures locales.
 4. Garder Chrome et l'onglet `https://agile.le-publicitaire.fr` ouverts.
 5. Dans GrowthOS, ouvrir **Trouver des entreprises**, cliquer sur **Connecter cet appareil** si nécessaire, puis choisir les sources. Pour Google et Bing, le nouvel onglet doit être ouvert manuellement depuis le panneau de l'extension.
 6. Pour les fiches déjà importées depuis PagesJaunes, **Compléter depuis PagesJaunes** reste opérationnel.
+
+### Utiliser le panneau latéral permanent
+
+- Cliquez sur l'icône **GrowthOS** dans la barre d'outils de Chrome : elle ouvre le panneau latéral sur toute la hauteur. Le panneau global reste ouvert au changement d'onglet et pendant la recherche et la capture ; il ne dépend plus d'un popup qui disparaît.
+- La commande **−** réduit le contenu du panneau en mode compact avec un bouton **Réafficher**. Chrome conserve la largeur de sa barre latérale pendant ce mode (elle ne peut pas être réglée par l'extension).
+- La commande **×** ferme réellement le panneau et libère toute sa largeur. Cliquez de nouveau sur l'icône GrowthOS pour le rouvrir. Chrome propose également sa propre croix de fermeture.
+- Si vous préférez le panneau à gauche du navigateur, changez son emplacement dans les paramètres Chrome de la barre latérale. La largeur peut se régler en glissant la bordure dans Chrome.
+- Les fiches capturées et les tâches restent conservées en cas de fermeture ; à la réouverture, la liste est rechargée et les fiches importables sont présélectionnées. Les captures conservent leur expiration de sécurité habituelle de 24 heures.
 
 ### Quand Google affiche le nom et le téléphone mais pas l'adresse
 
 #### Lecture par lot des fiches Maps
 
-Dans la liste des résultats Google Maps, cliquez sur **Capturer les fiches**. Le connecteur fait défiler la liste jusqu’à ce que Maps cesse de charger des résultats, puis ouvre chaque nouvelle fiche dans l’onglet. Laissez cet onglet sur la recherche pendant la lecture. Vous pouvez rouvrir l’extension pour consulter le bilan. Un nouveau passage permet de reprendre les fiches qui ont échoué.
+Dans la liste des résultats Google Maps, cliquez sur **Capturer les fiches** dans le panneau latéral. Le connecteur fait défiler la liste jusqu’à ce que Maps cesse de charger des résultats, puis ouvre chaque nouvelle fiche dans l’onglet. Laissez cet onglet sur la recherche pendant la lecture. Le bilan se met à jour dans le panneau sans le rouvrir. Un nouveau passage permet de reprendre les fiches qui ont échoué.
 
 #### Enrichissement et prospects provisoires
 
