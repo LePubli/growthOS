@@ -220,3 +220,9 @@ Vérifications et publication des images en cours, aucun déploiement serveur ef
 Lot Pappers/BODACC/onglet : code raccordé dans la PR61, 369 contrôles API locaux verts et tests interface/TypeScript/builds verts. Le statut des images et la validation Chromium sont consultables dans les workflows GitHub de cette PR et du dernier commit de `fix/growthos-functional-redesign`. Le redéploiement reste à effectuer par le propriétaire après le feu vert explicite.
 
 Revue PR61 : curseur BODACC et instantané enregistrés dans la même transaction, dernière page idempotente après interruption ; pagination liée au SIREN et remise à zéro après correction d’identité. **371 contrôles API** passent, dont les deux scénarios de reprise/correction. Chromium Pappers vert sur le premier head (run `45988161584`), aucune modification du lecteur dans ce complément ; nouvelle CI avant fusion.
+
+## Extension des sources B2B — en attente de recette du socle (27/11/2026)
+
+Le propriétaire fournit un catalogue de 306 entrées et demande leur analyse puis leur ajout à la recherche et à l’enrichissement **une fois le système actuel fonctionnel**. Catalogue original, registre complet et plan conservés dans `docs/sources/`. L’audit individuel et le développement des nouveaux connecteurs ne sont pas démarrés ; ils attendent la validation de la recette actuelle. Aucune source activée, aucun abonnement engagé, aucune priorité fournisseur imposée. Évaluer les fonctions réellement possibles pour chaque source avant intégration ; état des sources déjà codées à revalider.
+
+Préparation documentaire sur `docs/source-catalogue-after-validation`, sans modification des images préprod ni du design. Aucun redéploiement requis pour cette documentation.
