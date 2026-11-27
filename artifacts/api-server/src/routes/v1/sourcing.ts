@@ -690,6 +690,10 @@ export async function mergeProspectCapture(
       combinedDetails[source]=merged;
     }
   }
+  const activityScope=jsonRecord(incomingDetails.annuaire).apeScope;
+  if(activityScope&&item.apeCode===(updates.apeCode||existing.apeCode)&&
+    (activityScope==='etablissement'||!jsonRecord(oldDetails.annuaire).apeScope))
+    combinedDetails.annuaire={...jsonRecord(combinedDetails.annuaire),apeScope:activityScope};
   if(item.source==='societe_com' && incomingDetails.societe_com){
     const incomingProfile=jsonRecord(incomingDetails.societe_com);
     const oldProfile=jsonRecord(oldDetails.societe_com);

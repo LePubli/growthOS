@@ -1731,7 +1731,7 @@ try {
     await monitoringMaintenance('legacy-empty-label',scopeProspect.body.id);
     const scopeRun=await request('POST','/prospects/'+scopeProspect.body.id+'/enrichment',{},token);await runEnrichmentMaintenance(scopeRun.body.id,1);
     const scopeCrm=await request('GET','/prospects/'+scopeProspect.body.id,undefined,token);
-    check(scopeCrm.body.apeCode==='43.21A'&&!scopeCrm.body.nafLabel&&scopeCrm.body.sourceDetails.annuaire.apeScope==='unite_legale'&&scopeCrm.body.sourceDetails.crossSource.conflicts.some(c=>c.field==='apeCode'&&c.incoming==='70.10Z'),
+    check(scopeCrm.body.apeCode==='43.21A'&&scopeCrm.body.nafLabel?.includes('électrique')&&scopeCrm.body.sourceDetails.entreprises.apeScope==='unite_legale'&&scopeCrm.body.sourceDetails.annuaire?.apeScope!=='unite_legale'&&scopeCrm.body.sourceDetails.crossSource.conflicts.some(c=>c.field==='apeCode'&&c.incoming==='70.10Z'),
       'Enrichissement officiel : APE de l’établissement conservé face au repli d’activité de l’unité légale');
     const many=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'cloud-many'},token);await runCloudMaintenance(many.body.id);
     const firstMany=await request('GET','/browser/jobs/'+many.body.id,undefined,token);

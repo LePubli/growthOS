@@ -37,7 +37,7 @@ async function mergeOfficial(job:any,candidate:any){
     const [p]=await tx.select().from(prospectsTable).where(and(eq(prospectsTable.id,job.prospect_id),eq(prospectsTable.tenantId,job.tenant_id))).for('update');
     if(!p||!captureIdentityMatches(p,candidate))throw Error('Identité non confirmée.');
     return mergeProspectCapture(p,{...candidate,id:'automatic_'+job.id+'_'+candidate.source,capturedAt:Date.now(),
-      sourceDetails:{...(candidate.apeScope?{annuaire:{apeScope:candidate.apeScope}}:{}),[candidate.source]:{snapshot:candidate.snapshot,sourceUrl:candidate.sourceUrl,capturedAt:new Date().toISOString()}},targetedIdentity:false},false,job.tenant_id,tx,job.created_by,
+      sourceDetails:{...(candidate.apeScope&&(!p.apeCode||p.apeCode===candidate.apeCode||candidate.apeScope==='etablissement')?{annuaire:{apeScope:candidate.apeScope}}:{}),[candidate.source]:{apeScope:candidate.apeScope,snapshot:candidate.snapshot,sourceUrl:candidate.sourceUrl,capturedAt:new Date().toISOString()}},targetedIdentity:false},false,job.tenant_id,tx,job.created_by,
       p.siret&&p.siret===candidate.siret?['address','postalCode','city',...(candidate.apeScope==='etablissement'?['apeCode','nafLabel','nafVersion'] as const:[])]:[]);
   });
 }
