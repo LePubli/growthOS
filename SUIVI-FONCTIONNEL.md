@@ -160,9 +160,17 @@ Le [document de référence Linked Helper](docs/REFERENCE-LINKED-HELPER.md) cons
 
 ## 44 · Imports en lot et commandes des tâches cloud (26/11/2026)
 
-- **Recette Maps observée** : la capture utilisateur du 26/11 montre une recherche « plombier 59 » terminée avec 9 fiches proposées et 1 fiche partielle conservée. L'import CRM de ce lot et son réimport restent à valider en usage.
+- **Recette Maps observée** : la capture utilisateur du 26/11 montre une recherche « plombier 59 » terminée avec 9 fiches proposées et 1 fiche partielle conservée. L'import Google est confirmé fonctionnel par le propriétaire le 27/11 ; l'affichage après import et le réimport restent à recetter avec le correctif ci-dessous.
 - **Lot PR51** : tout cocher/décocher dans chaque lot, compteur de sélection, import groupé désactivé sans sélection. Après import, seules les captures effectivement traitées quittent la sélection ; les désaccords restent disponibles.
 - **Tâches** : annuler, reprendre une tâche annulée avec ses critères et son identifiant conservés, supprimer une tâche terminée ; nouvelle lecture après chaque commande.
 - **Historique** : suppression individuelle, par sélection ou nettoyage de toutes les recherches terminées/échouées/annulées, même au-delà des 30 affichées. Confirmation préalable pour la perte des résultats non importés. Les tâches actives/en attente, les prospects importés, les activités et les profils sont préservés.
 - **Coordination design** : composant fonctionnel `components/cloud-browser/CloudJobHistory.tsx`, raccordé au nouveau poste de travail PR52 (sélection à droite, cartes de tâches compactes). CSS de la PR52 conservé intégralement. Notes partagées dans `COORDINATION-AGENTS.md`.
 - **Validation locale** : 314 contrôles API passent sur PostgreSQL16 jetable (sources simulées), dont reprise après annulation, refus des suppressions actives/étrangères, conservation CRM et purge au-delà des 30 recherches affichées. TypeScript API/Web, builds et tests React des sélections passent. CI images à confirmer avant feu vert. Aucun déploiement DockPanel par l'agent.
+
+## 45 · Statut CRM et suivi persistant des imports (27/11/2026)
+
+- Symptôme utilisateur confirmé : import Google réussi, mais résultats toujours proposés à l'import et absence de statut par fiche.
+- Import serveur par identifiants de captures du job ; création/enrichissement CRM et reçu sont enregistrés dans la même transaction, avec traitement unique des doubles clics. Statuts : importée, enrichie, déjà présente, à vérifier, échec ; réimport proposé si la fiche CRM a réellement été supprimée.
+- Les fiches traitées quittent la sélection et rejoignent une rubrique repliable « Fiches traitées », avec leur statut et un lien CRM. Les compteurs et états restent après actualisation. Les échecs/désaccords restent disponibles. Les anciens imports sont reconnus uniquement par leurs traces existantes dans le CRM ; une ambiguïté n'est pas déclarée traitée.
+- Validation : **330 contrôles API verts** sur PostgreSQL16 jetable (sources simulées), dont import concurrent, reçus après actualisation, anciennes captures, panne d'écriture du reçu avec annulation CRM, suppression/réimport réel et isolation agence/utilisateur. Tests React du retour d'import, historique et layout, TypeScript API/Web et builds verts. CI images à suivre avant feu vert.
+- Thème et CSS de la PR52 conservés ; notes des agents conservées. Aucune modification Compose ni action DockPanel par l'agent.
