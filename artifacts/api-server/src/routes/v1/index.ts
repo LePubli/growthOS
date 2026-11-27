@@ -61,6 +61,7 @@ import adminCronRouter from "./admin-cron";
 import setupRouter from "./setup";
 import assistantRouter from "./assistant";
 import seoAuditRouter from "./seo-audit";
+import contactsRouter from './contacts';
 import diagnosticsRouter from './diagnostics';
 
 const router = Router();
@@ -81,6 +82,7 @@ mount("/setup",           setupRouter);
 
 // ── ROUTES PROTÉGÉES (requireAuth + requireTenant au niveau mount) ────────
 mount("/prospects",          requireAuth, requireTenant, prospectEnrichmentRouter, prospectMonitoringRouter, prospectsRouter);
+mount('/contacts',requireAuth,requireTenant,contactsRouter);
 mount('/diagnostics',        requireAuth, requireTenant, diagnosticsRouter);
 mount("/assistant",          requireAuth, requireTenant, assistantRouter);
 mount("/seo-audit",          requireAuth, requireTenant, seoAuditRouter);

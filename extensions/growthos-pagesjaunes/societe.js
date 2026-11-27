@@ -37,6 +37,8 @@
   let phone = phoneValue.match(/(?:\+33\s?(?:\(0\))?\s?|0)[1-9](?:[ .-]?\d{2}){4}\b/)?.[0] || null;
   const emailValue=field(['mail de contact','adresse email','email']);
   let email=emailValue.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)?.[0] || null;
+  const phones=[...new Set([...phoneValue.matchAll(/(?:\+33\s?(?:\(0\))?\s?|0)[1-9](?:[ .-]?\d{2}){4}\b/g)].map(m=>m[0]))];
+  const emails=[...new Set([...emailValue.matchAll(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi)].map(m=>m[0].toLowerCase()))];
   const websiteValue = field(['site internet','site web','site web de l’entreprise','site internet de l’entreprise']);
   let website = null;
   try {
@@ -145,6 +147,6 @@
     if(links.length>=20)break;
   }
   const companyDetails={fields:details,managers,managerContacts,establishments,links};
-  return {results:[{source:'societe_com',company,address,codePostal,city,phone,email,website,
+  return {results:[{source:'societe_com',company,address,codePostal,city,phone,email,phones,emails,website,
     sourceUrl:url.href,siret,companyDetails,...(siret && rawApe ? {apeCode:rawApe,nafLabel:null,nafVersion:null,apeScope:'unite_legale'} : {})}]};
 })();

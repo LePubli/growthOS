@@ -32,3 +32,18 @@ export function uniqueIdentityMatch(p:any,candidates:any[]){
   const unique=[...new Map(matches.map(c=>[c.siret||[c.siren,c.company,c.address].join('|'),c])).values()];
   return unique.length===1?unique[0]:null;
 }
+
+/** A commercial name can differ from the legal publisher of its own website.
+ * Require independent phone + published legal name + exact establishment address.
+ * A web domain or an identifier alone is never sufficient. */
+export function websitePublisherMatches(p:any,c:any):boolean{
+  if(p.siren||p.siret)return false;
+  const site=(p.sourceDetails||p.source_details)?.website?.snapshot;
+  if(!site||site.identity!=='matched'||!legal(c.siret,14)||!site.sirets?.includes(c.siret))return false;
+  if(new Set(site.sirets).size!==1||new Set([...(site.sirens||[]),...site.sirets.map((v:string)=>v.slice(0,9))]).size!==1)return false;
+  if(!site.publishers?.some((v:any)=>normalizedIdentity(v.name)===normalizedIdentity(c.company)))return false;
+  const phone=digits(p.phone).replace(/^33/,'0');
+  if(phone.length<9||!site.phones?.some((v:any)=>digits(v.phone).replace(/^33/,'0')===phone))return false;
+  const address=addressIdentity(c.address);
+  return address.length>=12&&site.addresses?.some((v:any)=>addressIdentity(v.address)===address);
+}

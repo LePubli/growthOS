@@ -10,25 +10,12 @@ import apiClient from '@/lib/api-client';
 
 const TAGS = ['Décideur','Technique','Finance','Marketing','Opérations','C-Suite','VP','Manager'];
 
-const MOCK_CONTACTS = [
-  { id:'1', firstName:'Sophie', lastName:'Martin', title:'Directrice Marketing', company:'TechCorp', email:'s.martin@techcorp.fr', phone:'+33 6 12 34 56 78', linkedin:'https://linkedin.com/in/sophiemartin', tags:['Décideur','Marketing'], starred:true, score:92, city:'Paris' },
-  { id:'2', firstName:'Emma', lastName:'Leroy', title:'CEO', company:'StartupX', email:'e.leroy@startupx.io', phone:'+33 6 23 45 67 89', linkedin:'https://linkedin.com/in/emmaleroy', tags:['C-Suite'], starred:false, score:85, city:'Lyon' },
-  { id:'3', firstName:'Paul', lastName:'Dupont', title:'VP Sales', company:'BigSales SAS', email:'p.dupont@bigsales.fr', phone:'+33 6 34 56 78 90', linkedin:'', tags:['VP','Décideur'], starred:true, score:78, city:'Bordeaux' },
-  { id:'4', firstName:'Camille', lastName:'Bernard', title:'CTO', company:'DataInc', email:'c.bernard@datainc.com', phone:'', linkedin:'https://linkedin.com/in/camille-bernard', tags:['Technique','C-Suite'], starred:false, score:67, city:'Paris' },
-  { id:'5', firstName:'Luc', lastName:'Moreau', title:'Directeur Général', company:'GrowthCo', email:'l.moreau@growthco.fr', phone:'+33 6 45 67 89 01', linkedin:'https://linkedin.com/in/lucmoreau', tags:['C-Suite','Décideur'], starred:true, score:95, city:'Nantes' },
-  { id:'6', firstName:'Marie', lastName:'Dubois', title:'Responsable Achat', company:'AlphaTech', email:'m.dubois@alphatech.fr', phone:'+33 6 56 78 90 12', linkedin:'', tags:['Finance'], starred:false, score:55, city:'Marseille' },
-  { id:'7', firstName:'Thomas', lastName:'Leclerc', title:'Directeur Commercial', company:'WebAgency', email:'t.leclerc@webagency.fr', phone:'+33 6 67 89 01 23', linkedin:'https://linkedin.com/in/thomasleclerc', tags:['Décideur','Manager'], starred:false, score:71, city:'Toulouse' },
-  { id:'8', firstName:'Alice', lastName:'Fontaine', title:'Head of Growth', company:'InnovaTech', email:'a.fontaine@innovatech.io', phone:'+33 6 78 90 12 34', linkedin:'https://linkedin.com/in/alicefontaine', tags:['Marketing','Manager'], starred:true, score:88, city:'Paris' },
-  { id:'9', firstName:'Marc', lastName:'Rousseau', title:'CFO', company:'FinancePlus', email:'m.rousseau@financeplus.fr', phone:'+33 6 89 01 23 45', linkedin:'https://linkedin.com/in/marc-rousseau', tags:['Finance','C-Suite'], starred:false, score:62, city:'Paris' },
-  { id:'10', firstName:'Julie', lastName:'Simon', title:'Product Manager', company:'SaaScraft', email:'j.simon@saascraft.io', phone:'', linkedin:'https://linkedin.com/in/juliesim', tags:['Technique','Manager'], starred:false, score:44, city:'Rennes' },
-  { id:'11', firstName:'Antoine', lastName:'Petit', title:'CEO', company:'ScaleUp', email:'a.petit@scaleup.fr', phone:'+33 6 01 23 45 67', linkedin:'https://linkedin.com/in/antoinepetit', tags:['C-Suite'], starred:false, score:79, city:'Strasbourg' },
-  { id:'12', firstName:'Claire', lastName:'Girard', title:'Sales Director', company:'CloudWave', email:'c.girard@cloudwave.eu', phone:'+33 6 12 34 56 78', linkedin:'https://linkedin.com/in/clairegirard', tags:['Décideur','VP'], starred:true, score:91, city:'Lyon' },
-];
+type Contact={id:string;prospectId:string;firstName:string;lastName:string;title:string;company:string;email:string;phone:string;emails:string[];phones:string[];linkedin:string;city:string;tags:string[];starred:boolean;score:number};
 
-function ContactCard({ c, onStar, onClick }: { c: typeof MOCK_CONTACTS[0]; onStar: (id:string)=>void; onClick:()=>void }) {
-  const initials = `${c.firstName[0]}${c.lastName[0]}`;
+function ContactCard({ c, onStar, onClick }: { c: Contact; onStar: (id:string)=>void; onClick:()=>void }) {
+  const initials = `${c.firstName[0]||''}${c.lastName[0]||''}`;
   const colors = ['#0F766E','#2563EB','#7C3AED','#D97706','#059669','#DC2626'];
-  const color = colors[(c.firstName.charCodeAt(0)+c.lastName.charCodeAt(0))%colors.length];
+  const color = colors[((c.firstName.charCodeAt(0)||0)+(c.lastName.charCodeAt(0)||0))%colors.length];
 
   return (
     <div onClick={onClick} className="bg-white rounded-2xl border border-gray-200 p-5 cursor-pointer hover:shadow-md hover:border-teal-200 transition-all group relative">
@@ -54,16 +41,16 @@ function ContactCard({ c, onStar, onClick }: { c: typeof MOCK_CONTACTS[0]; onSta
       </div>
 
       <div className="space-y-1.5 mb-4">
-        {c.email && (
-          <a href={`mailto:${c.email}`} onClick={e=>e.stopPropagation()} className="flex items-center gap-1.5 text-xs text-teal-600 hover:text-teal-700 truncate">
-            <Mail className="w-3 h-3 flex-shrink-0"/><span className="truncate">{c.email}</span>
+        {c.emails.map(email=>(
+          <a key={email} href={`mailto:${email}`} onClick={e=>e.stopPropagation()} className="flex items-center gap-1.5 text-xs text-teal-600 hover:text-teal-700 truncate">
+            <Mail className="w-3 h-3 flex-shrink-0"/><span className="truncate">{email}</span>
           </a>
-        )}
-        {c.phone && (
-          <a href={`tel:${c.phone}`} onClick={e=>e.stopPropagation()} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
-            <Phone className="w-3 h-3 flex-shrink-0"/>{c.phone}
+        ))}
+        {c.phones.map(phone=>(
+          <a key={phone} href={`tel:${phone}`} onClick={e=>e.stopPropagation()} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
+            <Phone className="w-3 h-3 flex-shrink-0"/>{phone}
           </a>
-        )}
+        ))}
       </div>
 
       <div className="flex items-center justify-between">
@@ -92,10 +79,10 @@ function ContactCard({ c, onStar, onClick }: { c: typeof MOCK_CONTACTS[0]; onSta
   );
 }
 
-function ContactRow({ c, onStar, onClick }: { c: typeof MOCK_CONTACTS[0]; onStar:(id:string)=>void; onClick:()=>void }) {
-  const initials = `${c.firstName[0]}${c.lastName[0]}`;
+function ContactRow({ c, onStar, onClick }: { c: Contact; onStar:(id:string)=>void; onClick:()=>void }) {
+  const initials = `${c.firstName[0]||''}${c.lastName[0]||''}`;
   const colors = ['#0F766E','#2563EB','#7C3AED','#D97706','#059669','#DC2626'];
-  const color = colors[(c.firstName.charCodeAt(0)+c.lastName.charCodeAt(0))%colors.length];
+  const color = colors[((c.firstName.charCodeAt(0)||0)+(c.lastName.charCodeAt(0)||0))%colors.length];
   return (
     <div onClick={onClick} className="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100 last:border-0">
       <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-xs flex-shrink-0" style={{background:color}}>{initials}</div>
@@ -104,8 +91,8 @@ function ContactRow({ c, onStar, onClick }: { c: typeof MOCK_CONTACTS[0]; onStar
         <div className="text-xs text-gray-400">{c.title} · {c.company}</div>
       </div>
       <div className="hidden sm:flex flex-col gap-0.5 min-w-0 flex-1">
-        {c.email && <a href={`mailto:${c.email}`} onClick={e=>e.stopPropagation()} className="text-xs text-teal-600 truncate hover:text-teal-700">{c.email}</a>}
-        {c.phone && <span className="text-xs text-gray-400">{c.phone}</span>}
+        {c.emails.map(email=><a key={email} href={`mailto:${email}`} onClick={e=>e.stopPropagation()} className="text-xs text-teal-600 truncate hover:text-teal-700">{email}</a>)}
+        {c.phones.map(phone=><a key={phone} href={"tel:"+phone} onClick={e=>e.stopPropagation()} className="text-xs text-gray-400">{phone}</a>)}
       </div>
       <div className="hidden md:flex gap-1">
         {c.tags.slice(0,2).map(t=><span key={t} className="text-xs px-1.5 py-0.5 bg-teal-50 text-teal-700 rounded-md">{t}</span>)}
@@ -174,7 +161,7 @@ function CreateContactModal({ onClose, onSave }: { onClose:()=>void; onSave:(c:a
 
 export default function ContactsPage() {
   const [, navigate] = useLocation();
-  const [contacts, setContacts] = useState<typeof MOCK_CONTACTS>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -183,23 +170,27 @@ export default function ContactsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showStarredOnly, setShowStarredOnly] = useState(false);
 
-  const allTags = ['Tous']; // Tags are not persisted in the prospect schema yet.
+  const allTags = ['Tous','Décideur']; // Décideur est dérivé du rôle publié ; aucun tag marketing n’est inventé.
 
-  const normalize = (p:any): typeof MOCK_CONTACTS[number] => ({
-    id:p.id, firstName:p.firstName||'', lastName:p.lastName||'',
-    title:p.jobTitle||'', company:p.company||'', email:p.email||'', phone:p.phone||'',
-    linkedin:'', city:'', tags:[], starred:!!p.isStarred, score:Number(p.score)||0,
+  const normalize = (p:any): Contact => ({
+    id:p.id,prospectId:p.prospectId||p.id,firstName:p.name||[p.firstName,p.lastName].filter(Boolean).join(' '),lastName:'',
+    title:p.role||p.jobTitle||'',company:p.company||'',email:p.email||'',phone:p.phone||'',
+    emails:p.emails||[p.email].filter(Boolean),phones:p.phones||[p.phone].filter(Boolean),
+    linkedin:/linkedin\.com/.test(p.profileUrl||'')?p.profileUrl:'',city:p.city||'',
+    tags:p.isManager?['Décideur']:[],starred:!!p.isStarred,score:Number(p.score)||0,
   });
   useEffect(()=>{
-    apiClient.get('/prospects', { params:{limit:200} })
-      .then((d:any)=>setContacts((d?.data||[]).map(normalize)))
-      .catch(()=>setError('Impossible de charger les contacts réels.'))
-      .finally(()=>setLoading(false));
+    let active=true;
+    const load=()=>apiClient.get('/contacts').then((d:any)=>{if(active){setContacts((d?.data||[]).map(normalize));setError('');}})
+      .catch(()=>{if(active)setError('Impossible de charger les contacts réels.');})
+      .finally(()=>{if(active)setLoading(false);});
+    void load();window.addEventListener('focus',load);
+    return()=>{active=false;window.removeEventListener('focus',load);};
   },[]);
 
   const filtered = contacts.filter(c => {
     const q = search.toLowerCase();
-    const matchSearch = !q || `${c.firstName} ${c.lastName} ${c.company} ${c.title} ${c.email}`.toLowerCase().includes(q);
+    const matchSearch = !q || `${c.firstName} ${c.lastName} ${c.company} ${c.title} ${c.emails.join(" ")} ${c.phones.join(" ")}`.toLowerCase().includes(q);
     const matchTag = selectedTag === 'Tous' || c.tags.includes(selectedTag);
     const matchStar = !showStarredOnly || c.starred;
     return matchSearch && matchTag && matchStar;
@@ -209,8 +200,8 @@ export default function ContactsPage() {
     const contact=contacts.find(c=>c.id===id);
     if (!contact) return;
     try {
-      await apiClient.patch(`/prospects/${id}`, {isStarred:!contact.starred});
-      setContacts(cs=>cs.map(c=>c.id===id?{...c,starred:!c.starred}:c));
+      await apiClient.patch(`/prospects/${contact.prospectId}`, {isStarred:!contact.starred});
+      setContacts(cs=>cs.map(c=>c.prospectId===contact.prospectId?{...c,starred:!contact.starred}:c));
     } catch { toast.error('Mise à jour du favori impossible'); }
   };
 
@@ -323,13 +314,13 @@ export default function ContactsPage() {
           ) : view === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filtered.map(c=>(
-                <ContactCard key={c.id} c={c} onStar={toggleStar} onClick={()=>navigate(`/prospects/${c.id}`)}/>
+                <ContactCard key={c.id} c={c} onStar={toggleStar} onClick={()=>navigate(`/prospects/${c.prospectId}`)}/>
               ))}
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
               {filtered.map(c=>(
-                <ContactRow key={c.id} c={c} onStar={toggleStar} onClick={()=>navigate(`/prospects/${c.id}`)}/>
+                <ContactRow key={c.id} c={c} onStar={toggleStar} onClick={()=>navigate(`/prospects/${c.prospectId}`)}/>
               ))}
             </div>
           )}

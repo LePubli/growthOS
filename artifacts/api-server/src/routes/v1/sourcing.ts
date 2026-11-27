@@ -1,3 +1,5 @@
+import {collectProspectContactPoints} from '@workspace/api-zod';
+import {recordDiagnosticEvent} from '../../lib/diagnostics';
 import {businessIdentity} from '@workspace/api-zod';
 import {captureIdentityMatches} from '../../lib/enrichment-identity';
 import { professionalSourceUrl } from '@workspace/api-zod';
@@ -448,6 +450,8 @@ const deviceCandidateFieldsSchema = z.object({
   address: z.string().trim().min(5).max(320),
   codePostal: z.string().regex(/^\d{5}$/),
   city: z.string().trim().max(120).nullable().optional(),
+  emails:z.array(z.string().email().max(254)).max(100).optional(),
+  phones:z.array(z.string().trim().min(8).max(40)).max(100).optional(),
   email:z.string().email().max(254).nullable().optional(),
   phone: z.string().trim().max(40).nullable().optional(),
   website: z.string().url().max(500).refine(url=>['https:','http:'].includes(new URL(url).protocol)).nullable().optional(),
@@ -482,8 +486,9 @@ function validatePagesJaunesProfile(item:{source:string;company:string;sourceUrl
     (profile.siren&&item.siret&&!item.siret.startsWith(profile.siren)))
     ctx.addIssue({code:'custom',path:['pagesjaunesProfile'],message:'Détails PagesJaunes incohérents avec la fiche capturée.'});
 }
-function capturedSourceDetails(item:{source:string;sourceUrl?:string|null;capturedAt?:number;companyDetails?:unknown;pagesjaunesProfile?:z.infer<typeof profileSchema>}){
+function capturedSourceDetails(item:{source:string;sourceUrl?:string|null;capturedAt?:number;companyDetails?:unknown;emails?:string[];phones?:string[];pagesjaunesProfile?:z.infer<typeof profileSchema>}){
   return {
+    ...((item.emails?.length||item.phones?.length)?{contactPoints:[...(item.emails||[]).map(value=>({type:'email',value,source:item.source,sourceUrl:item.sourceUrl||null,state:'confirmed'})),...(item.phones||[]).map(value=>({type:'phone',value,source:item.source,sourceUrl:item.sourceUrl||null,state:'confirmed'}))]}:{}),
     ...(item.source==='pappers'&&item.companyDetails?{pappers:{companyDetails:item.companyDetails,sourceUrl:item.sourceUrl,capturedAt:item.capturedAt}}:{}),
     ...(item.source==='societe_com'&&item.companyDetails?{societe_com:{companyDetails:item.companyDetails,sourceUrl:item.sourceUrl,capturedAt:item.capturedAt}}:{}),
     ...(item.source==='pagesjaunes'&&item.pagesjaunesProfile?{pagesjaunes:{...item.pagesjaunesProfile,capturedAt:new Date(item.capturedAt||Date.now()).toISOString()}}:{}),
@@ -700,7 +705,7 @@ export async function mergeProspectCapture(
   const sourceAdded=incomingSources.some(source=>!sources.has(source));
   for(const source of incomingSources)sources.add(source);
   if(!filled.length&&!newConflicts.length&&!sourceAdded&&!namesChanged&&alreadyObserved &&
-    !jsonRecord(item.sourceDetails).pappers&&!jsonRecord(item.sourceDetails).societe_com&&!jsonRecord(item.sourceDetails).pagesjaunes)
+    !jsonRecord(item.sourceDetails).pappers&&!jsonRecord(item.sourceDetails).societe_com&&!jsonRecord(item.sourceDetails).pagesjaunes&&!jsonRecord(item.sourceDetails).website)
     return {updated:false,filled,conflicts:0,newConflicts:[]};
   const observation={captureId:item.id,source:item.source,sourceUrl:item.sourceUrl||null,
     capturedAt:now,fieldsFilled:filled,...(item.identityConfirmation?{identityConfirmation:item.identityConfirmation}:{})};
@@ -750,6 +755,12 @@ export async function mergeProspectCapture(
     combinedDetails[officialSource]={...incoming,history:officialDetailsChanged&&prior.snapshot?[...history,{snapshot:prior.snapshot,capturedAt:prior.capturedAt}].slice(-10):history};
   }
   if(nameIdentity)combinedDetails.identity=nameIdentity;
+  const oldPoints=collectProspectContactPoints(existing);
+  const incomingPoints=collectProspectContactPoints({email:item.email,phone:item.phone,address:item.address,source:item.source,sourceUrl:item.sourceUrl,sourceDetails:incomingDetails});
+  const allPoints=collectProspectContactPoints({sourceDetails:{contactPoints:[...oldPoints,...incomingPoints]}});
+  const contactPointsChanged=JSON.stringify(allPoints)!==JSON.stringify(oldPoints);
+  combinedDetails.contactPoints=allPoints;
+
   const separateName=(c:EnrichmentConflict)=>legalCapture&&c.field==='company'&&['entreprises','societe_com','pappers'].includes(c.source)&&normalizedIdentity(c.incoming)===normalizedIdentity(legalName||'');
   const appliedConflicts=oldConflicts.filter(c=>separateName(c)||normalizedField(c.field,updates[c.field]??existing[c.field])===normalizedField(c.field,c.incoming));
   const updatedDetails={...combinedDetails,crossSource:{...oldMerge,
@@ -769,8 +780,9 @@ export async function mergeProspectCapture(
   const oldSociete=jsonRecord(oldDetails[legalSource]).companyDetails;
   const nextSociete=jsonRecord(combinedDetails[legalSource]).companyDetails;
   const detailsChanged=!!nextSociete && !isDeepStrictEqual(oldSociete,nextSociete);
-  if(filled.length || newConflicts.length || detailsChanged || pagesJaunesChanged || officialDetailsChanged || namesChanged){
+  if(filled.length || newConflicts.length || detailsChanged || pagesJaunesChanged || officialDetailsChanged || namesChanged || contactPointsChanged){
     const changes:FieldChanges=Object.fromEntries(filled.map(field=>[field,{before:existing[field as EnrichmentField],after:updates[field as EnrichmentField]}]));
+    if(contactPointsChanged)changes['Coordonnées et contacts publiés']={before:oldPoints,after:allPoints};
     if(namesChanged)changes['Identité · raison sociale et noms commerciaux']={before:oldDetails.identity||null,after:nameIdentity};
     if(detailsChanged)changes['Informations détaillées '+(legalSource==='pappers'?'Pappers':'Societe.com')]={before:oldSociete||null,after:nextSociete};
     if(pagesJaunesChanged)changes['Informations détaillées PagesJaunes']={before:oldDetails.pagesjaunes||null,after:combinedDetails.pagesjaunes};
@@ -780,6 +792,7 @@ export async function mergeProspectCapture(
       description:changeDescription(item.source,item.sourceUrl||null,changes,item.identityConfirmation?'Mise à jour confirmée par l’utilisateur après comparaison.':autoFields.length?'Enrichissement automatique : identité exacte et données confirmées de la source.':'Champs vides complétés ; les valeurs divergentes restent à valider.',now)+(item.identityConfirmation?'\nIdentité confirmée explicitement après comparaison par l’utilisateur '+item.identityConfirmation.userId+'.':'')+proposals,
       status:'done',doneAt:new Date(),prospectId:existing.id,tenantId,createdBy:actorId||null});
   }
+  void recordDiagnosticEvent({tenantId,userId:actorId,level:'info',component:'crm-enrichment',code:'CONTACT_EVIDENCE_MERGED',message:'Coordonnées et preuves rapprochées du prospect',source:item.source,prospectId:existing.id,details:{totalPoints:allPoints.length,addedPoints:Math.max(0,allPoints.length-oldPoints.length),filledFields:filled.length,conflicts:newConflicts.length}});
   return {updated:true,filled,conflicts:newConflicts.length,newConflicts};
 }
 
@@ -828,7 +841,7 @@ export async function targetCaptureReview(tenantId:string,prospectId:string,raw:
   const c=parsed.data,known=p.siren||p.siret?.slice(0,9),incoming=c.siren||c.siret?.slice(0,9);
   const legalOnly=!!(['societe_com','pappers'].includes(c.source)&&c.companyDetails&&known&&known===incoming&&p.siret&&c.siret&&p.siret!==c.siret);
   const blocked=!!((known&&incoming&&known!==incoming)||(!legalOnly&&p.siret&&c.siret&&p.siret!==c.siret));
-  const values=incomingFields(legalOnly?{...c,targetedIdentity:true,address:null,codePostal:null,city:null,siret:null,phone:null,email:null,website:null,apeCode:null,nafLabel:null,nafVersion:null}:{...c,targetedIdentity:true},false);
+  const values=incomingFields(legalOnly?{...c,targetedIdentity:true,address:null,codePostal:null,city:null,siret:null,phone:null,email:null,emails:[],phones:[],website:null,apeCode:null,nafLabel:null,nafVersion:null}:{...c,targetedIdentity:true},false);
   return {status:200,review:{version:p.updatedAt.toISOString(),prospect:{id:p.id,company:p.company,siren:p.siren,siret:p.siret,address:p.address,city:p.city},source:{name:c.source,url:c.sourceUrl,company:c.company,siren:incoming||null,siret:c.siret||null,address:c.address,city:c.city},blocked,legalOnly,
     message:blocked?'Le SIREN ou le SIRET contredit une identité déjà enregistrée. Cette confirmation ne peut pas l’écraser.':legalOnly?'Même entreprise, autre établissement : seules les informations légales et les dirigeants seront rattachés.':'Vérifiez qu’il s’agit bien de ce prospect. Les champs vides et les remplacements cochés seront enregistrés. Le nom affiché est conservé par défaut.',
     expectedValues:Object.fromEntries(FIELDS.map(field=>[field,prospectValue(p,field)])),
@@ -872,7 +885,7 @@ export async function applyTargetCapture(tenantId:string,userId:string,prospectI
       )
         return {status:409,error:'Le nom ou la ville diffère. Vérifiez la fiche et son établissement avant enrichissement.'};
       if(automatic&&!legalOnly&&!captureIdentityMatches(prospect,capture))return {status:409,error:'L’établissement ne correspond pas avec certitude. Vérifiez ses coordonnées.'};
-      const projected=legalOnly?{...capture,siret:null,address:null,codePostal:null,city:null,phone:null,email:null,website:null,apeCode:null,nafLabel:null,nafVersion:null,
+      const projected=legalOnly?{...capture,siret:null,address:null,codePostal:null,city:null,phone:null,email:null,emails:[],phones:[],website:null,apeCode:null,nafLabel:null,nafVersion:null,
         sourceDetails:{[capture.source]:{...jsonRecord(jsonRecord(capture.sourceDetails)[capture.source]),scope:'unite_legale',headquarters:{siret:capture.siret,address:capture.address,city:capture.city}}}}:capture;
       const merged=await mergeProspectCapture(prospect,{...projected,targetedIdentity:true,...(review?{identityConfirmation:{userId,confirmedAt:new Date().toISOString()}}:{})},false,tenantId,tx,userId,review?review.replaceFields||[]:automatic && exactSite && capture.source==='societe_com' ? ['address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);
       return complete({status:200,filled:merged.filled,conflicts:merged.conflicts,alreadyApplied:false});

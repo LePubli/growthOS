@@ -28,7 +28,7 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 
 1. Récupérer **le dossier complet** `extensions/growthos-pagesjaunes` depuis la branche `fix/growthos-functional-redesign`, y compris `capture.js`, `popup.html`, `popup.css` et `popup.js`.
 2. Remplacer le contenu de votre dossier d'extension Chrome local (sans changer le chemin du dossier chargé dans Chrome).
-3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source est **0.11.2** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Gardez le même dossier local et évitez une deuxième installation : chaque extension Chrome possède ses propres captures locales.
+3. Ouvrir `chrome://extensions`, activer le mode développeur et cliquer sur **Actualiser** sur l'extension GrowthOS. La version du dossier source est **0.11.3** (le ZIP GitHub Actions peut porter un quatrième numéro de version incrémental). Gardez le même dossier local et évitez une deuxième installation : chaque extension Chrome possède ses propres captures locales.
 4. Garder Chrome et l'onglet `https://agile.le-publicitaire.fr` ouverts.
 5. Dans GrowthOS, ouvrir **Trouver des entreprises**, cliquer sur **Connecter cet appareil** si nécessaire, puis choisir les sources. Pour Google et Bing, le nouvel onglet doit être ouvert manuellement depuis le panneau de l'extension.
 6. Pour les fiches déjà importées depuis PagesJaunes, **Compléter depuis PagesJaunes** reste opérationnel.

@@ -298,7 +298,8 @@ let watchVersion=0,watchDown=false,watchWrongIdentity=false,watchRequests=0,watc
 const companies = createServer((req, res) => {
   if(req.url?.startsWith('/website?')){
     const url=new URL(new URL(req.url,'http://localhost').searchParams.get('url'));
-    const html=url.hostname==='atelier-site.fr'?'<h1>Atelier Site</h1><a href="/contact">Contact</a><p>SIRET : 96677709200019</p><p>8 rue du Test 59100 Roubaix</p><a href="tel:0320112233">Téléphone</a>'+(url.pathname==='/contact'?'<a href="mailto:contact@atelier-site.fr">Email</a><a href="https://www.linkedin.com/company/atelier-site">LinkedIn</a>':''):'';
+    const multiSite='<h1>Mentions légales</h1><p>Le site est édité par :</p><p><strong>ATELIER EDITEUR</strong></p><p>Siège social : 18 rue du Test, 59100 Roubaix</p><p>SIREN : <strong>966 777 093</strong></p><p>SIRET : <span>966 777 093 00019</span></p><p>Code APE/NAF : <b>43.22A</b></p><p>Téléphone : 03 20 11 22 33</p><p>Téléphone dépannage : 06 11 22 33 44</p><p>Email : contact.atelier@gmail.com</p><p>Email : devis@atelier-multiple.fr</p><p>Agence : 19 rue du Test, 59100 Roubaix</p><h2>Hébergeur</h2><p>SIRET : 96688888800019</p><p>Email : support@host.example</p>';
+    const html=url.hostname==='atelier-multiple.fr'?multiSite:url.hostname==='atelier-site.fr'?'<h1>Atelier Site</h1><a href="/contact">Contact</a><p>SIRET : 96677709200019</p><p>8 rue du Test 59100 Roubaix</p><a href="tel:0320112233">Téléphone</a>'+(url.pathname==='/contact'?'<a href="mailto:contact@atelier-site.fr">Email</a><a href="https://www.linkedin.com/company/atelier-site">LinkedIn</a>':''):'';
     res.setHeader('Content-Type','text/html');res.end(html);return;
   }
   if(req.url?.startsWith('/bodacc?')){
@@ -319,6 +320,9 @@ const companies = createServer((req, res) => {
   }
   if(directoryQuery==='96677709200019'||directoryQuery==='966777092'){
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777092',nom_complet:'Atelier Site',siege:{siret:'96677709200019',adresse:'8 rue du Test 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix'}}]}));return;
+  }
+  if(directoryQuery==='96677709300019'||directoryQuery==='966777093'){
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777093',nom_complet:'ATELIER EDITEUR',activite_principale:'43.22A',dirigeants:[{nom:'Editeur',prenoms:'Chloé',qualite:'Gérante'}],siege:{siret:'96677709300019',adresse:'18 rue du Test 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix'}}]}));return;
   }
   if(directoryQuery==='cloud-official-area'){
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777058',nom_complet:'Agence Lille et siège Paris',siege:{siret:'96677705800019',adresse:'1 rue Paris 75001 Paris',code_postal:'75001',libelle_commune:'Paris'},matching_etablissements:[{siret:'96677705800027',adresse:'1 rue Lille 59000 Lille',code_postal:'59000',libelle_commune:'Lille'}]}]}));return;
@@ -407,8 +411,9 @@ const ollama = createServer((req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ models: [{ name: "llama3.1:8b" }] }));
 });
-const cloudCalls=[];let cloudDelay=0,inseeCalls=0;
+const cloudCalls=[];let cloudDelay=0,inseeCalls=0,cloudUnavailable=false;
 const cloudStub=createServer(async(req,res)=>{
+  if(cloudUnavailable){req.socket.destroy();return;}
   res.setHeader('Content-Type','application/json');
   if(req.url==='/insee'){
     if(req.headers['x-insee-api-key-integration']!=='isolated-insee-key'){res.writeHead(401).end('{}');return;}
@@ -1751,7 +1756,11 @@ try {
     check((await request('POST',manualPath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:review.body.version,expectedCaptureDigest:review.body.captureDigest},token)).status===409,'Confirmation : modification concurrente détectée sans écrasement');
     const freshReview=await request('GET',manualPath+'/review',undefined,token);
     await request('PATCH','/prospects/'+manualTarget.body.id,{score:12},token);
+    cloudUnavailable=true;
+    check((await request('GET','/browser/status',undefined,token)).body.ready===false,'Validation locale : navigateur cloud indisponible pendant le test');
+    const cloudCallsBeforeConfirm=cloudCalls.length;
     const confirmed=await request('POST',manualPath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:freshReview.body.version,expectedCaptureDigest:freshReview.body.captureDigest,expectedValues:freshReview.body.expectedValues,replaceFields:['company','city','phone']},token);
+    check(cloudCalls.length===cloudCallsBeforeConfirm,'Validation locale : enregistrement sans appel au navigateur cloud');cloudUnavailable=false;
     const manualUpdated=(await request('GET','/prospects/'+manualTarget.body.id,undefined,token)).body;
     check(confirmed.status===200&&confirmed.body.job.status==='completed'&&manualUpdated.siret==='96677709100019'&&manualUpdated.company==='ATELIER MANUEL'&&manualUpdated.city==='Roubaix'&&manualUpdated.phone==='03 20 99 88 77','Confirmation : mise à jour de métadonnées sans blocage, identité et remplacements enregistrés dans le CRM');
     const parentAfter=(await request('GET','/prospects/'+manualTarget.body.id+'/enrichment',undefined,token)).body;
@@ -1759,6 +1768,14 @@ try {
     const manualActivities=(await request('GET','/activities?prospectId='+manualTarget.body.id,undefined,token)).body;
     check(manualActivities.some(a=>a.type==='data_update'&&a.description.includes('confirmée')&&a.description.includes('Chauffagiste → Roubaix')),'Confirmation : historique avec utilisateur et valeurs avant/après');
     check((await request('POST',manualPath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:freshReview.body.version,expectedCaptureDigest:freshReview.body.captureDigest},token)).body.alreadyApplied===true&&(await request('GET','/activities?prospectId='+manualTarget.body.id,undefined,token)).body.length===manualActivities.length,'Confirmation : double clic sans nouvelle activité ni nouvelle fusion');
+    const duplicateTarget=await request('POST','/prospects',{company:'Doublon à vérifier'},token),duplicateTask=randomUUID();
+    const duplicateStage=await request('POST','/browser/local-review',{taskId:duplicateTask,prospectId:duplicateTarget.body.id,capture:localCapture},token);
+    const duplicatePath='/browser/jobs/'+duplicateStage.body.job.id,duplicateReview=await request('GET',duplicatePath+'/review',undefined,token);
+    const duplicateConfirm=await request('POST',duplicatePath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:duplicateReview.body.version,expectedCaptureDigest:duplicateReview.body.captureDigest,expectedValues:duplicateReview.body.expectedValues},token);
+    check(duplicateConfirm.status===409&&duplicateConfirm.body.code==='CRM_IDENTITY_DUPLICATE'&&duplicateConfirm.body.error.includes('autre fiche')&&duplicateConfirm.body.traceId,'Validation locale : doublon CRM expliqué, jamais présenté comme une panne du navigateur');
+    check((await request('GET',duplicatePath,undefined,token)).body.status==='needs_review'&&!(await request('GET','/prospects/'+duplicateTarget.body.id,undefined,token)).body.siret,'Validation refusée : capture intacte et transaction CRM annulée');
+    const failureLogs=await request('GET','/diagnostics/events?search=CRM_IDENTITY_DUPLICATE',undefined,token);
+    check(failureLogs.body.events.some(e=>e.prospect_id===duplicateTarget.body.id&&e.job_id===duplicateTask&&e.source==='societe_com'&&e.details.databaseCode==='23505'&&e.trace_id===duplicateConfirm.body.traceId),'Diagnostics : cause SQLSTATE du refus liée à source, prospect, tâche et trace');
     const localBound=await request('POST','/browser/local-review',{taskId:randomUUID(),cloudJobId:wrong.body.id,prospectId:target.body.id,capture:{...localCapture,siret:'96677700200019',sourceUrl:'https://www.societe.com/societe/atelier-cloud-966777002.html'}},token);
     check(localBound.status===200&&localBound.body.job.id===wrong.body.id&&localBound.body.job.result.localCapture,'Chrome local : secours rattaché à la tâche cloud existante');
     const wrongSource=await request('POST','/browser/local-review',{taskId:randomUUID(),cloudJobId:wrong.body.id,prospectId:target.body.id,capture:{...localCapture,source:'pagesjaunes',sourceUrl:'https://www.pagesjaunes.fr/pros/12345678'}},token);
@@ -1769,6 +1786,35 @@ try {
     const websiteUpdated=(await request('GET','/prospects/'+websiteTarget.body.id,undefined,token)).body;
     check(websiteUpdated.email==='contact@atelier-site.fr'&&websiteUpdated.sourceDetails.website.snapshot.emails[0].sourceUrl==='https://atelier-site.fr/contact','Site prospect : email publié lu sur Contact avec provenance exacte');
     check(websiteUpdated.sourceDetails.crossSource.fieldSources.email.sourceUrl==='https://atelier-site.fr/contact'&&websiteUpdated.linkedinUrl==='https://www.linkedin.com/company/atelier-site/','Site prospect : réseaux sociaux et preuve par champ conservés');
+    const multiTarget=await request('POST','/prospects',{company:'Nom commercial atelier',website:'https://atelier-multiple.fr',phone:'03 20 11 22 33',city:'Roubaix'},token);
+    const multiRun=await request('POST','/prospects/'+multiTarget.body.id+'/enrichment',{},token);await runEnrichmentMaintenance(multiRun.body.id,2);
+    const multiCrm=(await request('GET','/prospects/'+multiTarget.body.id,undefined,token)).body;
+    check(multiCrm.email==='contact.atelier@gmail.com'&&multiCrm.company==='Nom commercial atelier','Site lié : Gmail publié rapproché par téléphone et éditeur, nom commercial conservé');
+    const multiSnapshot=multiCrm.sourceDetails.website.snapshot;
+    check(multiSnapshot.emails.length===2&&multiSnapshot.phones.length===2&&multiSnapshot.addresses.length===2&&multiSnapshot.publishers[0].name==='ATELIER EDITEUR'&&multiSnapshot.sirets[0]==='96677709300019'&&multiSnapshot.apeCodes[0]==='43.22A'&&!multiSnapshot.sirets.includes('96688888800019'),'Mentions légales : coordonnées multiples, éditeur, APE et identifiants conservés, hébergeur exclu');
+    check(multiCrm.sourceDetails.contactPoints.filter(p=>p.source==='website'&&p.type==='email').length===2,'Coordonnées : emails supplémentaires persistés dans le dossier');
+    const alternative=multiCrm.sourceDetails.contactPoints.find(p=>p.value==='devis@atelier-multiple.fr');
+    const choice={type:alternative.type,value:alternative.value,source:alternative.source,sourceUrl:alternative.sourceUrl,expectedCurrentValue:multiCrm.email,confirmed:true};
+    check((await request('POST','/contacts/'+multiTarget.body.id+'/coordinates/primary',choice,foreignToken)).status===404,'Choix de coordonnée : isolation par agence');
+    check((await request('POST','/contacts/'+multiTarget.body.id+'/coordinates/primary',{...choice,value:'invente@example.org'},token)).status===409,'Choix de coordonnée : preuve obligatoire');
+    check((await request('POST','/contacts/'+multiTarget.body.id+'/coordinates/primary',choice,token)).status===200,'Coordonnées multiples : choix de l’email principal enregistré');
+    const chosen=(await request('GET','/prospects/'+multiTarget.body.id,undefined,token)).body;
+    check(chosen.email===alternative.value&&chosen.sourceDetails.contactPoints.some(p=>p.value==='contact.atelier@gmail.com'),'Changer la principale conserve toutes les coordonnées');
+    check((await request('POST','/contacts/'+multiTarget.body.id+'/coordinates/primary',choice,token)).body.alreadyApplied,'Coordonnée principale : double validation idempotente');
+    check((await request('GET','/activities?prospectId='+multiTarget.body.id,undefined,token)).body.some(a=>a.description.includes('contact.atelier@gmail.com → devis@atelier-multiple.fr')),'Coordonnée principale : valeurs avant/après tracées');
+    await request('PATCH','/prospects/'+multiTarget.body.id,{email:'manuel@atelier-multiple.fr'},token);
+    const restoredPrimary=await request('POST','/contacts/'+multiTarget.body.id+'/coordinates/primary',{...choice,expectedCurrentValue:'manuel@atelier-multiple.fr'},token);
+    const afterManual=(await request('GET','/prospects/'+multiTarget.body.id,undefined,token)).body;
+    check(restoredPrimary.status===200&&afterManual.sourceDetails.contactPoints.some(p=>p.value==='manuel@atelier-multiple.fr'&&p.source==='crm'),'Coordonnée principale : ancienne saisie manuelle conservée avant remplacement');
+    check((await request('POST','/contacts/'+multiTarget.body.id+'/coordinates/primary',{type:'email',value:'manuel@atelier-multiple.fr',source:'crm',sourceUrl:null,expectedCurrentValue:choice.value,confirmed:true},token)).status===200,'Coordonnée précédente : réutilisable après le changement de principale');
+    await runEnrichmentMaintenance(multiRun.body.id,2);
+    const publisherCrm=(await request('GET','/prospects/'+multiTarget.body.id,undefined,token)).body;
+    check(publisherCrm.siret==='96677709300019'&&publisherCrm.sourceDetails.identity.legalName==='ATELIER EDITEUR'&&publisherCrm.company==='Nom commercial atelier','Site puis Annuaire : éditeur légal rapproché par preuve, SIRET enregistré et enseigne conservée');
+    const sourceContacts=await request('GET','/contacts',undefined,token);
+    check(sourceContacts.status===200&&sourceContacts.body.data.some(c=>c.name==='Denis LIQUARD'&&c.emails.includes('denis@atelier-recette.example.org')),'Répertoire Contacts : dirigeants des sources répercutés sans nouveau prospect');
+    check(sourceContacts.body.data.some(c=>c.prospectId===multiTarget.body.id&&c.name==='Chloé Editeur'),'Répertoire Contacts : dirigeant officiel mis à jour après rapprochement du site');
+    check(sourceContacts.body.data.some(c=>c.prospectId===multiTarget.body.id&&c.kind==='company'&&c.emails.includes('devis@atelier-multiple.fr')&&c.emails.includes('contact.atelier@gmail.com')),'Répertoire Contacts : coordonnées générales multiples accessibles séparément des dirigeants');
+    check(sourceContacts.body.data.filter(c=>c.prospectId===multiTarget.body.id&&c.kind==='person').every(c=>!c.phone&&!c.email),'Répertoire Contacts : ne pas attribuer les coordonnées générales au dirigeant officiel');
     const waiting=await request('POST','/browser/jobs',{profileId:profile.id,prospectId:target.body.id,query:'cloud-wait'},token);
     await runCloudMaintenance(waiting.body.id);
     check((await request('GET','/browser/jobs/'+waiting.body.id,undefined,token)).body.status==='awaiting_user','Cloud : source demandant une intervention suspend le lot');
@@ -1979,7 +2025,7 @@ try {
         const rollbackImport=await request('POST','/browser/jobs/'+rollbackJob.body.id+'/import',{captureIds:[rollbackBefore.body.result.captures[0].id]},token);
         const afterFailure=await request('GET','/browser/jobs/'+rollbackJob.body.id,undefined,token);
         const crmAfterFailure=await request('GET','/prospects?search=Import%20cloud%20transaction',undefined,token);
-        check(rollbackImport.status===503&&!Object.keys(afterFailure.body.result.imports).length&&crmAfterFailure.body.total===0,
+        check(rollbackImport.status===500&&!Object.keys(afterFailure.body.result.imports).length&&crmAfterFailure.body.total===0,
           'Cloud import : panne d’écriture du reçu annule aussi la création CRM dans la même transaction');
       }finally{await cloudReceiptFailure('remove');}
       const retryRollback=await request('POST','/browser/jobs/'+rollbackJob.body.id+'/import',{captureIds:[rollbackBefore.body.result.captures[0].id]},token);

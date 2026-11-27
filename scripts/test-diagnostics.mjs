@@ -13,7 +13,7 @@ function loadTs(path, dependencies = {}) {
 
 const diagnostics = loadTs('artifacts/api-server/src/lib/diagnostics.ts', {
   '@workspace/db': { pool: { query: async () => ({ rows: [] }) } },
-  './logger': { logger: { warn: () => {} } },
+  './logger': { logger: { warn: () => {},info:()=>{},error:()=>{} } },
 });
 const text = diagnostics.safeDiagnosticText('Bearer top-secret https://pappers.fr/?key=hidden contact@example.com 06 12 34 56 78');
 assert(!text.includes('top-secret') && !text.includes('key=hidden') && !text.includes('contact@example.com'), 'Secrets and email should be scrubbed');
@@ -23,7 +23,15 @@ assert.equal(details.payload, undefined);
 assert.equal(details.nested.cookie, undefined);
 assert(!JSON.stringify(details).includes('secret'));
 assert.equal(details.source, 'pappers');
+assert(!diagnostics.safeDiagnosticText('Failed query: UPDATE prospects set company=PRIVATE_COMPANY').includes('PRIVATE_COMPANY'));
+assert(source('artifacts/api-server/src/routes/v1/cloud-browser.ts').includes('CONFIRMATION_SAVED'));
+assert(source('artifacts/api-server/src/routes/v1/contacts.ts').includes('PRIMARY_COORDINATE_CONFLICT'));
+assert(source('artifacts/api-server/src/services/website-enrichment.ts').includes('WEBSITE_CONTACTS_READ'));
 
+const databaseError=diagnostics.errorDiagnosticDetails({name:'DrizzleQueryError',message:'Failed query: PRIVATE_VALUE',cause:{code:'23505',constraint:'idx_prospects_tenant_siret',detail:'PRIVATE_ROW',query:'PRIVATE_SQL',parameters:['PRIVATE_VALUE']}});
+assert.equal(databaseError.databaseCode,'23505');assert.equal(databaseError.databaseConstraint,'idx_prospects_tenant_siret');
+assert(!JSON.stringify(databaseError).includes('PRIVATE_'),'SQL, rows and parameters must never enter technical diagnostics');
+assert.equal(diagnostics.errorDiagnosticDetails({cause:{code:'23503',constraint:'PRIVATE_CONSTRAINT'}}).databaseConstraint,null);
 const { diagnoseSourceIssue } = loadTs('artifacts/api-server/src/lib/source-diagnosis.ts');
 for (const [sample, expected] of [
   [{ source: 'bing', httpStatus: 429 }, 'SOURCE_RATE_LIMIT'],
