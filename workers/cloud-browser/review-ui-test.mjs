@@ -9,10 +9,20 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const origin='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CLOUD_TEST_BROWSER?{executablePath:process.env.CLOUD_TEST_BROWSER}:{})});
 try{
- for(const scenario of ['waiting','ready','applied','busy','lost']){
+ for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery']){
   const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>route.request().url().startsWith(origin)?route.continue():route.abort());
-  await page.goto(origin+'/navigateur?source=societe_com&prospectId=10000000-0000-4000-8000-000000000001&jobId=10000000-0000-4000-8000-000000000002&scenario='+scenario);
+  const history=scenario==='history'||scenario==='discovery';
+  await page.goto(origin+'/navigateur?source='+(scenario==='discovery'?'google_maps':'societe_com')+(history?'':'&prospectId=10000000-0000-4000-8000-000000000001&jobId=10000000-0000-4000-8000-000000000002')+'&scenario='+scenario);
+  if(scenario==='discovery'){
+   await page.getByRole('textbox',{name:'Recherche',exact:true}).fill('Plombier');
+   await page.getByRole('button',{name:'Voir les résultats',exact:true}).click();
+   const launch=page.getByRole('button',{name:'Lancer la collecte',exact:true});
+   await launch.click();await page.waitForFunction(()=>window.__reviewCalls.launch===1);
+   await launch.click();await page.waitForFunction(()=>window.__reviewCalls.launch===2);
+   assert.equal(await page.getByRole('dialog').count(),0);assert.deepEqual(errors,[]);await page.close();console.log('✓ Discovery history keeps the search action available after repeated completed searches');continue;
+  }
+  if(scenario==='history')await page.getByRole('button',{name:'Comparer et valider',exact:true}).click();
   if(scenario==='busy'||scenario==='lost'){
    await page.getByRole('alert').filter({hasText:scenario==='busy'?'occupé':'Session fermée'}).first().waitFor();
    assert(page.url().includes('jobId=10000000-0000-4000-8000-000000000002'),'409/423 must retain the targeted job');

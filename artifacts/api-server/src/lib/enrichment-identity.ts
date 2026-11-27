@@ -57,6 +57,9 @@ export function websiteInvestigationMatches(p:any,c:any):boolean{
   if(known||!incoming||!legal(c.siret,14))return false;
   const site=(p.sourceDetails||p.source_details)?.website?.snapshot;
   if(!site||site.identity!=='matched')return false;
+  const publishedSirets=(site.sirets||[]).map((v:unknown)=>legal(v,14)).filter(Boolean);
+  const publishedSirens=[...(site.sirens||[]).map((v:unknown)=>legal(v,9)).filter(Boolean),...publishedSirets.map((v:string)=>v.slice(0,9))];
+  if(c.siret.slice(0,9)!==incoming||publishedSirens.some((v:string)=>v!==incoming)||publishedSirets.length&&!publishedSirets.includes(c.siret))return false;
   try{if(new URL(site.url).hostname.replace(/^www\./,'')!==new URL(p.website).hostname.replace(/^www\./,''))return false;}catch{return false;}
   const phone=digits(p.phone).replace(/^33/,'0');if(phone.length<9||!site.phones?.some((v:any)=>digits(v.phone).replace(/^33/,'0')===phone))return false;
   if(c.snapshot?.fields?.['État de l’établissement']==='Fermé')return false;

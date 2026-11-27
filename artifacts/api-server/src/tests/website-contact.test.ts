@@ -57,4 +57,9 @@ assert(websiteInvestigationMatches(researchProspect,researchCandidate),'Le recou
 for(const candidate of [{...researchCandidate,aliases:['Homonyme']},{...researchCandidate,company:'AUTRE PERSONNE',snapshot:{}},{...researchCandidate,snapshot:{...researchCandidate.snapshot,fields:{'État de l’établissement':'Fermé'}}}])assert(!websiteInvestigationMatches(researchProspect,candidate));
 assert(!websiteInvestigationMatches({...researchProspect,siren:'123456789'},researchCandidate));
 assert(!websiteInvestigationMatches({...researchProspect,phone:'0600000000'},researchCandidate));
+const withPublishedIds=(sirets:string[],sirens:string[])=>({...researchProspect,sourceDetails:{website:{snapshot:{...researchProspect.sourceDetails.website.snapshot,sirets,sirens}}}});
+assert(websiteInvestigationMatches(withPublishedIds(['96677709400019'],['966777094']),researchCandidate));
+assert(!websiteInvestigationMatches(withPublishedIds([],['966777093']),researchCandidate),'Un nom ne peut pas remplacer le SIREN publié sur le site');
+assert(!websiteInvestigationMatches(withPublishedIds(['96677709400027'],[]),researchCandidate),'Un autre établissement publié exige une vérification');
+assert(!websiteInvestigationMatches(withPublishedIds(['96677709400019'],['966777093']),researchCandidate),'Des identifiants publiés contradictoires bloquent le rapprochement');
 console.log('✓ Enquête : accueil et services, footer Gmail/horaires/profil personnel, lecture publique et indices non confirmés, recoupement officiel et refus des homonymes');

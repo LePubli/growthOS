@@ -150,10 +150,11 @@ function CloudBrowserWorkspace() {
   const profile = profiles.find(p => p.id === selected);
   const automatic = native||status?.automatic.includes(profile?.source || source);
   const sourceProfiles = profiles.filter(p => p.source === source);
-  const verificationJob=jobs.find(job=>job.id===verificationJobId&&job.prospect_id===prospectId);
+  const verificationJob=prospectId?jobs.find(job=>job.id===verificationJobId&&job.mode==='enrich'&&job.prospect_id===prospectId):undefined;
   const profileBusy=jobs.some(job=>job.profile_id===selected&&['queued','running'].includes(job.status));
   async function finishVerification(result:{prospectId:string;jobId:string}){
-    if(result.prospectId!==prospectId)throw Error('La sauvegarde ne cible pas ce prospect.');
+    const savedJob=await api.get<Job>('/browser/jobs/'+result.jobId);
+    if(savedJob.mode!=='enrich'||savedJob.prospect_id!==result.prospectId||savedJob.status!=='completed'||!savedJob.result?.applied)throw Error('La sauvegarde ne correspond pas à la tâche vérifiée.');
     returned.current=true;
     await Promise.all([api.get('/prospects/'+result.prospectId),api.get('/activities',{params:{prospectId:result.prospectId}}),api.get('/prospects/'+result.prospectId+'/enrichment')]);
     navigate(prospectReviewReturnUrl(result.prospectId,result.jobId),{replace:true});
