@@ -24,13 +24,15 @@ export async function fetchBodaccPage(siren:string,offset=0){
   const next=offset+data.results.length;
   return {announcements,total:data.total_count,offset:next,hasMore:data.results.length>0&&next<data.total_count};
 }
-export async function saveBodaccPage(job:any,siren:string,data:Awaited<ReturnType<typeof fetchBodaccPage>>){
+export async function saveBodaccPage(job:any,siren:string,data:Awaited<ReturnType<typeof fetchBodaccPage>>,step:any){
   return db.transaction(async tx=>{
-    const lease=await tx.execute(sql`SELECT status,lease FROM prospect_enrichment_jobs WHERE id=${job.id} AND tenant_id=${job.tenant_id} FOR UPDATE`);
+    const lease=await tx.execute(sql`SELECT status,lease,steps FROM prospect_enrichment_jobs WHERE id=${job.id} AND tenant_id=${job.tenant_id} FOR UPDATE`);
     if(lease.rows[0]?.status!=='running'||lease.rows[0]?.lease!==job.lease)throw Error('Tâche interrompue.');
     const [p]=await tx.select().from(prospectsTable).where(and(eq(prospectsTable.id,job.prospect_id),eq(prospectsTable.tenantId,job.tenant_id))).for('update');
     if(!p||(p.siren||p.siret?.slice(0,9))!==siren)throw Error('Identité du prospect modifiée.');
     const details=record(p.sourceDetails),prior=record(details.bodacc);
+    const checkpoint=record(record(lease.rows[0]?.steps).bodacc);
+    if(checkpoint.siren===siren&&Number(checkpoint.offset)>=data.offset)return {step:checkpoint};
     const accumulated=prior.pending?.enrichmentRunId===job.id&&prior.siren===siren&&Array.isArray(prior.pending.announcements)?prior.pending.announcements:[];
     const collected=[...new Map([...accumulated,...data.announcements].map((v:any)=>[v.id,v])).values()].sort((a:any,b:any)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     const announcements=data.hasMore?(prior.siren===siren?prior.announcements||[]:[]):collected;
@@ -41,6 +43,11 @@ export async function saveBodaccPage(job:any,siren:string,data:Awaited<ReturnTyp
     await tx.update(prospectsTable).set({sourceDetails:{...details,bodacc:next},updatedAt:now}).where(and(eq(prospectsTable.id,p.id),eq(prospectsTable.tenantId,job.tenant_id)));
     if(changed)await tx.insert(activitiesTable).values({tenantId:job.tenant_id,prospectId:p.id,createdBy:job.created_by,type:'data_update',title:'Enrichissement · BODACC',status:'done',doneAt:now,
       description:changeDescription('bodacc',sourceUrl,{'Annonces BODACC':{before:prior.announcements||[],after:announcements}},'Annonces officielles rattachées au SIREN exact. Les publications historiques ne remplacent pas le statut actuel de l’établissement.',now.toISOString())});
-    return {count:collected.length,changed};
+    const nextStep={...step,siren,status:data.hasMore?'collecting':collected.length?'completed':'empty',offset:data.offset,
+      filled:changed?[...new Set([...(step.filled||[]),'annoncesBodacc'])]:step.filled||[],message:collected.length+' annonce(s) officielles rattachées au SIREN '+siren+(data.hasMore?' · historique en cours de lecture.':'. Les annonces historiques ne valent pas statut actuel.')};
+    // Same transaction as source data and activity: a crash cannot replay a
+    // completed page with a stale parent cursor and truncate the history.
+    await tx.execute(sql`UPDATE prospect_enrichment_jobs SET steps=jsonb_set(steps,ARRAY['bodacc']::text[],${JSON.stringify(nextStep)}::jsonb) WHERE id=${job.id} AND tenant_id=${job.tenant_id}`);
+    return {step:nextStep};
   });
 }

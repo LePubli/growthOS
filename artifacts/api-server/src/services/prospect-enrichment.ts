@@ -8,7 +8,7 @@ import {mergeProspectCapture} from '../routes/v1/sourcing';
 import {cloudConfigured,CloudBrowserError} from './cloud-browser';
 import {providerKeysService} from '../lib/provider-keys/ProviderKeysService';
 
-type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number;offset?:number};
+type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number;offset?:number;siren?:string};
 const definitions=[['entreprises','Annuaire des Entreprises · données INSEE'],['google_maps','Google Maps'],['pagesjaunes','PagesJaunes'],['insee','INSEE Sirene · accès direct'],['societe_com','Societe.com'],['pappers','Pappers · données publiques'],['bodacc','BODACC · annonces officielles'],['google_search','Google Search'],['bing','Bing']] as const;
 const active=(status:string)=>['queued','running'].includes(status);
 const normalizedProspect=(p:any)=>({...p,postalCode:p.postal_code,sourceDetails:p.source_details,apeCode:p.ape_code,nafLabel:p.naf_label,nafVersion:p.naf_version});
@@ -70,8 +70,8 @@ async function bodaccStep(job:any,p:any,step:Step):Promise<Step>{
   const siren=p.siren||p.siret?.slice(0,9);
   if(p.siren&&p.siret&&!p.siret.startsWith(p.siren))return {...step,status:'needs_review',message:'Le SIREN et le SIRET du prospect diffèrent. Corrigez l’identité avant de rattacher les annonces.'};
   if(!/^\d{9}$/.test(siren||''))return {...step,status:'skipped',message:'Un SIREN confirmé est nécessaire pour rattacher les annonces sans confusion.'};
-  const page=await fetchBodaccPage(siren,step.offset||0),saved=await saveBodaccPage(job,siren,page);
-  return {...step,status:page.hasMore?'collecting':saved.count?'completed':'empty',offset:page.offset,filled:saved.changed?[...new Set([...(step.filled||[]),'annoncesBodacc'])]:step.filled||[],message:saved.count+' annonce(s) officielles rattachées au SIREN '+siren+(page.hasMore?' · historique en cours de lecture.':'. Les annonces historiques ne valent pas statut actuel.')};
+  const page=await fetchBodaccPage(siren,step.siren===siren?step.offset||0:0),saved=await saveBodaccPage(job,siren,page,step);
+  return saved.step as Step;
 }
 async function browserStep(job:any,p:any,source:string,step:Step):Promise<Step>{
   if(step.jobId){

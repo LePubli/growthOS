@@ -36,4 +36,7 @@ const unsafeLink=collectProspectPeople({sourceDetails:{societe_com:{companyDetai
 }}}});
 assert.equal(unsafeLink[0].profileUrl,null,'Les liens issus de captures restent limités à HTTP(S)');
 
+const pappersOnly=collectProspectPeople({phone:'0320112233',sourceDetails:{pappers:{companyDetails:{managerContacts:[{name:'Alice PAPPERS',role:'Présidente',phone:null,email:null,profileUrl:'https://www.pappers.fr/dirigeant/alice_pappers_1980-01'}],managers:['Alice PAPPERS']}}}});
+assert.equal(pappersOnly.length,1);assert.equal(pappersOnly[0].source,'pappers');assert.equal(pappersOnly[0].role,'Présidente');assert.equal(pappersOnly[0].phone,null,'Pappers ne prouve pas de ligne directe lorsque seul le standard est connu');
+console.log('✓ Pappers : dirigeant visible dans le même répertoire, provenance et rôle conservés sans attribuer le standard');
 console.log('✓ Fiche Prospect 360° : dirigeants issus des sources, rôles, doublons et coordonnées non inventées');
