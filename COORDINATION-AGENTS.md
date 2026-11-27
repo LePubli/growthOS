@@ -246,3 +246,9 @@ PR60 fusionnée à `49892868e29564115295476bc2d84dac87234948` ; 361 contrôles A
 Validation locale du lot Pappers/BODACC/onglet : **369 contrôles API PostgreSQL 16**, TypeScript API/Web, compilation Web/API, sources/SSR/contacts verts. Le BODACC est testé sur 105 annonces en pagination, sur relecture stable sans activité dupliquée et correction réelle avec version précédente. Recette Chromium Pappers dans la PR61 ; aucun changement de CSS.
 
 Revue PR61 : curseur BODACC et instantané enregistrés dans la même transaction, dernière page idempotente après interruption ; pagination liée au SIREN et remise à zéro après correction d’identité. **371 contrôles API** passent, dont les deux scénarios de reprise/correction. Chromium Pappers vert sur le premier head (run `45988161584`), aucune modification du lecteur dans ce complément ; nouvelle CI avant fusion.
+
+## Catalogue de sources B2B à traiter après stabilisation (27/11/2026)
+
+Demande explicite du propriétaire : attendre que le système actuel fonctionne avant d’analyser et d’intégrer les sources du catalogue pour recherche et enrichissement. Branche documentaire isolée `docs/source-catalogue-after-validation`. `docs/sources/` contient le catalogue fourni à l’identique, le registre des 306 entrées et le plan d’audit. Ce n’est ni un audit terminé ni un lot de nouveaux connecteurs. Le déclenchement attend la recette/validation du propriétaire ; CI verte seule insuffisante.
+
+Aucun changement d’interface, de thème, de collecteur ou de configuration. Ne pas fusionner ce plan sur la branche préprod pendant la recette si cela relance inutilement les images. Pour les prochains lots, vérifier chaque source, accès, droits, coût et données réellement obtenues ; proposer un ordre motivé, préserver la recherche/import unifiés et l’onglet Enrichissements. Conserver les notes temporaires jusqu’à l’autorisation finale de production.
