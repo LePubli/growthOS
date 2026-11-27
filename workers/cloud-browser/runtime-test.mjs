@@ -77,7 +77,7 @@ try{
   await p.context.route('https://www.pagesjaunes.fr/**',route=>{
     const url=new URL(route.request().url()),number=url.pathname.includes('/pros/')?Number(url.pathname.split('/').pop())-100000000:Number(url.searchParams.get('page')||1);
     const details={"@type":"LocalBusiness",name:'Atelier PagesJaunes '+number,address:{streetAddress:number+' rue du Test',postalCode:'59100',addressLocality:'Roubaix'},telephone:'03 20 11 22 33',email:'contact@atelier-recette.invalid',url:'https://atelier-recette.invalid'};
-    const body=url.pathname.includes('/pros/')?`<main><h1>${details.name}</h1><p>${number} rue du Test 59100 Roubaix</p><a href="tel:0320112233">Téléphone</a><script type="application/ld+json">${JSON.stringify(details)}</script></main>`
+    const body=url.pathname.includes('/pros/')?`<main><h1>${details.name}</h1><p>${number} rue du Test 59100 Roubaix</p><a href="tel:0320112233">Téléphone</a><a href="mailto:contact@atelier-recette.invalid">Email professionnel</a><script type="application/ld+json">${JSON.stringify(details)}</script></main>`
       :`<ul><li class="bi"><a class="bi-denomination" href="/pros/${100000000+number}"><h3>${details.name}</h3></a><span class="bi-address">${number} rue du Test 59100 Roubaix</span></li></ul>${number===1?'<a rel="next" href="/annuaire/chercherlespros?quoiqui=plombier&ou=Roubaix&page=2">Suivant</a>':''}`;
     return route.fulfill({contentType:'text/html',body});
   });
