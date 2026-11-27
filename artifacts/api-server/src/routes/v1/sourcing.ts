@@ -765,19 +765,22 @@ router.post('/device/prospects/:id/societe-enrich', requireAuth, async (req, res
 
 // Entrée directe des captures de l'extension vers Prospects, sans job sourcing.
 // Aucun identifiant, code postal ou adresse n'est déduit d'une requête Google.
-router.post('/device/import-prospects',requireAuth,async(req,res)=>{
-  const parsed=z.object({
+export type CaptureImportOutcome={captureId:string;status:'imported'|'enriched'|'already_present'|'needs_review'|'failed'|'missing';prospectId?:string;message?:string;at?:string};
+export const deviceImportSchema=z.object({
     verified:z.array(deviceCandidateSchema).max(25).default([]),
     drafts:z.array(deviceDraftSchema).max(25).default([]),
   }).strict().refine(data=>data.verified.length+data.drafts.length>0 &&
-    data.verified.length+data.drafts.length<=25).safeParse(req.body);
-  if(!parsed.success){res.status(400).json({error:'Sélection invalide (25 fiches maximum)',details:parsed.error.issues});return;}
+    data.verified.length+data.drafts.length<=25);
+export async function importParsedCaptures(data:z.infer<typeof deviceImportSchema>,tenantId:string,userId:string,
+  executor:Pick<typeof db,'select'|'update'|'insert'>=db,recoverIdentityRace=true){
   let imported=0,enriched=0,skipped=0,conflicts=0;
   const reviews:{prospectId:string;company:string;fields:string[];type:'conflict'|'ambiguous'|'identity'}[]=[];
   const processedIds:string[]=[];
+  const outcomes:CaptureImportOutcome[]=[];
+  const receipt=(item:ImportCapture,status:CaptureImportOutcome['status'],prospectId?:string,message?:string)=>outcomes.push({captureId:item.id,status,prospectId,message,at:new Date().toISOString()});
   const usedIds=new Set<string>();
-  for(const entry of [...parsed.data.verified.map(value=>({item:value,incomplete:false})),
-    ...parsed.data.drafts.map(value=>({item:value,incomplete:true}))]){
+  for(const entry of [...data.verified.map(value=>({item:value,incomplete:false})),
+    ...data.drafts.map(value=>({item:value,incomplete:true}))]){
     const {item,incomplete}=entry;
     if(usedIds.has(item.id)){skipped++;continue;}
     usedIds.add(item.id);
@@ -786,7 +789,7 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
     const address=normalizedIdentity(item.address||'');
     const city=normalizedIdentity(item.city||'');
     const website=String(item.website||'').toLowerCase();
-    if(incomplete && !phone && !website && !address){skipped++;continue;}
+    if(incomplete && !phone && !website && !address){skipped++;receipt(item,'failed',undefined,'Données insuffisantes pour identifier un établissement.');continue;}
     const siret=!incomplete && 'siret' in item ? item.siret : null;
     const profileUrl=captureProfileUrl(item.sourceUrl);
     const where=[ilike(prospectsTable.company,item.company)];
@@ -796,40 +799,49 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
     if(profileUrl)where.push(eq(prospectsTable.sourceUrl,profileUrl));
     const linkedinProfile=professionalSourceUrl('linkedin',item.sourceUrl);
     if(linkedinProfile)where.push(linkedinProfilePredicate(linkedinProfile));
-    const prior=await db.select().from(prospectsTable).where(and(
-      eq(prospectsTable.tenantId,req.auth!.tenantId),or(...where),
+    const priorQuery=executor.select().from(prospectsTable).where(and(
+      eq(prospectsTable.tenantId,tenantId),or(...where),
     )).limit(100);
+    const prior=await (recoverIdentityRace?priorQuery:priorQuery.for('update'));
     const matches=prior.filter(record=>sameEstablishment(record,item,incomplete));
     if(!matches.length && legalId && prior.some(record=>record.siren===legalId)){
       skipped++;
       reviews.push({prospectId:'',company:item.company,fields:['siren'],type:'ambiguous'});
+      receipt(item,'needs_review',undefined,'Plusieurs établissements possibles pour ce SIREN.');
       continue;
     }
     if(!matches.length){
       const ambiguousProfiles=ambiguousLinkedinProfiles(prior,item);
       if(ambiguousProfiles.length){
-        skipped++;reviews.push({prospectId:ambiguousProfiles.length===1?ambiguousProfiles[0].id:'',company:item.company,fields:['linkedinUrl','address'],type:'ambiguous'});continue;
+        skipped++;reviews.push({prospectId:ambiguousProfiles.length===1?ambiguousProfiles[0].id:'',company:item.company,fields:['linkedinUrl','address'],type:'ambiguous'});receipt(item,'needs_review',ambiguousProfiles.length===1?ambiguousProfiles[0].id:undefined,'Vérifiez l’établissement de cette page LinkedIn.');continue;
       }
     }
     if(matches.length>1){
-      skipped++;reviews.push({prospectId:'',company:item.company,fields:[],type:'ambiguous'});continue;
+      skipped++;reviews.push({prospectId:'',company:item.company,fields:[],type:'ambiguous'});receipt(item,'needs_review',undefined,'Plusieurs fiches CRM correspondent.');continue;
     }
     if(matches.length===1){
       if(siret && matches[0].siret===siret && matches[0].company && normalizedIdentity(matches[0].company)!==company){
-        skipped++;reviews.push({prospectId:matches[0].id,company:item.company,fields:['company','siret'],type:'identity'});continue;
+        skipped++;reviews.push({prospectId:matches[0].id,company:item.company,fields:['company','siret'],type:'identity'});receipt(item,'needs_review',matches[0].id,'Même SIRET, nom différent : confirmation nécessaire.');continue;
       }
-      const merged=await mergeProspectCapture(matches[0],item,incomplete,req.auth!.tenantId,db,req.auth!.userId).catch((error:unknown)=>{
-        if(isProspectIdentityDuplicate(error))return null;
+      const merged=await mergeProspectCapture(matches[0],item,incomplete,tenantId,executor,userId).catch((error:unknown)=>{
+        if(recoverIdentityRace && isProspectIdentityDuplicate(error))return null;
         throw error;
       });
-      if(!merged){skipped++;continue;}
+      if(!merged){skipped++;receipt(item,'needs_review',undefined,'Identifiant déjà utilisé : vérifiez la fiche existante.');continue;}
       if(merged.filled.length)enriched++;else skipped++;
       conflicts+=merged.conflicts;
       if(merged.newConflicts.length)reviews.push({prospectId:matches[0].id,company:item.company,
         fields:merged.newConflicts.map(c=>c.field),type:'conflict'});
+      const oldConflicts=jsonRecord(jsonRecord(matches[0].sourceDetails).crossSource).conflicts;
+      const fields=incomingFields(item,incomplete);
+      const unresolved=Array.isArray(oldConflicts)&&oldConflicts.some(c=>c.source===item.source && FIELDS.includes(c.field) &&
+        normalizedField(c.field,fields[c.field as EnrichmentField])===normalizedField(c.field,c.incoming) &&
+        normalizedField(c.field,matches[0][c.field as EnrichmentField])===normalizedField(c.field,c.existing));
+      receipt(item,merged.newConflicts.length||unresolved?'needs_review':merged.filled.length?'enriched':'already_present',matches[0].id,
+        merged.newConflicts.length||unresolved?'Des valeurs différentes restent à vérifier sur la fiche CRM.':undefined);
       processedIds.push(item.id);continue;
     }
-    const [created]=await db.insert(prospectsTable).values({
+    const [created]=await executor.insert(prospectsTable).values({
       company:item.company,address:item.address||null,
       postalCode:!incomplete && 'codePostal' in item ? item.codePostal : null,
       city:item.city||null,phone:item.phone||null,website:item.website||null,
@@ -846,16 +858,21 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
           observations:[{captureId:item.id,source:item.source,sourceUrl:item.sourceUrl||null,
             capturedAt:new Date(item.capturedAt||Date.now()).toISOString(),
             fieldsFilled:Object.keys(incomingFields(item,incomplete))}],conflicts:[]}},
-      status:'new',tenantId:req.auth!.tenantId,createdBy:req.auth!.userId,
+      status:'new',tenantId:tenantId,createdBy:userId,
      }).onConflictDoNothing().returning({id:prospectsTable.id}).catch((error:unknown)=>{
       // A BEFORE INSERT trigger can raise before ON CONFLICT is evaluated.
       // Keep prior processedIds and continue the remaining selection.
-      if(isProspectIdentityDuplicate(error))return [];
+      if(recoverIdentityRace && isProspectIdentityDuplicate(error))return [];
       throw error;
     });
-    if(created){imported++;processedIds.push(item.id);}else skipped++;
+    if(created){imported++;processedIds.push(item.id);receipt(item,'imported',created.id);}else{skipped++;receipt(item,'needs_review',undefined,'Identifiant déjà utilisé : vérifiez la fiche existante.');}
   }
-  res.json({imported,enriched,skipped,conflicts,reviews,selected:usedIds.size,processedIds});
+  return {imported,enriched,skipped,conflicts,reviews,selected:usedIds.size,processedIds,outcomes};
+}
+router.post('/device/import-prospects',requireAuth,async(req,res)=>{
+  const parsed=deviceImportSchema.safeParse(req.body);
+  if(!parsed.success){res.status(400).json({error:'Sélection invalide (25 fiches maximum)',details:parsed.error.issues});return;}
+  res.json(await importParsedCaptures(parsed.data,req.auth!.tenantId,req.auth!.userId));
 });
 
 // Chaque désaccord reste en attente jusqu'au choix explicite d'un utilisateur du tenant.

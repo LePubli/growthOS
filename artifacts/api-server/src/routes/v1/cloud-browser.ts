@@ -1,6 +1,7 @@
 import {Router} from 'express';
 import {z} from 'zod';
 import {pool} from '@workspace/db';
+import {importCloudJob,withCloudImportStates} from '../../services/cloud-imports';
 import {logger} from '../../lib/logger';
 import {CLOUD_SOURCES,CLOUD_AUTOMATIC,CloudBrowserError,browserCall,cloudConfigured,cloudProfile,cloudJob,tickCloudJobs} from '../../services/cloud-browser';
 const router=Router();
@@ -37,7 +38,7 @@ for(const action of ['open','view','action','erase'] as const)router.post('/prof
   res.json(await browserCall('/'+action,{...payload,tenantId:req.auth!.tenantId,profileId:id,source:profile.source}));
 });
 router.get('/jobs',async(req,res)=>{
-  const q=await pool.query('SELECT * FROM cloud_browser_jobs WHERE tenant_id=$1 AND created_by=$2 ORDER BY created_at DESC LIMIT 30',[req.auth!.tenantId,req.auth!.userId]);res.json(q.rows);
+  const q=await pool.query('SELECT * FROM cloud_browser_jobs WHERE tenant_id=$1 AND created_by=$2 ORDER BY created_at DESC LIMIT 30',[req.auth!.tenantId,req.auth!.userId]);res.json(await withCloudImportStates(q.rows,req.auth!.tenantId));
 });
 router.post('/jobs/history/delete',async(req,res)=>{
   const selection=z.discriminatedUnion('scope',[
@@ -71,7 +72,15 @@ router.post('/jobs',async(req,res)=>{
     VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[req.auth!.tenantId,req.auth!.userId,data.profileId,data.prospectId||null,data.query,data.area,data.limit,data.prospectId?'enrich':'discover']);
   res.status(201).json(q.rows[0]);schedule();
 });
-router.get('/jobs/:id',async(req,res)=>res.json(await cloudJob(req.auth!.tenantId,idSchema.parse(req.params.id),req.auth!.userId)));
+router.get('/jobs/:id',async(req,res)=>{
+  const job=await cloudJob(req.auth!.tenantId,idSchema.parse(req.params.id),req.auth!.userId);
+  res.json((await withCloudImportStates([job],req.auth!.tenantId))[0]);
+});
+router.post('/jobs/:id/import',async(req,res)=>{
+  const id=idSchema.parse(req.params.id);
+  const data=z.object({captureIds:z.array(z.string().min(3).max(64)).min(1).max(25)}).strict().parse(req.body);
+  res.json(await importCloudJob(req.auth!.tenantId,req.auth!.userId,id,data.captureIds));
+});
 router.post('/jobs/:id/retry',async(req,res)=>{
   const id=idSchema.parse(req.params.id);const data=z.object({resume:z.boolean().default(true)}).strict().parse(req.body||{});
   const job=await cloudJob(req.auth!.tenantId,id,req.auth!.userId);

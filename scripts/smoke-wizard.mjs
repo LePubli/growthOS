@@ -136,6 +136,19 @@ async function runCloudMaintenance(id){
   });
 }
 
+async function cloudReceiptFailure(action){
+  const code=`import {pool} from '@workspace/db';
+    if(process.argv[1]==='install')await pool.query(\`CREATE FUNCTION growthos_test_receipt_failure() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.query='receipt-rollback' AND NEW.result ? 'imports' THEN RAISE EXCEPTION 'isolated receipt failure'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER growthos_test_receipt_failure BEFORE UPDATE ON cloud_browser_jobs FOR EACH ROW EXECUTE FUNCTION growthos_test_receipt_failure();\`);
+    else await pool.query('DROP TRIGGER IF EXISTS growthos_test_receipt_failure ON cloud_browser_jobs; DROP FUNCTION IF EXISTS growthos_test_receipt_failure();');
+    await pool.end();`;
+  await new Promise((resolve,reject)=>{
+    const child=spawn('node',['--import','tsx','--input-type=module','-e',code,action],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
+    let errors='';child.stderr.on('data',chunk=>errors+=String(chunk));child.on('error',reject);child.on('exit',status=>status===0?resolve():reject(new Error('Recette transaction : '+errors.slice(-1200))));
+  });
+}
+
 // Hold the import just before the production identity trigger. A second HTTP
 // request then creates the same SIRET, reproducing a real lookup/insert race.
 async function importIdentityRace(kind,token,example) {
@@ -330,6 +343,12 @@ const cloudStub=createServer(async(req,res)=>{
     if(cloudDelay)await delay(cloudDelay);
     if(p.query==='cloud-wait'){res.end(JSON.stringify({status:'awaiting_user',message:'Connexion à vérifier',results:[]}));return;}
     if(p.query==='cloud-fail'){res.writeHead(503).end(JSON.stringify({error:'Source indisponible'}));return;}
+    if(['receipt-mixed','receipt-legacy','receipt-rollback'].includes(p.query)){
+      const row=(company,number,phone)=>({source:'google_maps',company,address:number+' rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone,sourceUrl:'https://www.google.com/maps/place/'+encodeURIComponent(company)+'/'});
+      const values=p.query==='receipt-mixed'?[row('Import cloud neuf',10,'03 00 41 01 01'),row('CRM cloud existant',20,'03 00 41 01 02'),row('CRM cloud contradictoire',30,'03 00 41 01 03'),{...row('Import cloud incomplet',35,null),codePostal:null}]
+        :[row(p.query==='receipt-legacy'?'Ancien import cloud':'Import cloud transaction',40,'03 00 41 01 04')];
+      res.end(JSON.stringify({status:'completed',results:values,drafts:[]}));return;
+    }
     const siret=p.query==='cloud-wrong'?'96677700900019':p.target?.siret||'96677700200019';
     res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:p.target?'ATELIER CLOUD':'Entreprise trouvée',siret:p.source==='societe_com'?siret:null,
       address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone:'03 20 99 88 77',
@@ -1596,6 +1615,63 @@ try {
     const captured=await request('GET','/browser/jobs/'+discovery.body.id,undefined,token);
     check(captured.body.status==='completed' && captured.body.mode==='discover' && captured.body.result.captures.length===1,
       'Cloud : collecte publique livre une sélection persistante avant création de prospects');
+    const existingReceipt=await request('POST','/prospects',{company:'CRM cloud existant',address:'20 rue du Test 59100 Roubaix',postalCode:'59100',city:'Roubaix',phone:'03 00 41 01 02'},token);
+    const conflictingReceipt=await request('POST','/prospects',{company:'CRM cloud contradictoire',address:'30 rue du Test 59100 Roubaix',postalCode:'59100',city:'Roubaix',phone:'03 00 41 01 99'},token);
+    const mixedJob=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'receipt-mixed'},token);await runCloudMaintenance(mixedJob.body.id);
+    const mixedBefore=await request('GET','/browser/jobs/'+mixedJob.body.id,undefined,token);
+    const mixedIds=mixedBefore.body.result.captures.map(c=>c.id);
+    check((await request('POST','/browser/jobs/'+mixedJob.body.id+'/import',{captureIds:mixedIds})).status===401,'Cloud import : refus sans authentification');
+    check((await request('POST','/browser/jobs/'+mixedJob.body.id+'/import',{captureIds:mixedIds},foreignToken)).status===404 &&
+      (await request('POST','/browser/jobs/'+mixedJob.body.id+'/import',{captureIds:mixedIds},colleague)).status===404,'Cloud import : collecte privée isolée de l’autre agence et du collègue');
+    check((await request('POST','/browser/jobs/'+mixedJob.body.id+'/import',{captureIds:[mixedIds[0],'capture-inconnue']},token)).status===400,'Cloud import : sélection étrangère au lot refusée avant tout import');
+    check((await request('POST','/browser/jobs/'+created.body.id+'/import',{captureIds:[mixedIds[0]]},token)).status===409,'Cloud import : une tâche d’enrichissement ne devient pas un import de prospects');
+    const imports=await Promise.all([request('POST','/browser/jobs/'+mixedJob.body.id+'/import',{captureIds:mixedIds},token),request('POST','/browser/jobs/'+mixedJob.body.id+'/import',{captureIds:mixedIds},token)]);
+    check(imports.every(r=>r.status===200)&&imports.reduce((sum,r)=>sum+r.body.imported,0)===1,'Cloud import : deux clics simultanés créent une seule fiche');
+    const mixedAfter=await request('GET','/browser/jobs/'+mixedJob.body.id,undefined,token),states=mixedAfter.body.result.imports;
+    check(states[mixedIds[0]].status==='imported'&&states[mixedIds[1]].status==='already_present'&&states[mixedIds[1]].prospectId===existingReceipt.body.id,
+      'Cloud import : reçus persistants distinguent création et présence préalable dans le CRM');
+    check(states[mixedIds[2]].status==='needs_review'&&states[mixedIds[2]].prospectId===conflictingReceipt.body.id&&states[mixedIds[3]].status==='failed',
+      'Cloud import : conflit et fiche invalide restent à traiter sans faux succès');
+    check(imports.every(r=>r.body.processedIds.length===2)&&
+      (await request('GET','/prospects/'+conflictingReceipt.body.id,undefined,token)).body.phone==='03 00 41 01 99',
+      'Cloud import : seules les fiches traitées quittent la sélection, téléphone divergent conservé');
+    const conflictActivity=await request('GET','/activities?prospectId='+conflictingReceipt.body.id,undefined,token);
+    check(conflictActivity.body.filter(a=>a.type==='data_update').length===1,'Cloud import : répétition du lot ne duplique pas l’activité de désaccord');
+    const replay=await request('POST','/browser/jobs/'+mixedJob.body.id+'/import',{captureIds:mixedIds.slice(0,2)},token);
+    check(replay.body.imported===0&&replay.body.alreadyPresent===2&&replay.body.job.result.imports[mixedIds[0]].at===states[mixedIds[0]].at,
+      'Cloud import : réessai après réponse perdue réutilise les reçus sans création ni changement de date');
+    const legacyJob=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'receipt-legacy'},token);await runCloudMaintenance(legacyJob.body.id);
+    const legacyBefore=await request('GET','/browser/jobs/'+legacyJob.body.id,undefined,token),legacyCapture=legacyBefore.body.result.captures[0];
+    const legacyImport=await request('POST','/sourcing/device/import-prospects',{verified:[legacyCapture],drafts:[]},token);
+    const legacyAfter=await request('GET','/browser/jobs/'+legacyJob.body.id,undefined,token);
+    check(legacyImport.body.imported===1&&legacyAfter.body.result.imports[legacyCapture.id].status==='already_present'&&legacyAfter.body.result.imports[legacyCapture.id].prospectId,
+      'Cloud import : anciennes captures importées reconnues depuis la preuve CRM existante');
+    const refreshedList=await request('GET','/browser/jobs',undefined,token);
+    check(refreshedList.body.find(j=>j.id===mixedJob.body.id).result.imports[mixedIds[0]].status==='imported'&&
+      refreshedList.body.find(j=>j.id===legacyJob.body.id).result.imports[legacyCapture.id].status==='already_present',
+      'Cloud import : rafraîchir la liste conserve les états des imports anciens et nouveaux');
+    if(realPostgresUrl){
+      const rollbackJob=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'receipt-rollback'},token);await runCloudMaintenance(rollbackJob.body.id);
+      const rollbackBefore=await request('GET','/browser/jobs/'+rollbackJob.body.id,undefined,token);
+      await cloudReceiptFailure('install');
+      try{
+        const rollbackImport=await request('POST','/browser/jobs/'+rollbackJob.body.id+'/import',{captureIds:[rollbackBefore.body.result.captures[0].id]},token);
+        const afterFailure=await request('GET','/browser/jobs/'+rollbackJob.body.id,undefined,token);
+        const crmAfterFailure=await request('GET','/prospects?search=Import%20cloud%20transaction',undefined,token);
+        check(rollbackImport.status===503&&!Object.keys(afterFailure.body.result.imports).length&&crmAfterFailure.body.total===0,
+          'Cloud import : panne d’écriture du reçu annule aussi la création CRM dans la même transaction');
+      }finally{await cloudReceiptFailure('remove');}
+      const retryRollback=await request('POST','/browser/jobs/'+rollbackJob.body.id+'/import',{captureIds:[rollbackBefore.body.result.captures[0].id]},token);
+      check(retryRollback.body.imported===1&&retryRollback.body.job.result.imports[rollbackBefore.body.result.captures[0].id].status==='imported',
+        'Cloud import : reprise après panne transactionnelle crée et trace une seule fiche');
+    }
+
+    const oldImportedId=states[mixedIds[0]].prospectId;await request('DELETE','/prospects/'+oldImportedId,undefined,token);
+    const deletedState=(await request('GET','/browser/jobs/'+mixedJob.body.id,undefined,token)).body.result.imports[mixedIds[0]];
+    check(deletedState.status==='missing'&&!deletedState.prospectId,'Cloud import : fiche CRM supprimée signalée et rendue réimportable sans lien cassé');
+    const restored=await request('POST','/browser/jobs/'+mixedJob.body.id+'/import',{captureIds:[mixedIds[0]]},token);
+    check(restored.body.imported===1&&restored.body.job.result.imports[mixedIds[0]].prospectId!==oldImportedId,'Cloud import : réimport autorisé après suppression réelle de la fiche CRM');
+
     check((await request('POST','/browser/jobs/history/delete',{scope:'all'})).status===401,'Cloud historique : suppression interdite sans connexion');
     check((await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[]},token)).status===400,'Cloud historique : sélection vide refusée');
     check((await request('POST','/browser/jobs/history/delete',{scope:'all'},foreignToken)).body.deleted===0 &&

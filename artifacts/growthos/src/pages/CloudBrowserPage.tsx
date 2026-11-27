@@ -6,6 +6,7 @@ import {
   MapPin, Maximize2, Minimize2, Play, Plus, Search, ShieldCheck,
 } from 'lucide-react';
 import api from '@/lib/api-client';
+import CloudImportFeedback,{CaptureImportBadge,pendingCloudCaptures,isCloudCaptureHandled,type CaptureImportState} from '@/components/cloud-browser/CloudImportFeedback';
 import CloudJobHistory,{CaptureBatchControls,selectCaptureBatch} from '@/components/cloud-browser/CloudJobHistory';
 import { SourceLogo } from '@/components/atlas/ProspectLogos';
 import modules from '../../../../extensions/growthos-pagesjaunes/modules.json';
@@ -17,7 +18,7 @@ type Job = {
   id: string; profile_id: string; prospect_id: string | null;
   mode: 'enrich' | 'discover'; query: string; area?: string; status: string; error: string | null;
   result: {
-    message?: string; captures?: Capture[]; drafts?: unknown[];
+    message?: string; captures?: Capture[]; drafts?: unknown[]; imports?: Record<string,CaptureImportState>;
     applied?: { filled: string[]; conflicts: number };
   };
 };
@@ -131,7 +132,9 @@ export default function CloudBrowserPage() {
   const activeJob = discoveryJobs.find(job => job.id === activeJobId)
     || discoveryJobs.find(job => job.result?.captures?.length)
     || discoveryJobs[0];
-  const captures = activeJob?.status === 'completed' ? (activeJob.result?.captures || []) : [];
+  const allCaptures = activeJob?.status === 'completed' ? (activeJob.result?.captures || []) : [];
+  const imports = activeJob?.result?.imports || {};
+  const captures = pendingCloudCaptures(allCaptures,imports);
   const draftsCount = activeJob?.result?.drafts?.length || 0;
   const chosenCount = captures.filter(capture => chosen[capture.id]).length;
 
@@ -186,14 +189,17 @@ export default function CloudBrowserPage() {
 
   async function importSelected(job: Job) {
     await perform('Importer', async () => {
-      const candidates = (job.result?.captures || []).filter(capture => chosen[capture.id]);
+      const candidates = pendingCloudCaptures(job.result?.captures || [],job.result?.imports).filter(capture => chosen[capture.id]);
       if (!candidates.length) throw new Error('Sélectionnez au moins une fiche vérifiée.');
-      const result = await api.post<any>('/sourcing/device/import-prospects',
-        { verified: candidates, drafts: [] }, { timeoutMs: 60000 });
+      const result = await api.post<any>('/browser/jobs/'+job.id+'/import',
+        {captureIds:candidates.map(capture=>capture.id)}, { timeoutMs: 60000 });
+      ++jobsRequest.current;
+      setJobs(current=>current.map(item=>item.id===job.id?result.job:item));
       const processed = new Set<string>(result.processedIds || []);
       setChosen(current => Object.fromEntries(Object.entries(current).filter(([id]) => !processed.has(id))));
       setNotice((result.imported || 0) + ' prospect(s) créé(s), ' + (result.enriched || 0)
-        + ' enrichi(s), ' + (result.skipped || 0) + ' ignoré(s). Les éventuels désaccords restent à vérifier dans le CRM.');
+        + ' enrichi(s), ' + (result.alreadyPresent || 0) + ' déjà présent(s), ' + (result.needsReview || 0)
+        + ' à vérifier, ' + (result.failed || 0) + ' en échec. Les fiches traitées sont consultables dans le CRM.');
     });
   }
 
@@ -221,13 +227,14 @@ export default function CloudBrowserPage() {
   function jobCard(job: Job, historySelection: ReactNode, removeAction: ReactNode) {
     const jobProfile = profiles.find(p => p.id === job.profile_id);
     const jobCaptures = job.result?.captures?.length || 0;
+    const handledCount=(job.result?.captures||[]).filter(c=>isCloudCaptureHandled(job.result?.imports?.[c.id])).length;
     return <article key={job.id} className={'cloud-browser-job-card' + (activeJob?.id === job.id ? ' is-active' : '')}>
       <div className="cloud-browser-job-top">
         {historySelection}
         <span className="cloud-browser-job-logo"><SourceLogo source={jobProfile?.source || source} size="sm"/></span>
         <div className="cloud-browser-job-title">
           <strong>{job.query || 'Recherche sans titre'}</strong>
-          <small>{sourceName(jobProfile?.source || source)} · {jobCaptures} fiche(s)</small>
+          <small>{sourceName(jobProfile?.source || source)} · {jobCaptures} fiche(s){handledCount?' · '+handledCount+' traitée(s)':''}</small>
         </div>
         <span className={'cloud-browser-job-status cloud-browser-job-status--' + job.status}>{labels[job.status] || job.status}</span>
       </div>
@@ -411,8 +418,9 @@ export default function CloudBrowserPage() {
         </header>
         <div className="cloud-browser-results-summary">
           <CheckCircle2 size={16}/>
-          <span>{captures.length} entreprise(s) trouvée(s){draftsCount ? ' · ' + draftsCount + ' à vérifier' : ''}</span>
+          <span>{allCaptures.length} entreprise(s) trouvée(s) · {captures.length} restante(s){draftsCount ? ' · ' + draftsCount + ' à vérifier' : ''}</span>
         </div>
+        <CloudImportFeedback captures={allCaptures} imports={imports}/>
         {!!captures.length && <CaptureBatchControls captures={captures} chosen={chosen} busy={!!busy}
           onChooseBatch={(items, value) => setChosen(current => selectCaptureBatch(current, items, value))}/>}
         <div className="cloud-browser-results-list">
@@ -422,11 +430,13 @@ export default function CloudBrowserPage() {
               <strong>{capture.company || 'Entreprise sans nom'}</strong>
               {[capture.address, capture.city].filter(Boolean).length > 0 && <small><MapPin size={12}/>{[capture.address, capture.city].filter(Boolean).join(' · ')}</small>}
               {capture.phone && <small>{capture.phone}</small>}
+              <CaptureImportBadge state={imports[capture.id]}/>
+              {imports[capture.id]?.prospectId&&<Link to={'/prospects/'+imports[capture.id].prospectId}>Vérifier la fiche CRM</Link>}
             </span>
           </label>) : <div className="cloud-browser-no-results">
             <Search size={26}/>
-            <strong>{activeJob ? 'Aucune fiche vérifiée disponible' : 'Vos résultats apparaîtront ici'}</strong>
-            <p>{activeJob ? 'Consultez le statut de la tâche ou relancez sa collecte si nécessaire.' : 'Lancez une collecte, puis sélectionnez les entreprises à importer.'}</p>
+            <strong>{allCaptures.length ? 'Toutes les fiches de ce lot sont traitées' : activeJob ? 'Aucune fiche vérifiée disponible' : 'Vos résultats apparaîtront ici'}</strong>
+            <p>{allCaptures.length ? 'Retrouvez-les dans les fiches traitées ci-dessus ou dans Prospects.' : activeJob ? 'Consultez le statut de la tâche ou relancez sa collecte si nécessaire.' : 'Lancez une collecte, puis sélectionnez les entreprises à importer.'}</p>
           </div>}
         </div>
         {activeJob?.error && <p className="cloud-browser-results-note is-error">{activeJob.error}</p>}
