@@ -11,6 +11,7 @@ Ce contrat s'applique **à chaque développement futur**. Il complète les véri
 - Enrichissement multisource : étape/source, progression, bilan, champs effectivement remplis (nombre), nombre de désaccords, erreur technique.
 - **Causes des sources** : catégorisation de l'état et du message technique (`source-diagnosis.ts`) : sécurité/Cloudflare, quotas HTTP 429, accès refusé, absence de configuration, délai dépassé, service indisponible, identité non confirmée, aucun résultat. La fiche de diagnostic différencie motif constaté, cause probable et cause inconnue, puis propose une action adaptée.
 - L'ancien journal des tâches reste visible même si un incident précède ce déploiement.
+- Les tâches cloud historiques lisent leur explication dans `result.message` (une intervention ou un doute d'identité n'écrit souvent rien dans la colonne `error`). Les exports ne contiennent jamais la capture HTML, uniquement les messages expurgés.
 
 ## À ajouter pour chaque nouvelle fonctionnalité
 

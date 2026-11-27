@@ -35,6 +35,15 @@ for (const [sample, expected] of [
   [{ source: 'societe_com', httpStatus: 502 }, 'SOURCE_UNAVAILABLE'],
   [{ source: 'pappers', reason: 'fetch failed' }, 'SOURCE_NETWORK'],
   [{ source: 'google_search', reason: 'Réponse navigateur invalide' }, 'SOURCE_INVALID_RESPONSE'],
+  [{ source: 'bing', status: 'awaiting_user', reason: 'La page n’a pas fourni de résultats lisibles.' }, 'SOURCE_UNREADABLE_RESULTS'],
+  [{ source: 'pagesjaunes', status: 'awaiting_user', reason: 'Contrôle de sécurité Cloudflare' }, 'SOURCE_SECURITY_CHALLENGE'],
+  [{ source: 'pappers', status: 'awaiting_user', reason: 'Pappers : SIREN affiché non confirmé' }, 'SOURCE_IDENTITY_REVIEW'],
+  [{ source: 'pappers', status: 'awaiting_user', reason: 'Ouvrez une fiche entreprise Pappers publique.' }, 'SOURCE_MANUAL_SELECTION'],
+  [{ source: 'societe_com', status: 'awaiting_user', reason: 'Aucune correspondance fiable dans les résultats par nom et ville.' }, 'SOURCE_IDENTITY_REVIEW'],
+  [{ source: 'bodacc', status: 'skipped', reason: 'Un SIREN confirmé est nécessaire pour rattacher les annonces.' }, 'SOURCE_IDENTITY_REQUIRED'],
+  [{ source: 'bodacc', status: 'empty', reason: '0 annonce(s) officielles rattachées au SIREN' }, 'SOURCE_EMPTY'],
+  [{ source: 'website', status: 'skipped', reason: 'Aucun site web renseigné sur le prospect.' }, 'SOURCE_WEBSITE_MISSING'],
+  [{ source: 'google_search', status: 'failed', reason: 'Le navigateur n’a pas pu effectuer cette opération.' }, 'SOURCE_WORKER_FAILURE'],
 ]) assert.equal(diagnoseSourceIssue(sample).causeCode, expected, `Cause for ${JSON.stringify(sample)}`);
 
 // Structural regressions: new routes automatically recorded, read endpoints
@@ -47,6 +56,7 @@ assert(routes.includes("router.use(requireRole('admin'))"));
 assert(routes.includes('tenant_id=$1'));
 assert(routes.includes("router.post('/client-events'"));
 assert(routes.includes("router.get('/sources'"));
+assert(routes.includes("j.result->>'message' AS result_message"), 'Archived browser results must retain their explanation');
 assert(source('artifacts/api-server/src/services/prospect-enrichment.ts').includes('diagnoseSourceIssue'));
 assert(source('artifacts/api-server/src/services/cloud-browser.ts').includes('diagnoseSourceIssue'));
 assert(source('artifacts/api-server/src/routes/v1/cloud-browser.ts').includes('WORKER_UNAVAILABLE'));
