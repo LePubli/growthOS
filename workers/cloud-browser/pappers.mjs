@@ -7,11 +7,14 @@ export function readPappers(){
   const title=document.querySelector('h1');
   if(!siren||!visible(title))return {error:'Ouvrez une fiche entreprise Pappers publique.'};
   const root=document.querySelector('main')||document.body;
-  const labels=[...root.querySelectorAll('dt,th,div')].filter(n=>visible(n)&&(!n.children.length||['DT','TH'].includes(n.tagName)));
+  const labels=[...root.querySelectorAll('dt,th,div,span,strong,b,p')].filter(n=>visible(n)&&(!n.children.length||['DT','TH'].includes(n.tagName)));
   const field=(...keys)=>{
     const label=labels.find(n=>keys.some(key=>norm(n.innerText)===norm(key)));
-    const value=label?.nextElementSibling;
-    return visible(value)?clean(value.innerText):'';
+    // Some public cards wrap the label in a span while its value is adjacent
+    // to the wrapper. Only read rendered siblings; never infer an identifier.
+    const value=label?.nextElementSibling||label?.parentElement?.nextElementSibling;
+    const text=visible(value)?clean(value.innerText):'';
+    return text.length<=1000?text:'';
   };
   if(field('SIREN').replace(/\D/g,'')!==siren)return {error:'SIREN affiché non confirmé.'};
   const shownSiret=field('SIRET (siège)','SIRET du siège').replace(/\D/g,'');

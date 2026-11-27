@@ -94,7 +94,7 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
       {run&&<button type="button" className="atlas-enrichments-banner-action" onClick={onOpenSources}>Voir les données détaillées <ArrowRight size={14}/></button>}
     </div>
     {savedNotice&&<p role="status" className="atlas-enrichments-banner is-success">{savedNotice}</p>}
-    {reviewJob&&<div id="prospect-source-review"><Suspense fallback={<p>Chargement de la comparaison…</p>}><CloudCaptureReview key={reviewJob.id} jobId={reviewJob.id} onClose={()=>setReviewJob(null)} onSaved={async()=>{setSavedNotice('Informations enregistrées. La fiche prospect a été mise à jour.');await onReviewed?.();}}/></Suspense>
+    {reviewJob&&<div id="prospect-source-review"><Suspense fallback={<p>Chargement de la comparaison…</p>}><CloudCaptureReview key={reviewJob.id} jobId={reviewJob.id} fallbackUrl={jobUrl(reviewJob.source,reviewJob.step,prospectId)} onClose={()=>setReviewJob(null)} onSaved={async()=>{setSavedNotice('Informations enregistrées. La fiche prospect a été mise à jour.');await onReviewed?.();}}/></Suspense>
       <Link className="atlas-enrichments-priority-link" to={jobUrl(reviewJob.source,reviewJob.step,prospectId)}>Ouvrir la source si la fiche n’a pas encore pu être lue <ExternalLink size={14}/></Link></div>}
     <div className="atlas-enrichments-metrics" aria-label="Synthèse des sources">
       <div className="atlas-enrichments-metric is-sources"><span><Layers3 size={23}/></span><div><strong>{steps.length}</strong><small>Sources consultées</small></div></div>
@@ -121,8 +121,11 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
                   <span className={'atlas-enrichments-chip is-'+tone}><StatusIcon tone={tone}/>{source==='website'&&step.status==='completed'?'Site consulté':statusNames[step.status]||step.status}</span></div>
                 <p title={step.message||undefined}>{step.message||'Aucune précision communiquée par la source.'}</p>
               </div>
-              {!active&&step.jobId&&tone==='review'&&<button type="button" className="atlas-enrichments-source-action" onClick={()=>openReview(source,step)}
-                aria-label={'Comparer '+(step.label||sourceNames[source]||source)}><ChevronRight size={17}/></button>}
+              {!active&&step.jobId&&tone==='review'&&(step.status==='needs_review'
+                ?<button type="button" className="atlas-enrichments-source-action" onClick={()=>openReview(source,step)}
+                    aria-label={'Comparer '+(step.label||sourceNames[source]||source)}><ChevronRight size={17}/></button>
+                :<Link className="atlas-enrichments-source-action" to={jobUrl(source,step,prospectId)}
+                    aria-label={'Ouvrir '+(step.label||sourceNames[source]||source)+' pour reprendre la collecte'}><ExternalLink size={17}/></Link>)}
             </article>;
           })}
           {!visible.length&&<div className="atlas-enrichments-empty"><Info size={19}/>
@@ -137,12 +140,16 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
             <div className="atlas-enrichments-priority-item" key={source}>
               <span className="atlas-enrichments-priority-rank">{index+1}</span><SourceLogo source={source} size="sm"/>
               <strong>{step.label||sourceNames[source]||source}</strong>
-              {step.jobId?<button type="button" onClick={()=>openReview(source,step)} className="atlas-enrichments-priority-link">Comparer <ArrowRight size={14}/></button>
+              {step.jobId?(step.status==='needs_review'
+                ?<button type="button" onClick={()=>openReview(source,step)} className="atlas-enrichments-priority-link">Comparer <ArrowRight size={14}/></button>
+                :<Link to={jobUrl(source,step,prospectId)} className="atlas-enrichments-priority-link">Ouvrir la source <ExternalLink size={14}/></Link>)
                 :<span className="atlas-enrichments-priority-pending">À contrôler</span>}
             </div>)}</div>
             :<div className="atlas-enrichments-priority-empty"><BadgeCheck size={21}/><p>{active?
               'La collecte est en cours. Les vérifications apparaîtront ici.':'Aucune vérification à reprendre pour ce bilan.'}</p></div>}
-          {resumable?<button type="button" className="atlas-enrichments-rail-cta" onClick={()=>openReview(resumable[0],resumable[1])}><RotateCw size={15}/> Comparer les informations</button>
+          {resumable?(resumable[1].status==='needs_review'
+              ?<button type="button" className="atlas-enrichments-rail-cta" onClick={()=>openReview(resumable[0],resumable[1])}><RotateCw size={15}/> Comparer les informations</button>
+              :<Link className="atlas-enrichments-rail-cta" to={jobUrl(resumable[0],resumable[1],prospectId)}><ExternalLink size={15}/> Ouvrir la source à vérifier</Link>)
             :<button type="button" className="atlas-enrichments-rail-cta" onClick={onOpenSources}>Voir les données et désaccords <ArrowRight size={15}/></button>}
         </section>
         <section className="atlas-enrichments-updated" aria-label="Dernières données mises à jour">

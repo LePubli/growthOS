@@ -12,6 +12,7 @@ Ce contrat s'applique **à chaque développement futur**. Il complète les véri
 - **Causes des sources** : catégorisation de l'état et du message technique (`source-diagnosis.ts`) : sécurité/Cloudflare, quotas HTTP 429, accès refusé, absence de configuration, délai dépassé, service indisponible, identité non confirmée, aucun résultat. La fiche de diagnostic différencie motif constaté, cause probable et cause inconnue, puis propose une action adaptée.
 - L'ancien journal des tâches reste visible même si un incident précède ce déploiement.
 - Les tâches cloud historiques lisent leur explication dans `result.message` (une intervention ou un doute d'identité n'écrit souvent rien dans la colonne `error`). Les exports ne contiennent jamais la capture HTML, uniquement les messages expurgés.
+- **Comparaison sans capture** : `CAPTURE_REQUIRED` / `SOURCE_CAPTURE_REQUIRED` est un avertissement fonctionnel (HTTP 409), pas une panne du moteur. L'onglet Enrichissements mène directement vers la session source lorsqu'elle attend une lecture ; la comparaison effectue un précontrôle de présence de capture. Pour les résultats organiques Google/Bing, le collecteur attend une courte fenêtre supplémentaire si la structure de recherche apparaît avant ses liens ; un blocage réel reste signalé sans tentative de contournement.
 
 ## À ajouter pour chaque nouvelle fonctionnalité
 
@@ -40,6 +41,7 @@ Checklist de PR pour **les deux agents** :
 - API sous `/api/v1/diagnostics` : `GET /summary`, `GET /events`, `GET /sources`, `GET /jobs`, `GET /export` réservés aux rôles administrateur de leur tenant ; `POST /client-events` protégé, validé et limité à 15 événements/minute/utilisateur.
 - Rapport exporté : JSON avec événements filtrés (max. 500), états de collectes/enrichissements (max. 120 par famille) et horodatages. Joindre ce fichier à la demande de correction, avec heure, action reproduite et résultat attendu.
 - Journaux Docker DockPanel : filtrer par `traceId` (API) ou `diagnosticId` (worker cloud). Le worker n'enregistre jamais les captures, requêtes, cookies ou secrets.
+- La réponse `409` « Aucune fiche capturée » signifie qu'il faut d'abord ouvrir et lire la bonne fiche : ne pas la traiter comme une panne `502`. En cas d'échec de lecture Google/Bing persistant, vérifier dans la session la présence réelle de résultats et un éventuel écran de consentement/sécurité. Pour Pappers, aucune donnée n'est appliquée si le SIREN affiché ne correspond pas exactement à celui de l'URL de l'entreprise.
 - Rétention technique en base : 90 jours, nettoyage par lots de 2 000 au démarrage puis chaque heure. Les anciennes données métier/audit ne sont pas supprimées.
 
 ## Limites honnêtes

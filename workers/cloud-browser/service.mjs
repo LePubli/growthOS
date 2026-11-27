@@ -151,8 +151,17 @@ export class BrowserService{
     if(!input.resume||!previous?.awaitingUser||!sourceNavigation(p.source,p.page.url()))await p.page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});
     await pause(1200);
     await p.page.locator(p.source==='bing'?'#b_results,#b_context':'#search,#rso,#rhs').first().waitFor({state:'attached',timeout:8000}).catch(()=>{});
-    const read=await p.page.evaluate(readers.general);
-    const evidence=await p.page.evaluate(pageEvidence);
+    let read=await p.page.evaluate(readers.general);
+    let evidence=await p.page.evaluate(pageEvidence);
+    // Search pages can display their shell before the organic links finish loading.
+    // Retry a visible result once before requiring human intervention; never
+    // bypass a consent form or security challenge.
+    if(!read.results?.length&&!read.drafts?.length&&!evidence.references.length&&!evidence.empty&&!evidence.challenge&&!evidence.consent){
+      await p.page.locator(p.source==='bing'?'#b_results .b_algo h2 a':'#search a:has(h3),#rso a:has(h3)').first()
+        .waitFor({state:'visible',timeout:4500}).catch(()=>{});
+      read=await p.page.evaluate(readers.general);
+      evidence=await p.page.evaluate(pageEvidence);
+    }
     if(!read.results?.length&&!read.drafts?.length&&(!evidence.references.length&&!evidence.empty || evidence.challenge || evidence.consent))return {status:'awaiting_user',results:[],drafts:[],cursor:{...cursor,awaitingUser:true},message:evidence.challenge?'La source demande un contrôle de sécurité. Effectuez-le dans le navigateur puis reprenez.':evidence.consent?'La source demande votre consentement dans le navigateur.':'La page n’a pas fourni de résultats lisibles. Vérifiez son chargement puis reprenez.'};
     cursor.awaitingUser=false;cursor.pages.push(p.page.url());
     const next=await p.page.locator(p.source==='bing'?'a.sb_pagN,a[rel="next"]':'a#pnnext,a[rel="next"]').evaluateAll(nodes=>nodes.map(n=>n.href));

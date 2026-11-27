@@ -132,6 +132,13 @@ try{
     const links=await service.collect({...organic,query:'Nord Artisan',area:'Lille'});
     assert.equal(links.status,'completed');assert.equal(links.results.length,0);assert.equal(links.references[0].url,'https://nordartisan.fr/');
   }
+  const delayed={...identity,source:'bing',profileId:'10000000-0000-4000-8000-000000000015'};
+  p=await service.profile(delayed);
+  await p.context.route('https://www.bing.com/**',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<ol id="b_results"></ol>
+    <script>setTimeout(()=>document.querySelector('#b_results').innerHTML='<li class="b_algo"><h2><a href="https://nordartisan.fr/">Nord Artisan</a></h2></li>',2200)</script>`}));
+  const late=await service.collect({...delayed,query:'Nord Artisan',area:'Lille'});
+  assert.equal(late.status,'completed','Attendre les résultats organiques chargés après la structure initiale de Bing');
+  assert.equal(late.references[0].url,'https://nordartisan.fr/');
   const blocked={...pj,profileId:'10000000-0000-4000-8000-000000000013'};
   p=await service.profile(blocked);
   await p.context.route('https://www.pagesjaunes.fr/**',route=>route.fulfill({status:403,contentType:'text/html; charset=utf-8',body:'<h1>Sécurité</h1><p>Afin de nous aider à lutter contre certaines attaques informatiques, veuillez compléter le "challenge" suivant.</p><div id="challenge-stage"></div>'}));
@@ -147,6 +154,14 @@ try{
   assert.equal(publicRecord.status,'completed');assert.equal(publicRecord.results[0].siret,'97996550600020');assert.equal(publicRecord.results[0].companyDetails.fields['Capital social'],'500 €');
   assert.equal(publicRecord.results[0].companyDetails.managerContacts[0].role,'Présidente');assert.equal(publicRecord.results[0].phone,null);
   assert.ok(publicRecord.results[0].companyDetails.fields['Chiffre d’affaires · 2024'].includes('164 k'));
+  const nested={...pappers,profileId:'10000000-0000-4000-8000-000000000016'};
+  p=await service.profile(nested);
+  await p.context.route('https://www.pappers.fr/**',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<main><h1>NORD ARTISAN</h1>
+    <section><div><span>SIREN</span></div><div>979 965 506</div></section>
+    <section><div><span>Forme juridique</span></div><div>SASU</div></section></main>`}));
+  const nestedRecord=await service.collect({...nested,query:'979965506'});
+  assert.equal(nestedRecord.status,'completed','Les champs Pappers à libellé imbriqué doivent rester lisibles');
+  assert.equal(nestedRecord.results[0].siren,'979965506','Le SIREN doit toujours correspondre exactement à l’URL publique');
   // The local connector must expose an actionable reader, including when used
   // as a full extension tab because Chrome rejected opening the side panel.
   const extensionRoot=new URL('../../extensions/growthos-pagesjaunes/',import.meta.url);
