@@ -51,6 +51,13 @@ assert.equal(categoryOnly.drafts[0].city,null,'La catégorie Chauffagiste ne dev
 const popupMarkup=readFileSync(new URL('popup.html',root),'utf8');
 assert.ok(popupMarkup.indexOf('id="taskRead"')<popupMarkup.indexOf('id="taskPreview"') &&
   popupMarkup.indexOf('id="taskPreview"')<popupMarkup.indexOf('id="taskFinish"'),'Lire précède la comparaison et le retour au prospect');
+for(const id of ['sourcePicker','searchView','collectionView','filterReview','selectAll',
+  'capturedCount','completeCount','reviewCount','pauseMaps','importAction','manualPanel']){
+  assert.ok(popupMarkup.includes(`id="${id}"`),`Le parcours ATLAS doit conserver ${id}`);
+}
+const popupLogic=readFileSync(new URL('popup.js',root),'utf8');
+assert.ok(popupLogic.includes("url.hash='selected='") && popupLogic.includes('importable(item)'),
+  'La sélection du popup doit être transmise comme identifiants, sans importer directement');
 const partialCard={innerText:'France Dépannage\nPlombier · 35 Av. Jean Lebas\nRoubaix\n03 20 70 48 97',
   getClientRects:()=>[{}],querySelector:()=>null,querySelectorAll:()=>[],closest:()=>null};
 const partialDocument={body:partialCard,querySelectorAll:selector=>selector==='[role="article"]'?[partialCard]:[],querySelector:()=>null};
@@ -221,6 +228,21 @@ assert.equal(nextBatch.checked,1,'Le lot suivant ne doit pas rouvrir la premièr
 assert.equal((await send('get-captures',null,growthos)).results.some(item=>item.company==='Nouveau Plombier'),true);
 assert.equal((await send('auto-capture-maps',{query:'plombier',area:'59100'})).ok,false,
   'Quand toutes les fiches chargées sont vues, prévenir au lieu de recommencer les mêmes');
+assert.equal((await send('pause-maps-progress')).ok,false,'Le bouton Pause ne doit pas prétendre suspendre une collecte arrêtée');
+mapLinks=['https://www.google.com/maps/place/Pause-Un','https://www.google.com/maps/place/Pause-Deux'];
+injectedResult=()=>{
+  if(activeTabUrl.endsWith('/Pause-Un'))storage.growthos_maps_pause_requested_v1=true;
+  return {source:'google_maps',drafts:[],results:[{source:'google_maps',
+    company:'Atelier '+activeTabUrl.split('/').pop(),address:'14 rue Test 59100 Roubaix',
+    codePostal:'59100',city:'Roubaix',sourceUrl:activeTabUrl}]};
+};
+const paused=await send('auto-capture-maps',{query:'plombier',area:'59100'});
+assert.equal(paused.status,'paused','La pause doit arrêter la lecture avant la fiche suivante');
+assert.equal(paused.checked,1,'La fiche en cours doit finir sans perte');
+assert.equal((await send('auto-capture-status')).status.status,'paused');
+const resumed=await send('auto-capture-maps',{query:'plombier',area:'59100'});
+assert.equal(resumed.status,'done','La reprise doit terminer la lecture Maps');
+assert.equal(resumed.checked,1,'La reprise ne doit pas refaire les fiches déjà lues');
 const newItem=(await send('get-captures',null,growthos)).results.find(item=>item.company==='Nouveau Plombier');
 assert.equal((await send('ack-import',{ids:[newItem.id]},growthos)).ok,true);
 assert.equal((await send('get-captures',null,growthos)).results.some(item=>item.id===newItem.id),false,

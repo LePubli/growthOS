@@ -379,6 +379,7 @@ const DRAFTS_KEY = 'growthos_unverified_drafts_v1';
 const ENRICH_CURSOR_KEY = 'growthos_enrich_cursor_v1';
 const MAP_BATCH_KEY = 'growthos_maps_batch_v1';
 const MAP_SEEN_KEY = 'growthos_maps_seen_v1';
+const MAP_PAUSE_KEY = 'growthos_maps_pause_requested_v1';
 const AGE_LIMIT = 24 * 60 * 60 * 1000;
 function hostMatches(source,url) {
   try {
@@ -710,6 +711,7 @@ async function captureMapBatch(payload){
   const tabId=tab.id;
   let state={status:'running',checked:0,total:0,added:0,errors:[],startedAt:Date.now()};
   const save=async()=>chrome.storage.local.set({[MAP_BATCH_KEY]:state});
+  await chrome.storage.local.set({[MAP_PAUSE_KEY]:false});
   await save();
   const targets=new Set([searchUrl]);
   try{
@@ -729,6 +731,9 @@ async function captureMapBatch(payload){
     if(!links.length)throw new Error('Toutes les fiches Maps chargées ont déjà été examinées. Faites défiler les résultats ou réinitialisez le parcours Maps.');
     state={...state,total:links.length};await save();
     for(const url of links){
+      if((await chrome.storage.local.get(MAP_PAUSE_KEY))[MAP_PAUSE_KEY]){
+        state={...state,status:'paused'};await save();return {ok:true,...state};
+      }
       const current=new URL((await chrome.tabs.get(tabId)).url);
       if(current.origin!==original.origin || !current.pathname.startsWith('/maps/'))
         throw new Error('Lecture arrêtée après un changement de page.');
@@ -765,6 +770,9 @@ async function captureMapBatch(payload){
       }catch(error){state.errors.push(String(error?.message||error).slice(0,100));}
       state={...state,checked:state.checked+1};await save();
       await wait(400);
+    }
+    if((await chrome.storage.local.get(MAP_PAUSE_KEY))[MAP_PAUSE_KEY]){
+      state={...state,status:'paused'};await save();return {ok:true,...state};
     }
     state={...state,status:'done'};
     await save();
@@ -903,7 +911,12 @@ async function popupAction(message){
   if(action==='list-captures')return {ok:true,results:await readQueue(),warnings:[]};
   if(action==='list-drafts')return {ok:true,drafts:await readDrafts()};
   if(action==='reset-maps-progress'){
-    await chrome.storage.local.set({[MAP_SEEN_KEY]:{}});return {ok:true};
+    if(busy)throw new Error('Patientez jusqu’à la fin de la fiche en cours avant de réinitialiser.');
+    await chrome.storage.local.set({[MAP_SEEN_KEY]:{},[MAP_PAUSE_KEY]:false});return {ok:true};
+  }
+  if(action==='pause-maps-progress'){
+    if(!busy)throw new Error('Aucune collecte en cours à mettre en pause.');
+    await chrome.storage.local.set({[MAP_PAUSE_KEY]:true});return {ok:true};
   }
   if(action==='ack-import'){
     const ids=new Set((Array.isArray(message.payload?.ids)?message.payload.ids:[])
