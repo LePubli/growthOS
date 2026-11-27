@@ -7,6 +7,7 @@ try{
     import {ProspectCompanyProfile} from './src/components/ProspectCompanyProfile';import {ProspectProfessionalSources} from './src/components/ProspectProfessionalSources';
     import {Prospect360Dashboard} from './src/components/atlas/Prospect360Dashboard';import {prospectEnrichmentUrl} from './src/lib/prospect-enrichment';
     import {captureIdentityMatches,uniqueIdentityMatch} from '../../artifacts/api-server/src/lib/enrichment-identity';
+    import {businessIdentity,prospectBusinessNames,previousProspectDisplayName} from '../../lib/api-zod/src/prospect-names';
     import {collectedRelationships} from './src/lib/prospect-relationships';
     import {ProspectQuickPreview} from './src/components/atlas/ProspectQuickPreview';
     import {computeProspectCompleteness} from './src/lib/prospect-completeness';
@@ -24,6 +25,16 @@ try{
     const quickProspect={...prospect,email:'contact@atelier.fr',phone:'0320112233',website:'https://atelier.fr'};
     const quick=render(createElement(ProspectQuickPreview,{prospect:quickProspect,onClose:noop,onOpen360:noop}));
     assert.ok(quick.includes('width:'+computeProspectCompleteness(quickProspect).percent+'%')&&!quick.includes('width:75%')&&quick.includes('Vérification…'),'Aperçu : mêmes neuf critères que la fiche complète, fraîcheur en cours signalée');
+    const identity=businessIdentity({}, {legalName:'MONSIEUR SOUMAILA DIABATE',tradeNames:['Mon artisan','MON ARTISAN','Autre enseigne'],source:'entreprises',siren:'966777055',capturedAt:'2026-11-27T10:00:00Z'});
+    const names=prospectBusinessNames({...prospect,siren:'966777055',sourceDetails:{identity}});
+    assert.equal(names.displayName,'Atelier');assert.equal(names.legalName,'MONSIEUR SOUMAILA DIABATE');assert.equal(names.tradeNames.length,2);
+    assert.equal(prospectBusinessNames({...prospect,siren:'123456789',sourceDetails:{identity}}).legalName,'');
+    assert.equal(businessIdentity(identity,{legalName:'Autre affichage Pappers',source:'pappers',siren:'966777055',capturedAt:'2026-11-27T11:00:00Z'}).legalName,identity.legalName,'La raison sociale officielle est prioritaire');
+    assert.equal(previousProspectDisplayName('NOM LEGAL',[{type:'data_update',description:'Enrichissement automatique\nRaison sociale : Mon artisan → NOM LEGAL'}]),'Mon artisan');
+    assert.equal(previousProspectDisplayName('NOM LEGAL',[{type:'data_update',description:'Veille activée : données officielles mises à jour automatiquement.\nFiche · Raison sociale : Artisan local → NOM LEGAL'}]),'Artisan local');
+    assert.equal(previousProspectDisplayName('NOM LEGAL',[{type:'data_update',description:'Nom choisi manuellement\nNom affiché : Mon artisan → NOM LEGAL'}]),null);
+    const namedDash=render(createElement(Prospect360Dashboard,{prospect:{...prospect,siren:'966777055',sourceDetails:{identity}},activities:[],deals:[],onEdit:noop,onAddActivity:noop,onOpenDeal:noop,onOpenContacts:noop,onOpenActivities:noop,onOpenSources:noop,onOpenMonitoring:noop,onEnrich:noop,onStatusChange:noop,onOpenCrmMap:noop}));
+    assert.ok(namedDash.includes('Nom commercial / nom affiché')&&namedDash.includes('MONSIEUR SOUMAILA DIABATE'));
     const unverified=render(createElement(ProspectCompanyProfile,{prospect,onUpdated:noop}));
     assert.ok(unverified.includes('Rechercher le SIREN / SIRET')&&unverified.includes('source=societe_com'));
     assert.ok(!unverified.includes('Vérifier maintenant'),'Une identité absente propose une recherche active au lieu d’un contrôle grisé');

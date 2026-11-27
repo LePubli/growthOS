@@ -843,7 +843,9 @@ async function contextualTask(action,payload={}){
     if(task.query.length<3)throw new Error('Indiquez une entreprise ou une activité (3 caractères minimum).');
     await chrome.storage.local.set({[TASK_KEY]:{active:task.id,tasks:{...state.tasks,[task.id]:task}}});
     const opened=await popupAction({action:'open-source',payload:task});
-    return {ok:true,task,url:opened.url};
+    task.sourceTabId=opened.tabId;task.sourceOrigin=new URL(opened.url).origin;
+    await chrome.storage.local.set({[TASK_KEY]:{active:task.id,tasks:{...state.tasks,[task.id]:task}}});
+    return {ok:true,task,url:opened.url,windowId:opened.windowId};
   });
   if(['get-task-result','ack-task'].includes(action))return withStorageWrite(async()=>{
     const state=await readTasks(),task=state.tasks[payload.taskId];
@@ -881,7 +883,8 @@ async function contextualTask(action,payload={}){
   }
   if(action==='task-preview'){
     if(task.status!=='active')throw new Error('Capture déjà confirmée. Revenez sur le prospect.');
-    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+    let [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+    if(tab?.url?.startsWith(chrome.runtime.getURL(''))&&task.sourceTabId)tab=await chrome.tabs.get(task.sourceTabId);
     if(!tab?.id || !hostMatches(task.source,tab.url))throw new Error('Ouvrez une fiche de la source '+task.source+'.');
     if(task.source==='google_maps' && !new URL(tab.url).pathname.startsWith('/maps/place/'))throw new Error('Ouvrez une seule fiche établissement Maps avant de la lire.');
     let captures;
@@ -910,6 +913,11 @@ async function contextualTask(action,payload={}){
 
 async function popupAction(message){
   const action=message.action;
+  if(action==='task-focus-source'){
+    const task=await currentTask();if(!task||task.id!==message.payload?.taskId||!task.sourceTabId)throw new Error('La source n’est plus disponible. Relancez sa lecture depuis GrowthOS.');
+    const tab=await chrome.tabs.get(task.sourceTabId);if(!hostMatches(task.source,tab.url))throw new Error('L’onglet source a changé.');
+    await chrome.tabs.update(tab.id,{active:true});return {ok:true};
+  }
   if(['task-current','task-preview','task-complete','task-cancel'].includes(action))return contextualTask(action,message.payload);
   if((await currentTask())?.mode==='enrich' && ['manual-add','capture-tab','auto-capture-maps','enrich-local-drafts'].includes(action))
     throw new Error('Une fiche prospect est ciblée. Validez son enrichissement ou quittez ce mode avant de collecter une liste.');
@@ -985,7 +993,7 @@ async function popupAction(message){
     else if(source==='instagram')url='https://www.instagram.com/explore/search/keyword/?q='+encodeURIComponent(activity);
     else if(source==='linkedin')url='https://www.linkedin.com/search/results/companies/?keywords='+encodeURIComponent(activity);
     else url='https://www.pagesjaunes.fr/annuaire/chercherlespros?quoiqui='+encodeURIComponent(activity)+'&ou='+encodeURIComponent(location);
-    await chrome.tabs.create({url,active:true});return {ok:true,url};
+    const tab=await chrome.tabs.create({url,active:true});return {ok:true,url,tabId:tab.id,windowId:tab.windowId};
   }
   if(action==='capture-tab'){
     const tabs=await chrome.tabs.query({active:true,currentWindow:true});
@@ -1021,6 +1029,17 @@ async function popupAction(message){
   throw new Error('Action non autorisée');
 }
 
+// Keep the chosen source tab when a result opens a separate tab. No page is
+// read here: extraction still starts only from the connector's explicit button.
+chrome.tabs.onActivated?.addListener(async info=>{
+  try{
+    const tab=await chrome.tabs.get(info.tabId);
+    await withStorageWrite(async()=>{const state=await readTasks(),task=state.tasks[state.active];
+      if(task?.mode==='enrich'&&task.status==='active'&&hostMatches(task.source,tab.url)){task.sourceTabId=tab.id;await chrome.storage.local.set({[TASK_KEY]:state});}
+    });
+  }catch{}
+});
+
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   let origin;
   try { origin = new URL(sender.url || '').origin; } catch {}
@@ -1033,7 +1052,19 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     reply({ok:false,error:'Origine non autorisée'}); return false;
   }
   if(['begin-task','get-task-result','ack-task'].includes(message?.action)){
-    contextualTask(message.action,message.payload).then(reply).catch(error=>reply({ok:false,error:String(error?.message||error)}));
+    // Invoke open synchronously while the initiating click is still a user gesture.
+    let panel;
+    if(message.action==='begin-task'&&message.payload?.mode==='enrich'){
+      try{panel=chrome.sidePanel.open({windowId:sender.tab?.windowId});}catch{panel=Promise.reject(Error('Panneau indisponible'));}
+      panel=Promise.resolve(panel).then(()=>true,()=>false);
+    }
+    contextualTask(message.action,message.payload).then(async result=>{
+      if(panel&&!(await panel)){
+        await chrome.tabs.create({url:chrome.runtime.getURL('popup.html')+'?taskControls='+encodeURIComponent(result.task.id),active:true});
+        result.controls='tab';
+      }else if(panel)result.controls='sidepanel';
+      reply(result);
+    }).catch(error=>reply({ok:false,error:String(error?.message||error)}));
     return true;
   }
   if (message?.action === 'ping') {

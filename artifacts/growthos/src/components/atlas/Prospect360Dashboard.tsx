@@ -1,3 +1,4 @@
+import {prospectBusinessNames} from '../../../../../lib/api-zod/src/prospect-names';
 import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { collectProspectPeople } from '@/lib/prospect-people';
@@ -59,6 +60,7 @@ export function Prospect360Dashboard({
   onOpenSources,onOpenMonitoring,onEnrich,onStatusChange,locationPreview,onOpenCrmMap,
 }:Props) {
   const [selectedAction,setSelectedAction]=useState(0);
+  const businessNames=prospectBusinessNames(p);
   const people=collectProspectPeople(p,officialManagers);
   const directPhone=p.phone||people.find(person=>person.phone)?.phone;
   const directEmail=p.email||people.find(person=>person.email)?.email;
@@ -86,7 +88,8 @@ export function Prospect360Dashboard({
             <button className="atlas-360-text-button" onClick={onOpenSources}>Voir toutes les données <ArrowRight size={14}/></button></header>
           <dl className="atlas-360-legal-list">
             <div><dt>SIRET</dt><dd><strong>{text(p.siret)}</strong>{verified&&<span className="atlas-360-verified"><Check size={13}/> Vérifié</span>}</dd></div>
-            <div><dt>Raison sociale</dt><dd>{text(p.company)}</dd></div>
+            <div><dt>Nom commercial / nom affiché</dt><dd>{text(p.company)}</dd></div>
+            <div><dt>Raison sociale</dt><dd>{text(businessNames.legalName)}</dd></div>
             <div><dt>Code APE</dt><dd><strong>{text(p.apeCode)}</strong>{p.nafLabel&&<span> — {p.nafLabel}</span>}</dd></div>
             <div><dt>Téléphone</dt><dd>{p.phone?<a className="atlas-360-legal-action" href={'tel:'+p.phone}><Phone size={14}/>{p.phone}</a>:<span className="atlas-360-empty">À compléter</span>}</dd></div>
             <div><dt>Site web</dt><dd>{p.website?<a className="atlas-360-legal-action" href={p.website.startsWith('http')?p.website:'https://'+p.website} target="_blank" rel="noopener noreferrer"><Globe2 size={14}/>Ouvrir le site <ExternalLink size={12}/></a>:<span className="atlas-360-empty">À compléter</span>}</dd></div>

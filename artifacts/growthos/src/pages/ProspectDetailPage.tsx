@@ -1,3 +1,4 @@
+import {prospectBusinessNames,previousProspectDisplayName} from '../../../../lib/api-zod/src/prospect-names';
 import {collectedRelationships} from '@/lib/prospect-relationships';
 import {type EnrichmentRun} from '@/components/ProspectEnrichmentStatus';
 import {ProspectEnrichmentsTab} from '@/components/ProspectEnrichmentsTab';
@@ -318,6 +319,7 @@ export default function ProspectDetailPage() {
   const [returnProcessing,setReturnProcessing]=useState(false);
   const [form, setForm] = useState<any>({});
   const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [resolvingConflict,setResolvingConflict]=useState<string|null>(null);
   const [saving, setSaving] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [showAddActivity, setShowAddActivity] = useState(false);
@@ -575,16 +577,21 @@ export default function ProspectDetailPage() {
     ? prospect.sourceDetails.crossSource.observations as Array<{
       captureId:string;source:string;sourceUrl?:string|null;capturedAt:string;fieldsFilled?:string[];
     }> : [];
-  const conflictLabels:Record<string,string>={company:'Raison sociale',address:'Adresse',postalCode:'Code postal',city:'Ville',
+  const businessNames=prospectBusinessNames(prospect);
+  const previousDisplayName=previousProspectDisplayName(prospect.company,activities);
+  const restoreDisplayName=async()=>{if(!previousDisplayName||resolvingConflict)return;setResolvingConflict('display-name');try{const result=await apiClient.post<{prospect:any}>('/sourcing/device/prospects/'+id+'/display-name',{name:previousDisplayName,expectedCurrentValue:prospect.company||null});setProspect(result.prospect);await fetchActivities();toast.success('Nom affiché rétabli ; raison sociale conservée.');}catch(e:any){await fetchProspect();toast.error(e.message);}finally{setResolvingConflict(null);}};
+  const conflictLabels:Record<string,string>={company:'Nom affiché',address:'Adresse',postalCode:'Code postal',city:'Ville',
     phone:'Téléphone',email:'Email',website:'Site web',linkedinUrl:'LinkedIn',siret:'SIRET',siren:'SIREN',
     apeCode:'Code APE / NAF',nafLabel:'Libellé NAF',nafVersion:'Nomenclature'};
   const resolveConflict=async(conflictId:string,decision:'keep_existing'|'use_incoming')=>{
+    if(resolvingConflict)return;setResolvingConflict(conflictId);
+    const conflict=pendingConflicts.find(c=>c.id===conflictId);
     try{
-      const result=await apiClient.post(`/sourcing/device/prospects/${id}/resolve-conflict`,{conflictId,decision}) as {prospect:any};
+      const result=await apiClient.post(`/sourcing/device/prospects/${id}/resolve-conflict`,{conflictId,decision,expectedCurrentValue:conflict?(prospect as any)[conflict.field]??null:null}) as {prospect:any;alreadyResolved?:boolean};
       setProspect(result.prospect);
       void fetchActivities();
-      toast.success(decision==='use_incoming'?'Nouvelle valeur appliquée':'Valeur actuelle conservée');
-    }catch(error:any){toast.error(error?.message||'Impossible de résoudre ce conflit');}
+      toast.success(result.alreadyResolved?'Cette information a déjà été traitée':decision==='use_incoming'?'Nouvelle valeur appliquée':'Valeur actuelle conservée');
+    }catch(error:any){if(error?.status===409){await fetchProspect();toast.info('Les valeurs ont été actualisées. Vérifiez-les puis choisissez celle à conserver.');}else toast.error(error?.message||'Impossible de résoudre ce conflit');}finally{setResolvingConflict(null);}
   };
 
   const openDetailedSection = (sectionId?:string) => {
@@ -685,14 +692,14 @@ export default function ProspectDetailPage() {
                 <span className="ml-2 text-xs text-gray-500 font-normal">Source : {conflict.source}</span></div>
               <div className="grid gap-3 sm:grid-cols-2 my-2 text-sm">
                 <div className="rounded-lg bg-gray-50 p-2"><span className="text-xs text-gray-500">Dans le CRM</span>
-                  <p className="break-all font-medium">{conflict.existing}</p></div>
+                  <p className="break-all font-medium">{String((prospect as any)[conflict.field]??'Non renseigné')}</p></div>
                 <div className="rounded-lg bg-teal-50 p-2"><span className="text-xs text-teal-800">Nouvelle information</span>
                   <p className="break-all font-medium">{conflict.incoming}</p></div>
               </div>
               <div className="flex flex-wrap gap-2 items-center">
-                <button type="button" disabled={editing||returnProcessing} onClick={()=>void resolveConflict(conflict.id,'keep_existing')}
+                <button type="button" disabled={editing||returnProcessing||!!resolvingConflict} onClick={()=>void resolveConflict(conflict.id,'keep_existing')}
                   className="px-3 py-2 rounded-lg bg-gray-100 text-gray-800 text-xs font-semibold">Conserver le CRM</button>
-                <button type="button" disabled={editing||returnProcessing} onClick={()=>void resolveConflict(conflict.id,'use_incoming')}
+                <button type="button" disabled={editing||returnProcessing||!!resolvingConflict} onClick={()=>void resolveConflict(conflict.id,'use_incoming')}
                   className="px-3 py-2 rounded-lg bg-teal-600 text-white text-xs font-semibold">Utiliser la nouvelle valeur</button>
                 {conflict.sourceUrl&&<a href={conflict.sourceUrl} target="_blank" rel="noopener noreferrer"
                   className="text-xs text-teal-700 underline">Vérifier la source ↗</a>}
@@ -719,6 +726,8 @@ export default function ProspectDetailPage() {
               {contactName && prospect.jobTitle && <span className="text-sm text-gray-500">{prospect.jobTitle} ·</span>}
               {contactName && prospect.company && <span className="text-sm text-gray-500">{prospect.company}</span>}
               {!contactName && <span className="text-sm text-gray-500">Entreprise prospectée</span>}
+              {businessNames.legalName&&businessNames.legalName!==prospect.company&&<span className="text-sm text-gray-500">Raison sociale : {businessNames.legalName}</span>}
+              {previousDisplayName&&<button type="button" className="atlas-360-text-button" disabled={!!resolvingConflict||editing} onClick={()=>void restoreDisplayName()}>Rétablir le nom précédent : {previousDisplayName}</button>}
               <span className="text-xs px-2 py-0.5 rounded-full text-white font-medium" style={{ background: statusColor }}>
                 {STATUS_OPTIONS.find(s => s.value === prospect.status)?.label}
               </span>
@@ -744,7 +753,7 @@ export default function ProspectDetailPage() {
           <details className="atlas-360-extra-menu">
             <summary aria-label="Plus d'actions" title="Plus d'actions"><MoreHorizontal size={21}/></summary>
             <div className="atlas-360-extra-popover">
-              <button type="button" disabled={editing||returnProcessing} onClick={()=>openEditor()}><Edit2 size={16}/> Modifier la fiche</button>
+              <button type="button" disabled={editing||returnProcessing||!!resolvingConflict} onClick={()=>openEditor()}><Edit2 size={16}/> Modifier la fiche</button>
               <button type="button" disabled={saving} onClick={()=>openSourceEnrichment()}><Database size={16}/> Rechercher l’identité légale</button>
               <button onClick={toggleStar}><Star size={16}/>{prospect.isStarred?'Retirer des favoris':'Ajouter aux favoris'}</button>
               <button onClick={archiveProspect}><Archive size={16}/>{prospect.status==='archived'?'Restaurer':'Archiver'}</button>
@@ -771,7 +780,7 @@ export default function ProspectDetailPage() {
         <button className={active360View==='relations'?'selected':''} aria-current={active360View==='relations'?'page':undefined}
           onClick={()=>setActive360View('relations')}><Network size={17}/> Cartographie</button>
       </nav>
-      {active360View==='enrichments'&&<ProspectEnrichmentsTab prospectId={id} run={enrichmentRun} busy={saving||enriching||editing||returnProcessing} onEnrich={()=>void handleEnrich()} onOpenSources={()=>openDetailedSection('atlas-prospect-sources')} observations={sourceHistory} activities={activities} sourceDetails={prospect.sourceDetails}/>}
+      {active360View==='enrichments'&&<ProspectEnrichmentsTab prospectId={id} run={enrichmentRun} busy={saving||enriching||editing||returnProcessing} onEnrich={()=>void handleEnrich()} onOpenSources={()=>openDetailedSection('atlas-prospect-sources')} observations={sourceHistory} activities={activities} sourceDetails={prospect.sourceDetails} onReviewed={async()=>{await Promise.all([fetchProspect(),fetchActivities()]);const run=await apiClient.get<EnrichmentRun|null>('/prospects/'+id+'/enrichment');setEnrichmentRun(run);}}/>}
       {active360View==='relations' && <div className="atlas-relationship-view">
         <ProspectRelationshipMap siren={prospect.siren} siret={prospect.siret} company={prospect.company} website={prospect.website} sourceDetails={prospect.sourceDetails}/>
         {!collectedRelationships(prospect)?.source.includes('societe.com/')&&<ProspectPappersDossier siren={prospect.siren} siret={prospect.siret}/>}
@@ -840,7 +849,7 @@ export default function ProspectDetailPage() {
               {editing ? (
                 <>
                   {[
-                    { key: 'company', label: 'Raison sociale', maxLength: 160 },
+                    { key: 'company', label: 'Nom commercial / nom affiché', maxLength: 160 },
                     { key: 'siren', label: 'SIREN (9 chiffres)', maxLength: 9 },
                     { key: 'siret', label: 'SIRET de l’établissement (14 chiffres)', maxLength: 14 },
                     { key: 'apeCode', label: 'Code APE / NAF (ex. 43.22A)', maxLength: 6 },
@@ -855,6 +864,9 @@ export default function ProspectDetailPage() {
               ) : (
                 <>
                   {[
+                    { key: 'company', label: 'Nom commercial / nom affiché', value: prospect.company },
+                    { key: 'legalName', label: 'Raison sociale', value: businessNames.legalName },
+                    { key: 'tradeNames', label: 'Enseignes publiées', value: businessNames.tradeNames.join(' · ') },
                     { key: 'siren', label: 'SIREN', value: prospect.siren },
                     { key: 'nafLabel', label: 'Libellé officiel NAF', value: prospect.nafLabel },
                   ].map(field => <div key={field.key} className="min-w-0">

@@ -1,3 +1,4 @@
+import {businessIdentity} from '@workspace/api-zod';
 import {captureIdentityMatches} from '../../lib/enrichment-identity';
 import { professionalSourceUrl } from '@workspace/api-zod';
 import { isDeepStrictEqual } from 'node:util';
@@ -443,6 +444,7 @@ const deviceCandidateFieldsSchema = z.object({
   id: z.string().trim().min(3).max(64),
   source: z.enum(deviceSources).default('pagesjaunes'), // compatibilité extension 0.3
   company: z.string().trim().min(2).max(160),
+  tradeNames:z.array(z.string().trim().min(1).max(160)).max(30).optional(),
   address: z.string().trim().min(5).max(320),
   codePostal: z.string().regex(/^\d{5}$/),
   city: z.string().trim().max(120).nullable().optional(),
@@ -517,6 +519,7 @@ const deviceDraftSchema = z.object({
   id: z.string().trim().min(3).max(64),
   source: z.enum(['google_maps','google_search','bing']),
   company: z.string().trim().min(2).max(160),
+  tradeNames:z.array(z.string().trim().min(1).max(160)).max(30).optional(),
   address: z.string().trim().max(320).nullable().optional(),
   city: z.string().trim().max(120).nullable().optional(),
   phone: z.string().trim().max(40).nullable().optional(),
@@ -540,6 +543,7 @@ type ImportCapture = {
   sourceDetails?:Record<string,unknown>|null;
   linkedinUrl?:string|null;
   fieldEvidence?:Record<string,string|undefined>;
+  aliases?:string[];tradeNames?:string[];
   targetedIdentity?:boolean;
   identityConfirmation?:{userId:string;confirmedAt:string};
 };
@@ -560,6 +564,7 @@ function normalizedField(field:EnrichmentField,value:unknown):string{
   }
   return normalizedIdentity(raw);
 }
+const resolutionsFor=(value:Record<string,unknown>)=>Array.isArray(value.resolutions)?value.resolutions:[];
 function jsonRecord(value:unknown):Record<string,unknown>{
   return value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 }
@@ -665,6 +670,13 @@ export async function mergeProspectCapture(
   const filled:string[]=[],newConflicts:EnrichmentConflict[]=[];
   const now=new Date(item.capturedAt||Date.now()).toISOString();
   const fields=incomingFields(item,incomplete);
+  const legalCapture=['entreprises','societe_com','pappers'].includes(item.source);
+  const legalName=legalCapture?item.company:null;
+  // The CRM title may be a commercial name. A legal name is a separate fact.
+  if(legalCapture&&existing.company&&!(item.identityConfirmation&&autoFields.includes('company')))delete fields.company;
+  const nameIdentity=legalName?businessIdentity(oldDetails.identity,{legalName,tradeNames:item.tradeNames||Object.entries(jsonRecord(jsonRecord(jsonRecord(item.sourceDetails)[item.source]).companyDetails).fields||{}).filter(([key])=>/nom commercial|enseigne/i.test(key)).flatMap(([,v])=>typeof v==='string'?v.split(/[;·]/).map(s=>s.trim()):[]),siren:item.siren||item.siret?.slice(0,9)||existing.siren||existing.siret?.slice(0,9),source:item.source,sourceUrl:item.sourceUrl,capturedAt:now}):null;
+  const oldIdentity=jsonRecord(oldDetails.identity);
+  const namesChanged=!!nameIdentity&&!isDeepStrictEqual({...oldIdentity,capturedAt:null},{...nameIdentity,capturedAt:null});
   if(existing.apeCode&&fields.apeCode&&existing.apeCode!==fields.apeCode&&!autoFields.includes('apeCode')){
     if(!existing.nafLabel)delete fields.nafLabel;
     if(!existing.nafVersion)delete fields.nafVersion;
@@ -687,7 +699,7 @@ export async function mergeProspectCapture(
   const incomingSources=item.source.split(',').map(s=>s.trim()).filter(Boolean);
   const sourceAdded=incomingSources.some(source=>!sources.has(source));
   for(const source of incomingSources)sources.add(source);
-  if(!filled.length&&!newConflicts.length&&!sourceAdded&&alreadyObserved &&
+  if(!filled.length&&!newConflicts.length&&!sourceAdded&&!namesChanged&&alreadyObserved &&
     !jsonRecord(item.sourceDetails).pappers&&!jsonRecord(item.sourceDetails).societe_com&&!jsonRecord(item.sourceDetails).pagesjaunes)
     return {updated:false,filled,conflicts:0,newConflicts:[]};
   const observation={captureId:item.id,source:item.source,sourceUrl:item.sourceUrl||null,
@@ -737,10 +749,14 @@ export async function mergeProspectCapture(
     const history=Array.isArray(prior.history)?prior.history:[];
     combinedDetails[officialSource]={...incoming,history:officialDetailsChanged&&prior.snapshot?[...history,{snapshot:prior.snapshot,capturedAt:prior.capturedAt}].slice(-10):history};
   }
+  if(nameIdentity)combinedDetails.identity=nameIdentity;
+  const separateName=(c:EnrichmentConflict)=>legalCapture&&c.field==='company'&&['entreprises','societe_com','pappers'].includes(c.source)&&normalizedIdentity(c.incoming)===normalizedIdentity(legalName||'');
+  const appliedConflicts=oldConflicts.filter(c=>separateName(c)||normalizedField(c.field,updates[c.field]??existing[c.field])===normalizedField(c.field,c.incoming));
   const updatedDetails={...combinedDetails,crossSource:{...oldMerge,
     fieldSources,
     observations:(alreadyObserved?oldObservations:[...oldObservations,observation]).slice(-60),
-    conflicts:[...oldConflicts,...newConflicts].slice(-60),
+    conflicts:[...oldConflicts.filter(c=>!appliedConflicts.includes(c)),...newConflicts].slice(-60),
+    resolutions:[...priorResolutions,...appliedConflicts.map(c=>({...c,decision:separateName(c)?'separate_names':'already_applied',resolvedAt:now}))].slice(-80),
   }};
   await executor.update(prospectsTable).set({
     ...updates,
@@ -753,8 +769,9 @@ export async function mergeProspectCapture(
   const oldSociete=jsonRecord(oldDetails[legalSource]).companyDetails;
   const nextSociete=jsonRecord(combinedDetails[legalSource]).companyDetails;
   const detailsChanged=!!nextSociete && !isDeepStrictEqual(oldSociete,nextSociete);
-  if(filled.length || newConflicts.length || detailsChanged || pagesJaunesChanged || officialDetailsChanged){
+  if(filled.length || newConflicts.length || detailsChanged || pagesJaunesChanged || officialDetailsChanged || namesChanged){
     const changes:FieldChanges=Object.fromEntries(filled.map(field=>[field,{before:existing[field as EnrichmentField],after:updates[field as EnrichmentField]}]));
+    if(namesChanged)changes['Identité · raison sociale et noms commerciaux']={before:oldDetails.identity||null,after:nameIdentity};
     if(detailsChanged)changes['Informations détaillées '+(legalSource==='pappers'?'Pappers':'Societe.com')]={before:oldSociete||null,after:nextSociete};
     if(pagesJaunesChanged)changes['Informations détaillées PagesJaunes']={before:oldDetails.pagesjaunes||null,after:combinedDetails.pagesjaunes};
     if(officialDetailsChanged&&officialSource)changes[officialSource==='website'?'Coordonnées publiées sur le site web':'Données officielles · '+officialSource]={before:oldDetails[officialSource]||null,after:combinedDetails[officialSource]};
@@ -802,6 +819,7 @@ const targetCaptureSchema=deviceCandidateFieldsSchema.extend({
   ...(item.source==='societe_com' && item.sourceUrl ? {siren:new URL(item.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1]}:{}),
   sourceDetails:capturedSourceDetails(item),
 }));
+const prospectValue=(p:any,field:string)=>stringOrEmpty(p[field])||null;
 export async function targetCaptureReview(tenantId:string,prospectId:string,raw:unknown){
   const parsed=targetCaptureSchema.safeParse(raw);
   if(!parsed.success)return {status:400,error:'La capture ne contient pas une fiche source exploitable.'};
@@ -812,10 +830,11 @@ export async function targetCaptureReview(tenantId:string,prospectId:string,raw:
   const blocked=!!((known&&incoming&&known!==incoming)||(!legalOnly&&p.siret&&c.siret&&p.siret!==c.siret));
   const values=incomingFields(legalOnly?{...c,targetedIdentity:true,address:null,codePostal:null,city:null,siret:null,phone:null,email:null,website:null,apeCode:null,nafLabel:null,nafVersion:null}:{...c,targetedIdentity:true},false);
   return {status:200,review:{version:p.updatedAt.toISOString(),prospect:{id:p.id,company:p.company,siren:p.siren,siret:p.siret,address:p.address,city:p.city},source:{name:c.source,url:c.sourceUrl,company:c.company,siren:incoming||null,siret:c.siret||null,address:c.address,city:c.city},blocked,legalOnly,
-    message:blocked?'Le SIREN ou le SIRET contredit une identité déjà enregistrée. Cette confirmation ne peut pas l’écraser.':legalOnly?'Même entreprise, autre établissement : seules les informations légales et les dirigeants seront rattachés.':'Vérifiez qu’il s’agit bien de ce prospect. Les champs vides seront complétés ; les différences resteront proposées à vérifier.',
+    message:blocked?'Le SIREN ou le SIRET contredit une identité déjà enregistrée. Cette confirmation ne peut pas l’écraser.':legalOnly?'Même entreprise, autre établissement : seules les informations légales et les dirigeants seront rattachés.':'Vérifiez qu’il s’agit bien de ce prospect. Les champs vides et les remplacements cochés seront enregistrés. Le nom affiché est conservé par défaut.',
+    expectedValues:Object.fromEntries(FIELDS.map(field=>[field,prospectValue(p,field)])),
     fields:Object.entries(values).map(([field,after])=>({field,before:(p as any)[field]||null,after,changed:normalizedField(field as EnrichmentField,(p as any)[field])!==normalizedField(field as EnrichmentField,after)}))}};
 }
-export async function applyTargetCapture(tenantId:string,userId:string,prospectId:string,taskId:string,rawCapture:unknown,automatic=false,cloud?:{lease:string;result:Record<string,unknown>},review?:{expectedUpdatedAt:string;confirmed:true;replaceFields?:EnrichmentField[]}){
+export async function applyTargetCapture(tenantId:string,userId:string,prospectId:string,taskId:string,rawCapture:unknown,automatic=false,cloud?:{lease:string;result:Record<string,unknown>},review?:{expectedUpdatedAt:string;confirmed:true;replaceFields?:EnrichmentField[];expectedValues?:Record<string,string|null>}){
   const parsed=targetCaptureSchema.safeParse(rawCapture);
   if(!parsed.success || !z.string().uuid().safeParse(prospectId).success || !z.string().uuid().safeParse(taskId).success)
     return {status:400,error:!parsed.success?'Capture invalide : '+[...new Set(parsed.error.issues.map(issue=>issue.path.join('.')+': '+issue.message))].join(' ; ').slice(0,450):'Identifiant de tâche ou de prospect invalide.'};
@@ -834,7 +853,7 @@ export async function applyTargetCapture(tenantId:string,userId:string,prospectI
         eq(prospectsTable.id,prospectId),eq(prospectsTable.tenantId,tenantId),
       )).for('update');
       if(!prospect)return {status:404,error:'Prospect introuvable.'};
-      if(review&&new Date(review.expectedUpdatedAt).getTime()!==prospect.updatedAt.getTime())return {status:409,error:'La fiche a été modifiée depuis la comparaison. Rechargez les données avant de confirmer.'};
+      if(review&&(review.expectedValues?FIELDS.some(field=>!(field in review.expectedValues!)||normalizedField(field,prospect[field])!==normalizedField(field,review.expectedValues![field])):new Date(review.expectedUpdatedAt).getTime()!==prospect.updatedAt.getTime()))return {status:409,error:'La fiche a été modifiée depuis la comparaison. Rechargez les données avant de confirmer.'};
       const observations=jsonRecord(jsonRecord(prospect.sourceDetails).crossSource).observations;
       if(Array.isArray(observations) && observations.some(o=>jsonRecord(o).captureId===capture.id))
         return complete({status:200,filled:[],conflicts:0,alreadyApplied:true});
@@ -855,7 +874,7 @@ export async function applyTargetCapture(tenantId:string,userId:string,prospectI
       if(automatic&&!legalOnly&&!captureIdentityMatches(prospect,capture))return {status:409,error:'L’établissement ne correspond pas avec certitude. Vérifiez ses coordonnées.'};
       const projected=legalOnly?{...capture,siret:null,address:null,codePostal:null,city:null,phone:null,email:null,website:null,apeCode:null,nafLabel:null,nafVersion:null,
         sourceDetails:{[capture.source]:{...jsonRecord(jsonRecord(capture.sourceDetails)[capture.source]),scope:'unite_legale',headquarters:{siret:capture.siret,address:capture.address,city:capture.city}}}}:capture;
-      const merged=await mergeProspectCapture(prospect,{...projected,targetedIdentity:true,...(review?{identityConfirmation:{userId,confirmedAt:new Date().toISOString()}}:{})},false,tenantId,tx,userId,review?review.replaceFields||[]:automatic && exactSite && capture.source==='societe_com' ? ['company','address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);
+      const merged=await mergeProspectCapture(prospect,{...projected,targetedIdentity:true,...(review?{identityConfirmation:{userId,confirmedAt:new Date().toISOString()}}:{})},false,tenantId,tx,userId,review?review.replaceFields||[]:automatic && exactSite && capture.source==='societe_com' ? ['address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);
       return complete({status:200,filled:merged.filled,conflicts:merged.conflicts,alreadyApplied:false});
     });
 }
@@ -1005,10 +1024,28 @@ router.post('/device/import-prospects',requireAuth,async(req,res)=>{
   res.json(await importParsedCaptures(parsed.data,req.auth!.tenantId,req.auth!.userId));
 });
 
+// Explicit display-name edits never change the legal identity or the SIRET.
+router.post('/device/prospects/:id/display-name',requireAuth,async(req,res)=>{
+  const id=z.string().uuid().parse(req.params.id),data=z.object({name:z.string().trim().min(2).max(160),expectedCurrentValue:z.string().nullable()}).strict().parse(req.body);
+  const result=await db.transaction(async tx=>{
+    const [p]=await tx.select().from(prospectsTable).where(and(eq(prospectsTable.id,id),eq(prospectsTable.tenantId,req.auth!.tenantId))).for('update');
+    if(!p)return {status:404,error:'Prospect introuvable.'};
+    if(p.company===data.name)return {status:200,prospect:p};
+    if((p.company||null)!==data.expectedCurrentValue)return {status:409,error:'Le nom affiché a changé. Actualisez la fiche.',prospect:p};
+    const details=jsonRecord(p.sourceDetails),oldIdentity=jsonRecord(details.identity),origin=jsonRecord(jsonRecord(jsonRecord(details.crossSource).fieldSources).company);
+    const identity=!oldIdentity.legalName&&p.company&&origin.automatic===true&&['entreprises','societe_com','insee','pappers'].includes(String(origin.source))?businessIdentity(oldIdentity,{legalName:p.company,siren:p.siren||p.siret?.slice(0,9),source:String(origin.source),sourceUrl:stringOrEmpty(origin.sourceUrl)||null,capturedAt:stringOrEmpty(origin.capturedAt)||new Date().toISOString()}):oldIdentity;
+    const history=Array.isArray(identity.displayNameHistory)?identity.displayNameHistory:[];
+    const change={before:p.company,after:data.name,changedAt:new Date().toISOString(),userId:req.auth!.userId};
+    const [updated]=await tx.update(prospectsTable).set({company:data.name,sourceDetails:{...details,identity:{...identity,displayNameHistory:[...history,change].slice(-20)}},updatedAt:new Date()}).where(and(eq(prospectsTable.id,id),eq(prospectsTable.tenantId,req.auth!.tenantId))).returning();
+    await tx.insert(activitiesTable).values({type:'data_update',title:'Correction validée · nom affiché',description:changeDescription('CRM',null,{company:{before:p.company,after:data.name}},'Nom affiché choisi par l’utilisateur ; la raison sociale et les identifiants restent conservés.'),status:'done',doneAt:new Date(),prospectId:id,tenantId:req.auth!.tenantId,createdBy:req.auth!.userId});
+    return {status:200,prospect:updated};
+  });res.status(result.status).json(result);
+});
+
 // Chaque désaccord reste en attente jusqu'au choix explicite d'un utilisateur du tenant.
 router.post('/device/prospects/:id/resolve-conflict',requireAuth,async(req,res)=>{
   const id=z.string().uuid().safeParse(req.params.id);
-  const parsed=z.object({conflictId:z.string().uuid(),decision:z.enum(['keep_existing','use_incoming'])})
+  const parsed=z.object({conflictId:z.string().uuid(),decision:z.enum(['keep_existing','use_incoming']),expectedCurrentValue:z.string().max(2000).nullable().optional()})
     .strict().safeParse(req.body);
   if(!id.success || !parsed.success){res.status(400).json({error:'Décision de fusion invalide'});return;}
   const result=await db.transaction(async tx=>{
@@ -1019,21 +1056,24 @@ router.post('/device/prospects/:id/resolve-conflict',requireAuth,async(req,res)=
     const details=jsonRecord(prospect.sourceDetails),crossSource=jsonRecord(details.crossSource);
     const conflicts=Array.isArray(crossSource.conflicts)?crossSource.conflicts as EnrichmentConflict[]:[];
     const found=conflicts.find(c=>c.id===parsed.data.conflictId&&FIELDS.includes(c.field));
-    if(!found)return {status:404,error:'Conflit déjà résolu ou introuvable'};
-    if(stringOrEmpty(prospect[found.field])!==found.existing)
-      return {status:409,error:'La valeur CRM a changé. Rechargez la fiche avant de trancher.'};
-    const apply=parsed.data.decision==='use_incoming';
+    if(!found)return resolutionsFor(crossSource).some((c:any)=>c.id===parsed.data.conflictId)?{status:200,prospect,alreadyResolved:true}:{status:404,error:'Conflit introuvable'};
+    const current=stringOrEmpty(prospect[found.field]);
+    const alreadyApplied=normalizedField(found.field,current)===normalizedField(found.field,found.incoming);
+    const expected=parsed.data.expectedCurrentValue!==undefined?parsed.data.expectedCurrentValue:found.existing;
+    if(!alreadyApplied&&normalizedField(found.field,current)!==normalizedField(found.field,expected))
+      return {status:409,error:'Cette valeur vient de changer. Les informations doivent être actualisées avant votre choix.',prospect};
+    const apply=parsed.data.decision==='use_incoming'&&!alreadyApplied;
     const fieldSources=jsonRecord(crossSource.fieldSources);
     if(apply)fieldSources[found.field]={source:found.source,sourceUrl:found.sourceUrl,capturedAt:found.capturedAt,resolvedAt:new Date().toISOString()};
     const resolutions=Array.isArray(crossSource.resolutions)?crossSource.resolutions as unknown[]:[];
     const nextDetails={...details,crossSource:{...crossSource,fieldSources,conflicts:conflicts.filter(c=>c.id!==found.id),
-      resolutions:[...resolutions,{...found,decision:parsed.data.decision,resolvedAt:new Date().toISOString()}].slice(-80)}};
+      resolutions:[...resolutions,{...found,existing:current,decision:alreadyApplied?'already_applied':parsed.data.decision,resolvedAt:new Date().toISOString(),resolvedBy:req.auth!.userId}].slice(-80)}};
     const update=apply?{[found.field]:found.incoming,...(['address','city','postalCode'].includes(found.field)?{lat:null,lng:null}:{})}:{};
     const [updated]=await tx.update(prospectsTable).set({...update,sourceDetails:nextDetails,updatedAt:new Date()})
       .where(and(eq(prospectsTable.id,prospect.id),eq(prospectsTable.tenantId,req.auth!.tenantId))).returning();
-    await tx.insert(activitiesTable).values({type:'data_update',title:apply?'Correction validée · '+found.field:'Proposition écartée · '+found.field,
-      description:changeDescription(found.source,found.sourceUrl,apply?{[found.field]:{before:found.existing,after:found.incoming}}:{},
-        apply?'Nouvelle valeur validée par l’utilisateur.':`Valeur conservée : ${found.existing}. Proposition écartée : ${found.incoming}.`,found.capturedAt),
+    if(!alreadyApplied)await tx.insert(activitiesTable).values({type:'data_update',title:apply?'Correction validée · '+found.field:'Proposition écartée · '+found.field,
+      description:changeDescription(found.source,found.sourceUrl,apply?{[found.field]:{before:current,after:found.incoming}}:{},
+        apply?'Nouvelle valeur validée par l’utilisateur.':`Valeur conservée : ${current}. Proposition écartée : ${found.incoming}.`,found.capturedAt),
       prospectId:prospect.id,tenantId:req.auth!.tenantId,createdBy:req.auth!.userId,doneAt:new Date()});
     return {status:200,prospect:updated};
   });

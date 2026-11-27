@@ -1193,7 +1193,7 @@ try {
   const forgedChoice=await request('POST',`/sourcing/device/prospects/${prospectId}/resolve-conflict`,{
     conflictId:phoneConflict.id,decision:'use_incoming',
   },token);
-  check(forgedChoice.status===404,'Une résolution de conflit ne peut pas être rejouée');
+  check(forgedChoice.status===200&&forgedChoice.body.alreadyResolved,'Une résolution déjà traitée est acquittée sans rejouer la décision');
   const directInvalid=await request('POST','/sourcing/device/import-prospects',{
     verified:[],drafts:[{...directDraft,id:'draft_empty_01',address:null,phone:null,website:null}],
   },token);
@@ -1441,7 +1441,7 @@ try {
       sourceUrl:'https://www.societe.com/societe/solution-enr-966777001.html',collectionMode:'visible',capturedAt:Date.now()};
     const path='/sourcing/device/prospects/'+id;
     const enriched=await request('POST',path+'/enrich-capture',{taskId,capture,confirmed:true},token);
-    check(enriched.status===200 && enriched.body.conflicts===3,'Régression Chauffagiste : même SIRET, nom/ville/adresse différents proposés sans bloquer la capture');
+    check(enriched.status===200 && enriched.body.conflicts===2,'Régression Chauffagiste : même SIRET, nom/ville/adresse différents proposés sans bloquer la capture');
     const before=await request('GET','/prospects/'+id,undefined,token);
     const conflicts=before.body.sourceDetails.crossSource.conflicts;
     check(before.body.city==='Chauffagiste' && before.body.company==='Ancien nom' && before.body.postalCode==='59100',
@@ -1452,15 +1452,15 @@ try {
       'Ville erronée remplacée explicitement et ancienne géolocalisation invalidée');
     const changes=await Promise.all(conflicts.filter(c=>c.field!=='city').map(c=>request('POST',path+'/resolve-conflict',{conflictId:c.id,decision:'use_incoming'},token)));
     const after=await request('GET','/prospects/'+id,undefined,token);
-    check(changes.every(r=>r.status===200) && after.body.company==='SOLUTION ENR' && after.body.address===capture.address && after.body.sourceDetails.crossSource.conflicts.length===0,
+    check(changes.every(r=>r.status===200) && after.body.company==='Ancien nom'&&after.body.sourceDetails.identity.legalName==='SOLUTION ENR' && after.body.address===capture.address && after.body.sourceDetails.crossSource.conflicts.length===0,
       'Résolutions concurrentes : nom et adresse appliqués sans perdre les décisions');
     const activities=await request('GET','/activities?prospectId='+id+'&scope=history',undefined,token);
     const cityHistory=activities.body.find(a=>a.type==='data_update' && a.description.includes('Chauffagiste → Roubaix'));
-    check(activities.body.length===4 && cityHistory?.description.includes(capture.sourceUrl) && cityHistory.createdBy,
+    check(activities.body.length===3 && cityHistory?.description.includes(capture.sourceUrl) && cityHistory.createdBy,
       'Historique réel de la fiche : enrichissement et trois corrections, auteur, source et valeurs avant/après');
     await request('POST',path+'/enrich-capture',{taskId,capture,confirmed:true},token);
     await request('POST',path+'/resolve-conflict',{conflictId:city.id,decision:'use_incoming'},token);
-    check((await request('GET','/activities?prospectId='+id,undefined,token)).body.length===4,
+    check((await request('GET','/activities?prospectId='+id,undefined,token)).body.length===3,
       'Réessayer une capture ou une décision ne duplique pas les activités');
     check((await request('PATCH','/activities/'+cityHistory.id,{description:'Effacer la trace'},token)).status===404 &&
       (await request('DELETE','/activities/'+cityHistory.id,undefined,token)).status===404,
@@ -1555,6 +1555,31 @@ try {
     check(foreign.status===404,'Isolation agence : '+method+' '+path+' refuse le prospect d’une autre agence');
   }
   const absentSite=await request('POST','/prospects',{company:'Autre établissement',siret:'77700000100027',city:'Lille',address:'Adresse locale conservée',apeCode:'62.01Z'},token);
+  {
+    const target=await request('POST','/prospects',{company:'Nom commercial préservé',siret:'96677709900019',city:'Lille',address:'89 rue des Meuniers 59000 Lille'},token);
+    const taskId=randomUUID(),path='/sourcing/device/prospects/'+target.body.id;
+    const capture={id:'task_'+taskId,source:'societe_com',company:'MONSIEUR SOUMAILA DIABATE',siret:'96677709900019',city:'Lille',address:'APPT 38 89 RUE DES MEUNIERS 59000 LILLE',codePostal:'59000',capturedAt:Date.now(),sourceUrl:'https://www.societe.com/societe/monsieur-soumaila-diabate-966777099.html'};
+    await request('POST',path+'/enrich-capture',{taskId,capture,confirmed:true},token);
+    let p=(await request('GET','/prospects/'+target.body.id,undefined,token)).body;
+    check(p.company==='Nom commercial préservé'&&p.sourceDetails.identity.legalName==='MONSIEUR SOUMAILA DIABATE','Identité : nom commercial conservé, raison sociale séparée pour le même SIRET');
+    const restorePath=path+'/display-name';
+    const rename=await request('POST',restorePath,{name:'Enseigne restaurée',expectedCurrentValue:p.company},token);
+    check(rename.status===200&&rename.body.prospect.company==='Enseigne restaurée'&&rename.body.prospect.sourceDetails.identity.legalName==='MONSIEUR SOUMAILA DIABATE','Nom affiché : restauration explicite sans perdre raison sociale ni SIRET');
+    check((await request('POST',restorePath,{name:'Autre nom',expectedCurrentValue:p.company},token)).status===409,'Nom affiché : modification concurrente protégée');
+    const conflict=p.sourceDetails.crossSource.conflicts.find(c=>c.field==='address');
+    await request('PATCH','/prospects/'+p.id,{address:'89 Rue des Meuniers, 59000 Lille'},token);
+    const resolved=await request('POST',path+'/resolve-conflict',{conflictId:conflict.id,decision:'use_incoming',expectedCurrentValue:'89 Rue des Meuniers, 59000 Lille'},token);
+    check(resolved.status===200&&resolved.body.prospect.address===capture.address&&!resolved.body.prospect.sourceDetails.crossSource.conflicts.length,'Désaccord : ancienne comparaison débloquée avec la valeur réellement affichée');
+    const count=(await request('GET','/activities?prospectId='+p.id,undefined,token)).body.length;
+    check((await request('POST',path+'/resolve-conflict',{conflictId:conflict.id,decision:'use_incoming'},token)).status===200&&(await request('GET','/activities?prospectId='+p.id,undefined,token)).body.length===count,'Désaccord : double validation idempotente sans nouvelle activité');
+    const otherTask=randomUUID();await request('POST',path+'/enrich-capture',{taskId:otherTask,capture:{...capture,id:'task_'+otherTask,address:'90 rue des Meuniers 59000 Lille'},confirmed:true},token);
+    p=(await request('GET','/prospects/'+p.id,undefined,token)).body;const other=p.sourceDetails.crossSource.conflicts.find(c=>c.field==='address');
+    await request('PATCH','/prospects/'+p.id,{address:'Adresse modifiée entre deux clics'},token);
+    check((await request('POST',path+'/resolve-conflict',{conflictId:other.id,decision:'use_incoming',expectedCurrentValue:capture.address},token)).status===409,'Désaccord : véritable modification concurrente toujours protégée');
+    await request('PATCH','/prospects/'+p.id,{address:other.incoming},token);
+    const already=await request('POST',path+'/resolve-conflict',{conflictId:other.id,decision:'use_incoming'},token);
+    check(already.status===200&&!already.body.prospect.sourceDetails.crossSource.conflicts.length,'Désaccord : valeur déjà appliquée acquittée sans boucle de rechargement');
+  }
   const siteStatus=await request('POST',`/prospects/${absentSite.body.id}/verify-company`,{},token);
   check(siteStatus.body.snapshot.fields['État de l’entreprise']==='Active' && siteStatus.body.snapshot.fields['État de l’établissement']===null,
     'Établissement absent de la réponse : état non vérifié, aucune activité déduite du siège');
@@ -1562,7 +1587,7 @@ try {
   await monitoringMaintenance('expire',watchId);watchVersion=3;
   await monitoringMaintenance('cron',watchId);
   const renamed=await request('GET',watchPath,undefined,token);
-  check(renamed.body.company==='Entreprise de veille renommée' && renamed.body.apeCode==='43.21A' && renamed.body.nafLabel?.includes('électrique'),
+  check(renamed.body.company==='Entreprise de veille'&&renamed.body.sourceDetails.identity.legalName==='Entreprise de veille renommée' && renamed.body.apeCode==='43.21A' && renamed.body.nafLabel?.includes('électrique'),
     'Veille : changement de dénomination et activité locale appliqués avec le libellé du secteur');
   const renamedHistory=await request('GET','/activities?prospectId='+watchId,undefined,token);
   check(renamedHistory.body.some(a=>a.description.includes('Entreprise de veille → Entreprise de veille renommée') && a.description.includes('43.22A → 43.21A')),
@@ -1592,7 +1617,7 @@ try {
   await monitoringMaintenance('expire',watchId);
   const correctedIdentity=await request('POST',watchPath+'/verify-company',{force:true},token);
   check(!correctedIdentity.body.error && correctedIdentity.body.snapshot.siren==='777000003' && correctedIdentity.body.snapshot.sourceUpdatedAt==='2020-01-01' &&
-    (await request('GET',watchPath,undefined,token)).body.company==='Entreprise identité corrigée',
+    (await request('GET',watchPath,undefined,token)).body.sourceDetails.identity.legalName==='Entreprise identité corrigée',
     'Veille : nouvelle entreprise après correction du SIREN acceptée malgré une date officielle plus ancienne');
   await request('PATCH',watchPath,{siret:'77700000300027'},token);
   await monitoringMaintenance('expire',watchId);
@@ -1672,7 +1697,7 @@ try {
     const done=await request('GET','/browser/jobs/'+created.body.id,undefined,token);
     const updated=await request('GET','/prospects/'+target.body.id,undefined,token);
     check(done.body.status==='completed' && done.body.result.applied.filled.includes('city'),'Cloud : lecture et fusion terminent la tâche automatiquement sans extension');
-    check(updated.body.company==='ATELIER CLOUD' && updated.body.city==='Roubaix' && updated.body.postalCode==='59100' && updated.body.address==='8 rue du Test 59100 Roubaix' && updated.body.lat===null,
+    check(updated.body.company==='Ancien nom cloud'&&updated.body.sourceDetails.identity.legalName==='ATELIER CLOUD' && updated.body.city==='Roubaix' && updated.body.postalCode==='59100' && updated.body.address==='8 rue du Test 59100 Roubaix' && updated.body.lat===null,
       'Cloud : SIRET exact corrige automatiquement identité et adresse avec invalidation de l’ancienne carte');
     check(updated.body.phone==='03 20 11 22 33' && updated.body.sourceDetails.crossSource.conflicts.some(c=>c.field==='phone'),
       'Cloud : téléphone divergent conservé comme proposition sans écrasement silencieux');
@@ -1709,9 +1734,10 @@ try {
     await request('PATCH','/prospects/'+manualTarget.body.id,{company:'Enseigne corrigée'},token);
     check((await request('POST',manualPath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:review.body.version,expectedCaptureDigest:review.body.captureDigest},token)).status===409,'Confirmation : modification concurrente détectée sans écrasement');
     const freshReview=await request('GET',manualPath+'/review',undefined,token);
-    const confirmed=await request('POST',manualPath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:freshReview.body.version,expectedCaptureDigest:freshReview.body.captureDigest,replaceFields:['company','city','phone']},token);
+    await request('PATCH','/prospects/'+manualTarget.body.id,{score:12},token);
+    const confirmed=await request('POST',manualPath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:freshReview.body.version,expectedCaptureDigest:freshReview.body.captureDigest,expectedValues:freshReview.body.expectedValues,replaceFields:['company','city','phone']},token);
     const manualUpdated=(await request('GET','/prospects/'+manualTarget.body.id,undefined,token)).body;
-    check(confirmed.status===200&&confirmed.body.job.status==='completed'&&manualUpdated.siret==='96677709100019'&&manualUpdated.company==='ATELIER MANUEL'&&manualUpdated.city==='Roubaix'&&manualUpdated.phone==='03 20 99 88 77','Confirmation : identité validée et remplacements sélectionnés réellement enregistrés dans le CRM');
+    check(confirmed.status===200&&confirmed.body.job.status==='completed'&&manualUpdated.siret==='96677709100019'&&manualUpdated.company==='ATELIER MANUEL'&&manualUpdated.city==='Roubaix'&&manualUpdated.phone==='03 20 99 88 77','Confirmation : mise à jour de métadonnées sans blocage, identité et remplacements enregistrés dans le CRM');
     const parentAfter=(await request('GET','/prospects/'+manualTarget.body.id+'/enrichment',undefined,token)).body;
     check(parentAfter.steps.societe_com.status==='completed'&&parentAfter.status==='queued'&&['entreprises','insee','bodacc','pappers'].every(source=>parentAfter.steps[source].status==='pending'),'Confirmation : bilan parent actualisé et sources dépendant de l’identité reprogrammées');
     const manualActivities=(await request('GET','/activities?prospectId='+manualTarget.body.id,undefined,token)).body;
@@ -1965,13 +1991,13 @@ try {
       'Cloud : reprise d’une tâche annulée avec même identité et critères conservés');
     await runCloudMaintenance(cancelJob.body.id);
     check((await request('GET','/browser/jobs/'+cancelJob.body.id,undefined,token)).body.status==='completed' &&
-      (await request('GET','/prospects/'+cancelTarget.body.id,undefined,token)).body.company==='ATELIER CLOUD','Cloud : tâche annulée reprise jusqu’au résultat et à la mise à jour CRM');
+      (await request('GET','/prospects/'+cancelTarget.body.id,undefined,token)).body.company==='Cible à conserver','Cloud : tâche annulée reprise jusqu’au résultat et à la mise à jour CRM');
     const protectedJob=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'Tâche en file à conserver'},token);
     check((await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[created.body.id,protectedJob.body.id]},token)).status===409 &&
       (await request('GET','/browser/jobs/'+created.body.id,undefined,token)).status===200,'Cloud historique : lot mixte actif/terminé refusé atomiquement');
     const single=await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[created.body.id]},token);
     check(single.body.deleted===1 && single.body.deletedIds[0]===created.body.id && (await request('GET','/browser/jobs/'+created.body.id,undefined,token)).status===404,'Cloud historique : une recherche terminée disparaît durablement');
-    check((await request('GET','/prospects/'+target.body.id,undefined,token)).body.company==='ATELIER CLOUD' &&
+    check((await request('GET','/prospects/'+target.body.id,undefined,token)).body.company==='Ancien nom cloud' &&
       (await request('GET','/activities?prospectId='+target.body.id,undefined,token)).body.length===activity.body.length &&
       (await request('GET','/browser/profiles',undefined,token)).body.some(p=>p.id===profile.id),'Cloud historique : prospects, activités et profils préservés après suppression');
     check((await request('POST','/browser/jobs/history/delete',{scope:'selected',ids:[discovery.body.id,discovery.body.id]},token)).body.deleted===1,'Cloud historique : identifiants répétés ne doublent pas la suppression');

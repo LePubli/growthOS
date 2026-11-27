@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GrowthOS — Connecteur multisource",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "description": "Outils spécialisés de collecte et enrichissement ciblé des prospects GrowthOS, avec confirmation des données visibles.",
   "minimum_chrome_version": "141",
   "permissions": [
@@ -36,5 +36,16 @@
       ],
       "run_at": "document_idle"
     }
+  ],
+  "optional_host_permissions": [
+    "https://www.societe.com/*",
+    "https://societe.com/*",
+    "https://www.google.com/*",
+    "https://google.com/*",
+    "https://www.google.fr/*",
+    "https://google.fr/*",
+    "https://maps.google.com/*",
+    "https://www.bing.com/*",
+    "https://bing.com/*"
   ]
 }

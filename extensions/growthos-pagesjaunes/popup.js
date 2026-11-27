@@ -67,7 +67,7 @@ function leaveTaskMode(){
   $('sourcePicker').hidden=false;
   $('bulkControls').hidden=false;
   $('selectionHead').closest('section').hidden=false;
-  $('taskFinish').textContent='Confirmer et revenir au prospect';
+  $('taskFinish').textContent='Comparer dans GrowthOS';
   $('taskCancel').textContent='Quitter ce mode';
   $('manualSubmit').textContent='Valider et ajouter à la sélection';
   $('address').required=true;$('postal').required=true;
@@ -214,6 +214,7 @@ function renderContext(task){
   setPhase('task');
   const module=modules.find(m=>m.source===task.source);
   $('taskPanel').hidden=false;$('sourcePicker').hidden=true;
+  toggleCompact(false);
   $('taskTitle').textContent=(module?.name||labels[task.source])+' · Enrichir';
   $('taskTarget').textContent='Prospect : '+task.prospect.company;
   $('taskHint').textContent=module?.hint||'';
@@ -426,7 +427,7 @@ $('manualForm').addEventListener('submit',async e=>{
     siret:source==='societe_com'?$('siret').value.trim():undefined,draftId:pendingDraftId};
   try{
     if(context?.mode==='enrich'){
-      const result=await message('task-complete',{taskId:context.id,capture:form,confirmed:$('taskConfirmed').checked});
+      const result=await message('task-complete',{taskId:context.id,capture:form,confirmed:true});
       renderContext(result.task);notice('Capture enregistrée localement. Confirmez son intégration dans GrowthOS.');return;
     }
     const result=await message('manual-add',form);$('manualForm').reset();
@@ -434,9 +435,19 @@ $('manualForm').addEventListener('submit',async e=>{
     await refresh();notice(result.added?'Fiche ajoutée. Vérifiez-la dans GrowthOS avant import.':'Fiche déjà présente.');
   }catch(error){notice(error.message,true);}
 });
+$('taskOpenSource').addEventListener('click',async()=>{try{await message('task-focus-source',{taskId:context.id});}catch(error){notice(error.message,true);}});
 $('taskRead').addEventListener('click',async()=>{
+  // A background-created source tab has not received activeTab permission.
+  // Request access only for this source, directly within this button gesture.
+  const origins={societe_com:['https://www.societe.com/*','https://societe.com/*'],google_maps:['https://www.google.com/*','https://google.com/*','https://maps.google.com/*','https://www.google.fr/*','https://google.fr/*'],google_search:['https://www.google.com/*','https://google.com/*','https://www.google.fr/*','https://google.fr/*'],bing:['https://www.bing.com/*','https://bing.com/*']}[context?.source];
+  const permission=origins?chrome.permissions.request({origins}):Promise.resolve(true);
   $('taskRead').disabled=true;
-  try{const result=await message('task-preview',{taskId:context.id});renderContext(result.task);notice('Vérifiez les données, puis confirmez le bon établissement.');}
+  try{
+    if(!(await permission))throw new Error('Autorisez la lecture de cette source pour la comparer dans GrowthOS.');
+    const result=await message('task-preview',{taskId:context.id});renderContext(result.task);
+    if(result.task.preview?.length===1){await message('task-complete',{taskId:context.id,index:0,confirmed:true});notice('Capture transmise. Validez les informations dans GrowthOS.');}
+    else notice('Choisissez la bonne fiche, puis cliquez sur Comparer dans GrowthOS.');
+  }
   catch(error){notice(error.message,true);}
   finally{$('taskRead').disabled=false;}
 });
@@ -444,7 +455,7 @@ $('taskFinish').addEventListener('click',async()=>{
   const selected=document.querySelector('input[name=taskCandidate]:checked');
   $('taskFinish').disabled=true;
   try{
-    const result=await message('task-complete',{taskId:context.id,index:Number(selected?.value||0),confirmed:$('taskConfirmed').checked});
+    const result=await message('task-complete',{taskId:context.id,index:Number(selected?.value||0),confirmed:true});
     renderContext(result.task);notice('Capture confirmée. Terminez son enregistrement dans GrowthOS.');
   }
   catch(error){notice(error.message,true);$('taskFinish').disabled=false;}

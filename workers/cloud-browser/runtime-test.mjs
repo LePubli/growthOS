@@ -147,6 +147,36 @@ try{
   assert.equal(publicRecord.status,'completed');assert.equal(publicRecord.results[0].siret,'97996550600020');assert.equal(publicRecord.results[0].companyDetails.fields['Capital social'],'500 €');
   assert.equal(publicRecord.results[0].companyDetails.managerContacts[0].role,'Présidente');assert.equal(publicRecord.results[0].phone,null);
   assert.ok(publicRecord.results[0].companyDetails.fields['Chiffre d’affaires · 2024'].includes('164 k'));
+  // The local connector must expose an actionable reader, including when used
+  // as a full extension tab because Chrome rejected opening the side panel.
+  const extensionRoot=new URL('../../extensions/growthos-pagesjaunes/',import.meta.url);
+  const popupHtml=(await readFile(new URL('popup.html',extensionRoot),'utf8')).replace(/<script[^>]*src="popup.js"[^>]*><\/script>/,'').replace(/<link[^>]*popup.css[^>]*>/,'');
+  const popupScript=await readFile(new URL('popup.js',extensionRoot),'utf8');
+  const connectorModules=JSON.parse(await readFile(new URL('modules.json',extensionRoot),'utf8'));
+  const panel=p.page;await panel.setViewportSize({width:400,height:780});await panel.setContent(popupHtml,{waitUntil:'domcontentloaded'});
+  await panel.addStyleTag({content:await readFile(new URL('popup.css',extensionRoot),'utf8')});
+  await panel.evaluate(({connectorModules})=>{
+    const task={id:'10000000-0000-4000-8000-000000000099',source:'societe_com',mode:'enrich',status:'active',query:'Atelier',area:'Roubaix',prospect:{id:'10000000-0000-4000-8000-000000000098',company:'Atelier'}};
+    window.connectorActions=[];window.requestedOrigins=[];
+    window.fetch=async()=>({json:async()=>connectorModules});
+    window.chrome={runtime:{id:'unit-runtime',getManifest:()=>({version:'test'}),getURL:path=>'https://extension.invalid/'+path,sendMessage:(message,reply)=>{
+      window.connectorActions.push(message.action);
+      if(message.action==='task-preview')reply({ok:true,task:{...task,preview:[{source:'societe_com',company:'Atelier',siret:'96677700200019'}]}});
+      else if(message.action==='task-complete')reply({ok:true,task:{...task,status:'pending'}});
+      else reply({ok:true,task});
+    }},permissions:{request:async value=>{window.requestedOrigins.push(value.origins);window.connectorActions.push('permission-request');return true;}},tabs:{query:async()=>[{url:'https://www.societe.com/societe/atelier-966777002.html',id:4,windowId:1}],onActivated:{addListener(){}},onUpdated:{addListener(){}}},storage:{local:{get:async()=>({})},onChanged:{addListener(){}}}};
+  },{connectorModules});
+  await panel.addScriptTag({content:popupScript});
+  await panel.locator('#taskRead').waitFor({state:'visible'});
+  assert.ok(await panel.locator('#taskOpenSource').isVisible(),'Les commandes de la source sont accessibles dans le mode local');
+  assert.ok(await panel.locator('#manualPanel').isVisible(),'La saisie assistée reste accessible avec les vrais styles du panneau');
+  const readButton=await panel.locator('#taskRead').boundingBox();assert.ok(readButton&&readButton.y+readButton.height<780,'La commande de lecture est visible sans chercher en bas du panneau');
+  await panel.locator('#taskRead').click();
+  await panel.waitForFunction(()=>window.connectorActions.includes('task-complete'));
+  assert.deepEqual(await panel.evaluate(()=>window.connectorActions.filter(a=>['permission-request','task-preview','task-complete'].includes(a))),['permission-request','task-preview','task-complete']);
+  assert.deepEqual(await panel.evaluate(()=>window.requestedOrigins),[['https://www.societe.com/*','https://societe.com/*']]);
+  await panel.close();
+  console.log('✓ Connecteur local réel : commandes visibles, permission limitée, lecture puis retour à la comparaison CRM sans seconde case de confirmation');
   console.log('✓ Pappers : fiche publique par SIREN, identité visible, données légales, finances datées et dirigeants ; contacts réservés laissés absents');
   console.log('✓ Régressions DOM : Societe.com lien vide + ville + /manager/, Maps détaillé sur URL search, résultats organiques Google/Bing, blocage Cloudflare explicite');
   console.log('✓ Chromium réel : 35 fiches Maps en continuation et PagesJaunes recherche → détail → page suivante avec lecteurs canoniques');

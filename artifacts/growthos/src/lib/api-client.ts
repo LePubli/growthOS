@@ -75,7 +75,7 @@ class ApiClient {
         if (error.response?.status && error.response.status >= 400 && error.response.status !== 401) {
           toast.error(errorMessage);
         }
-        throw new Error(errorMessage);
+        throw Object.assign(new Error(errorMessage),{status:error.response?.status,data:error.response?.data});
       }
     );
   }
