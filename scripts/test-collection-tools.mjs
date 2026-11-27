@@ -1,11 +1,17 @@
 // Le catalogue réel et son rendu React, sans session ni service distant.
 import {createRequire} from 'node:module';
+import {readFileSync} from 'node:fs';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const require=createRequire(new URL('../artifacts/api-server/build.mjs',import.meta.url));
+const cloudStyles=readFileSync(join(root,'artifacts/growthos/src/cloud-browser.css'),'utf8');
+if(!cloudStyles.includes(':is(input,select):focus-visible {outline:none')
+  ||!cloudStyles.includes('.cloud-browser-input-icon:focus-within')){
+  throw new Error('Les champs du navigateur doivent utiliser un focus discret sur leur contenant, sans encart bleu intérieur.');
+}
 const {build}=require('esbuild');
 const directory=await mkdtemp(join(tmpdir(),'growthos-collection-tools-'));
 try{

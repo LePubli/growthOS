@@ -10,7 +10,8 @@
 .cloud-browser-page :is(button,input,select) {font:inherit;}
 .cloud-browser-page button {cursor:pointer;transition:background .16s,border-color .16s,box-shadow .16s,transform .16s;}
 .cloud-browser-page button:disabled {opacity:.45;cursor:not-allowed;transform:none!important;}
-.cloud-browser-page :is(button,a,input,select,summary,[tabindex]):focus-visible {outline:2px solid #4489ff;outline-offset:2px;}
+.cloud-browser-page :is(button,a,summary,[tabindex]):focus-visible {outline:2px solid #4489ff;outline-offset:2px;}
+.cloud-browser-page :is(input,select):focus-visible {outline:none;outline-offset:0;}
 .cloud-browser-page :is(input,select) {color:#1c3150;background:#ffffffcf;}
 .cloud-browser-page :is(input,select)::placeholder {color:#879ab4;}
 .cloud-browser-page a {text-decoration:none;}
@@ -51,14 +52,19 @@
 .cloud-browser-field>select,.cloud-browser-field>input,.cloud-browser-input-icon,.cloud-browser-select-with-logo {
   width:100%;min-width:0;height:40px;min-height:40px;border:1px solid #c3d5ee;border-radius:9px;background:#ffffffd9;
   box-shadow:0 2px 5px #20477208;}
-.cloud-browser-field>select,.cloud-browser-field>input {padding:0 10px;outline-color:#4489ff;font-size:11.5px;font-weight:670;}
+.cloud-browser-field>select,.cloud-browser-field>input {padding:0 10px;outline:none;font-size:11.5px;font-weight:670;}
 .cloud-browser-select-with-logo {display:flex;align-items:center;gap:4px;padding-left:9px;}
 .cloud-browser-select-with-logo>select {border:0;background:transparent;min-width:0;width:100%;height:100%;padding:0 5px;
-  outline-color:#4489ff;font-size:11.5px;font-weight:730;}
+  outline:none;font-size:11.5px;font-weight:730;}
 .cloud-browser-input-icon {display:flex;align-items:center;gap:7px;padding:0 9px;color:#6483b1;}
 .cloud-browser-input-icon>svg {flex:0 0 auto;}
 .cloud-browser-input-icon>input {background:transparent;border:0;min-width:0;width:100%;height:100%;outline:0;
   color:#1d3454;font-size:11.5px;font-weight:650;}
+.cloud-browser-field>select:focus,.cloud-browser-field>input:focus,
+.cloud-browser-input-icon:focus-within,.cloud-browser-select-with-logo:focus-within {
+  border-color:#a5bedf;background:#fff;box-shadow:0 2px 7px #315c9414;
+}
+.cloud-browser-profile-form :is(input,select):focus {border-color:#a5bedf;box-shadow:0 2px 7px #315c9414;}
 .cloud-browser-field.cloud-browser-limit>input {font-weight:800;}
 .cloud-browser-primary {display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:9px 13px;
   min-height:39px;border-radius:9px;border:1px solid #176bee;color:#fff;background:#176bee;
