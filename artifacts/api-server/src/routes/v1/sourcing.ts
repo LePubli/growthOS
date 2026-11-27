@@ -538,7 +538,10 @@ type ImportCapture = {
   siren?:string|null;sourceUrl?:string|null;capturedAt?:number;
   apeCode?:string|null;nafLabel?:string|null;nafVersion?:string|null;
   sourceDetails?:Record<string,unknown>|null;
+  linkedinUrl?:string|null;
+  fieldEvidence?:Record<string,string|undefined>;
   targetedIdentity?:boolean;
+  identityConfirmation?:{userId:string;confirmedAt:string};
 };
 type EnrichmentField = 'company'|'linkedinUrl'|'address'|'postalCode'|'city'|'phone'|'email'|'website'|'siret'|'siren'|'apeCode'|'nafLabel'|'nafVersion';
 type EnrichmentConflict = {
@@ -579,6 +582,7 @@ function incomingFields(item:ImportCapture,incomplete:boolean):Partial<Record<En
   }
   const linkedinUrl=item.source.split(',').includes('linkedin') ? professionalSourceUrl('linkedin',item.sourceUrl) : null;
   if(linkedinUrl)fields.linkedinUrl=linkedinUrl;
+  if(item.source==='website'&&item.linkedinUrl){const link=professionalSourceUrl('linkedin',item.linkedinUrl);if(link)fields.linkedinUrl=link;}
   if(!incomplete){
     if(item.codePostal)fields.postalCode=item.codePostal;
     if(item.siret){fields.siret=item.siret;fields.siren=item.siren||item.siret.slice(0,9);}
@@ -670,7 +674,7 @@ export async function mergeProspectCapture(
     const current=stringOrEmpty(existing[field]);
     if(!current || (autoFields.includes(field) && normalizedField(field,current)!==normalizedField(field,incoming))){
       updates[field]=incoming;filled.push(field);
-      fieldSources[field]={source:item.source,sourceUrl:item.sourceUrl,capturedAt:now,...(autoFields.length?{automatic:true}:{})};
+      fieldSources[field]={source:item.source,sourceUrl:item.fieldEvidence?.[field]||item.sourceUrl,capturedAt:now,...(autoFields.length?{automatic:!item.identityConfirmation}:{})};
     }else if(normalizedField(field,current)!==normalizedField(field,incoming)){
       const repeated=[...oldConflicts,...priorResolutions].some(c=>c.field===field&&c.incoming===incoming&&
         c.existing===current&&c.source===item.source);
@@ -687,7 +691,7 @@ export async function mergeProspectCapture(
     !jsonRecord(item.sourceDetails).pappers&&!jsonRecord(item.sourceDetails).societe_com&&!jsonRecord(item.sourceDetails).pagesjaunes)
     return {updated:false,filled,conflicts:0,newConflicts:[]};
   const observation={captureId:item.id,source:item.source,sourceUrl:item.sourceUrl||null,
-    capturedAt:now,fieldsFilled:filled};
+    capturedAt:now,fieldsFilled:filled,...(item.identityConfirmation?{identityConfirmation:item.identityConfirmation}:{})};
   const incomingDetails=jsonRecord(item.sourceDetails);
   const combinedDetails={...oldDetails};
   for(const [source,details] of Object.entries(incomingDetails)){
@@ -726,7 +730,7 @@ export async function mergeProspectCapture(
     }
   }
   let officialDetailsChanged=false;
-  const officialSource=['entreprises','insee'].includes(item.source)?item.source:null;
+  const officialSource=['entreprises','insee','website'].includes(item.source)?item.source:null;
   if(officialSource&&incomingDetails[officialSource]){
     const incoming=jsonRecord(incomingDetails[officialSource]),prior=jsonRecord(oldDetails[officialSource]);
     officialDetailsChanged=!isDeepStrictEqual(prior.snapshot,incoming.snapshot);
@@ -753,10 +757,10 @@ export async function mergeProspectCapture(
     const changes:FieldChanges=Object.fromEntries(filled.map(field=>[field,{before:existing[field as EnrichmentField],after:updates[field as EnrichmentField]}]));
     if(detailsChanged)changes['Informations détaillées '+(legalSource==='pappers'?'Pappers':'Societe.com')]={before:oldSociete||null,after:nextSociete};
     if(pagesJaunesChanged)changes['Informations détaillées PagesJaunes']={before:oldDetails.pagesjaunes||null,after:combinedDetails.pagesjaunes};
-    if(officialDetailsChanged&&officialSource)changes['Données officielles · '+officialSource]={before:oldDetails[officialSource]||null,after:combinedDetails[officialSource]};
+    if(officialDetailsChanged&&officialSource)changes[officialSource==='website'?'Coordonnées publiées sur le site web':'Données officielles · '+officialSource]={before:oldDetails[officialSource]||null,after:combinedDetails[officialSource]};
     const proposals=newConflicts.length?'\nPropositions non appliquées : '+newConflicts.map(c=>`${prospectFieldLabels[c.field]||c.field} : ${c.existing} → ${c.incoming}`).join(' ; '):'';
     await executor.insert(activitiesTable).values({type:'data_update',title:'Enrichissement · '+item.source,
-      description:changeDescription(item.source,item.sourceUrl||null,changes,autoFields.length?'Enrichissement automatique : identité exacte et données confirmées de la source.':'Champs vides complétés ; les valeurs divergentes restent à valider.',now)+proposals,
+      description:changeDescription(item.source,item.sourceUrl||null,changes,item.identityConfirmation?'Mise à jour confirmée par l’utilisateur après comparaison.':autoFields.length?'Enrichissement automatique : identité exacte et données confirmées de la source.':'Champs vides complétés ; les valeurs divergentes restent à valider.',now)+(item.identityConfirmation?'\nIdentité confirmée explicitement après comparaison par l’utilisateur '+item.identityConfirmation.userId+'.':'')+proposals,
       status:'done',doneAt:new Date(),prospectId:existing.id,tenantId,createdBy:actorId||null});
   }
   return {updated:true,filled,conflicts:newConflicts.length,newConflicts};
@@ -798,7 +802,20 @@ const targetCaptureSchema=deviceCandidateFieldsSchema.extend({
   ...(item.source==='societe_com' && item.sourceUrl ? {siren:new URL(item.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1]}:{}),
   sourceDetails:capturedSourceDetails(item),
 }));
-export async function applyTargetCapture(tenantId:string,userId:string,prospectId:string,taskId:string,rawCapture:unknown,automatic=false,cloud?:{lease:string;result:Record<string,unknown>}){
+export async function targetCaptureReview(tenantId:string,prospectId:string,raw:unknown){
+  const parsed=targetCaptureSchema.safeParse(raw);
+  if(!parsed.success)return {status:400,error:'La capture ne contient pas une fiche source exploitable.'};
+  const [p]=await db.select().from(prospectsTable).where(and(eq(prospectsTable.id,prospectId),eq(prospectsTable.tenantId,tenantId)));
+  if(!p)return {status:404,error:'Prospect introuvable.'};
+  const c=parsed.data,known=p.siren||p.siret?.slice(0,9),incoming=c.siren||c.siret?.slice(0,9);
+  const legalOnly=!!(['societe_com','pappers'].includes(c.source)&&c.companyDetails&&known&&known===incoming&&p.siret&&c.siret&&p.siret!==c.siret);
+  const blocked=!!((known&&incoming&&known!==incoming)||(!legalOnly&&p.siret&&c.siret&&p.siret!==c.siret));
+  const values=incomingFields(legalOnly?{...c,targetedIdentity:true,address:null,codePostal:null,city:null,siret:null,phone:null,email:null,website:null,apeCode:null,nafLabel:null,nafVersion:null}:{...c,targetedIdentity:true},false);
+  return {status:200,review:{version:p.updatedAt.toISOString(),prospect:{id:p.id,company:p.company,siren:p.siren,siret:p.siret,address:p.address,city:p.city},source:{name:c.source,url:c.sourceUrl,company:c.company,siren:incoming||null,siret:c.siret||null,address:c.address,city:c.city},blocked,legalOnly,
+    message:blocked?'Le SIREN ou le SIRET contredit une identité déjà enregistrée. Cette confirmation ne peut pas l’écraser.':legalOnly?'Même entreprise, autre établissement : seules les informations légales et les dirigeants seront rattachés.':'Vérifiez qu’il s’agit bien de ce prospect. Les champs vides seront complétés ; les différences resteront proposées à vérifier.',
+    fields:Object.entries(values).map(([field,after])=>({field,before:(p as any)[field]||null,after,changed:normalizedField(field as EnrichmentField,(p as any)[field])!==normalizedField(field as EnrichmentField,after)}))}};
+}
+export async function applyTargetCapture(tenantId:string,userId:string,prospectId:string,taskId:string,rawCapture:unknown,automatic=false,cloud?:{lease:string;result:Record<string,unknown>},review?:{expectedUpdatedAt:string;confirmed:true;replaceFields?:EnrichmentField[]}){
   const parsed=targetCaptureSchema.safeParse(rawCapture);
   if(!parsed.success || !z.string().uuid().safeParse(prospectId).success || !z.string().uuid().safeParse(taskId).success)
     return {status:400,error:!parsed.success?'Capture invalide : '+[...new Set(parsed.error.issues.map(issue=>issue.path.join('.')+': '+issue.message))].join(' ; ').slice(0,450):'Identifiant de tâche ou de prospect invalide.'};
@@ -817,6 +834,7 @@ export async function applyTargetCapture(tenantId:string,userId:string,prospectI
         eq(prospectsTable.id,prospectId),eq(prospectsTable.tenantId,tenantId),
       )).for('update');
       if(!prospect)return {status:404,error:'Prospect introuvable.'};
+      if(review&&new Date(review.expectedUpdatedAt).getTime()!==prospect.updatedAt.getTime())return {status:409,error:'La fiche a été modifiée depuis la comparaison. Rechargez les données avant de confirmer.'};
       const observations=jsonRecord(jsonRecord(prospect.sourceDetails).crossSource).observations;
       if(Array.isArray(observations) && observations.some(o=>jsonRecord(o).captureId===capture.id))
         return complete({status:200,filled:[],conflicts:0,alreadyApplied:true});
@@ -824,20 +842,20 @@ export async function applyTargetCapture(tenantId:string,userId:string,prospectI
       const incomingSiren=capture.siren || capture.siret?.slice(0,9);
       // A company page describes its headquarters. Reuse legal-entity details
       // only when SIREN is already confirmed; never move the prospect's site.
-      const legalOnly=!!(automatic&&cloud&&['societe_com','pappers'].includes(capture.source)&&capture.companyDetails&&knownSiren&&knownSiren===incomingSiren&&prospect.siret&&capture.siret&&prospect.siret!==capture.siret);
+      const legalOnly=!!(((automatic&&cloud)||review)&&['societe_com','pappers'].includes(capture.source)&&capture.companyDetails&&knownSiren&&knownSiren===incomingSiren&&prospect.siret&&capture.siret&&prospect.siret!==capture.siret);
       if((knownSiren && incomingSiren && knownSiren!==incomingSiren) ||
         (!legalOnly && prospect.siret && capture.siret && prospect.siret!==capture.siret))
         return {status:409,error:'L’identité juridique ou l’établissement diffère de ce prospect.'};
       const legalMatch=!!(knownSiren && incomingSiren===knownSiren);
       const exactSite=!!(prospect.siret && capture.siret===prospect.siret);
-      if(!legalOnly && !exactSite && ((!legalMatch && normalizedIdentity(prospect.company||'')!==normalizedIdentity(capture.company)) ||
+      if(!review && !legalOnly && !exactSite && ((!legalMatch && normalizedIdentity(prospect.company||'')!==normalizedIdentity(capture.company)) ||
         (prospect.city && capture.city && normalizedIdentity(prospect.city)!==normalizedIdentity(capture.city)))
       )
         return {status:409,error:'Le nom ou la ville diffère. Vérifiez la fiche et son établissement avant enrichissement.'};
       if(automatic&&!legalOnly&&!captureIdentityMatches(prospect,capture))return {status:409,error:'L’établissement ne correspond pas avec certitude. Vérifiez ses coordonnées.'};
       const projected=legalOnly?{...capture,siret:null,address:null,codePostal:null,city:null,phone:null,email:null,website:null,apeCode:null,nafLabel:null,nafVersion:null,
         sourceDetails:{[capture.source]:{...jsonRecord(jsonRecord(capture.sourceDetails)[capture.source]),scope:'unite_legale',headquarters:{siret:capture.siret,address:capture.address,city:capture.city}}}}:capture;
-      const merged=await mergeProspectCapture(prospect,{...projected,targetedIdentity:true},false,tenantId,tx,userId,automatic && exactSite && capture.source==='societe_com' ? ['company','address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);
+      const merged=await mergeProspectCapture(prospect,{...projected,targetedIdentity:true,...(review?{identityConfirmation:{userId,confirmedAt:new Date().toISOString()}}:{})},false,tenantId,tx,userId,review?review.replaceFields||[]:automatic && exactSite && capture.source==='societe_com' ? ['company','address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);
       return complete({status:200,filled:merged.filled,conflicts:merged.conflicts,alreadyApplied:false});
     });
 }

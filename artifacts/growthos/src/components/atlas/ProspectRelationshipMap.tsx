@@ -2,12 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Building2, CircleHelp, ExternalLink, History, Maximize, Minus, Plus, UserRound, Users, ZoomIn } from 'lucide-react';
 import { CompanyLogo, SourceLogo } from '@/components/atlas/ProspectLogos';
 
-type Node = {
-  id: string; name: string; kind: 'company' | 'person'; x: number; y: number;
-  subtitle: string; url: string; note?: string; historical?: boolean; website?: string;
-};
-type Edge = { from: string; to: string; label: string; historical?: boolean };
-export type RelationshipData = { nodes: Node[]; edges: Edge[]; source: string; capturedAt: string };
+import {collectedRelationships,type RelationshipData,type RelationshipNode as Node} from '@/lib/prospect-relationships';
+export type {RelationshipData} from '@/lib/prospect-relationships';
 
 /** Référence documentaire publique, et non une réponse en direct de l'API Pappers. */
 const SOLUTION_ENR_REFERENCE: RelationshipData = {
@@ -35,14 +31,17 @@ const SOLUTION_ENR_REFERENCE: RelationshipData = {
   ],
 };
 
-type Props = { siren?: string | null; siret?: string | null; company?: string | null; website?: string | null; data?: RelationshipData | null };
+type Props = { siren?: string | null; siret?: string | null; company?: string | null; website?: string | null; data?: RelationshipData | null;sourceDetails?:Record<string,any>|null };
 const WIDTH = 1020;
 const HEIGHT = 590;
 const clamp = (v: number) => Math.max(0.55, Math.min(2.6, v));
 
-export function ProspectRelationshipMap({ siren, siret, company, website, data }: Props) {
+export function ProspectRelationshipMap({ siren, siret, company, website, data,sourceDetails }: Props) {
   const referenceId = (siren || siret || '').replace(/\D/g, '').slice(0,9);
-  const graph = data || (referenceId === '981075252' ? SOLUTION_ENR_REFERENCE : null);
+  const captured=collectedRelationships({siren,siret,company,website,sourceDetails});
+  const graph = captured || data || (referenceId === '981075252' ? SOLUTION_ENR_REFERENCE : null);
+  const provider=graph?.source.includes('societe.com/')?'societe_com':'pappers';
+  const providerName=provider==='societe_com'?'Societe.com':'Pappers';
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{x:number;y:number;panX:number;panY:number}|null>(null);
   const cameraRef = useRef({zoom:1, panX:0, panY:0});
@@ -94,8 +93,8 @@ export function ProspectRelationshipMap({ siren, siret, company, website, data }
       <div className="atlas-preview-avatar"><Users size={30}/></div>
       <h3>Cartographie en attente de données vérifiées</h3>
       <p>Les relations ne sont jamais déduites du nom de l’entreprise. Connectez une source juridique qui renvoie des mandats avec leurs identifiants et dates.</p>
-      {referenceId && <a href={'https://www.pappers.fr/recherche?q='+encodeURIComponent(referenceId)} target="_blank" rel="noopener noreferrer">
-        Consulter Pappers pour ce SIREN <ExternalLink size={14}/>
+      {referenceId && <a href={'https://www.societe.com/recherche?q='+encodeURIComponent(referenceId)+'&ftStatus=0'} target="_blank" rel="noopener noreferrer">
+        Consulter Societe.com pour ce SIREN <ExternalLink size={14}/>
       </a>}
       {!referenceId && <p>Commencez par identifier un SIREN ou un SIRET fiable.</p>}
     </div>
@@ -107,13 +106,13 @@ export function ProspectRelationshipMap({ siren, siret, company, website, data }
         <div><div className="atlas-overline">RÉSEAU D’ENTREPRISE</div><h2>Cartographie des relations</h2>
           <p>Vue interactive des sociétés et dirigeants liés à {company||'cette entreprise'}.</p></div>
         <a href={graph.source} target="_blank" rel="noopener noreferrer" className="atlas-source-link">
-          <SourceLogo source="pappers" size="sm"/> Source Pappers <ExternalLink size={15}/>
+          <SourceLogo source={provider} size="sm"/> Source {providerName} <ExternalLink size={15}/>
         </a>
       </header>
       <div className="atlas-graph-toolbar">
         <div className="atlas-segmented">
-          <button className={perspective==='company'?'selected':''} onClick={()=>{setPerspective('company');setView({zoom:1,panX:0,panY:0});setSelected('solution');}}><Building2 size={15}/> Entreprise</button>
-          <button className={perspective==='directors'?'selected':''} onClick={()=>{setPerspective('directors');focusNode(graph.nodes.find(n=>n.id==='soheyb')||graph.nodes[0]);}}><UserRound size={15}/> Dirigeants</button>
+          <button className={perspective==='company'?'selected':''} onClick={()=>{setPerspective('company');setView({zoom:1,panX:0,panY:0});setSelected(graph.nodes.find(n=>n.kind==='company')?.id||graph.nodes[0]?.id);}}><Building2 size={15}/> Entreprise</button>
+          <button className={perspective==='directors'?'selected':''} onClick={()=>{setPerspective('directors');focusNode(graph.nodes.find(n=>n.kind==='person')||graph.nodes[0]);}}><UserRound size={15}/> Dirigeants</button>
         </div>
         <label className="atlas-history-toggle"><input type="checkbox" checked={showHistory} onChange={e=>setShowHistory(e.target.checked)}/> <History size={14}/> Anciens mandats</label>
         <span className="atlas-graph-count">{visibleNodes.length} entités · {visibleEdges.length} liens</span>
@@ -150,7 +149,7 @@ export function ProspectRelationshipMap({ siren, siret, company, website, data }
               className={'atlas-graph-node '+n.kind+(n.historical?' historical':'')+(currentNode?.id===n.id?' active':'')}
               style={{left:n.x,top:n.y}} aria-pressed={currentNode?.id===n.id}>
               <span className="atlas-graph-node-icon">{n.kind==='company'
-                ?<CompanyLogo name={n.name} website={n.website||(n.id==='solution'?website:null)} size="sm"/>
+                ?<CompanyLogo name={n.name} website={n.website||(n.id===graph.nodes.find(x=>x.kind==='company')?.id?website:null)} size="sm"/>
                 :<UserRound size={18}/>}</span>
               <span className="atlas-graph-node-text"><strong>{n.name}</strong><small>{n.subtitle}</small></span>
             </button>)}
@@ -167,13 +166,13 @@ export function ProspectRelationshipMap({ siren, siret, company, website, data }
       <footer className="atlas-graph-footer">
         <div className="atlas-graph-detail">
           <div className="atlas-graph-detail-icon">{currentNode?.kind==='person'?<UserRound size={20}/>
-            :<CompanyLogo name={currentNode?.name||company||'Entreprise'} website={currentNode?.website||(currentNode?.id==='solution'?website:null)} size="md"/>}</div>
+            :<CompanyLogo name={currentNode?.name||company||'Entreprise'} website={currentNode?.website||(currentNode?.id===graph.nodes.find(x=>x.kind==='company')?.id?website:null)} size="md"/>}</div>
           <div><strong>{currentNode?.name}</strong><p>{currentNode?.subtitle} {currentNode?.note && ' · '+currentNode.note}</p></div>
-          {currentNode && <a href={currentNode.url} target="_blank" rel="noopener noreferrer" aria-label={'Voir la fiche Pappers de '+currentNode.name}><ArrowUpRight size={18}/></a>}
+          {currentNode && <a href={currentNode.url} target="_blank" rel="noopener noreferrer" aria-label={'Voir la fiche '+providerName+' de '+currentNode.name}><ArrowUpRight size={18}/></a>}
         </div>
         <div className="atlas-graph-legend"><span><i/> Lien actuel</span><span><i className="historical"/> Ancien mandat</span></div>
       </footer>
-      <p className="atlas-documentation-notice"><CircleHelp size={15}/> Capture documentaire du {graph.capturedAt}, non synchronisée automatiquement. Les liens représentent des mandats publiés, pas des participations capitalistiques présumées. Une API et ses droits d'accès seront nécessaires pour les autres entreprises.</p>
+      <p className="atlas-documentation-notice"><CircleHelp size={15}/> Relations relevées sur {providerName} le {graph.capturedAt}. Les liens représentent des mandats publiés, pas des participations capitalistiques présumées. Seules les relations effectivement collectées sont affichées ; les autres mandats peuvent manquer.</p>
     </section>
   );
 }

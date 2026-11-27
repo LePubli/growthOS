@@ -803,7 +803,7 @@ async function readTasks(){
   return {active:saved.active||null,tasks};
 }
 async function currentTask(){const state=await readTasks();return state.tasks[state.active]||null;}
-function targetUrl(task){return 'https://agile.le-publicitaire.fr/prospects/'+task.prospect.id+'?enrichmentTask='+task.id;}
+function targetUrl(task){return 'https://agile.le-publicitaire.fr/prospects/'+task.prospect.id+'?enrichmentTask='+task.id+(task.cloudJobId?'&cloudJobId='+task.cloudJobId:'');}
 function taskCapture(raw,task){
   if(!raw || raw.source!==task.source || !hostMatches(task.source,raw.sourceUrl))throw new Error('La fiche ne correspond pas à la source choisie.');
   const sourceUrl=new URL(raw.sourceUrl);
@@ -835,10 +835,11 @@ async function contextualTask(action,payload={}){
     for(const [id] of receipts.slice(0,-50))delete state.tasks[id];
     if(Object.values(state.tasks).some(t=>t.status==='pending'))throw new Error('Un enrichissement attend son enregistrement. Revenez sur le prospect indiqué dans l’extension.');
     if(state.tasks[state.active]?.mode==='enrich')throw new Error('Terminez ou quittez l’enrichissement en cours dans l’extension.');
+    if(payload.cloudJobId!==undefined&&!UUID.test(payload.cloudJobId))throw new Error('Tâche cloud invalide.');
     const prospect=payload.prospect;
     if(mode==='enrich' && (!UUID.test(prospect?.id||'') || typeof prospect?.company!=='string' || prospect.company.length<2 || prospect.company.length>160))throw new Error('Choisissez un prospect valide.');
     const task={id:crypto.randomUUID(),source,mode,query:String(payload.query||'').trim().slice(0,120),area:String(payload.area||'').trim().slice(0,100),createdAt:Date.now(),status:'active',
-      ...(mode==='enrich'?{prospect:{id:prospect.id,company:prospect.company}}:{})};
+      ...(mode==='enrich'?{prospect:{id:prospect.id,company:prospect.company},...(payload.cloudJobId?{cloudJobId:payload.cloudJobId}:{})}:{})};
     if(task.query.length<3)throw new Error('Indiquez une entreprise ou une activité (3 caractères minimum).');
     await chrome.storage.local.set({[TASK_KEY]:{active:task.id,tasks:{...state.tasks,[task.id]:task}}});
     const opened=await popupAction({action:'open-source',payload:task});

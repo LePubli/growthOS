@@ -1,3 +1,4 @@
+import {collectedRelationships} from '@/lib/prospect-relationships';
 import {type EnrichmentRun} from '@/components/ProspectEnrichmentStatus';
 import {ProspectEnrichmentsTab} from '@/components/ProspectEnrichmentsTab';
 import {prospectEnrichmentUrl} from '@/lib/prospect-enrichment';
@@ -772,8 +773,8 @@ export default function ProspectDetailPage() {
       </nav>
       {active360View==='enrichments'&&<ProspectEnrichmentsTab prospectId={id} run={enrichmentRun} busy={saving||enriching||editing||returnProcessing} onEnrich={()=>void handleEnrich()} onOpenSources={()=>openDetailedSection('atlas-prospect-sources')} observations={sourceHistory} activities={activities} sourceDetails={prospect.sourceDetails}/>}
       {active360View==='relations' && <div className="atlas-relationship-view">
-        <ProspectRelationshipMap siren={prospect.siren} siret={prospect.siret} company={prospect.company} website={prospect.website}/>
-        <ProspectPappersDossier siren={prospect.siren} siret={prospect.siret}/>
+        <ProspectRelationshipMap siren={prospect.siren} siret={prospect.siret} company={prospect.company} website={prospect.website} sourceDetails={prospect.sourceDetails}/>
+        {!collectedRelationships(prospect)?.source.includes('societe.com/')&&<ProspectPappersDossier siren={prospect.siren} siret={prospect.siret}/>}
       </div>}
       {active360View==='overview' && <>
         <Prospect360Dashboard prospect={prospect} officialManagers={officialManagers} activities={activities} deals={linkedDeals}

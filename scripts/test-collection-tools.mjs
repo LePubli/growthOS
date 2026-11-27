@@ -78,7 +78,7 @@ try{
   `},outfile:join(directory,'test.mjs'),platform:'node',format:'esm',bundle:true,jsx:'automatic',
     tsconfig:join(root,'artifacts/growthos/tsconfig.json'),loader:{'.css':'empty'},plugins:[{name:'no-browser-transport',setup(build){
       build.onLoad({filter:/\/lib\/api-client\.ts$/},()=>({contents:'export default {get(){throw Error("Unexpected SSR request")}};',loader:'ts'}));
-      build.onLoad({filter:/\/lib\/pagesjaunes-device\.ts$/},()=>({contents:'export function beginConnectorTask(){};export function getConnectorTask(){};export function acknowledgeConnectorTask(){};',loader:'ts'}));
+      build.onLoad({filter:/\/lib\/pagesjaunes-device\.ts$/},()=>({contents:'export function isMobileConnectorRequired(){return false};export function beginConnectorTask(){};export function getConnectorTask(){};export function acknowledgeConnectorTask(){};',loader:'ts'}));
     }}],banner:{js:"import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);"},logLevel:'warning'});
   await import(pathToFileURL(join(directory,'test.mjs')).href);
 }finally{await rm(directory,{recursive:true,force:true});}

@@ -41,6 +41,14 @@ La publication automatique ne démarre **pas** tant que ces éléments ne sont p
 - Si vous préférez le panneau à gauche du navigateur, changez son emplacement dans les paramètres Chrome de la barre latérale. La largeur peut se régler en glissant la bordure dans Chrome.
 - Les fiches capturées et les tâches restent conservées en cas de fermeture ; à la réouverture, la liste est rechargée et les fiches importables sont présélectionnées. Les captures conservent leur expiration de sécurité habituelle de 24 heures.
 
+### Secours d’un enrichissement bloqué dans le cloud
+
+Depuis **Vérifier cette source**, la tâche propose **Comparer et valider** si une fiche a déjà été lue. Comparez l’identité et les champs, cochez les valeurs à remplacer puis **Valider et enrichir la fiche**. Un SIREN ou SIRET incompatible avec l’identité connue reste bloqué ; une modification concurrente demande d’actualiser la comparaison.
+
+Si le navigateur serveur reste bloqué, choisissez **Lire avec Chrome sur cet appareil**. La recherche s’ouvre dans votre Chrome : le site utilise alors la connexion réseau et la session de ce PC. Ouvrez la bonne fiche, utilisez **Lire la fiche** puis confirmez la capture dans le panneau latéral. Le retour dans GrowthOS affiche la comparaison ci-dessus, rattachée à la même tâche. **Relire la fiche ouverte** dans le cloud ne constitue pas une validation d’identité.
+
+Ce secours local nécessite l’extension à jour sur ordinateur. Il ne change pas l’IP du serveur, ne garantit pas la disparition des contrôles de sécurité et n’ajoute pas de client local Android.
+
 ### Quand Google affiche le nom et le téléphone mais pas l'adresse
 
 #### Lecture par lot des fiches Maps

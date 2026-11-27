@@ -247,6 +247,15 @@ Validation locale du lot Pappers/BODACC/onglet : **369 contrôles API PostgreSQL
 
 Revue PR61 : curseur BODACC et instantané enregistrés dans la même transaction, dernière page idempotente après interruption ; pagination liée au SIREN et remise à zéro après correction d’identité. **371 contrôles API** passent, dont les deux scénarios de reprise/correction. Chromium Pappers vert sur le premier head (run `45988161584`), aucune modification du lecteur dans ce complément ; nouvelle CI avant fusion.
 
+## Lot demandé : validation d’enrichissement, site web, cartographie et complétude (27/11/2026)
+
+Branche isolée `fix/prospect-enrichment-validation-and-website`, base préprod PR61. Priorité au blocage réel signalé : « Vérifier cette source » puis « Reprendre » ne permet pas de confirmer la bonne identité, notamment enseigne différente du nom légal. Ajouter comparaison et confirmation explicite, protéger les identifiants contradictoires, enregistrer et actualiser le bilan parent ; tester le parcours complet, pas seulement la lecture.
+
+Autres exigences du même lot : inclure le site déjà renseigné dans l’enrichissement (Contact, mentions légales, coordonnées/réseaux avec preuves), distinguer email publié et hypothèse sans prétendre valider une boîte sur la seule présence d’un MX ; priorité aux relations Societe.com, Pappers en repli si données absentes ; même calcul documentaire et mêmes données entre aperçu et fiche 360°, supprimer le calcul divergent par quart.
+
+Réseau : l’IP d’un navigateur distant reste celle du serveur. Le mode local doit réellement exécuter la lecture sur l’appareil via l’extension autorisée, sans usurper le navigateur ou contourner un contrôle. Les comptes/sessions restent isolés. Pas de promesse de mode local Android par simple réglage Web ; documenter la capacité effective.
+
+Conserver tous les CSS/thème et les notes de l’agent design. Le catalogue des 306 sources (PR62) reste différé après recette, hors de ce correctif. Aucun déploiement DockPanel par l’agent. Statut : en cours ; tests et images à vérifier avant feu vert.
 ## Lot design : tableau de suivi Enrichissements (27/11/2026)
 
 - Maquette ATLAS × ORBIT validée (« parfait ») par le propriétaire et remarque sur les titres insuffisamment gras. Branche isolée `feat/atlas-enrichment-tab-20261127`, base `fix/growthos-functional-redesign` à `a1083fe` après fusion PR61.
@@ -269,3 +278,5 @@ Revue PR61 : curseur BODACC et instantané enregistrés dans la même transactio
 - Un changement d'onglet synchronise la source sans vider la recherche ou la sélection ; les tâches d'enrichissement contextuel se synchronisent sur changement de stockage. Les anciennes fermetures automatiques après ouverture de source, lecture ou confirmation sont supprimées. `sidePanel.setPanelBehavior({openPanelOnActionClick:true})` ouvre/ferme via icône Chrome.
 - Important pour l'autre agent : ne pas réintroduire `default_popup`, `window.close()` après les actions ni `sidePanel.setOptions({tabId:...})`, qui casseraient la persistance. La largeur Chrome ne peut pas être réduite par programme ; « − » replie les commandes, « × » ferme entièrement.
 - Garder ce chapitre et les autres notes jusqu'à autorisation de lancement production ; publication du ZIP et annonce seulement après CI de l'extension vérifiée.
+
+Validation du lot (PR66) : **386 contrôles API avec PostgreSQL jetable**, dont confirmation d’une enseigne différente, remplacement choisi de ville/téléphone, refus d’identifiants contradictoires, changement concurrent, idempotence, isolation et réconciliation du bilan parent avec reprogrammation des sources dépendantes. Lecture Contact/mentions, email publié et preuve par champ, réseaux, hypothèses non confirmées, SSRF/DNS/redirections testés. TypeScript API/Web, builds API/Web et tests interface/extension verts. Chromium réel vert : run `46019713873` sur `85f1a37`. Dernier design ATLAS et panneau Chrome persistant (`cc78fa0`) intégrés sans modification de CSS. Publication des quatre images sur le head final restant à contrôler avant feu vert. Aucun déploiement DockPanel ; notes conservées, catalogue 306 sources différé.

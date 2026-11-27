@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
+import {collectSite,readSiteHtml,siteUrl,mailDomainCheck,publicSiteHtml} from '../services/website-contact-data';
+const root='https://atelier-site.fr/';
+const html=`<head><script>const secret='secret@cache.fr'</script></head><main><h1>Atelier Site</h1><a href='/contact'>Contact</a><a href='/mentions-legales'>Mentions légales</a><a href='https://other.fr/contact'>Contact externe</a><div hidden><a href='mailto:hidden@cache.fr'>Secret</a></div><a href='https://[broken'>Contact cassé</a><a href='tel:+33 3 20 11 22 33'>Appeler</a></main>`;
+const contact=`<h1>Atelier Site</h1><p>8 rue du Test 59100 Roubaix</p><a href='mailto:contact&#64;atelier-site.fr?subject=Bonjour'>Nous écrire</a><p>03 20 11 22 33</p><a href='https://www.linkedin.com/company/atelier-site/'>LinkedIn</a>`;
+const legal=`<h1>Atelier Site</h1><p>SIRET : 966 777 092 00019</p><h2>Hébergeur</h2><p>SIRET : 966 888 888 00019</p>`;
+const read=readSiteHtml(html,root);assert.deepEqual(read.emails,[]);assert.deepEqual(read.phones,['0320112233']);assert.deepEqual(readSiteHtml(legal,root).sirets,['96677709200019']);
+const fetched:string[]=[];
+const data=await collectSite(root,{load:async url=>{fetched.push(url.href);return {url:url.href,html:url.pathname==='/contact'?contact:url.pathname==='/mentions-legales'?legal:html};},mail:async()=>({status:'mx',detail:'Domaine déclaré, boîte non confirmée.'})});
+assert.equal(fetched.length,3);assert.ok(fetched.every(u=>u.startsWith(root)));assert.equal(data.emails[0].sourceUrl,root+'contact');assert.equal(data.emails[0].email,'contact@atelier-site.fr');assert.equal(data.suggestions.length,0);assert.equal(data.phones.length,1);assert.equal(data.socials[0].source,'linkedin');assert.ok(data.addresses[0].address.includes('59100 Roubaix'));
+const noEmail=await collectSite(root,{load:async url=>({url:url.href,html:'<h1>Atelier</h1>'}),mail:async()=>({status:'mx',detail:'Boîte non confirmée.'})});assert.equal(noEmail.suggestions.length,4);assert.ok(noEmail.suggestions.every(s=>s.mailboxStatus==='unconfirmed'));assert.equal(noEmail.emails.length,0);
+assert.equal((await mailDomainCheck('atelier-site.fr',{resolveMx:async()=>[{exchange:'',priority:0}]} as any)).status,'no_mail');
+assert.equal((await mailDomainCheck('atelier-site.fr',{resolveMx:async()=>{throw {code:'ETIMEOUT'};}} as any)).status,'unknown');
+assert.equal((await mailDomainCheck('atelier-site.fr',{resolveMx:async()=>{throw {code:'ENODATA'};},resolve4:async()=>['1.1.1.1'],resolve6:async()=>[]} as any)).status,'implicit_mx');
+const mx=await mailDomainCheck('atelier-site.fr',{resolveMx:async()=>[{priority:10,exchange:'mx.atelier-site.fr'}]} as any);assert.equal(mx.status,'mx');assert.ok(!Object.keys(mx).includes('mailboxValid'));
+for(const input of ['http://127.0.0.1','https://user:password@atelier-site.fr','https://atelier-site.fr:8443','https://localhost','file:///etc/passwd'])assert.throws(()=>siteUrl(input));
+let requestCount=0,pinned='';
+function fakeRequest(status:number,location?:string,body='<h1>Site</h1>'){
+ return (_url:any,options:any,cb:any)=>{requestCount++;options.lookup('atelier-site.fr',{},(_e:any,ip:string)=>pinned=ip);const req:any=new EventEmitter();req.destroy=(e:any)=>req.emit('error',e);req.end=()=>queueMicrotask(()=>{const res:any=new EventEmitter();res.statusCode=status;res.headers={'content-type':'text/html',location};res.resume=()=>{};cb(res);if(status===200){res.emit('data',Buffer.from(body));res.emit('end');}});return req;};
+}
+await assert.rejects(()=>publicSiteHtml(siteUrl(root),'atelier-site.fr',0,{resolve4:async()=>['1.1.1.1','127.0.0.1'],httpsRequest:fakeRequest(200),httpRequest:fakeRequest(200)} as any));assert.equal(requestCount,0);
+await assert.rejects(()=>publicSiteHtml(siteUrl(root),'atelier-site.fr',0,{resolve4:async()=>['1.1.1.1'],httpsRequest:fakeRequest(302,'https://evil.fr/contact'),httpRequest:fakeRequest(200)} as any));assert.equal(requestCount,1);
+const safe=await publicSiteHtml(siteUrl(root),'atelier-site.fr',0,{resolve4:async()=>['1.1.1.1'],httpsRequest:fakeRequest(200),httpRequest:fakeRequest(200)} as any);assert.equal(pinned,'1.1.1.1');assert.ok(safe.html.includes('Site'));
+await assert.rejects(()=>publicSiteHtml(siteUrl(root),'atelier-site.fr',0,{resolve4:async()=>['1.1.1.1'],httpsRequest:fakeRequest(200,undefined,'x'.repeat(550001)),httpRequest:fakeRequest(200)} as any));
+console.log('✓ Site prospect : Contact/mentions, preuves, adresse, téléphone, réseaux ; contenu caché/identifiants hébergeur exclus ; hypothèses jamais confirmées ; DNS MX/Null MX/temporaire et SSRF/redirections/DNS épinglé testés');

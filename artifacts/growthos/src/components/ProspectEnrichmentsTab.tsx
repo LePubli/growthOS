@@ -13,8 +13,8 @@ type Observation={captureId:string;source:string;sourceUrl?:string|null;captured
 type SourceStep=EnrichmentRun['steps'][string];
 type Tone='confirmed'|'review'|'unavailable'|'running';
 type Filter='all'|'review'|'confirmed';
-const sourceOrder=['google_maps','pagesjaunes','societe_com','pappers','google_search','bing','entreprises','insee','bodacc'];
-const sourceNames:Record<string,string>={entreprises:'Annuaire des Entreprises',google_maps:'Google Maps',pagesjaunes:'PagesJaunes',
+const sourceOrder=['google_maps','pagesjaunes','societe_com','pappers','google_search','bing','entreprises','website','insee','bodacc'];
+const sourceNames:Record<string,string>={website:'Site web du prospect',entreprises:'Annuaire des Entreprises',google_maps:'Google Maps',pagesjaunes:'PagesJaunes',
   insee:'INSEE Sirene',societe_com:'Societe.com',pappers:'Pappers',bodacc:'BODACC',google_search:'Google Search',bing:'Bing'};
 const statusNames:Record<string,string>={pending:'En attente',collecting:'Recherche en cours',completed:'Confirmée',
   empty:'Aucune correspondance',skipped:'Non disponible',needs_review:'À vérifier',
@@ -69,7 +69,7 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
   const lastUpdated=history.find(entry=>!!entry.fieldsFilled?.length);
   const updatedFields=run?.summary?.fields?.length?run.summary.fields:(lastUpdated?.fieldsFilled||[]);
   const updates=activities.filter(a=>a.type==='data_update'&&String(a.title||'').startsWith('Enrichissement'));
-  const hasRecords=!!(sourceDetails?.pappers?.companyDetails||sourceDetails?.bodacc);
+  const hasRecords=!!(sourceDetails?.website?.snapshot||sourceDetails?.pappers?.companyDetails||sourceDetails?.bodacc);
   return <section className="atlas-enrichments-tab" aria-label="Enrichissements du prospect">
     <header className="atlas-enrichments-header">
       <div className="atlas-enrichments-title"><span className="atlas-enrichments-title-icon"><Database size={23}/></span>
@@ -111,7 +111,7 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
               <SourceLogo source={source} size="md"/>
               <div className="atlas-enrichments-source-body">
                 <div className="atlas-enrichments-source-line"><strong>{step.label||sourceNames[source]||source.replaceAll('_',' ')}</strong>
-                  <span className={'atlas-enrichments-chip is-'+tone}><StatusIcon tone={tone}/>{statusNames[step.status]||step.status}</span></div>
+                  <span className={'atlas-enrichments-chip is-'+tone}><StatusIcon tone={tone}/>{source==='website'&&step.status==='completed'?'Site consulté':statusNames[step.status]||step.status}</span></div>
                 <p title={step.message||undefined}>{step.message||'Aucune précision communiquée par la source.'}</p>
               </div>
               {!active&&step.jobId&&tone==='review'&&<Link className="atlas-enrichments-source-action" to={jobUrl(source,step,prospectId)}
@@ -159,7 +159,7 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
         <time>{dateLabel(a.doneAt||a.createdAt||a.created_at)}</time><p>{a.description}</p></article>)}</div>
         :<p>Aucune modification d’enrichissement enregistrée.</p>}
     </details>
-    {hasRecords&&<details className="atlas-enrichments-trace atlas-enrichments-public"><summary><Database size={17}/> Données publiques Pappers et BODACC <ChevronRight size={16}/></summary>
+    {hasRecords&&<details className="atlas-enrichments-trace atlas-enrichments-public"><summary><Database size={17}/> Données du site web, Pappers et BODACC <ChevronRight size={16}/></summary>
       <div className="atlas-enrichments-public-body"><ProspectPublicRecords details={sourceDetails}/></div></details>}
     <p className="atlas-enrichments-disclaimer"><Info size={13}/> Les données concordantes sont conservées ; les divergences restent à vérifier avec leur provenance.</p>
   </section>;

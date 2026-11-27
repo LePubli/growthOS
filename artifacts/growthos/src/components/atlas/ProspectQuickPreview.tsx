@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react';
+import api from '@/lib/api-client';
+import {computeProspectCompleteness,type CompletenessProspect} from '@/lib/prospect-completeness';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Building2, CheckCircle2, CircleAlert, ExternalLink, Globe2, Mail, MapPin, Phone, Sparkles, X } from 'lucide-react';
 
-type Preview = {
+type Preview = CompletenessProspect & {
   id: string; firstName?: string; lastName?: string; company?: string; jobTitle?: string;
   email?: string; phone?: string; website?: string; address?: string; city?: string;
   postalCode?: string; siren?: string; siret?: string; apeCode?: string; status?: string;
@@ -16,19 +18,19 @@ export function ProspectQuickPreview({ prospect: p, onClose, onOpen360 }: Props)
     closeRef.current?.focus();
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
+  const [current,setCurrent]=useState(p),[officialManagers,setOfficialManagers]=useState<string[]>([]),[checking,setChecking]=useState(true);
+  useEffect(()=>{
+    let alive=true;setCurrent(p);setOfficialManagers([]);setChecking(true);
+    void Promise.all([api.get<Preview>('/prospects/'+p.id),api.get<any>('/prospects/'+p.id+'/monitoring').catch(()=>null)]).then(([record,monitor])=>{if(alive){setCurrent(record);setOfficialManagers(monitor?.snapshot?.managers||[]);}}).catch(()=>{}).finally(()=>{if(alive)setChecking(false);});
+    return()=>{alive=false;};
+  },[p.id]);
+  p=current;
   const name = [p.firstName, p.lastName].filter(Boolean).join(' ');
   const company = p.company || name || 'Prospect';
-  const checks = [
-    { label: 'Identité légale', ok: !!(p.siren || p.siret) },
-    { label: 'Contact', ok: !!(p.phone || p.email) },
-    { label: 'Adresse complète', ok: !!(p.address && p.postalCode) },
-    { label: 'Site web', ok: !!p.website },
-  ];
-  const score = Math.round(checks.filter(c => c.ok).length * 25);
-  const next = !checks[2].ok ? 'Vérifier l’adresse et le code postal'
-    : !checks[0].ok ? 'Identifier l’entreprise (SIREN/SIRET)'
-    : !checks[1].ok ? 'Rechercher un contact vérifié'
-    : 'Préparer le premier contact';
+  const completeness=computeProspectCompleteness(p,officialManagers);
+  const checks=completeness.criteria.map(c=>({label:c.label,ok:c.met}));
+  const score=completeness.percent;
+  const next=completeness.criteria.find(c=>!c.met)?.missing||'Préparer le premier contact';
   const legalId = p.siren || p.siret;
   return (
     <div className="atlas-preview-backdrop" onMouseDown={onClose}>
@@ -50,7 +52,7 @@ export function ProspectQuickPreview({ prospect: p, onClose, onOpen360 }: Props)
             <small>Suggestion calculée à partir des champs manquants. Aucune action automatique.</small>
           </section>
           <section className="atlas-preview-card">
-            <div className="atlas-preview-section-header"><strong>Complétude du dossier</strong><b>{score} %</b></div>
+            <div className="atlas-preview-section-header"><strong>Complétude du dossier</strong><b>{checking?'Vérification…':score+' %'}</b></div>
             <div className="atlas-progress-track"><div style={{width: score + '%'}}/></div>
             <div className="atlas-preview-checks">
               {checks.map(c=><div key={c.label}>{c.ok?<CheckCircle2 size={15} className="atlas-green"/>:<CircleAlert size={15} className="atlas-amber"/>}{c.label}</div>)}
@@ -67,8 +69,8 @@ export function ProspectQuickPreview({ prospect: p, onClose, onOpen360 }: Props)
               <div><dt><Building2 size={15}/> Code APE</dt><dd>{p.apeCode || 'À compléter'}</dd></div>
             </dl>
           </section>
-          {legalId && <a className="atlas-preview-source" href={'https://www.pappers.fr/recherche?q='+encodeURIComponent(legalId)}
-            target="_blank" rel="noopener noreferrer"><ExternalLink size={15}/> Vérifier sur Pappers <ArrowUpRight size={15}/></a>}
+          {legalId && <a className="atlas-preview-source" href={'https://www.societe.com/recherche?q='+encodeURIComponent(legalId)+'&ftStatus=0'}
+            target="_blank" rel="noopener noreferrer"><ExternalLink size={15}/> Vérifier sur Societe.com <ArrowUpRight size={15}/></a>}
         </div>
         <footer className="atlas-preview-footer">
           <small>Vue synthétique · fiche complète en pleine page</small>
