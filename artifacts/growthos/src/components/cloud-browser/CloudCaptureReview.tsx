@@ -9,7 +9,9 @@ export function CloudCaptureReview({jobId,onSaved,onClose,fallbackUrl}:{jobId:st
   async function finish(){const result=await api.post<SavedSourceReview>('/browser/jobs/'+jobId+'/finish-review',{});await callbacks.current.onSaved(result);callbacks.current.onClose();}
   const [revision,setRevision]=useState(0);
   const [index,setIndex]=useState(0),[review,setReview]=useState<Review|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[replace,setReplace]=useState<string[]>([]),[missingCapture,setMissingCapture]=useState(false);
-  useEffect(()=>{let alive=true;setReview(null);setError('');setReplace([]);setMissingCapture(false);
+  const choicesFor=useRef('');
+  useEffect(()=>{saved.current=false;choicesFor.current='';},[jobId]);
+  useEffect(()=>{let alive=true;setReview(null);setError('');setMissingCapture(false);
     void (async()=>{
       // A source can be awaiting human intervention without having captured a business.
       // Do not call /review (HTTP 409) until a real capture is persisted.
@@ -17,7 +19,7 @@ export function CloudCaptureReview({jobId,onSaved,onClose,fallbackUrl}:{jobId:st
       if(job.status==='completed'&&job.result?.applied){saved.current=true;if(!finishing.current){finishing.current=true;try{await finish();}finally{finishing.current=false;}}return;}
       if(!job.result?.captures?.[index]){if(alive)setMissingCapture(true);return;}
       const r=await api.get<Review>('/browser/jobs/'+jobId+'/review?captureIndex='+index);
-      if(alive){setReview(r);setReplace(r.fields.filter(f=>f.changed&&f.before&&!['company','siren','siret'].includes(f.field)).map(f=>f.field));}
+      if(alive){const key=jobId+':'+index,preserve=choicesFor.current===key,available=r.fields.filter(f=>f.changed&&f.before&&!['siren','siret'].includes(f.field)).map(f=>f.field);setReview(r);setReplace(current=>preserve?current.filter(field=>available.includes(field)):available.filter(field=>field!=='company'));choicesFor.current=key;}
     })().catch(e=>{if(alive)setError(e instanceof Error?e.message:'Comparaison indisponible.');});return()=>{alive=false;};},[jobId,index,revision]);
   async function confirm(){if(!review||review.blocked)return;setBusy(true);setError('');try{if(!saved.current){const response=await api.post<{job:{status:string;result?:{applied?:unknown}}}>('/browser/jobs/'+jobId+'/confirm',{captureIndex:index,confirmed:true,expectedUpdatedAt:review.version,expectedCaptureDigest:review.captureDigest,expectedValues:review.expectedValues,replaceFields:replace});if(response.job?.status!=='completed'||!response.job.result?.applied)throw Error('La sauvegarde n’a pas été confirmée. La capture reste disponible.');saved.current=true;}await finish();}catch(e){setError((e instanceof Error?e.message:(saved.current?'Les données sont enregistrées, mais le retour a échoué. Réessayez.':'Enregistrement impossible.'))+((e as any)?.data?.traceId?' Référence diagnostic : '+(e as any).data.traceId:''));}finally{setBusy(false);}}
   return <section role="dialog" aria-label="Comparer et valider cette fiche" className="rounded-xl border p-4 space-y-3" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>

@@ -9,11 +9,12 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const origin='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CLOUD_TEST_BROWSER?{executablePath:process.env.CLOUD_TEST_BROWSER}:{})});
 try{
- for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery']){
+ for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery','save_conflict']){
   const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>route.request().url().startsWith(origin)?route.continue():route.abort());
   const history=scenario==='history'||scenario==='discovery';
   await page.goto(origin+'/navigateur?source='+(scenario==='discovery'?'google_maps':'societe_com')+(history?'':'&prospectId=10000000-0000-4000-8000-000000000001&jobId=10000000-0000-4000-8000-000000000002')+'&scenario='+scenario);
+  if(history)await page.locator('summary').filter({hasText:'Tâches récentes'}).click();
   if(scenario==='discovery'){
    await page.getByRole('textbox',{name:'Recherche',exact:true}).fill('Plombier');
    await page.getByRole('button',{name:'Voir les résultats',exact:true}).click();
@@ -29,11 +30,19 @@ try{
    await page.evaluate(()=>window.__releaseSource());
   }
   if(scenario==='waiting'||scenario==='busy'||scenario==='lost')await page.getByRole('button',{name:'Lire cette fiche',exact:true}).click();
+  if(scenario==='save_conflict'){
+   await page.getByRole('checkbox',{name:'Remplacer par cette valeur'}).uncheck();
+   await page.getByRole('button',{name:'Valider et enregistrer',exact:true}).click();
+   await page.getByRole('alert').filter({hasText:'La valeur CRM a changé'}).waitFor();
+   assert(page.url().includes('/navigateur?'),'No success return before actual save');
+   await page.getByRole('button',{name:'Actualiser la comparaison',exact:true}).click();
+   const choice=page.getByRole('checkbox',{name:'Remplacer par cette valeur'});await choice.waitFor();assert.equal(await choice.isChecked(),false,'Explicit replacement choices survive comparison refresh');
+  }
   if(scenario!=='applied')await page.getByRole('button',{name:'Valider et enregistrer',exact:true}).click();
   await page.waitForURL('**/prospects/10000000-0000-4000-8000-000000000001?view=enrichments&reviewedJob=10000000-0000-4000-8000-000000000002');
   const tab=page.getByRole('button',{name:'Enrichissements',exact:true});await tab.waitFor();assert.equal(await tab.getAttribute('aria-current'),'page');
   await page.getByRole('status').filter({hasText:'Enregistré depuis'}).first().waitFor();
-  assert.equal(await page.evaluate(()=>window.__reviewCalls.confirm),scenario==='applied'?0:1,'Exactly one explicit confirmation, none for already applied data');
+  assert.equal(await page.evaluate(()=>window.__reviewCalls.confirm),scenario==='applied'?0:scenario==='save_conflict'?2:1,'Exactly one explicit confirmation, none for already applied data');
   await page.reload();await page.getByRole('button',{name:'Enrichissements',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Enrichissements',exact:true}).getAttribute('aria-current'),'page','The tab survives reload');
   assert.deepEqual(errors,[]);console.log('✓ Source review scenario:',scenario);await page.close();
