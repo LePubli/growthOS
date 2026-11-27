@@ -37,6 +37,15 @@ try{
     }
     assert.ok(browserHtml.indexOf('cloud-browser-command-grid')<browserHtml.indexOf('cloud-browser-workspace'));
     assert.ok(browserHtml.indexOf('cloud-browser-view-panel')<browserHtml.indexOf('cloud-browser-results-list'));
+    assert.ok(browserHtml.includes('role="separator"')&&browserHtml.includes('aria-label="Redimensionner les panneaux navigateur et résultats"'),
+      'La répartition navigateur/résultats doit rester ajustable et accessible');
+    assert.ok(browserHtml.indexOf('cloud-browser-view-panel')<browserHtml.indexOf('cloud-browser-divider')
+      &&browserHtml.indexOf('cloud-browser-divider')<browserHtml.indexOf('cloud-browser-results"'),
+      'Le séparateur doit se trouver exactement entre les deux panneaux');
+    assert.ok(browserHtml.includes('cloud-browser-history-drawer')&&browserHtml.includes('Gérer l’historique'),
+      'La vue immersive replie les tâches tout en conservant leur accès');
+    assert.ok(browserHtml.includes('cloud-browser-results-footer')&&browserHtml.includes('Importer dans Prospects (0)'),
+      'Le bouton d’import doit rester fixé dans la colonne des résultats');
     const enrich=render('mode=enrich');
     assert.equal((enrich.match(/<article/g)||[]).length,modules.filter(m=>m.modes.includes('enrich')).length);
     assert.ok(enrich.includes('Societe.com') && enrich.includes('ouvrez un prospect'));
