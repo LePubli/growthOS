@@ -1,5 +1,6 @@
 import { Component, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import apiClient from '@/lib/api-client';
 
 interface Props {
   children: ReactNode;
@@ -20,6 +21,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack);
+    apiClient.reportClientError('REACT_RENDER_ERROR', 'Un composant React a échoué', {
+      errorType: error.name, reason: error.message, componentStack: info.componentStack?.slice(0, 900),
+    });
   }
 
   reset = () => this.setState({ hasError: false, error: undefined });

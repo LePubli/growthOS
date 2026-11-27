@@ -6,17 +6,29 @@ import {pool} from '@workspace/db';
 import {importCloudJob,withCloudImportStates} from '../../services/cloud-imports';
 import {logger} from '../../lib/logger';
 import {CLOUD_SOURCES,CLOUD_AUTOMATIC,CloudBrowserError,browserCall,cloudConfigured,cloudProfile,cloudJob,tickCloudJobs} from '../../services/cloud-browser';
+import {recordDiagnosticEvent,errorDiagnosticDetails} from '../../lib/diagnostics';
+import {diagnoseSourceIssue} from '../../lib/source-diagnosis';
 const router=Router();
+const workerIncidents=new Map<string,number>();
 const captureDigest=(capture:unknown)=>createHash('sha256').update(JSON.stringify(capture)).digest('hex');
 const reviewFields=['company','linkedinUrl','address','postalCode','city','phone','email','website','siret','siren','apeCode','nafLabel','nafVersion'];
 const expectedValuesSchema=z.object(Object.fromEntries(reviewFields.map(field=>[field,z.string().max(2000).nullable()]))).strict();
 const idSchema=z.string().uuid();
 const schedule=()=>{if(process.env.GROWTHOS_SMOKE_TEST!=='true')void tickCloudJobs().catch(()=>logger.error('Cloud browser scheduler failed'));};
 router.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
-router.get('/status',async(_req,res)=>{
+router.get('/status',async(req,res)=>{
   if(!cloudConfigured()){res.json({configured:false,ready:false,sources:CLOUD_SOURCES,automatic:CLOUD_AUTOMATIC});return;}
-  try{await browserCall('/healthz',undefined,4000);res.json({configured:true,ready:true,sources:CLOUD_SOURCES,automatic:CLOUD_AUTOMATIC});}
-  catch{res.json({configured:true,ready:false,sources:CLOUD_SOURCES,automatic:CLOUD_AUTOMATIC});}
+  try{await browserCall('/healthz',undefined,4000,req.traceId);res.json({configured:true,ready:true,sources:CLOUD_SOURCES,automatic:CLOUD_AUTOMATIC});}
+  catch(error){
+    const diagnosis=diagnoseSourceIssue({source:'cloud-worker',reason:error instanceof Error?error.message:'Connexion impossible'});
+    const last=workerIncidents.get(req.auth!.tenantId)||0;
+    if(Date.now()-last>120_000){
+      if(workerIncidents.size>2000)workerIncidents.clear();
+      workerIncidents.set(req.auth!.tenantId,Date.now());
+      void recordDiagnosticEvent({tenantId:req.auth!.tenantId,userId:req.auth!.userId,traceId:req.traceId,level:'error',component:'cloud-browser',code:'WORKER_UNAVAILABLE',message:'Navigateur cloud inaccessible',details:{...diagnosis,...errorDiagnosticDetails(error)}});
+    }
+    res.json({configured:true,ready:false,sources:CLOUD_SOURCES,automatic:CLOUD_AUTOMATIC});
+  }
 });
 router.get('/profiles',async(req,res)=>{
   const q=await pool.query('SELECT id,source,label,mode,created_at FROM cloud_browser_profiles WHERE tenant_id=$1 AND created_by=$2 AND deleted_at IS NULL ORDER BY created_at',[req.auth!.tenantId,req.auth!.userId]);res.json(q.rows);
@@ -27,6 +39,7 @@ router.post('/profiles',async(req,res)=>{
 });
 for(const action of ['open','view','action','erase'] as const)router.post('/profiles/:id/'+action,async(req,res)=>{
   const id=idSchema.parse(req.params.id),profile=await cloudProfile(req.auth!.tenantId,id,req.auth!.userId);
+  res.locals.source = profile.source;
   const shape=action==='open'?z.object({query:z.string().max(160).default(''),area:z.string().max(120).default(''),login:z.boolean().optional(),keepPage:z.boolean().optional()}).strict()
     :action==='action'?z.object({controlId:idSchema,event:z.discriminatedUnion('type',[
       z.object({type:z.literal('click'),x:z.number().min(0).max(1279),y:z.number().min(0).max(799)}).strict(),
@@ -40,7 +53,7 @@ for(const action of ['open','view','action','erase'] as const)router.post('/prof
     const busy=await pool.query("SELECT id FROM cloud_browser_jobs WHERE profile_id=$1 AND tenant_id=$2 AND status IN ('queued','running') LIMIT 1",[id,req.auth!.tenantId]);
     if(busy.rowCount)throw new CloudBrowserError(409,'Terminez ou annulez les tâches avant de déconnecter ce profil.');
   }
-  res.json(await browserCall('/'+action,{...payload,tenantId:req.auth!.tenantId,profileId:id,source:profile.source}));
+  res.json(await browserCall('/'+action,{...payload,tenantId:req.auth!.tenantId,profileId:id,source:profile.source},35000,req.traceId));
 });
 router.get('/jobs',async(req,res)=>{
   const q=await pool.query('SELECT * FROM cloud_browser_jobs WHERE tenant_id=$1 AND created_by=$2 ORDER BY created_at DESC LIMIT 30',[req.auth!.tenantId,req.auth!.userId]);res.json(await withCloudImportStates(q.rows,req.auth!.tenantId));
@@ -149,14 +162,20 @@ router.post('/jobs/:id/cancel',async(req,res)=>{
   const q=await pool.query(`UPDATE cloud_browser_jobs SET status='cancelled',updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status IN ('queued','running','awaiting_user','needs_review','failed') RETURNING *`,[id,req.auth!.tenantId]);
   if(!q.rows[0])throw new CloudBrowserError(409,'Tâche déjà terminée.');
   const profile=await cloudProfile(req.auth!.tenantId,q.rows[0].profile_id,req.auth!.userId);
-  if(previous.status==='running')await browserCall('/stop',{tenantId:req.auth!.tenantId,profileId:profile.id,source:profile.source},5000).catch(()=>undefined);
+  if(previous.status==='running')await browserCall('/stop',{tenantId:req.auth!.tenantId,profileId:profile.id,source:profile.source},5000,req.traceId).catch(()=>undefined);
   res.json(q.rows[0]);
 });
-router.use((error:unknown,_req:any,res:any,_next:any)=>{
+router.use((error:unknown,req:any,res:any,_next:any)=>{
+  const source=typeof res.locals.source==='string'?res.locals.source:null;
+  const invalidInput=error instanceof z.ZodError;
+  const diagnosis=diagnoseSourceIssue({source,status:error instanceof CloudBrowserError?'failed':undefined,httpStatus:error instanceof CloudBrowserError?error.status:undefined,reason:invalidInput?'Paramètres invalides':error instanceof Error?error.message:''});
+  void recordDiagnosticEvent({tenantId:req.auth?.tenantId,userId:req.auth?.userId,traceId:req.traceId,
+    level:invalidInput?'warn':'error',component:'cloud-browser',code:invalidInput?'INVALID_BROWSER_INPUT':'BROWSER_OPERATION_FAILED',
+    message:'Opération navigateur en erreur',source,details:{...(invalidInput?{errorType:'ZodError',issueCount:error.issues.length}:errorDiagnosticDetails(error)),...diagnosis}});
   if(error instanceof z.ZodError){res.status(400).json({error:'Paramètres du navigateur invalides.'});return;}
   if(error instanceof CloudBrowserError){res.status(error.status).json({error:error.message});return;}
-  // The global error handler logs request bodies. Browser input can contain credentials.
-  logger.error('Cloud browser operation failed');
+  // Never log browser input: it may include user-entered credentials.
+  logger.error({reason:error instanceof Error?error.name:'unknown'},'Cloud browser operation failed');
   res.status(503).json({error:'Navigateur temporairement indisponible. Réessayez après son rétablissement.'});
 });
 export default router;

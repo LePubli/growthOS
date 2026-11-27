@@ -3,12 +3,13 @@ import { startProspectWatch } from './services/prospect-monitoring';
 import {startCloudJobs} from './services/cloud-browser';
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration, runProviderKeysMigration, runAutopilotMigration, runDealProspectLinkMigration, runSignalEnhanceMigration } from "@workspace/db";
+import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration, runProviderKeysMigration, runAutopilotMigration, runDealProspectLinkMigration, runSignalEnhanceMigration, runDiagnosticsMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 import { registerErepIntegrations } from "./lib/integrations/erep-integrations";
 import { registerCrossPluginEvents } from "./lib/integrations/cross-plugin-events";
 import { startSignalCron } from "./lib/cron/SignalCron";
 import { startAgentWorker } from "./lib/autopilot/AgentWorker";
+import { startDiagnosticsRetention } from './lib/diagnostics';
 
 const rawPort = process.env["PORT"];
 
@@ -63,6 +64,9 @@ runMigrations()
     await runSignalEnhanceMigration();
     logger.info("Signal enhance ready (signals.source, signals.prospect_id)");
 
+    await runDiagnosticsMigration();
+    logger.info("Diagnostics ready (tenant-isolated diagnostic_events)");
+
     await seedBuiltInPlugins();
 
     // ── Register cross-plugin EventBus integrations
@@ -81,6 +85,7 @@ runMigrations()
       startProspectWatch();
       startCloudJobs();
       startProspectEnrichments();
+      startDiagnosticsRetention();
 
       // ── Démarrer l'AgentWorker (Autopilot IA)
       startAgentWorker();

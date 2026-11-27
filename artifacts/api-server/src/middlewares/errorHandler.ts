@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { logger } from "../lib/logger";
 import { prospectIdentityConstraint } from "../lib/prospect-identity";
+import { recordDiagnosticEvent, errorDiagnosticDetails, safeDiagnosticText } from '../lib/diagnostics';
 
 export interface ApiError extends Error {
   statusCode?: number;
@@ -28,13 +29,19 @@ export function errorHandler(
       statusCode,
       method: req.method,
       path: req.path,
-      error: err.message,
-      stack: err.stack,
-      body:
-        req.body && Object.keys(req.body ?? {}).length ? req.body : undefined,
+      error: safeDiagnosticText(err.message, 500),
+      stack: safeDiagnosticText(err.stack, 2500),
+      // Never log the request body: it may contain passwords, provider keys or PII.
     },
     "Unhandled error",
   );
+
+  if (req.auth?.tenantId) void recordDiagnosticEvent({
+    tenantId: req.auth.tenantId, userId: req.auth.userId, traceId,
+    level: 'error', component: 'api', code: 'UNHANDLED_EXCEPTION',
+    message: `Exception HTTP ${statusCode}`,
+    details: { method: req.method, statusCode, ...errorDiagnosticDetails(err) },
+  });
 
   const message = identityDuplicate
     ? `Ce ${constraint!.endsWith("siret") ? "SIRET" : "SIREN"} est déjà utilisé par une fiche prospect de votre agence. Consultez la fiche existante avant de poursuivre.`
