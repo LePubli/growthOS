@@ -399,7 +399,7 @@ export default function CloudBrowserPage() {
               {expandedBrowser ? <Minimize2 size={16}/> : <Maximize2 size={16}/>}</button>
             <button type="button" disabled={!viewing} onClick={() => { setViewing(false); setView(null); }}
               title="Masquer la vue"><EyeOff size={16}/></button>
-            <button type="button" disabled={!!busy || !status?.ready}
+            <button type="button" disabled={!selected || !!busy || !status?.ready}
               title="Déconnecter et effacer la session conservée sur le serveur" onClick={() => {
                 if (confirm('Déconnecter ce profil et effacer sa session conservée sur le serveur ?')) void perform('Déconnecter', async () => {
                   await api.post('/browser/profiles/' + selected + '/erase', {});

@@ -1,14 +1,14 @@
 # GrowthOS — suivi fonctionnel
 
-Mis à jour le **26 novembre 2026**. Ce registre suit le parcours d’une agence qui cherche des entreprises, les qualifie, propose un site ou une prestation SEO, puis suit l’affaire dans le CRM.
+Mis à jour le **27 novembre 2026**. Ce registre suit le parcours d’une agence qui cherche des entreprises, les qualifie, propose un site ou une prestation SEO, puis suit l’affaire dans le CRM.
 
 **Coordination des agents** — un autre agent travaille uniquement sur le design. Voir les [notes temporaires de coordination](COORDINATION-AGENTS.md). Elles resteront jusqu’au lancement final en production autorisé par le propriétaire, puis seront supprimées lors de ce lancement.
 
-**Dernier retour utilisateur** — les corrections d'enrichissement sont confirmées (« c'est nickel »). Le propriétaire demande maintenant l'automatisation dans GrowthOS avec navigateur cloud et sessions par source ; l'extension devient un secours. **Windows et Android sont différés**, priorité explicite au Web cloud.
+**Dernier retour utilisateur** — import Google confirmé en usage, retrait des résultats traités et reçus CRM opérationnels. Demande actuelle : PagesJaunes cloud, collecte sans plafond total 10/25 et boutons d’enrichissement du prospect fonctionnels, en conservant l’IA. **Windows et Android sont différés**, priorité au Web cloud.
 
-**Lot en cours — PR 43** — moteur Chromium, file persistante, profils privés et écran `/navigateur`, intégrés aux variables de thème ATLAS × ORBIT et aux logos de l'autre agent. Collecteurs initiaux Maps/Google/Bing/Societe.com ; navigation des autres sources sans promesse de collecte automatique. Publication et recette fournisseur à suivre. [Installation et tests pas à pas](docs/NAVIGATEUR-CLOUD-INSTALLATION.md).
+**Lot en cours — [PR 57](https://github.com/LePubli/growthOS/pull/57)** — PagesJaunes rejoint le navigateur cloud, la collecte continue par lots persistants et les raccourcis prospect ouvrent l’enrichissement ciblé. Le design immersif PR55/56 et les reçus CRM sont conservés. Voir le point 46 ; publication des images à confirmer. [Installation et tests pas à pas](docs/NAVIGATEUR-CLOUD-INSTALLATION.md).
 
-**Prochain contrôle en préproduction** — ajouter le service navigateur et son secret dédié à la stack, puis lancer une recherche publique et un enrichissement Societe.com au SIRET exact. Relire les valeurs modifiées et l'activité ; vérifier interruption, reprise et déconnexion. LinkedIn et les réseaux doivent ensuite recevoir leurs collecteurs spécifiques avant d'être annoncés automatiques.
+**Prochain contrôle en préproduction** — après feu vert des images, rechercher sur PagesJaunes puis collecter plus de 25 résultats Maps. Importer un lot pendant la collecte, vérifier les reçus CRM puis annuler/reprendre. Depuis un prospect, ouvrir l’enrichissement Societe.com et PagesJaunes, relire les valeurs modifiées et l’activité. LinkedIn et les réseaux doivent ensuite recevoir leurs collecteurs spécifiques avant d'être annoncés automatiques.
 
 ## Comment tenir ce fichier
 
@@ -181,4 +181,4 @@ Le [document de référence Linked Helper](docs/REFERENCE-LINKED-HELPER.md) cons
 - Le plafond total 10/25 est retiré : les lots techniques s'enchaînent jusqu'à la fin des résultats accessibles sur la source. Capture/identifiants/reçus sont conservés entre les lots et après annulation/reprise. L'import est possible pendant la suite de collecte ; une sélection supérieure à 25 est envoyée par groupes techniques successifs sans quota total affiché.
 - Prospect : les raccourcis d'enrichissement par sources ouvrent le même navigateur cloud ciblé. Plus de dépendance obligatoire à Chrome pour le raccourci Societe.com/PagesJaunes ; recherche du SIREN/SIRET proposée lorsque le contrôle officiel n'est pas encore possible. Commandes IA et enrichissement complémentaire conservés.
 - Une source sans collecteur automatique reste consultable avec un profil créé à l'ouverture ; aucune fausse action « enrichir automatiquement » n'est proposée pour les réseaux encore non raccordés.
-- Design PR55/56, séparation redimensionnable et focus discret préservés. Validation locale : 339 contrôles API PostgreSQL16 verts (sources simulées), tests React des commandes/enrichissements et TypeScript/builds. Chromium réel sur pages de recette à confirmer avant feu vert. Aucune action DockPanel ni changement de Compose.
+- Design PR55/56, séparation redimensionnable et focus discret préservés. Validation locale : 339 contrôles API PostgreSQL16 verts (sources simulées), tests React des commandes/enrichissements et TypeScript/builds. Chromium réel vert sur pages de recette : 35 détails Maps et pagination PagesJaunes, [CI PR57](https://github.com/LePubli/growthOS/actions/runs/45967168729). Publication des quatre images à confirmer avant feu vert. Aucune action DockPanel ni changement de Compose.
