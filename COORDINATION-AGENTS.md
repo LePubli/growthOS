@@ -195,3 +195,9 @@ Validation du suivi : 331 contrôles API PostgreSQL16 verts ; le cas conforme/co
 - Les dernières fonctionnalités de l'autre agent sont conservées : `CloudImportFeedback`, `pendingCloudCaptures`, badges et liens CRM, import serveur par IDs, traitement séparé des fiches déjà importées, sélection globale, suppression/reprise/annulation des tâches. L'historique est seulement replié par défaut, pas supprimé : ses commandes restent accessibles en l'ouvrant.
 - Le séparateur est pilotable par pointeur ou clavier avec `role="separator"` ; le mode agrandi et les points de rupture responsive conservent la navigation. La liste des captures a son propre défilement, l'import et son compteur restent en bas. Le statut « Coordonnées » signifie seulement adresse + téléphone disponibles, **pas une qualification commerciale ou une vérification officielle**.
 - Ne pas écraser ces ajustements lors des correctifs fonctionnels ; ne supprimer ces notes qu'après autorisation explicite du propriétaire lors du lancement final en production.
+
+## Retouche design : focus des champs cloud (27/11/2026)
+
+- Le propriétaire signale un encart bleu trop vif à l'activation du champ de localisation (et des autres champs de commande). Branche `fix/atlas-cloud-fields-focus-20261127`, basée sur le design immersif V2 fusionné.
+- Retirer **uniquement** la bordure `outline` intense des champs `input/select` de `cloud-browser.css` ; montrer un contour discret `#a5bedf` sur le conteneur `:focus-within`, avec ombre très légère. Les liens, boutons, contrôles du navigateur et le séparateur gardent leur repère `:focus-visible` accessible au clavier. Aucun comportement de saisie ni d'import modifié.
+- Ajout d'une assertion CSS anti-régression dans `scripts/test-collection-tools.mjs`. Préserver cette convention lors des futures retouches ; garder les notes jusqu'à l'autorisation du lancement production.
