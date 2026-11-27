@@ -35,7 +35,13 @@ export default function ConnectorImportPage(){
         Boolean(v.phone && d.phone && v.phone.replace(/\D/g,'')===d.phone.replace(/\D/g,''))))
         .map(d=>({...d,incomplete:true as const}))];
       setItems(merged);
-      setSelected(merged.filter(importable).map(item=>item.id));
+      // Le connecteur Chrome peut transmettre une présélection d'identifiants locaux.
+      // Toujours recouper avec les captures réellement présentes et importables.
+      // Sans paramètre (ou après actualisation directe), conserver l'ancien parcours.
+      const urlParams=new URLSearchParams(window.location.hash.replace(/^#/,'')||window.location.search.replace(/^\?/,''));
+      const fromPopup=urlParams.has('selected');
+      const chosen=new Set((urlParams.get('selected')||'').split(',').filter(Boolean));
+      setSelected(merged.filter(item=>importable(item)&&(!fromPopup||chosen.has(item.id))).map(item=>item.id));
       if((ping.results.length||ping.drafts.length) && !merged.length)
         setError('Des captures sont présentes dans le pont, mais leur source ne correspond pas au type attendu. Rechargez l’extension puis cette page.');
       if(!merged.length && !ping.results.length && !ping.drafts.length)

@@ -3,88 +3,136 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>GrowthOS — Sources</title>
+  <title>GrowthOS — Connecteur</title>
   <link rel="stylesheet" href="popup.css"/>
 </head>
-<body>
-  <header>
-    <span class="logo">G</span>
-    <div><h1>GrowthOS <small>Connecteur</small></h1><p>Recherche locale et collecte contrôlée</p></div>
-    <a id="growthos" href="https://agile.le-publicitaire.fr/prospects/connecteur" target="_blank" rel="noopener noreferrer" title="Importer dans Prospects">↗</a>
+<body class="phase-search">
+  <header class="topbar">
+    <span class="brand-cube" aria-hidden="true"><svg viewBox="0 0 40 40" width="38" height="38"><path d="M20 2 37 11.4 20 20.8 3 11.4Z" fill="#7DD9FF"/><path d="M3 11.4 20 20.8V39L3 29.7Z" fill="#176BEE"/><path d="M37 11.4 20 20.8V39l17-9.3Z" fill="#0961D5"/><path d="M20 2 37 11.4l-17 9.4V2Z" fill="#50AFFF" opacity=".8"/></svg></span>
+    <div class="brand-heading"><h1>GrowthOS</h1><span>Connecteur</span></div>
+    <span class="topbar-status" title="Extension active"><i></i><span>Actif</span></span>
+    <a id="growthos" href="https://agile.le-publicitaire.fr/prospects/connecteur" target="_blank" rel="noopener noreferrer" title="Ouvrir GrowthOS" aria-label="Ouvrir GrowthOS dans un onglet">↗</a>
   </header>
   <div id="notice" role="status" aria-live="polite" hidden></div>
-  <main>
-    <div class="hero"><span class="dot"></span> Extension prête <span id="currentTab">· Vérification de l’onglet…</span> <small id="extensionIdentity"></small></div>
-    <section id="taskPanel" hidden>
+  <nav class="steps" aria-label="Étapes du connecteur">
+    <span class="step" data-step="source"><b>1</b> Source</span>
+    <span class="steps-line"></span>
+    <span class="step" data-step="search"><b>2</b> Recherche</span>
+    <span class="steps-line"></span>
+    <span class="step" data-step="collect"><b>3</b> Collecte</span>
+    <span class="steps-line"></span>
+    <span class="step" data-step="import"><b>4</b> Import</span>
+  </nav>
+  <main id="popupMain">
+    <section id="taskPanel" class="card task-panel" hidden>
       <h2 id="taskTitle"></h2><p id="taskTarget"></p><p class="hint" id="taskHint"></p>
-      <p class="hint">Les données manquantes peuvent rester vides. Seules les valeurs absentes du CRM seront complétées ; les désaccords seront à vérifier.</p>
-      <button type="button" class="primary teal" id="taskRead" hidden>Lire la fiche affichée</button>
+      <p class="hint">Les champs manquants restent vides. Les données divergentes devront être vérifiées dans GrowthOS.</p>
+      <button type="button" class="primary" id="taskRead" hidden>Lire la fiche affichée</button>
       <div id="taskPreview"></div>
-      <label><input type="checkbox" id="taskConfirmed"/> Je confirme la bonne entreprise et le bon établissement.</label>
-      <button type="button" class="primary teal" id="taskFinish">Confirmer et revenir au prospect</button>
+      <label class="task-confirm"><input type="checkbox" id="taskConfirmed"/> Je confirme la bonne entreprise et le bon établissement.</label>
+      <button type="button" class="primary" id="taskFinish">Confirmer et revenir au prospect</button>
       <button type="button" class="link" id="taskCancel">Quitter ce mode</button>
     </section>
-    <section id="sourcePicker" aria-label="Choisir la source">
-      <h2>1. Choisir la source</h2>
-      <div class="sources" id="sources">
-        <button type="button" data-source="google_maps">🗺️ Maps</button>
-        <button type="button" data-source="google_search">🔎 Google</button>
-        <button type="button" data-source="bing">🟦 Bing</button>
-        <button type="button" data-source="linkedin">💼 LinkedIn</button>
-        <button type="button" data-source="societe_com">Societe.com</button>
-        <button type="button" data-source="facebook">Facebook Pages</button>
-        <button type="button" data-source="tiktok">TikTok pro</button>
-        <button type="button" data-source="instagram">Instagram pro</button>
-        <button type="button" data-source="pagesjaunes">📒 PagesJaunes</button>
+
+    <div id="searchView">
+      <div class="ready-bar"><span class="ready-check">✓</span><strong>Prêt à collecter</strong>
+        <span id="currentTab">· Vérification de l’onglet…</span><small id="extensionIdentity"></small></div>
+      <section id="sourcePicker" class="card source-picker" aria-label="Choisir la source">
+        <div class="card-title"><span class="card-icon blue">▱</span><h2>Choisir une source</h2></div>
+        <div class="sources" id="sources">
+          <button type="button" data-source="google_maps"><span class="source-mark maps">●</span> Google Maps</button>
+          <button type="button" data-source="google_search"><span class="source-mark google">G</span> Google</button>
+          <button type="button" data-source="bing"><span class="source-mark bing">b</span> Bing</button>
+          <button type="button" data-source="pagesjaunes"><span class="source-mark pj">J</span> PagesJaunes</button>
+          <button type="button" data-source="societe_com"><span class="source-mark societe">S</span> Societe.com</button>
+          <button type="button" data-source="linkedin"><span class="source-mark linkedin">in</span> LinkedIn</button>
+          <button type="button" data-source="facebook"><span class="source-mark facebook">f</span> Facebook Pages</button>
+          <button type="button" data-source="instagram"><span class="source-mark instagram">◎</span> Instagram pro</button>
+          <button type="button" data-source="tiktok"><span class="source-mark tiktok">♪</span> TikTok pro</button>
+        </div>
+        <button type="button" id="sourceMore" class="source-more" aria-expanded="false">Voir les 9 sources <span>⌄</span></button>
+        <p class="active-source">Source active : <strong id="activeSource">Google Maps</strong></p>
+      </section>
+      <section id="searchSection" class="card search-card">
+        <div class="card-title"><span class="card-icon blue">⌕</span><div><h2>Recherche ciblée</h2>
+          <p class="card-subtitle">Recherchez une activité ou une entreprise.</p></div></div>
+        <label for="query">Entreprise ou activité</label>
+        <div class="field"><span aria-hidden="true">▣</span><input id="query" placeholder="Ex. plombier, Hecker & Frères" autocomplete="off" maxlength="120"/></div>
+        <label for="area">Ville, département ou code postal</label>
+        <div class="field"><span aria-hidden="true">⌖</span><input id="area" placeholder="Ex. Lille ou 59100" autocomplete="off" maxlength="100"/></div>
+        <button type="button" class="primary" id="open">Ouvrir la recherche <span>→</span></button>
+        <p class="search-info" id="sourceHint">La collecte démarre depuis les résultats affichés.</p>
+      </section>
+      <p class="tip"><span>✧</span> <strong>Astuce :</strong> sur Maps, les fiches détaillées sont ouvertes successivement pour relever les coordonnées.</p>
+      <button type="button" id="openCollection" class="search-results-link">Voir les résultats conservés <span id="searchCount">0</span> <span>→</span></button>
+    </div>
+
+    <div id="collectionView" hidden>
+      <div class="collection-context">
+        <span class="source-mark maps" id="collectionMark">●</span>
+        <div><strong id="collectionSource">Google Maps</strong><p id="collectionQuery">Recherche locale</p></div>
+        <button type="button" id="editSearch" class="outline-mini">Modifier</button>
       </div>
-    </section>
-    <section>
-      <h2>2. Chercher</h2>
-      <label for="query">Activité ou entreprise</label>
-      <input id="query" placeholder="Ex. plombier" autocomplete="off" maxlength="120"/>
-      <label for="area">Ville, département ou code postal</label>
-      <input id="area" placeholder="Ex. 59100 Roubaix" autocomplete="off" maxlength="100"/>
-      <button type="button" class="primary" id="open">Ouvrir une recherche <span>↗</span></button>
-      <p class="hint" id="sourceHint"></p>
-    </section>
-    <section>
-      <h2 id="collectTitle">3. Collecter</h2>
-      <div id="bulkControls">
-      <button type="button" class="primary teal" id="capture">⤓ Capturer les fiches</button>
-      <button type="button" class="secondary" id="autoMaps">▣ Lancer une recherche Maps par activité</button>
-      <button type="button" class="link" id="resetMaps">Repartir du premier résultat Maps</button>
-      <p class="hint">Le connecteur mémorise les fiches Maps déjà ouvertes pour cette activité et cette zone, fait défiler les résultats et parcourt les nouvelles fiches. Rouvrez l'extension pour vérifier le bilan.</p>
-      <p id="mapProgress" class="map-progress" role="status" aria-live="polite" hidden></p>
-      <p class="hint">Sur une liste Maps, Capturer ouvre automatiquement chaque fiche pour lire ses coordonnées.</p>
-      <div class="draft-title"><strong>Fiches à vérifier <span class="count amber" id="draftCount">0</span></strong><span>Adresse manquante</span></div>
-      <button type="button" class="secondary enrich" id="autoEnrich">✦ Vérifier les adresses (BAN + annuaire officiel)</button>
-      <p class="hint">Le numéro et la rue réellement affichés peuvent être vérifiés auprès de la Base Adresse Nationale. Sans rue, seule une correspondance d’entreprise officielle certaine est acceptée. Aucun import automatique.</p>
-      <details id="diagnosticPanel" hidden><summary>Pourquoi certaines fiches restent à vérifier ?</summary><div id="diagnostics" class="diagnostics"></div></details>
-      <div id="drafts" class="draft-list"><p class="empty">Aucun brouillon</p></div>
+      <section id="bulkControls" class="collection-controls">
+        <div class="collection-state"><span class="live-dot"></span><h2 id="collectTitle">Collecte et vérification</h2></div>
+        <div class="progress-row"><div class="progress-track"><span id="progressFill"></span></div>
+          <button type="button" id="pauseMaps" class="outline-mini" hidden>Ⅱ Pause</button></div>
+        <p class="progress-copy" id="mapProgress" role="status" aria-live="polite">Prêt à capturer les fiches de la page affichée.</p>
+        <button type="button" class="primary" id="capture">Capturer les fiches <span>↓</span></button>
+        <div class="capture-options">
+          <button type="button" class="secondary" id="autoMaps">Lancer la collecte Maps par activité</button>
+          <button type="button" class="link" id="resetMaps">Repartir du premier résultat Maps</button>
+        </div>
+      </section>
+      <div class="metrics">
+        <div class="metric is-blue"><span class="metric-icon">▤</span><strong id="capturedCount">0</strong><small>Capturées</small></div>
+        <div class="metric is-green"><span class="metric-icon">✓</span><strong id="completeCount">0</strong><small>Complètes</small></div>
+        <div class="metric is-amber"><span class="metric-icon">!</span><strong id="reviewCount">0</strong><small>À vérifier</small></div>
       </div>
-      <details id="manualPanel">
-        <summary>+ Compléter ou ajouter une fiche vérifiée</summary>
-        <form id="manualForm">
-          <label for="company">Entreprise *</label><input id="company" required maxlength="160"/>
-          <label for="address">Adresse complète (avec CP) *</label><input id="address" placeholder="8 rue Exemple 59100 Roubaix" required maxlength="320"/>
-          <div class="two"><div><label for="postal">Code postal *</label><input id="postal" placeholder="59100" inputmode="numeric" pattern="[0-9]{5}" required maxlength="5"/></div>
-          <div><label for="city">Ville</label><input id="city" placeholder="Roubaix" maxlength="120"/></div></div>
-          <div id="legalIdentity" hidden><label for="siret">SIRET de l’établissement (facultatif)</label><input id="siret" pattern="[0-9]{14}" maxlength="14" inputmode="numeric"/></div>
-          <label for="email">Email professionnel visible (facultatif)</label><input id="email" type="email" maxlength="254"/>
-          <label for="phone">Téléphone (facultatif)</label><input id="phone" placeholder="Numéro affiché et vérifié" maxlength="40"/>
-          <label for="website">Site web (facultatif)</label><input id="website" type="url" placeholder="https://…"/>
-          <label for="sourceUrl">Lien de la fiche source *</label><input id="sourceUrl" type="url" required placeholder="https://…"/>
-          <button class="secondary" type="submit" id="manualSubmit">Valider et ajouter à la sélection</button>
-        </form>
+      <section class="card results-card">
+        <div class="results-heading"><h2>Fiches collectées</h2><div class="result-filters" role="group" aria-label="Filtrer les fiches">
+          <button type="button" id="filterAll" aria-pressed="true">Toutes <span id="filterAllCount">0</span></button>
+          <button type="button" id="filterReview" aria-pressed="false">À vérifier <span id="filterReviewCount">0</span></button>
+        </div></div>
+        <div id="selectionHead" class="selection-line"><label><input type="checkbox" id="selectAll"/> Tout sélectionner</label>
+          <button type="button" class="link" id="clear">Vider</button></div>
+        <div id="queue" class="queue" role="list"><p class="empty">Aucune fiche capturée</p></div>
+        <p class="results-limit" id="resultCountHint" hidden></p>
+      </section>
+      <details id="verificationPanel" class="verification-panel">
+        <summary><span>✧</span><strong>Vérification assistée</strong><em><span id="draftCount">0</span> adresse(s) à contrôler</em><span class="chevron">⌄</span></summary>
+        <div class="verification-body"><p class="hint">Les fiches partielles restent conservées. Vérifiez l’adresse exacte via BAN ou l’annuaire officiel, sans inventer de données.</p>
+          <button type="button" class="secondary enrich" id="autoEnrich">Vérifier les adresses (BAN + annuaire officiel)</button>
+          <details id="diagnosticPanel" hidden><summary>Pourquoi certaines fiches restent à vérifier ?</summary><div id="diagnostics" class="diagnostics"></div></details>
+          <div id="drafts" class="draft-list"><p class="empty">Aucune fiche à compléter</p></div>
+        </div>
       </details>
-    </section>
-    <section>
-      <div id="selectionHead" class="listhead"><h2>4. Sélection locale <span class="count" id="total">0</span></h2><button type="button" class="link" id="clear">Vider</button></div>
-      <div id="queue" class="queue"><p class="empty">Aucune fiche capturée</p></div>
-      <p class="hint">Conservées 24 h sur cet appareil. L'import est validé dans GrowthOS : les fiches incomplètes peuvent être importées sans inventer d'adresse ni SIRET.</p>
-      <a class="primary growthos" href="https://agile.le-publicitaire.fr/prospects/connecteur" target="_blank" rel="noopener noreferrer">Sélectionner et importer dans Prospects →</a>
-    </section>
+      <p class="import-note">Les fiches incomplètes avec des coordonnées utiles peuvent être proposées au CRM. Aucune adresse ni aucun identifiant n’est inventé.</p>
+    </div>
+
+    <details id="manualPanel" class="card manual-panel">
+      <summary>+ Compléter ou ajouter une fiche vérifiée</summary>
+      <form id="manualForm">
+        <label for="company">Entreprise *</label><input id="company" required maxlength="160"/>
+        <label for="address">Adresse complète (avec CP) *</label><input id="address" placeholder="8 rue Exemple 59100 Roubaix" required maxlength="320"/>
+        <div class="two"><div><label for="postal">Code postal *</label><input id="postal" placeholder="59100" inputmode="numeric" pattern="[0-9]{5}" required maxlength="5"/></div>
+          <div><label for="city">Ville</label><input id="city" placeholder="Roubaix" maxlength="120"/></div></div>
+        <div id="legalIdentity" hidden><label for="siret">SIRET de l’établissement (facultatif)</label><input id="siret" pattern="[0-9]{14}" maxlength="14" inputmode="numeric"/></div>
+        <label for="email">Email professionnel visible (facultatif)</label><input id="email" type="email" maxlength="254"/>
+        <label for="phone">Téléphone (facultatif)</label><input id="phone" placeholder="Numéro affiché et vérifié" maxlength="40"/>
+        <label for="website">Site web (facultatif)</label><input id="website" type="url" placeholder="https://…"/>
+        <label for="sourceUrl">Lien de la fiche source *</label><input id="sourceUrl" type="url" required placeholder="https://…"/>
+        <button class="secondary" type="submit" id="manualSubmit">Valider et ajouter à la sélection</button>
+      </form>
+    </details>
   </main>
+  <footer id="popupFooter">
+    <div id="searchFooter"><span>▱</span><span>Aucune fiche en attente ?</span><button type="button" id="footerResults">Voir les résultats →</button></div>
+    <div id="collectFooter" hidden><div class="footer-row"><span class="selected-total"><span>✓</span> <strong id="selectedCount">0</strong> sélectionnée(s)</span>
+      <a class="primary growthos" id="importAction" href="https://agile.le-publicitaire.fr/prospects/connecteur" target="_blank" rel="noopener noreferrer">Finaliser l’import dans GrowthOS →</a></div>
+      <small>La sélection est vérifiée et confirmée dans GrowthOS avant import.</small>
+    </div>
+  </footer>
   <script src="popup.js"></script>
 </body>
 </html>

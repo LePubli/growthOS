@@ -7,6 +7,95 @@ let currentUrl='';
 let pendingDraftId=null;
 let context=null;
 let modules=[];
+let phase='search';
+let filterMode='all';
+let expandedResults=false;
+let lastQueue=[];
+let lastDrafts=[];
+let selectedIds=new Set();
+let initializedSelection=false;
+let latestMapStatus={status:'idle'};
+const crmImportUrl='https://agile.le-publicitaire.fr/prospects/connecteur';
+function setPhase(next){
+  phase=next;
+  document.body.className='phase-'+next;
+  $('searchView').hidden=next!=='search';
+  $('collectionView').hidden=next!=='collect';
+  $('searchFooter').hidden=next!=='search';
+  $('collectFooter').hidden=next!=='collect';
+  if(next==='collect')$('manualPanel').hidden=source==='pagesjaunes';
+  if(next==='task')$('manualPanel').hidden=false;
+  document.querySelectorAll('[data-step]').forEach(el=>{
+    const order=['source','search','collect','import'];
+    const active=next==='search'?'search':'collect';
+    el.classList.toggle('is-complete',order.indexOf(el.dataset.step)<order.indexOf(active));
+    el.classList.toggle('is-active',el.dataset.step===active);
+  });
+}
+function sourceMark(type){
+  const marks={google_maps:['maps','●'],google_search:['google','G'],bing:['bing','b'],pagesjaunes:['pj','J'],societe_com:['societe','S'],linkedin:['linkedin','in'],facebook:['facebook','f'],instagram:['instagram','◎'],tiktok:['tiktok','♪']};
+  const [css,label]=marks[type]||['maps','●'];
+  const span=document.createElement('span');span.className='source-mark '+css;span.textContent=label;return span;
+}
+function importable(item){
+  const draft=item.incomplete===true||String(item.id||'').startsWith('draft_');
+  return !draft||Boolean(item.phone||item.website||item.address);
+}
+function updateImportLink(){
+  const available=[...lastQueue,...lastDrafts].filter(item=>importable(item)&&selectedIds.has(item.id));
+  $('selectedCount').textContent=String(available.length);
+  const link=$('importAction');
+  const url=new URL(crmImportUrl);
+  // La page GrowthOS confirme l'import. Ce paramètre ne contient que des IDs locaux,
+  // jamais des coordonnées ou identifiants légaux des entreprises.
+  // Le fragment reste dans Chrome (il n'est pas envoyé au serveur ni aux logs HTTP).
+  // Il évite aussi de dépasser la taille maximale des URLs côté proxy pour les lots.
+  url.hash='selected='+encodeURIComponent(available.map(item=>item.id).join(','));
+  link.href=url.toString();link.classList.toggle('is-disabled',!available.length);
+  link.setAttribute('aria-disabled',String(!available.length));
+}
+function renderResults(){
+  const all=[...lastQueue.map(item=>({...item,incomplete:false})),...lastDrafts.map(item=>({...item,incomplete:true}))];
+  const visible=(filterMode==='review'?all.filter(item=>item.incomplete):all).slice().reverse();
+  const list=expandedResults?visible:visible.slice(0,8);
+  $('filterAllCount').textContent=String(all.length);
+  $('filterReviewCount').textContent=String(lastDrafts.length);
+  $('filterAll').setAttribute('aria-pressed',String(filterMode==='all'));
+  $('filterReview').setAttribute('aria-pressed',String(filterMode==='review'));
+  const eligible=visible.filter(importable);
+  $('selectAll').checked=Boolean(eligible.length)&&eligible.every(item=>selectedIds.has(item.id));
+  $('selectAll').indeterminate=eligible.some(item=>selectedIds.has(item.id))&&!$('selectAll').checked;
+  const box=$('queue');box.replaceChildren();
+  if(!all.length){const p=document.createElement('p');p.className='empty';p.textContent='Aucune fiche capturée pour le moment.';box.append(p);}
+  else if(!visible.length){const p=document.createElement('p');p.className='empty';p.textContent='Aucune fiche à vérifier.';box.append(p);}
+  for(const item of list){
+    const row=document.createElement('div');row.className='result-row';row.setAttribute('role','listitem');
+    const check=document.createElement('input');check.type='checkbox';check.checked=selectedIds.has(item.id);
+    check.disabled=!importable(item);check.setAttribute('aria-label','Sélectionner '+item.company);
+    check.addEventListener('change',()=>{
+      if(check.checked)selectedIds.add(item.id);else selectedIds.delete(item.id);
+      renderResults();updateImportLink();
+    });
+    const info=document.createElement('div');info.className='result-copy';
+    const name=document.createElement('strong');name.textContent=item.company;
+    const details=document.createElement('small');
+    details.textContent=[item.address||item.city||'Adresse non relevée',item.codePostal||'',item.phone||'',labels[item.source]||item.source].filter(Boolean).join(' · ');
+    info.append(name,details);
+    const badge=document.createElement('span');badge.className='result-tag'+(item.incomplete?' review':'');
+    badge.textContent=item.incomplete?'! À vérifier':'✓ Complète';
+    const remove=document.createElement('button');remove.className='remove';remove.textContent='×';remove.type='button';
+    remove.title='Retirer cette fiche';
+    remove.addEventListener('click',async()=>{
+      try{await message(item.incomplete?'remove-draft':'remove-capture',{id:item.id});selectedIds.delete(item.id);await refresh();}
+      catch(error){notice(error.message,true);}
+    });
+    row.append(check,sourceMark(item.source),info,badge,remove);box.append(row);
+  }
+  const more=$('resultCountHint');more.hidden=visible.length<=8;
+  more.textContent=expandedResults?'Réduire la liste':`Voir les ${visible.length-8} autres fiches ↓`;
+  more.setAttribute('role','button');more.tabIndex=more.hidden?-1:0;
+  updateImportLink();
+}
 function message(action,payload){return new Promise((resolve,reject)=>{
   chrome.runtime.sendMessage({action,payload},response=>{
     const error=chrome.runtime.lastError;
@@ -35,6 +124,14 @@ function selectSource(value){
   source=value;
   pendingDraftId=null;
   for(const btn of document.querySelectorAll('[data-source]'))btn.setAttribute('aria-pressed',String(btn.dataset.source===value));
+  $('activeSource').textContent=labels[value]||value;
+  $('collectionSource').textContent=labels[value]||value;
+  $('collectionMark').replaceWith(Object.assign(sourceMark(value),{id:'collectionMark'}));
+  const chosen=document.querySelector(`[data-source="${value}"]`);
+  if(chosen && [...chosen.parentElement.children].indexOf(chosen)>4){
+    $('sourcePicker').classList.add('is-expanded');$('sourceMore').setAttribute('aria-expanded','true');
+    $('sourceMore').firstChild.textContent='Réduire la liste ';
+  }
   const isManual=manualSources.has(value),isPagesjaunes=value==='pagesjaunes';
   $('legalIdentity').hidden=value!=='societe_com';
   $('siret').disabled=value!=='societe_com';
@@ -63,6 +160,7 @@ function renderContext(task){
     $('sourceHint').textContent=(modules.find(m=>m.source===task.source)?.hint||'')+' Mode : nouveaux prospects.';
     return;
   }
+  setPhase('task');
   const module=modules.find(m=>m.source===task.source);
   $('taskPanel').hidden=false;$('sourcePicker').hidden=true;
   $('taskTitle').textContent=(module?.name||labels[task.source])+' · Enrichir';
@@ -96,13 +194,29 @@ function renderContext(task){
 async function refresh(){
   const [data,draftData,mapRun]=await Promise.all([message('list-captures'),message('list-drafts'),message('auto-capture-status')]);
   const progress=$('mapProgress'),status=mapRun.status||{};
-  progress.hidden=status.status==='idle'||!status.status;
-  progress.textContent=status.status==='running'
-    ? `Lecture Maps en cours : ${status.checked||0}/${status.total||'?'} fiche(s), ${status.added||0} ajoutée(s).`
-    : `Dernière lecture Maps : ${status.checked||0}/${status.total||0} fiche(s), ${status.added||0} ajoutée(s)`+
-      (status.errors?.length?` · ${status.errors.length} fiche(s) sans adresse complète ou erreur : ${status.errors[0]}`:'')+'.';
-  const queue=data.results||[]; $('total').textContent=String(queue.length);
+  latestMapStatus=status;
+  progress.hidden=false;
+  const running=status.status==='running',paused=status.status==='paused';
+  progress.textContent=running
+    ? `Lecture Maps en cours · ${status.checked||0}/${status.total||'?'} fiches examinées · ${status.added||0} ajoutée(s).`
+    : paused ? `Lecture en pause après ${status.checked||0} fiche(s). Relancez le lot pour poursuivre.`
+    : status.status==='idle'||!status.status ? 'Prêt à capturer les fiches de la page affichée.'
+    : `Dernière lecture Maps · ${status.checked||0}/${status.total||0} fiches · ${status.added||0} ajoutée(s)`+
+      (status.errors?.length?` · ${status.errors[0]}`:'')+'.';
+  $('progressFill').style.width=status.total?Math.min(100,Math.max(0,(status.checked||0)/status.total*100))+'%':'0%';
+  $('pauseMaps').hidden=!running;
+  $('autoMaps').textContent=paused?'Reprendre la lecture Maps':'Lancer la collecte Maps par activité';
+  const queue=data.results||[];
   const drafts=draftData.drafts||[];
+  lastQueue=queue;lastDrafts=drafts;
+  if(!initializedSelection){selectedIds=new Set([...queue,...drafts].filter(importable).map(item=>item.id));initializedSelection=true;}
+  const allowed=new Set([...queue,...drafts].map(item=>item.id));
+  for(const id of selectedIds)if(!allowed.has(id))selectedIds.delete(id);
+  $('capturedCount').textContent=String(queue.length+drafts.length);
+  $('completeCount').textContent=String(queue.length);
+  $('reviewCount').textContent=String(drafts.length);
+  $('searchCount').textContent=String(queue.length+drafts.length);
+  $('collectionQuery').textContent=[$('query').value.trim(),$('area').value.trim()].filter(Boolean).join(' · ')||'Captures en attente';
   $('autoEnrich').disabled=!drafts.length;
   $('draftCount').textContent=String(drafts.length);
   const draftsBox=$('drafts');draftsBox.replaceChildren();
@@ -140,16 +254,7 @@ async function refresh(){
     });
     row.append(info,openMaps,complete,remove);draftsBox.append(row);
   }
-  const box=$('queue');box.replaceChildren();
-  if(!queue.length){const p=document.createElement('p');p.className='empty';p.textContent='Aucune fiche capturée';box.append(p);return;}
-  for(const item of [...queue].reverse()){
-    const row=document.createElement('div');row.className='item';
-    const content=document.createElement('div');const title=document.createElement('strong');title.textContent=item.company;
-    const small=document.createElement('small');small.textContent=(labels[item.source]||item.source)+' · '+item.codePostal+' · '+item.city;
-    const remove=document.createElement('button');remove.textContent='✕';remove.title='Retirer cette fiche';
-    remove.addEventListener('click',async()=>{try{await message('remove-capture',{id:item.id});await refresh();}catch(e){notice(e.message,true);}});
-    content.append(title,small);row.append(content,remove);box.append(row);
-  }
+  renderResults();
 }
 async function init(){
   try{
@@ -165,10 +270,42 @@ async function init(){
     modules=await fetch(chrome.runtime.getURL('modules.json')).then(r=>r.json());
     const taskState=await message('task-current');
     renderContext(taskState.task);
-    if(context?.mode!=='enrich')await refresh();
+    if(context?.mode!=='enrich'){
+      await refresh();
+      setPhase(lastQueue.length||lastDrafts.length||latestMapStatus.status==='running'||latestMapStatus.status==='paused'?'collect':'search');
+    }
   }catch(e){notice(e.message,true);}
 }
 for(const btn of document.querySelectorAll('[data-source]'))btn.addEventListener('click',()=>selectSource(btn.dataset.source));
+$('sourceMore').addEventListener('click',()=>{
+  const expanded=$('sourcePicker').classList.toggle('is-expanded');
+  $('sourceMore').setAttribute('aria-expanded',String(expanded));
+  $('sourceMore').firstChild.textContent=expanded?'Réduire la liste ':'Voir les 9 sources ';
+});
+for(const id of ['openCollection','footerResults'])$(id).addEventListener('click',()=>setPhase('collect'));
+$('editSearch').addEventListener('click',()=>setPhase('search'));
+for(const [id,filter] of [['filterAll','all'],['filterReview','review']])$(id).addEventListener('click',()=>{
+  filterMode=filter;expandedResults=false;renderResults();
+});
+$('selectAll').addEventListener('change',event=>{
+  const items=filterMode==='review'?lastDrafts:[...lastQueue,...lastDrafts];
+  for(const item of items.filter(importable)){
+    if(event.target.checked)selectedIds.add(item.id);else selectedIds.delete(item.id);
+  }
+  renderResults();
+});
+function toggleExpandedResults(){expandedResults=!expandedResults;renderResults();}
+$('resultCountHint').addEventListener('click',toggleExpandedResults);
+$('resultCountHint').addEventListener('keydown',event=>{
+  if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleExpandedResults();}
+});
+$('importAction').addEventListener('click',event=>{
+  if($('importAction').getAttribute('aria-disabled')==='true')event.preventDefault();
+});
+$('pauseMaps').addEventListener('click',async()=>{
+  try{await message('pause-maps-progress');notice('Pause demandée. La fiche Maps en cours se termine avant l’arrêt.');}
+  catch(error){notice(error.message,true);}
+});
 $('open').addEventListener('click',async()=>{
   const query=$('query').value.trim(),area=$('area').value.trim();
   try{await chrome.storage.local.set({growthos_popup_prefs:{query,area}});
@@ -176,6 +313,7 @@ $('open').addEventListener('click',async()=>{
   }catch(e){notice(e.message,true);}
 });
 $('capture').addEventListener('click',async()=>{
+  setPhase('collect');
   $('capture').disabled=true;
   try{const r=await message('capture-tab',{query:$('query').value.trim(),area:$('area').value.trim()});await refresh();
     notice(r.checked!==undefined ? `${r.checked} fiche(s) Maps examinée(s) · ${r.added} ajoutée(s).` : (r.added||r.draftAdded)
@@ -185,6 +323,7 @@ $('capture').addEventListener('click',async()=>{
   finally{$('capture').disabled=(manualSources.has(source)&&source!=='societe_com')||source==='pagesjaunes';}
 });
 $('autoMaps').addEventListener('click',async()=>{
+  setPhase('collect');
   const query=$('query').value.trim(),area=$('area').value.trim();
   if(query.length<3||!area){notice('Renseignez une activité et une zone géographique avant la lecture Maps.',true);return;}
   const button=$('autoMaps');button.disabled=true;
@@ -193,7 +332,7 @@ $('autoMaps').addEventListener('click',async()=>{
     notice('La lecture Maps a démarré. L’onglet Google va naviguer entre les fiches. Rouvrez ensuite l’extension pour voir le bilan.');
     const result=await message('auto-capture-maps',{query,area});
     await refresh();
-    notice(`${result.checked} fiche(s) Maps examinée(s) · ${result.added} adresse(s) complète(s) ajoutée(s).`);
+    notice(`${result.checked} fiche(s) Maps examinée(s) · ${result.added} adresse(s) complète(s) ajoutée(s).${result.status==='paused'?' Lecture en pause.':''}`);
   }catch(error){notice(error.message,true);}
   finally{button.disabled=!['google_maps','google_search'].includes(sourceFromUrl(currentUrl));}
 });
@@ -260,3 +399,8 @@ $('clear').addEventListener('click',async()=>{
   try{await message('clear-captures');await refresh();notice('Sélection locale vidée.');}catch(e){notice(e.message,true);}
 });
 init();
+// Une collecte Maps peut continuer quand le popup est rouvert : garder les chiffres et
+// la liste synchronisés sans modifier la sélection que l'utilisateur a déjà choisie.
+setInterval(()=>{
+  if(phase==='collect'&&!document.hidden)refresh().catch(()=>{});
+},2800);
