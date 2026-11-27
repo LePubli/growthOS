@@ -19,9 +19,21 @@ export function diagnoseSourceIssue(input: { source?: string | null; status?: st
     return { causeCode: 'SOURCE_UNCONFIGURED', certainty: 'observed', cause: `L'accès direct à ${source} n'est pas configuré.`, action: 'Configurer la connexion autorisée ou utiliser la source publique alternative ; ce statut n’est pas une panne du prospect.' };
   if ((status !== null && status !== undefined && status >= 500) || /indisponible|unavailable|browser.*failed|navigateur.*erreur/i.test(reason))
     return { causeCode: 'SOURCE_UNAVAILABLE', certainty: 'likely', cause: `Le service ${source} ou son navigateur de collecte est momentanément indisponible.`, action: 'Consulter les logs du conteneur navigateur avec l’identifiant de tâche, vérifier son état, puis relancer.' };
-  if (input.status === 'awaiting_user' && !/siren|siret|identité|rapprochement|contradictoire/i.test(reason))
+  if (/aucun site web renseigné|site web absent/i.test(reason))
+    return { causeCode: 'SOURCE_WEBSITE_MISSING', certainty: 'observed', cause: 'Aucune adresse de site web n’est renseignée sur ce prospect.', action: 'Renseigner un site web confirmé avant de lancer la lecture de ses contacts et mentions légales.' };
+  if (/un siren confirmé est nécessaire|un siret confirmé est nécessaire|identifiant.*nécessaire/i.test(reason))
+    return { causeCode: 'SOURCE_IDENTITY_REQUIRED', certainty: 'observed', cause: `Un identifiant légal vérifié est nécessaire avant de rattacher les données de ${source}.`, action: 'Vérifier le SIREN ou SIRET de l’établissement dans l’Annuaire officiel, puis reprendre la source.' };
+  if (input.status === 'empty')
+    return { causeCode: 'SOURCE_EMPTY', certainty: 'observed', cause: `Aucune nouvelle donnée n'a été confirmée auprès de ${source} ; ce statut n’est pas nécessairement une panne.`, action: 'Vérifier la recherche et les données déjà connues ; ne pas ajouter d’information non confirmée.' };
+  if (/pas fourni de résultats lisibles|aucune fiche lisible|aucun résultat visible|page.*sans résultat lisible/i.test(reason))
+    return { causeCode: 'SOURCE_UNREADABLE_RESULTS', certainty: 'observed', cause: `Le collecteur ${source} n’a trouvé aucun résultat lisible sur la page affichée. La cause sous-jacente (chargement, structure ou absence de résultats) reste à confirmer.`, action: 'Ouvrir la page dans le navigateur cloud ; vérifier le chargement, les résultats visibles et l’adaptation du lecteur à la structure actuelle.' };
+  if (/ouvrez une fiche entreprise.*publique|sélectionnez une fiche|ouvrez la bonne fiche/i.test(reason))
+    return { causeCode: 'SOURCE_MANUAL_SELECTION', certainty: 'observed', cause: `La source ${source} attend l’ouverture d’une fiche précise avant de pouvoir en lire les données.`, action: 'Ouvrir la fiche publique du bon établissement dans la session, puis reprendre sa lecture.' };
+  if (/le navigateur n.a pas pu effectuer cette opération/i.test(reason))
+    return { causeCode: 'SOURCE_WORKER_FAILURE', certainty: 'unknown', cause: 'Le moteur de navigation a échoué sans transmettre le motif technique détaillé à cette ancienne tâche.', action: 'Relancer une seule tâche avec le nouveau diagnostic et retrouver son identifiant dans les logs du worker Docker.' };
+  if (input.status === 'awaiting_user' && !/siren|siret|identité|rapprochement|contradictoire|correspondance/i.test(reason))
     return { causeCode: 'SOURCE_AWAITING_USER', certainty: 'unknown', cause: 'Le navigateur attend une intervention humaine ; le motif exact est à confirmer.', action: 'Ouvrir la session associée à cette tâche et consulter l’écran ou les logs du worker.' };
-  if (/siren|siret|identité|rapprochement|contradictoire|établissement|pas certain|aucun.*unique|vérifi/i.test(reason) || input.status === 'needs_review')
+  if (/siren|siret|identité|rapprochement|contradictoire|établissement|pas certain|aucun.*unique|correspondance fiable|non concordante|vérifi/i.test(reason) || input.status === 'needs_review')
     return { causeCode: 'SOURCE_IDENTITY_REVIEW', certainty: 'likely', cause: 'La correspondance entre la fiche collectée et le bon établissement n’est pas suffisamment certaine.', action: 'Vérifier manuellement SIREN/SIRET, raison sociale, ville et adresse avant d’appliquer une donnée.' };
   if (input.status === 'empty' || /aucun résultat|aucune correspondance|aucune donnée|page vide/i.test(reason))
     return { causeCode: 'SOURCE_EMPTY', certainty: 'observed', cause: `Aucune donnée exploitable n'a été confirmée auprès de ${source}.`, action: 'Vérifier le libellé recherché et la zone ; essayer une autre source, sans inventer les champs absents.' };

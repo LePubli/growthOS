@@ -81,7 +81,8 @@ router.get('/events', async (req, res) => {
 
 async function recentJobs(tenant: string, days: number) {
   const [cloud, enrich] = await Promise.all([
-    pool.query(`SELECT j.id,j.prospect_id,j.status,j.error,j.created_at,j.updated_at,p.source
+    pool.query(`SELECT j.id,j.prospect_id,j.status,j.error,j.result->>'message' AS result_message,
+      j.created_at,j.updated_at,p.source
       FROM cloud_browser_jobs j LEFT JOIN cloud_browser_profiles p ON p.id=j.profile_id AND p.tenant_id=j.tenant_id
       WHERE j.tenant_id=$1 AND j.created_at>NOW()-($2::integer*INTERVAL '1 day')
       ORDER BY j.updated_at DESC LIMIT 120`, [tenant, days]),
@@ -89,8 +90,16 @@ async function recentJobs(tenant: string, days: number) {
       WHERE tenant_id=$1 AND created_at>NOW()-($2::integer*INTERVAL '1 day') ORDER BY updated_at DESC LIMIT 120`, [tenant, days]),
   ]);
   return [
-    ...cloud.rows.map(j => ({ type: 'cloud', id: j.id, prospectId: j.prospect_id, status: j.status,
-      source: j.source, message: safeDiagnosticText(j.error || ''), diagnosis: ['failed','awaiting_user','needs_review'].includes(j.status)?diagnoseSourceIssue({source:j.source,status:j.status,reason:j.error}):null, createdAt: j.created_at, updatedAt: j.updated_at })),
+    ...cloud.rows.map(j => {
+      // Browser collectors normally persist their explanation in result.message.
+      // The error column is frequently empty for awaiting_user/needs_review.
+      const reason = j.result_message || j.error || '';
+      return { type: 'cloud', id: j.id, prospectId: j.prospect_id, status: j.status,
+        source: j.source, message: safeDiagnosticText(reason),
+        diagnosis: ['failed','awaiting_user','needs_review'].includes(j.status)
+          ? diagnoseSourceIssue({source:j.source,status:j.status,reason}) : null,
+        createdAt: j.created_at, updatedAt: j.updated_at };
+    }),
     ...enrich.rows.map(j => ({ type: 'enrichment', id: j.id, prospectId: j.prospect_id, status: j.status,
       sources: Object.entries(j.steps || {}).map(([source, step]) => ({ source, status: (step as any).status,
         message: safeDiagnosticText((step as any).message || '', 220),
@@ -111,7 +120,10 @@ router.get('/sources', async (req, res) => {
       COUNT(*) FILTER(WHERE j.status IN ('failed','needs_review','awaiting_user'))::int AS issues,
       MAX(j.updated_at) AS last_seen,
       MAX(j.updated_at) FILTER(WHERE j.status IN ('failed','needs_review','awaiting_user')) AS last_issue_at,
-      (ARRAY_AGG(j.error ORDER BY j.updated_at DESC) FILTER(WHERE j.error IS NOT NULL))[1] AS last_reason
+      (ARRAY_AGG(COALESCE(NULLIF(j.result->>'message',''),NULLIF(j.error,'')) ORDER BY j.updated_at DESC)
+        FILTER(WHERE j.status IN ('failed','needs_review','awaiting_user')))[1] AS last_reason,
+      (ARRAY_AGG(j.status ORDER BY j.updated_at DESC)
+        FILTER(WHERE j.status IN ('failed','needs_review','awaiting_user')))[1] AS last_issue_status
       FROM cloud_browser_jobs j JOIN cloud_browser_profiles p ON p.id=j.profile_id AND p.tenant_id=j.tenant_id
       WHERE j.tenant_id=$1 AND j.created_at > NOW()-($2::integer*INTERVAL '1 day') GROUP BY p.source`, [tenant, days]),
     pool.query(`SELECT step.key AS source, COUNT(*)::int AS runs,
@@ -119,21 +131,25 @@ router.get('/sources', async (req, res) => {
       MAX(j.updated_at) AS last_seen,
       MAX(j.updated_at) FILTER(WHERE step.value->>'status' IN ('failed','needs_review','awaiting_user')) AS last_issue_at,
       (ARRAY_AGG(step.value->>'message' ORDER BY j.updated_at DESC)
-        FILTER(WHERE step.value->>'status' IN ('failed','needs_review','awaiting_user')))[1] AS last_reason
+        FILTER(WHERE step.value->>'status' IN ('failed','needs_review','awaiting_user')))[1] AS last_reason,
+      (ARRAY_AGG(step.value->>'status' ORDER BY j.updated_at DESC)
+        FILTER(WHERE step.value->>'status' IN ('failed','needs_review','awaiting_user')))[1] AS last_issue_status
       FROM prospect_enrichment_jobs j CROSS JOIN LATERAL jsonb_each(j.steps) AS step
       WHERE j.tenant_id=$1 AND j.created_at > NOW()-($2::integer*INTERVAL '1 day')
         AND step.value->>'status' <> 'pending' GROUP BY step.key`, [tenant, days]),
   ]);
-  const bySource = new Map<string, { source: string; runs: number; issues: number; lastSeen: string; lastIssueAt: string | null; lastReason: string; diagnosis: ReturnType<typeof diagnoseSourceIssue> | null }>();
+  const bySource = new Map<string, { source: string; runs: number; issues: number; lastSeen: string; lastIssueAt: string | null; lastReason: string; lastIssueStatus: string | null; diagnosis: ReturnType<typeof diagnoseSourceIssue> | null }>();
   for (const row of [...cloud.rows, ...enrich.rows]) {
     const before = bySource.get(row.source);
     const lastSeen = before && +new Date(before.lastSeen) > +new Date(row.last_seen) ? before.lastSeen : row.last_seen;
-    const lastIssueAt = before?.lastIssueAt && (!row.last_issue_at || +new Date(before.lastIssueAt) > +new Date(row.last_issue_at)) ? before.lastIssueAt : row.last_issue_at;
-    const lastReason = before && lastIssueAt === before.lastIssueAt ? before.lastReason : row.last_reason;
+    const useBefore = !!before?.lastIssueAt && (!row.last_issue_at || +new Date(before.lastIssueAt) > +new Date(row.last_issue_at));
+    const lastIssueAt = useBefore ? before!.lastIssueAt : row.last_issue_at;
+    const lastReason = useBefore ? before!.lastReason : row.last_reason;
+    const lastIssueStatus = useBefore ? before!.lastIssueStatus : row.last_issue_status;
     const issues = (before?.issues || 0) + row.issues;
     bySource.set(row.source, { source: row.source, runs: (before?.runs || 0) + row.runs,
-      issues, lastSeen, lastIssueAt, lastReason: safeDiagnosticText(lastReason || '', 220),
-      diagnosis: issues ? diagnoseSourceIssue({source:row.source,reason:lastReason}) : null });
+      issues, lastSeen, lastIssueAt, lastIssueStatus, lastReason: safeDiagnosticText(lastReason || '', 220),
+      diagnosis: issues ? diagnoseSourceIssue({source:row.source,status:lastIssueStatus,reason:lastReason}) : null });
   }
   res.json({ sources: [...bySource.values()].sort((a,b) => b.issues-a.issues || b.runs-a.runs) });
 });
