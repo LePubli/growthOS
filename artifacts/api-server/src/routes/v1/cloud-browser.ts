@@ -1,3 +1,5 @@
+import {randomUUID} from 'node:crypto';
+import {targetCaptureReview,applyTargetCapture} from './sourcing';
 import {Router} from 'express';
 import {z} from 'zod';
 import {pool} from '@workspace/db';
@@ -80,6 +82,55 @@ router.post('/jobs/:id/import',async(req,res)=>{
   const id=idSchema.parse(req.params.id);
   const data=z.object({captureIds:z.array(z.string().min(3).max(64)).min(1).max(25)}).strict().parse(req.body);
   res.json(await importCloudJob(req.auth!.tenantId,req.auth!.userId,id,data.captureIds));
+});
+router.post('/local-review',async(req,res)=>{
+  const data=z.object({taskId:idSchema,prospectId:idSchema,cloudJobId:idSchema.optional(),capture:z.unknown()}).strict().parse(req.body),tenant=req.auth!.tenantId,user=req.auth!.userId;
+  const raw=data.capture as any;if(!raw||typeof raw!=='object'||!CLOUD_SOURCES.includes(raw.source))throw new CloudBrowserError(400,'Source locale invalide.');
+  const id=data.cloudJobId||data.taskId,capture={...raw,id:'task_'+id};
+  const preview=await targetCaptureReview(tenant,data.prospectId,capture);if(preview.status!==200)throw new CloudBrowserError(preview.status,'error' in preview?preview.error||'Capture invalide.':'Capture invalide.');
+  const client=await pool.connect();try{
+    await client.query('BEGIN');
+    let job=(await client.query('SELECT * FROM cloud_browser_jobs WHERE id=$1 FOR UPDATE',[id])).rows[0];
+    if(job&&(job.tenant_id!==tenant||job.created_by!==user||job.prospect_id!==data.prospectId))throw new CloudBrowserError(404,'Tâche introuvable.');
+    if(data.cloudJobId&&!job)throw new CloudBrowserError(404,'Tâche cible introuvable.');
+    if(job){
+      const profile=(await client.query('SELECT source FROM cloud_browser_profiles WHERE id=$1 AND tenant_id=$2',[job.profile_id,tenant])).rows[0];
+      if(profile?.source!==raw.source)throw new CloudBrowserError(409,'La capture appartient à une autre source.');
+      if(['queued','running'].includes(job.status))throw new CloudBrowserError(409,'Annulez d’abord la collecte cloud en cours.');
+      if(job.status==='completed'&&job.result?.applied){await client.query('COMMIT');res.json({job,alreadyApplied:true});return;}
+    }else{
+      let profile=(await client.query('SELECT id FROM cloud_browser_profiles WHERE tenant_id=$1 AND created_by=$2 AND source=$3 AND deleted_at IS NULL LIMIT 1',[tenant,user,raw.source])).rows[0];
+      if(!profile)profile=(await client.query('INSERT INTO cloud_browser_profiles(tenant_id,created_by,source,label) VALUES($1,$2,$3,$4) RETURNING id',[tenant,user,raw.source,'Capture locale · '+raw.source])).rows[0];
+      job=(await client.query("INSERT INTO cloud_browser_jobs(id,tenant_id,created_by,profile_id,prospect_id,mode,query,status) VALUES($1,$2,$3,$4,$5,'enrich',$6,'needs_review') RETURNING *",[id,tenant,user,profile.id,data.prospectId,String(raw.company).slice(0,160)])).rows[0];
+    }
+    const result={...job.result,captureHistory:[...(job.result?.captureHistory||[]),...(job.result?.captures||[])].slice(-20),captures:[capture],applied:undefined,localCapture:{taskId:data.taskId,capturedAt:new Date().toISOString()},message:'Capture issue du Chrome de cet appareil. Comparez puis confirmez son identité.'};
+    job=(await client.query("UPDATE cloud_browser_jobs SET status='needs_review',result=$2,error=NULL,lease=NULL,lease_until=NULL,updated_at=NOW() WHERE id=$1 RETURNING *",[id,JSON.stringify(result)])).rows[0];
+    await client.query('COMMIT');res.json({job});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+});
+router.get('/jobs/:id/review',async(req,res)=>{
+  const job=await cloudJob(req.auth!.tenantId,idSchema.parse(req.params.id),req.auth!.userId);
+  if(job.mode!=='enrich'||!job.prospect_id)throw new CloudBrowserError(409,'Cette tâche ne cible pas de prospect.');
+  const index=z.coerce.number().int().min(0).parse(req.query.captureIndex||0),capture=job.result?.captures?.[index];
+  if(!capture)throw new CloudBrowserError(409,'Aucune fiche capturée. Ouvrez la bonne fiche source puis relancez sa lecture.');
+  const preview=await targetCaptureReview(req.auth!.tenantId,job.prospect_id,capture);
+  if(preview.status!==200)throw new CloudBrowserError(preview.status,'error' in preview?preview.error||'Comparaison indisponible.':'Comparaison indisponible.');
+  res.json({...preview.review,captureIndex:index,captureCount:job.result.captures.length,alreadyApplied:!!job.result.applied});
+});
+router.post('/jobs/:id/confirm',async(req,res)=>{
+  const tenant=req.auth!.tenantId,user=req.auth!.userId,id=idSchema.parse(req.params.id);
+  const data=z.object({captureIndex:z.number().int().min(0),confirmed:z.literal(true),expectedUpdatedAt:z.string().datetime(),replaceFields:z.array(z.enum(['company','address','postalCode','city','phone','email','website','linkedinUrl','apeCode','nafLabel','nafVersion'])).max(11).default([])}).strict().parse(req.body);
+  const job=await cloudJob(tenant,id,user);
+  if(job.result?.applied&&job.status==='completed'){res.json({job,alreadyApplied:true});return;}
+  if(job.mode!=='enrich'||!job.prospect_id||!['needs_review','awaiting_user'].includes(job.status))throw new CloudBrowserError(409,'Cette tâche ne peut pas être confirmée dans son état actuel.');
+  const capture=job.result?.captures?.[data.captureIndex];if(!capture)throw new CloudBrowserError(404,'Capture introuvable.');
+  const lease=randomUUID(),claimed=await pool.query("UPDATE cloud_browser_jobs SET status='running',lease=$3,lease_until=NOW()+INTERVAL '2 minutes' WHERE id=$1 AND tenant_id=$2 AND status=$4 RETURNING id",[id,tenant,lease,job.status]);
+  if(!claimed.rows.length)throw new CloudBrowserError(409,'La tâche a changé d’état. Rechargez-la.');
+  try{
+    const applied=await applyTargetCapture(tenant,user,job.prospect_id,id,capture,false,{lease,result:{...job.result,manualConfirmation:{userId:user,captureIndex:data.captureIndex,confirmedAt:new Date().toISOString()}}},{expectedUpdatedAt:data.expectedUpdatedAt,confirmed:true,replaceFields:data.replaceFields});
+    if(applied.status!==200)throw new CloudBrowserError(applied.status,'error' in applied?applied.error:'Confirmation impossible.');
+    res.json({job:await cloudJob(tenant,id,user),...applied});
+  }catch(error){await pool.query("UPDATE cloud_browser_jobs SET status='needs_review',lease=NULL,lease_until=NULL WHERE id=$1 AND tenant_id=$2 AND lease=$3",[id,tenant,lease]);throw error;}
 });
 router.post('/jobs/:id/retry',async(req,res)=>{
   const id=idSchema.parse(req.params.id);const data=z.object({resume:z.boolean().default(true)}).strict().parse(req.body||{});

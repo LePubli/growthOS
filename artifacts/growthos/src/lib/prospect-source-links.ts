@@ -87,6 +87,8 @@ export function prospectSourceLinks(
   const pagesjaunes = record(details.pagesjaunes);
   for (const [source, url] of Object.entries(record(pagesjaunes.socials)))
     add(source, url, "Relevé sur PagesJaunes", pagesjaunes.capturedAt);
+  const website=record(details.website),snapshot=record(website.snapshot);
+  if(snapshot.identity!=='contradictory'&&Array.isArray(snapshot.socials))for(const value of snapshot.socials){const link=record(value);add(link.source,link.url,'Publié sur le site du prospect',website.capturedAt);}
   return [...links.values()].sort(
     (a, b) =>
       Number(b.current) - Number(a.current) ||

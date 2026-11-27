@@ -54,7 +54,7 @@ type ExtensionResponse = {
   task?: ConnectorTask | null;
 };
 export type ConnectorTask={id:string;source:string;mode:'discover'|'enrich';status:'active'|'pending'|'done';
-  prospect?:{id:string;company:string};capture?:Partial<LocalCompany>&{id:string;company:string;source:string}};
+  cloudJobId?:string;prospect?:{id:string;company:string};capture?:Partial<LocalCompany>&{id:string;company:string;source:string}};
 const CHANNEL = 'growthos-pagesjaunes-device-v1';
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 export function isMobileConnectorRequired() { return isMobile; }
@@ -90,7 +90,7 @@ function askExtension(action: 'ping'|'search'|'enrich'|'get-captures'|'get-draft
   });
 }
 export function pingLocalPagesJaunes() { return askExtension('ping'); }
-export function beginConnectorTask(payload:{source:string;mode:'discover'|'enrich';query:string;area:string;prospect?:{id:string;company:string}}){return askExtension('begin-task',payload,10000);}
+export function beginConnectorTask(payload:{source:string;mode:'discover'|'enrich';query:string;area:string;cloudJobId?:string;prospect?:{id:string;company:string}}){return askExtension('begin-task',payload,10000);}
 export function getConnectorTask(taskId:string,prospectId:string){return askExtension('get-task-result',{taskId,prospectId});}
 export function acknowledgeConnectorTask(taskId:string,prospectId:string){return askExtension('ack-task',{taskId,prospectId});}
 export function acknowledgeLocalImport(ids:string[]) { return askExtension('ack-import',{ids}); }

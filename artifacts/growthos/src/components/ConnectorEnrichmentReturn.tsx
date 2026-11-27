@@ -1,3 +1,4 @@
+import {CloudCaptureReview} from './cloud-browser/CloudCaptureReview';
 import {useEffect,useRef,useState} from 'react';
 import {useSearch} from 'wouter';
 import {AlertTriangle,CheckCircle2,Info,Loader2,X} from 'lucide-react';
@@ -6,6 +7,7 @@ import {getConnectorTask,acknowledgeConnectorTask} from '@/lib/pagesjaunes-devic
 
 export function ConnectorEnrichmentReturn({prospectId,onSaved,onBusyChange}:{prospectId:string;onSaved:()=>void|Promise<void>;onBusyChange?:(busy:boolean)=>void}){
   const search=useSearch(),taskId=new URLSearchParams(search).get('enrichmentTask');
+  const [reviewJob,setReviewJob]=useState<string|null>(null);
   const [retry,setRetry]=useState(0),[error,setError]=useState(''),[result,setResult]=useState('');
   const [conflicts,setConflicts]=useState(0);
   const [dismissed,setDismissed]=useState(false);
@@ -13,25 +15,24 @@ export function ConnectorEnrichmentReturn({prospectId,onSaved,onBusyChange}:{pro
   const busy=useRef(onBusyChange);busy.current=onBusyChange;
   useEffect(()=>{
     if(!taskId)return;
-    let alive=true;setError('');setResult('');setConflicts(0);setDismissed(false);busy.current?.(true);
+    let alive=true;setReviewJob(null);setError('');setResult('');setConflicts(0);setDismissed(false);busy.current?.(true);
     (async()=>{
       const response=await getConnectorTask(taskId,prospectId),task=response.task;
       if(!task || task.prospect?.id!==prospectId)throw new Error('La capture ne cible pas ce prospect.');
       if(task.status==='done'){if(alive){setResult('Cet enrichissement a déjà été enregistré.');await saved.current();}return;}
       if(!task.capture || task.status!=='pending')throw new Error('Capture non confirmée dans l’extension.');
-      const outcome=await apiClient.post<{filled:string[];conflicts:number;alreadyApplied:boolean}>('/sourcing/device/prospects/'+prospectId+'/enrich-capture',{
-        taskId,confirmed:true,capture:task.capture,
-      });
-      await acknowledgeConnectorTask(taskId,prospectId);
-      if(alive){setConflicts(outcome.conflicts);setResult(outcome.alreadyApplied?'Cet enrichissement a déjà été enregistré.':`${outcome.filled.length} champ(s) complété(s). ${outcome.conflicts} désaccord(s) à vérifier sur la fiche.`);await saved.current();}
+      const staged=await apiClient.post<{job:{id:string;result?:{applied?:{conflicts:number}}};alreadyApplied?:boolean}>('/browser/local-review',{taskId,prospectId,cloudJobId:task.cloudJobId,capture:task.capture});
+      if(staged.alreadyApplied){await acknowledgeConnectorTask(taskId,prospectId);if(alive){setResult('Cet enrichissement a déjà été enregistré.');await saved.current();}return;}
+      if(alive)setReviewJob(staged.job.id);
     })().catch(e=>{if(alive)setError(e instanceof Error?e.message:'Enregistrement impossible.');})
       .finally(()=>{if(alive)busy.current?.(false);});
     return()=>{alive=false;busy.current?.(false);};
   },[taskId,prospectId,retry]);
   if(!taskId||dismissed)return null;
   const duplicate=!error&&result==='Cet enrichissement a déjà été enregistré.';
-  const pending=!error&&!result;
+  const pending=!error&&!result&&!reviewJob;
   const tone=error?'error':pending?'pending':duplicate?'duplicate':'success';
+  if(reviewJob&&!result)return <CloudCaptureReview jobId={reviewJob} onClose={()=>setDismissed(true)} onSaved={async()=>{await acknowledgeConnectorTask(taskId!,prospectId);setReviewJob(null);setResult('Enrichissement confirmé et enregistré.');await saved.current();}}/>;
   const Icon=error?AlertTriangle:pending?Loader2:duplicate?Info:CheckCircle2;
   return <section className={'atlas-enrichment-notice atlas-enrichment-notice--'+tone} role={error?'alert':'status'} aria-live="polite">
     <span className="atlas-enrichment-notice-icon"><Icon size={20} className={pending?'animate-spin':undefined}/></span>

@@ -1,3 +1,4 @@
+import {websiteEnrichmentStep} from './website-enrichment';
 import {fetchBodaccPage,saveBodaccPage} from './bodacc';
 import {randomUUID} from 'node:crypto';
 import {db,pool,prospectsTable} from '@workspace/db';
@@ -8,8 +9,8 @@ import {mergeProspectCapture} from '../routes/v1/sourcing';
 import {cloudConfigured,CloudBrowserError} from './cloud-browser';
 import {providerKeysService} from '../lib/provider-keys/ProviderKeysService';
 
-type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number;offset?:number;siren?:string};
-const definitions=[['entreprises','Annuaire des Entreprises · données INSEE'],['google_maps','Google Maps'],['pagesjaunes','PagesJaunes'],['insee','INSEE Sirene · accès direct'],['societe_com','Societe.com'],['pappers','Pappers · données publiques'],['bodacc','BODACC · annonces officielles'],['google_search','Google Search'],['bing','Bing']] as const;
+type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number;offset?:number;siren?:string;legalCandidates?:boolean};
+const definitions=[['entreprises','Annuaire des Entreprises · données INSEE'],['website','Site web du prospect'],['google_maps','Google Maps'],['pagesjaunes','PagesJaunes'],['insee','INSEE Sirene · accès direct'],['societe_com','Societe.com'],['pappers','Pappers · données publiques'],['bodacc','BODACC · annonces officielles'],['google_search','Google Search'],['bing','Bing']] as const;
 const active=(status:string)=>['queued','running'].includes(status);
 const normalizedProspect=(p:any)=>({...p,postalCode:p.postal_code,sourceDetails:p.source_details,apeCode:p.ape_code,nafLabel:p.naf_label,nafVersion:p.naf_version});
 async function getProspect(tenant:string,id:string){const q=await pool.query('SELECT * FROM prospects WHERE tenant_id=$1 AND id=$2',[tenant,id]);if(!q.rows[0])throw new CloudBrowserError(404,'Prospect introuvable.');return q.rows[0];}
@@ -29,7 +30,30 @@ export async function startProspectEnrichment(tenant:string,user:string,id:strin
 }
 export async function latestProspectEnrichment(tenant:string,id:string){
   await getProspect(tenant,id);const q=await pool.query('SELECT * FROM prospect_enrichment_jobs WHERE tenant_id=$1 AND prospect_id=$2 ORDER BY created_at DESC LIMIT 1',[tenant,id]);
-  return q.rows[0]?enrichmentSummary(q.rows[0]):null;
+  let job=q.rows[0];if(!job)return null;
+  if(!['queued','running'].includes(job.status)){
+    const client=await pool.connect();try{
+      await client.query('BEGIN');job=(await client.query('SELECT * FROM prospect_enrichment_jobs WHERE id=$1 AND tenant_id=$2 FOR UPDATE',[job.id,tenant])).rows[0];
+      if(!['queued','running'].includes(job.status)){
+        let changed=false,identified=false;const steps=job.steps as Record<string,Step>;
+        for(const [source,step] of Object.entries(steps)){
+          if(!step.jobId||step.status==='completed')continue;
+          const child=(await client.query("SELECT result FROM cloud_browser_jobs WHERE id=$1 AND tenant_id=$2 AND status='completed'",[step.jobId,tenant])).rows[0];
+          if(!child?.result?.applied)continue;
+          steps[source]={...step,status:'completed',filled:child.result.applied.filled||[],conflicts:child.result.applied.conflicts||0,message:child.result.manualConfirmation?'Identité confirmée par l’utilisateur ; données comparées et enregistrées.':'Données concordantes enregistrées.'};
+          changed=true;identified ||= (child.result.applied.filled||[]).some((f:string)=>['siren','siret'].includes(f));
+        }
+        if(changed){
+          if(identified)for(const source of ['entreprises','insee','bodacc','pappers'])if(steps[source]&&['skipped','empty','needs_review','awaiting_user'].includes(steps[source].status))steps[source]={label:steps[source].label,status:'pending',message:'Identité complétée ; nouvelle vérification programmée.'};
+          const values=Object.values(steps),pending=values.some(s=>['pending','collecting'].includes(s.status)),incomplete=values.some(s=>['failed','needs_review','awaiting_user'].includes(s.status));
+          job=(await client.query("UPDATE prospect_enrichment_jobs SET steps=$2,status=$3,updated_at=NOW() WHERE id=$1 RETURNING *",[job.id,JSON.stringify(steps),pending?'queued':incomplete?'partial':'completed'])).rows[0];
+        }
+      }
+      await client.query('COMMIT');
+    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+  }
+  return enrichmentSummary(job);
+
 }
 async function mergeOfficial(job:any,candidate:any){
   return db.transaction(async tx=>{
@@ -44,7 +68,8 @@ async function mergeOfficial(job:any,candidate:any){
 }
 async function officialStep(job:any,p:any):Promise<Step>{
   const data=await fetchDirectory(p.siret||p.siren||p.company,p.postal_code||p.city||'');
-  const candidate=uniqueIdentityMatch(normalizedProspect(p),data.candidates);
+  let candidate=uniqueIdentityMatch(normalizedProspect(p),data.candidates);
+  if(!candidate&&!p.siret&&!p.siren){const site=p.source_details?.website?.snapshot;if(site&&site.identity!=='contradictory')for(const id of [...(site.sirets||[]),...(site.sirens||[])].slice(0,3)){const found=await fetchDirectory(id,p.postal_code||p.city||'');candidate=uniqueIdentityMatch(normalizedProspect(p),found.candidates);if(candidate)break;}}
   if(!candidate)return {label:job.steps.entreprises.label,status:data.candidates.length?'needs_review':'empty',message:data.candidates.length?'Aucun établissement unique confirmé par les identifiants ou le nom et les coordonnées. Aucune donnée appliquée.':'Aucune correspondance officielle.'};
   const merged=await mergeOfficial(job,candidate);
   return {label:job.steps.entreprises.label,status:'completed',filled:merged.filled,conflicts:merged.conflicts,message:'Identité officielle confirmée · '+candidate.siret+' · '+(candidate.snapshot?.fields?.['État de l’établissement']==='Fermé'?'Attention : cet établissement est fermé. Le siège actuel reste distinct. ':'')+'données issues notamment du répertoire INSEE.'};
@@ -108,9 +133,10 @@ export async function runProspectEnrichment(id:string){
     const p=await getProspect(job.tenant_id,job.prospect_id);
     const source=definitions.map(([s])=>s).find(s=>['pending','collecting'].includes(steps[s]?.status));
     if(source){
-      try{steps[source]=source==='entreprises'?await officialStep(job,p):source==='insee'?await inseeStep(job,p):source==='bodacc'?await bodaccStep(job,p,steps[source]):await browserStep(job,p,source,steps[source]);}
+      try{steps[source]=source==='entreprises'?await officialStep(job,p):source==='website'?await websiteEnrichmentStep(job,p):source==='insee'?await inseeStep(job,p):source==='bodacc'?await bodaccStep(job,p,steps[source]):await browserStep(job,p,source,steps[source]);}
       catch{steps[source]={...steps[source],status:'failed',message:'Source indisponible ou identité non confirmée. Les autres sources continuent.'};}
     }
+    if(source==='website'&&steps.website.legalCandidates&&['empty','needs_review'].includes(steps.entreprises?.status))steps.entreprises={label:steps.entreprises.label,status:'pending',message:'Identifiant publié sur le site : vérification officielle avant utilisation.'};
     const pending=Object.values(steps).some(s=>['pending','collecting'].includes(s.status));
     const completed=Object.values(steps).some(s=>s.status==='completed');
     const incomplete=Object.values(steps).some(s=>['failed','needs_review','awaiting_user'].includes(s.status));

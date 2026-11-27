@@ -247,6 +247,15 @@ Validation locale du lot Pappers/BODACC/onglet : **369 contrôles API PostgreSQL
 
 Revue PR61 : curseur BODACC et instantané enregistrés dans la même transaction, dernière page idempotente après interruption ; pagination liée au SIREN et remise à zéro après correction d’identité. **371 contrôles API** passent, dont les deux scénarios de reprise/correction. Chromium Pappers vert sur le premier head (run `45988161584`), aucune modification du lecteur dans ce complément ; nouvelle CI avant fusion.
 
+## Lot demandé : validation d’enrichissement, site web, cartographie et complétude (27/11/2026)
+
+Branche isolée `fix/prospect-enrichment-validation-and-website`, base préprod PR61. Priorité au blocage réel signalé : « Vérifier cette source » puis « Reprendre » ne permet pas de confirmer la bonne identité, notamment enseigne différente du nom légal. Ajouter comparaison et confirmation explicite, protéger les identifiants contradictoires, enregistrer et actualiser le bilan parent ; tester le parcours complet, pas seulement la lecture.
+
+Autres exigences du même lot : inclure le site déjà renseigné dans l’enrichissement (Contact, mentions légales, coordonnées/réseaux avec preuves), distinguer email publié et hypothèse sans prétendre valider une boîte sur la seule présence d’un MX ; priorité aux relations Societe.com, Pappers en repli si données absentes ; même calcul documentaire et mêmes données entre aperçu et fiche 360°, supprimer le calcul divergent par quart.
+
+Réseau : l’IP d’un navigateur distant reste celle du serveur. Le mode local doit réellement exécuter la lecture sur l’appareil via l’extension autorisée, sans usurper le navigateur ou contourner un contrôle. Les comptes/sessions restent isolés. Pas de promesse de mode local Android par simple réglage Web ; documenter la capacité effective.
+
+Conserver tous les CSS/thème et les notes de l’agent design. Le catalogue des 306 sources (PR62) reste différé après recette, hors de ce correctif. Aucun déploiement DockPanel par l’agent. Statut : en cours ; tests et images à vérifier avant feu vert.
 ## Lot design : tableau de suivi Enrichissements (27/11/2026)
 
 - Maquette ATLAS × ORBIT validée (« parfait ») par le propriétaire et remarque sur les titres insuffisamment gras. Branche isolée `feat/atlas-enrichment-tab-20261127`, base `fix/growthos-functional-redesign` à `a1083fe` après fusion PR61.

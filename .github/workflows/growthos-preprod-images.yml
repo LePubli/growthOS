@@ -99,6 +99,9 @@ jobs:
       - name: Test cloud AI connectors without real API calls
         run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/ai-connector-probes.test.ts
 
+      - name: Test website contact extraction and email domain checks
+        run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/website-contact.test.ts
+
       - name: Test SSRF protection of website audits
         run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/seo-safety.test.ts
 

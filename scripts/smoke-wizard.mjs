@@ -45,6 +45,7 @@ const testEnv = {
   JWT_REFRESH_SECRET: randomBytes(48).toString("hex"),
   ENCRYPTION_KEY: randomBytes(32).toString("hex"),
   SETUP_TOKEN: setupToken,
+  WEBSITE_TEST_URL: `http://127.0.0.1:${companiesPort}/website`,
   BODACC_TEST_URL: `http://127.0.0.1:${companiesPort}/bodacc`,
   COMPANY_DIRECTORY_API_URL: `http://127.0.0.1:${companiesPort}/search`,
   GROWTHOS_SMOKE_TEST: "true",
@@ -259,6 +260,13 @@ async function bodaccCheckpoint(prospectId,jobId,phase){
   });
 }
 
+async function seedManualParent(prospectId,jobId){
+  const code=String.raw`import {pool} from '@workspace/db';
+    const [id,child]=process.argv.slice(1),steps={societe_com:{label:'Societe.com',status:'needs_review',jobId:child},entreprises:{label:'Annuaire',status:'empty'},insee:{label:'INSEE',status:'skipped'},bodacc:{label:'BODACC',status:'skipped'},pappers:{label:'Pappers',status:'awaiting_user'}};
+    await pool.query("INSERT INTO prospect_enrichment_jobs(tenant_id,created_by,prospect_id,status,steps) SELECT tenant_id,created_by,prospect_id,'partial',$2 FROM cloud_browser_jobs WHERE id=$1",[child,JSON.stringify(steps)]);await pool.end();`;
+  await new Promise((resolve,reject)=>{const child=spawn('node',['--import','tsx','--input-type=module','-e',code,prospectId,jobId],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});let errors='';child.stderr.on('data',s=>errors+=s);child.on('error',reject);child.on('exit',status=>status===0?resolve():reject(Error(errors.slice(-1000))));});
+}
+
 async function storeTestSourcingJob(prospectId,candidates) {
   const code=String.raw`import {pool} from '@workspace/db';
     const [id,raw]=process.argv.slice(1);
@@ -288,6 +296,11 @@ const liveBodacc=JSON.parse(await readFile(join(root,'workers/cloud-browser/fixt
 let bodaccVersion=0;const bodaccCalls=[];
 let watchVersion=0,watchDown=false,watchWrongIdentity=false,watchRequests=0,watchEmptyAddress=false,watchStale=false;
 const companies = createServer((req, res) => {
+  if(req.url?.startsWith('/website?')){
+    const url=new URL(new URL(req.url,'http://localhost').searchParams.get('url'));
+    const html=url.hostname==='atelier-site.fr'?'<h1>Atelier Site</h1><a href="/contact">Contact</a><p>SIRET : 96677709200019</p><p>8 rue du Test 59100 Roubaix</p><a href="tel:0320112233">Téléphone</a>'+(url.pathname==='/contact'?'<a href="mailto:contact@atelier-site.fr">Email</a><a href="https://www.linkedin.com/company/atelier-site">LinkedIn</a>':''):'';
+    res.setHeader('Content-Type','text/html');res.end(html);return;
+  }
   if(req.url?.startsWith('/bodacc?')){
     const u=new URL(req.url,'http://localhost'),siren=u.searchParams.get('where')?.match(/\d{9}/)?.[0],offset=Number(u.searchParams.get('offset')||0);
     bodaccCalls.push({siren,offset});
@@ -303,6 +316,9 @@ const companies = createServer((req, res) => {
   }
   if(directoryQuery==='96677705600019'){
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777056',nom_complet:'Activité locale conservée',activite_principale:'70.10Z',siege:{siret:'96677705600019',adresse:'9 rue Scope 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix'}}]}));return;
+  }
+  if(directoryQuery==='96677709200019'||directoryQuery==='966777092'){
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777092',nom_complet:'Atelier Site',siege:{siret:'96677709200019',adresse:'8 rue du Test 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix'}}]}));return;
   }
   if(directoryQuery==='cloud-official-area'){
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777058',nom_complet:'Agence Lille et siège Paris',siege:{siret:'96677705800019',adresse:'1 rue Paris 75001 Paris',code_postal:'75001',libelle_commune:'Paris'},matching_etablissements:[{siret:'96677705800027',adresse:'1 rue Lille 59000 Lille',code_postal:'59000',libelle_commune:'Lille'}]}]}));return;
@@ -1673,6 +1689,41 @@ try {
     check((await request('GET','/browser/jobs/'+wrong.body.id,undefined,token)).body.status==='needs_review' &&
       (await request('GET','/prospects/'+target.body.id,undefined,token)).body.siret==='96677700200019',
       'Cloud : autre SIRET en revue sans modification du prospect');
+    const reviewPath='/browser/jobs/'+wrong.body.id;
+    const blockedReview=await request('GET',reviewPath+'/review',undefined,token);
+    check(blockedReview.body.blocked,'Confirmation : SIREN contradictoire bloqué même après vérification visuelle');
+    check((await request('POST',reviewPath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:blockedReview.body.version},token)).status===409,'Confirmation : identité légale incompatible impossible à forcer');
+    const manualTarget=await request('POST','/prospects',{company:'Enseigne à confirmer',city:'Chauffagiste',phone:'03 20 11 22 33'},token);
+    const manualTask=randomUUID(),localCapture={source:'societe_com',company:'ATELIER MANUEL',siret:'96677709100019',address:'8 rue du Test 59100 Roubaix',city:'Roubaix',codePostal:'59100',phone:'03 20 99 88 77',sourceUrl:'https://www.societe.com/societe/atelier-manuel-966777091.html',capturedAt:Date.now()};
+    const staged=await request('POST','/browser/local-review',{taskId:manualTask,prospectId:manualTarget.body.id,capture:localCapture},token);
+    check(staged.status===200&&staged.body.job.status==='needs_review','Chrome local : capture conservée pour comparaison sans fusion prématurée');
+    const manualPath='/browser/jobs/'+staged.body.job.id;
+    await seedManualParent(manualTarget.body.id,staged.body.job.id);
+    const review=await request('GET',manualPath+'/review',undefined,token);
+    check(review.status===200&&!review.body.blocked&&review.body.fields.some(v=>v.field==='city'&&v.before==='Chauffagiste'),'Confirmation : comparaison des valeurs actuelles avec la source malgré nom/ville différents');
+    check((await request('GET',manualPath+'/review',undefined,foreignToken)).status===404&&(await request('GET',manualPath+'/review',undefined,colleague)).status===404,'Confirmation : comparaison privée isolée par utilisateur et agence');
+    check((await request('POST',manualPath+'/confirm',{captureIndex:0,expectedUpdatedAt:review.body.version},token)).status===400,'Confirmation : accord explicite requis');
+    await request('PATCH','/prospects/'+manualTarget.body.id,{company:'Enseigne corrigée'},token);
+    check((await request('POST',manualPath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:review.body.version},token)).status===409,'Confirmation : modification concurrente détectée sans écrasement');
+    const freshReview=await request('GET',manualPath+'/review',undefined,token);
+    const confirmed=await request('POST',manualPath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:freshReview.body.version,replaceFields:['company','city','phone']},token);
+    const manualUpdated=(await request('GET','/prospects/'+manualTarget.body.id,undefined,token)).body;
+    check(confirmed.status===200&&confirmed.body.job.status==='completed'&&manualUpdated.siret==='96677709100019'&&manualUpdated.company==='ATELIER MANUEL'&&manualUpdated.city==='Roubaix'&&manualUpdated.phone==='03 20 99 88 77','Confirmation : identité validée et remplacements sélectionnés réellement enregistrés dans le CRM');
+    const parentAfter=(await request('GET','/prospects/'+manualTarget.body.id+'/enrichment',undefined,token)).body;
+    check(parentAfter.steps.societe_com.status==='completed'&&parentAfter.status==='queued'&&['entreprises','insee','bodacc','pappers'].every(source=>parentAfter.steps[source].status==='pending'),'Confirmation : bilan parent actualisé et sources dépendant de l’identité reprogrammées');
+    const manualActivities=(await request('GET','/activities?prospectId='+manualTarget.body.id,undefined,token)).body;
+    check(manualActivities.some(a=>a.type==='data_update'&&a.description.includes('confirmée')&&a.description.includes('Chauffagiste → Roubaix')),'Confirmation : historique avec utilisateur et valeurs avant/après');
+    check((await request('POST',manualPath+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:freshReview.body.version},token)).body.alreadyApplied===true&&(await request('GET','/activities?prospectId='+manualTarget.body.id,undefined,token)).body.length===manualActivities.length,'Confirmation : double clic sans nouvelle activité ni nouvelle fusion');
+    const localBound=await request('POST','/browser/local-review',{taskId:randomUUID(),cloudJobId:wrong.body.id,prospectId:target.body.id,capture:{...localCapture,siret:'96677700200019',sourceUrl:'https://www.societe.com/societe/atelier-cloud-966777002.html'}},token);
+    check(localBound.status===200&&localBound.body.job.id===wrong.body.id&&localBound.body.job.result.localCapture,'Chrome local : secours rattaché à la tâche cloud existante');
+    const wrongSource=await request('POST','/browser/local-review',{taskId:randomUUID(),cloudJobId:wrong.body.id,prospectId:target.body.id,capture:{...localCapture,source:'pagesjaunes',sourceUrl:'https://www.pagesjaunes.fr/pros/12345678'}},token);
+    check(wrongSource.status===409,'Chrome local : capture d’une autre source refusée');
+    const websiteTarget=await request('POST','/prospects',{company:'Atelier Site',website:'https://atelier-site.fr',phone:'03 20 11 22 33',address:'8 rue du Test 59100 Roubaix',city:'Roubaix',postalCode:'59100'},token);
+    const websiteRun=await request('POST','/prospects/'+websiteTarget.body.id+'/enrichment',{},token);
+    await runEnrichmentMaintenance(websiteRun.body.id,3);
+    const websiteUpdated=(await request('GET','/prospects/'+websiteTarget.body.id,undefined,token)).body;
+    check(websiteUpdated.email==='contact@atelier-site.fr'&&websiteUpdated.sourceDetails.website.snapshot.emails[0].sourceUrl==='https://atelier-site.fr/contact','Site prospect : email publié lu sur Contact avec provenance exacte');
+    check(websiteUpdated.sourceDetails.crossSource.fieldSources.email.sourceUrl==='https://atelier-site.fr/contact'&&websiteUpdated.linkedinUrl==='https://www.linkedin.com/company/atelier-site/','Site prospect : réseaux sociaux et preuve par champ conservés');
     const waiting=await request('POST','/browser/jobs',{profileId:profile.id,prospectId:target.body.id,query:'cloud-wait'},token);
     await runCloudMaintenance(waiting.body.id);
     check((await request('GET','/browser/jobs/'+waiting.body.id,undefined,token)).body.status==='awaiting_user','Cloud : source demandant une intervention suspend le lot');
@@ -1733,7 +1784,7 @@ try {
     check((await request('POST',autoPath,{},foreignToken)).status===404,'Enrichissement automatique : autre agence refusée avant recherche');
     const automaticRun=await request('POST',autoPath,{},token),duplicateRun=await request('POST',autoPath,{},token);
     check(automaticRun.status===202&&automaticRun.body.id===duplicateRun.body.id,'Enrichissement automatique : un clic lance une tâche persistante, double clic idempotent');
-    await runEnrichmentMaintenance(automaticRun.body.id,2);
+    await runEnrichmentMaintenance(automaticRun.body.id,3);
     const checkpoint=await request('GET',autoPath,undefined,token);
     check(checkpoint.body.status==='queued'&&checkpoint.body.steps.entreprises.status==='completed'&&checkpoint.body.steps.google_maps.jobId,'Enrichissement automatique : identité Annuaire résolue avant les collecteurs, lien de reprise persisté');
     await runEnrichmentMaintenance(automaticRun.body.id);

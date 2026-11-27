@@ -1,3 +1,5 @@
+import {beginConnectorTask,isMobileConnectorRequired} from '@/lib/pagesjaunes-device';
+import {CloudCaptureReview} from '@/components/cloud-browser/CloudCaptureReview';
 import LegacySourcingArchive from '@/components/cloud-browser/LegacySourcingArchive';
 import GeoMultiSelect from '@/components/sourcing/GeoMultiSelect';
 import {FRENCH_REGIONS,FRENCH_DEPARTMENTS} from '@/lib/france-geo';
@@ -55,6 +57,7 @@ function CloudBrowserWorkspace() {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [reviewJob,setReviewJob]=useState<string|null>(null);
   const [activeJobId, setActiveJobId] = useState('');
   const [verificationJobId,setVerificationJobId]=useState(params.get('jobId')||'');
   const latestVerification=useRef(verificationJobId);latestVerification.current=verificationJobId;
@@ -284,6 +287,7 @@ function CloudBrowserWorkspace() {
       </div>
       {(job.error || job.result?.message) && <p className="cloud-browser-job-message">{job.error || job.result.message}</p>}
       {job.result?.applied && <p className="cloud-browser-job-message">{job.result.applied.filled.length} champ(s) mis à jour · {job.result.applied.conflicts} désaccord(s)</p>}
+      {reviewJob===job.id&&<CloudCaptureReview jobId={job.id} onClose={()=>setReviewJob(null)} onSaved={async()=>{await refresh();setNotice('Enrichissement validé et enregistré dans le CRM.');}}/>}
       <div className="cloud-browser-job-actions">
         {job.mode === 'discover' && <button type="button" onClick={() => selectJob(job)}>Voir les résultats <ArrowRight size={13}/></button>}
         <button type="button" onClick={() => {
@@ -291,10 +295,15 @@ function CloudBrowserWorkspace() {
           setNotice('Profil sélectionné. Utilisez « Reprendre le contrôle » pour consulter la page sans relancer la recherche.');
         }}>Voir le profil</button>
         {job.prospect_id && <Link to={'/prospects/' + job.prospect_id}>Voir le prospect <ExternalLink size={12}/></Link>}
+        {job.mode==='enrich'&&jobCaptures>0&&['needs_review','awaiting_user'].includes(job.status)&&<button type="button" onClick={()=>setReviewJob(job.id)}>Comparer et valider</button>}
+        {job.prospect_id&&canResume.includes(job.status)&&['pagesjaunes','societe_com','google_maps','google_search','bing'].includes(jobProfile?.source||source)&&<button type="button" disabled={!!busy||isMobileConnectorRequired()} title={isMobileConnectorRequired()?'La lecture locale nécessite une extension compatible sur cet appareil.':'La source sera ouverte dans votre Chrome, avec la connexion réseau de votre PC.'} onClick={()=>void perform('Ouvrir sur cet appareil',async()=>{
+          await beginConnectorTask({source:jobProfile?.source||source,mode:'enrich',query:job.query,area:job.area||'',cloudJobId:job.id,prospect:{id:job.prospect_id!,company:prospect?.company||job.query}});
+          setNotice('Source ouverte dans le Chrome de cet appareil. Lisez puis confirmez la capture dans l’extension ; vous reviendrez sur la comparaison du prospect.');
+        })}>Lire avec Chrome sur cet appareil</button>}
         {canResume.includes(job.status) && <button type="button" disabled={!!busy} onClick={() => void perform('Reprendre', async () => {
           await api.post('/browser/jobs/' + job.id + '/retry', { resume: true });
           setChosen(current => selectCaptureBatch(current, job.result?.captures || [], false)); await refresh();
-        })}>Reprendre</button>}
+        })}>Relire la fiche ouverte</button>}
         {activeStatuses.includes(job.status) && <button type="button" disabled={!!busy} onClick={() => void perform('Annuler', async () => {
           await api.post('/browser/jobs/' + job.id + '/cancel', {}); await refresh();
         })}>Annuler</button>}
