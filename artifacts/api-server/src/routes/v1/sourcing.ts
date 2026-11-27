@@ -521,6 +521,14 @@ function incomingFields(item:ImportCapture,incomplete:boolean):Partial<Record<En
   }
   return fields;
 }
+export function captureHasPendingConflict(record:Record<string,unknown>,item:ImportCapture,incomplete=false):boolean{
+  const conflicts=jsonRecord(jsonRecord(record.sourceDetails).crossSource).conflicts;
+  const fields=incomingFields(item,incomplete);
+  return Array.isArray(conflicts)&&conflicts.some(c=>c.source===item.source && FIELDS.includes(c.field) &&
+    !!fields[c.field as EnrichmentField] &&
+    normalizedField(c.field,fields[c.field as EnrichmentField])===normalizedField(c.field,c.incoming) &&
+    normalizedField(c.field,record[c.field as EnrichmentField])===normalizedField(c.field,c.existing));
+}
 function sameEstablishment(record:{company:string|null;address:string|null;city:string|null;
   phone:string|null;website:string|null;siren:string|null;siret:string|null;sourceUrl:string|null},
   incoming:ImportCapture,incomplete:boolean):boolean{
@@ -832,11 +840,7 @@ export async function importParsedCaptures(data:z.infer<typeof deviceImportSchem
       conflicts+=merged.conflicts;
       if(merged.newConflicts.length)reviews.push({prospectId:matches[0].id,company:item.company,
         fields:merged.newConflicts.map(c=>c.field),type:'conflict'});
-      const oldConflicts=jsonRecord(jsonRecord(matches[0].sourceDetails).crossSource).conflicts;
-      const fields=incomingFields(item,incomplete);
-      const unresolved=Array.isArray(oldConflicts)&&oldConflicts.some(c=>c.source===item.source && FIELDS.includes(c.field) &&
-        normalizedField(c.field,fields[c.field as EnrichmentField])===normalizedField(c.field,c.incoming) &&
-        normalizedField(c.field,matches[0][c.field as EnrichmentField])===normalizedField(c.field,c.existing));
+      const unresolved=captureHasPendingConflict(matches[0],item,incomplete);
       receipt(item,merged.newConflicts.length||unresolved?'needs_review':merged.filled.length?'enriched':'already_present',matches[0].id,
         merged.newConflicts.length||unresolved?'Des valeurs différentes restent à vérifier sur la fiche CRM.':undefined);
       processedIds.push(item.id);continue;
