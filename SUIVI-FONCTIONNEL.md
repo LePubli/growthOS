@@ -207,3 +207,16 @@ Revue PR59 : un SIREN commun exige des coordonnées d’établissement concordan
 - Vérification manuelle : afficher la tâche et le profil de la source demandée, sans les tâches Bing des autres sources.
 
 Validation et publication en cours ; aucun déploiement DockPanel effectué.
+
+## Pappers, BODACC et onglet Enrichissements — validation en cours (27/11/2026)
+
+- Pappers : fiche publique par SIREN, données légales, dirigeants et tableaux financiers visibles avec année ; API payante non requise, coordonnées réservées non inventées. Respect du même établissement dans le CRM quand le siège est différent.
+- BODACC : API officielle DILA, pagination technique de 100 annonces poursuivie jusqu’à la fin, contrôle de chaque SIREN, événements datés et liens officiels dans le dossier. Changement versionné et tracé ; relecture identique sans fausse activité. L’historique des annonces ne remplace pas le statut actuel INSEE/Annuaire.
+- Onglet Enrichissements sur la fiche : lancement automatique, progression/bilan par source, captures, provenance, modifications enregistrées et accès aux désaccords. Thème et CSS conservés.
+- Les réseaux sociaux sans collecteur restent manuels ; PagesJaunes peut demander un contrôle Cloudflare. Les sources officielles directes continuent indépendamment.
+
+Vérifications et publication des images en cours, aucun déploiement serveur effectué.
+
+Lot Pappers/BODACC/onglet : code raccordé dans la PR61, 369 contrôles API locaux verts et tests interface/TypeScript/builds verts. Le statut des images et la validation Chromium sont consultables dans les workflows GitHub de cette PR et du dernier commit de `fix/growthos-functional-redesign`. Le redéploiement reste à effectuer par le propriétaire après le feu vert explicite.
+
+Revue PR61 : curseur BODACC et instantané enregistrés dans la même transaction, dernière page idempotente après interruption ; pagination liée au SIREN et remise à zéro après correction d’identité. **371 contrôles API** passent, dont les deux scénarios de reprise/correction. Chromium Pappers vert sur le premier head (run `45988161584`), aucune modification du lecteur dans ce complément ; nouvelle CI avant fusion.

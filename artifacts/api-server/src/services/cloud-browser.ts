@@ -6,8 +6,8 @@ import {randomUUID} from 'node:crypto';
 import {applyTargetCapture} from '../routes/v1/sourcing';
 import {logger} from '../lib/logger';
 
-export const CLOUD_SOURCES=['entreprises','google_maps','google_search','bing','societe_com','pagesjaunes','linkedin','facebook','instagram','tiktok'] as const;
-export const CLOUD_AUTOMATIC=['entreprises','google_maps','google_search','bing','societe_com','pagesjaunes'];
+export const CLOUD_SOURCES=['entreprises','google_maps','google_search','bing','societe_com','pappers','bodacc','pagesjaunes','linkedin','facebook','instagram','tiktok'] as const;
+export const CLOUD_AUTOMATIC=['entreprises','google_maps','google_search','bing','societe_com','pappers','pagesjaunes'];
 export class CloudBrowserError extends Error{constructor(public status:number,message:string){super(message);}}
 export function cloudConfigured(){return !!process.env.CLOUD_BROWSER_URL && (process.env.CLOUD_BROWSER_TOKEN||'').length>=32;}
 export async function browserCall(path:string,payload?:object,timeout=35000):Promise<any>{
@@ -45,7 +45,7 @@ export async function runCloudJob(id:string){
     const result=appendCloudResult(latest.result,data,id,profile.source,!!prospect);
     let status=data.status==='awaiting_user'?'awaiting_user':data.hasMore?'queued':'completed';
     if(prospect){
-      const matches=result.captures.filter((c:any)=>{try{return captureIdentityMatches(prospect,c)||(c.source==='societe_com'&&c.companyDetails&&/^\d{14}$/.test(prospect.siret||'')&&/^\d{14}$/.test(c.siret||'')&&c.siret.slice(0,9)===prospect.siret.slice(0,9)&&new URL(c.sourceUrl).pathname.endsWith('-'+prospect.siret.slice(0,9)+'.html'));}catch{return false;}});
+      const matches=result.captures.filter((c:any)=>{try{return captureIdentityMatches(prospect,c)||(['societe_com','pappers'].includes(c.source)&&c.companyDetails&&/^\d{14}$/.test(prospect.siret||'')&&/^\d{14}$/.test(c.siret||'')&&c.siret.slice(0,9)===prospect.siret.slice(0,9)&&(c.source==='societe_com'?new URL(c.sourceUrl).pathname.endsWith('-'+prospect.siret.slice(0,9)+'.html'):new URL(c.sourceUrl).pathname.replace(/\/$/,'').endsWith(prospect.siret.slice(0,9))));}catch{return false;}});
       if(matches.length===1){
         const applied=await applyTargetCapture(job.tenant_id,job.created_by,prospect.id,id,matches[0],true,{lease,result:{...result,pageCursor:null,hasMore:false}});
         if(applied.status===200)return;

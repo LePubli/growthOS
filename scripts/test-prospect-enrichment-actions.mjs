@@ -9,6 +9,7 @@ try{
     import {captureIdentityMatches,uniqueIdentityMatch} from '../../artifacts/api-server/src/lib/enrichment-identity';
     import {legacySourcingTarget} from './src/lib/legacy-sourcing';
     import {ProspectEnrichmentStatus} from './src/components/ProspectEnrichmentStatus';
+    import {ProspectEnrichmentsTab} from './src/components/ProspectEnrichmentsTab';
     import {appendCloudResult} from '../../artifacts/api-server/src/services/cloud-results';
     const id='10000000-0000-4000-8000-000000000007',prospect={id,company:'Atelier',city:'Roubaix'},noop=()=>{};
     const render=node=>renderToStaticMarkup(createElement(Router,{ssrPath:'/prospects/'+id},node));
@@ -41,6 +42,9 @@ try{
     assert.ok(legacySourcingTarget('',id).includes('legacyJobId='+id));
     const progress=render(createElement(ProspectEnrichmentStatus,{prospectId:id,run:{id,status:'partial',steps:{societe_com:{label:'Societe.com',status:'needs_review',jobId:id,profileId:id,message:'Identité non confirmée'}},summary:{fields:[],sourcesDone:0,sourcesTotal:1,conflicts:0,interventions:1}}}));
     assert.ok(progress.includes('Aucune nouvelle donnée confirmée')&&progress.includes('Vérifier cette source'),'Un résultat incertain ne devient pas un succès');
+    const tab=render(createElement(ProspectEnrichmentsTab,{prospectId:id,run:null,busy:false,onEnrich:noop,onOpenSources:noop,sourceDetails:{pappers:{capturedAt:Date.now(),sourceUrl:'https://www.pappers.fr/entreprise/atelier-966777055',companyDetails:{fields:{'Capital social':'500 €'},managerContacts:[]}},bodacc:{siren:'966777055',capturedAt:new Date().toISOString(),sourceUrl:'https://www.bodacc.fr/',announcements:[{id:'C202600001',date:'2026-11-25',type:'Modification',url:'https://www.bodacc.fr/pages/annonces-commerciales-detail/?q.id=id:C202600001'}]}},observations:[],activities:[{id:'a',type:'data_update',title:'Enrichissement · BODACC',description:'Une annonce officielle',createdAt:'2026-11-27T10:00:00Z'},{id:'b',type:'call',title:'Appel confidentiel hors enrichissement',createdAt:'2026-11-27T10:00:00Z'}]}));
+    assert.ok(tab.includes('Enrichir automatiquement')&&tab.includes('Historique des captures (0)')&&tab.includes('Une annonce officielle')&&tab.includes('Informations publiques Pappers')&&tab.includes('Annonces officielles BODACC (1)')&&!tab.includes('Appel confidentiel hors enrichissement'));
+    console.log('✓ Onglet Enrichissements : état initial, lancement et chronologie des seules modifications d’enrichissement');
     console.log('✓ Enrichissement : recherche légale active sans identifiant, parcours cloud ciblé, IA conservée, 38 résultats et reçus sans doublon');
   `},outfile:join(directory,'test.mjs'),platform:'node',format:'esm',bundle:true,jsx:'automatic',tsconfig:join(root,'artifacts/growthos/tsconfig.json'),plugins:[{name:'no-api',setup(b){b.onLoad({filter:/\/lib\/api-client\.ts$/},()=>({contents:'export default {get(){throw Error("Unexpected API during SSR")}};',loader:'ts'}));}}],banner:{js:"import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);"},logLevel:'warning'});
   await import(pathToFileURL(join(directory,'test.mjs')).href);

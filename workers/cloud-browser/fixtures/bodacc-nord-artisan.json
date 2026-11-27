@@ -1,0 +1,73 @@
+{
+  "total_count": 4,
+  "results": [
+    {
+      "id": "C202600753374",
+      "dateparution": "2026-04-19",
+      "familleavis_lib": "Dépôts des comptes",
+      "tribunal": "Greffe du Tribunal de Commerce de lille métropole",
+      "commercant": "NORD ARTISAN",
+      "registre": [
+        "979965506",
+        "979 965 506"
+      ],
+      "jugement": null,
+      "acte": null,
+      "modificationsgenerales": null,
+      "radiationaurcs": null,
+      "depot": "{\"dateCloture\": \"2024-12-31\", \"typeDepot\": \"Comptes annuels et rapports\"}",
+      "url_complete": "https://www.bodacc.fr/pages/annonces-commerciales-detail/?q.id=id:C202600753374"
+    },
+    {
+      "id": "B202500992271",
+      "dateparution": "2025-05-23",
+      "familleavis_lib": "Modifications diverses",
+      "tribunal": "Greffe du Tribunal de Commerce de Lille Métropole",
+      "commercant": "NORD ARTISAN",
+      "registre": [
+        "979965506",
+        "979 965 506"
+      ],
+      "jugement": null,
+      "acte": null,
+      "modificationsgenerales": "{\"descriptif\": \"modification survenue sur l'adresse du siège, l'adresse de l'établissement\"}",
+      "radiationaurcs": null,
+      "depot": null,
+      "url_complete": "https://www.bodacc.fr/pages/annonces-commerciales-detail/?q.id=id:B202500992271"
+    },
+    {
+      "id": "B202400891562",
+      "dateparution": "2024-05-07",
+      "familleavis_lib": "Modifications diverses",
+      "tribunal": "Greffe du Tribunal de Commerce de Lille Métropole",
+      "commercant": "NORD ARTISAN",
+      "registre": [
+        "979 965 506",
+        "979965506"
+      ],
+      "jugement": null,
+      "acte": null,
+      "modificationsgenerales": "{\"descriptif\": \"modification survenue sur la dénomination et l'administration\"}",
+      "radiationaurcs": null,
+      "depot": null,
+      "url_complete": "https://www.bodacc.fr/pages/annonces-commerciales-detail/?q.id=id:B202400891562"
+    },
+    {
+      "id": "A202301971002",
+      "dateparution": "2023-10-12",
+      "familleavis_lib": "Créations",
+      "tribunal": "Greffe du Tribunal de Commerce de Lille Métropole",
+      "commercant": "ETS LEGRAND",
+      "registre": [
+        "979 965 506",
+        "979965506"
+      ],
+      "jugement": null,
+      "acte": "{\"dateImmatriculation\": \"2023-10-02\", \"dateCommencementActivite\": \"2023-09-27\", \"creation\": {\"categorieCreation\": \"Immatriculation d'une personne morale (B, C, D) suite à création d'un établissement principal\"}}",
+      "modificationsgenerales": null,
+      "radiationaurcs": null,
+      "depot": null,
+      "url_complete": "https://www.bodacc.fr/pages/annonces-commerciales-detail/?q.id=id:A202301971002"
+    }
+  ]
+}

@@ -137,6 +137,17 @@ try{
   await p.context.route('https://www.pagesjaunes.fr/**',route=>route.fulfill({status:403,contentType:'text/html; charset=utf-8',body:'<h1>Sécurité</h1><p>Afin de nous aider à lutter contre certaines attaques informatiques, veuillez compléter le "challenge" suivant.</p><div id="challenge-stage"></div>'}));
   const challenge=await service.collect({...blocked,query:'Nord Artisan',area:'Lille'});
   assert.equal(challenge.status,'awaiting_user');assert.ok(challenge.message.includes('Cloudflare'));assert.equal(challenge.results.length,0);
+  const pappers={...identity,source:'pappers',profileId:'10000000-0000-4000-8000-000000000014'};
+  p=await service.profile(pappers);
+  await p.context.route('https://www.pappers.fr/**',route=>{
+    const body=`<main><h1>NORD ARTISAN</h1><div><div>SIREN</div><div>979 965 506</div></div><div><div>SIRET (siège)</div><div>979 965 506 00020</div></div><div><div>Adresse</div><div>BUREAU 3, 34 PLACE DU GENERAL DE GAULLE, 59800 LILLE</div></div><div><div>Forme juridique</div><div>SASU</div></div><div><div>Capital social</div><div>500 €</div></div><div><div>Code NAF ou APE</div><div>43.32B</div></div><h2>Finances</h2><table><tr><th>Performance</th><th></th><th>2024</th></tr><tr><th>Chiffre d’affaires</th><td>€</td><td>164 k</td></tr></table><h2>Dirigeants et représentants</h2><div><div><a href="/dirigeant/alice_recette_1980-01">Alice RECETTE</a></div><p>Présidente</p></div><h2>Bénéficiaires effectifs</h2><p>Accès restreint aux personnes habilitées</p><h2>Informations de contact</h2><div><div>Téléphone</div><div>Réservé aux utilisateurs connectés</div></div></main>`;
+    return route.fulfill({contentType:'text/html; charset=utf-8',body});
+  });
+  const publicRecord=await service.collect({...pappers,query:'97996550600012',area:'Lille'});
+  assert.equal(publicRecord.status,'completed');assert.equal(publicRecord.results[0].siret,'97996550600020');assert.equal(publicRecord.results[0].companyDetails.fields['Capital social'],'500 €');
+  assert.equal(publicRecord.results[0].companyDetails.managerContacts[0].role,'Présidente');assert.equal(publicRecord.results[0].phone,null);
+  assert.ok(publicRecord.results[0].companyDetails.fields['Chiffre d’affaires · 2024'].includes('164 k'));
+  console.log('✓ Pappers : fiche publique par SIREN, identité visible, données légales, finances datées et dirigeants ; contacts réservés laissés absents');
   console.log('✓ Régressions DOM : Societe.com lien vide + ville + /manager/, Maps détaillé sur URL search, résultats organiques Google/Bing, blocage Cloudflare explicite');
   console.log('✓ Chromium réel : 35 fiches Maps en continuation et PagesJaunes recherche → détail → page suivante avec lecteurs canoniques');
   console.log('✓ Chromium réel : recherche → fiche Societe.com → extraction, vue JPEG, saisie, session persistante, séparation des comptes, contrôle et déconnexion');

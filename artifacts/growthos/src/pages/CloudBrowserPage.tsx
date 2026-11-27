@@ -106,7 +106,7 @@ function CloudBrowserWorkspace() {
   useEffect(() => {
     if (prospectId) void api.get<any>('/prospects/' + prospectId).then(p => {
       setProspect(p);
-      setQuery((params.get('source') || 'societe_com') === 'societe_com'
+      setQuery(['societe_com','pappers','bodacc'].includes(params.get('source') || 'societe_com')
         ? (p.siret || p.siren || p.company || '') : (p.company || ''));
       setArea(p.city || '');
     }).catch(e => setError(e.message));
@@ -358,7 +358,7 @@ function CloudBrowserWorkspace() {
         <div className="cloud-browser-field cloud-browser-limit"><span>Résultats</span><strong>Tous les résultats accessibles</strong></div>
         <button type="button" className="cloud-browser-primary cloud-browser-launch"
           disabled={!!busy || (!native&&!status?.ready) || (automatic&&query.trim().length < 2)
-            || ((profile?.source || source) === 'societe_com' && !prospectId)}
+            || (['societe_com','pappers'].includes(profile?.source || source) && !prospectId)}
           onClick={() => void (automatic?launch():open())}><Play size={16}/>
           {busy === 'Collecter' ? 'Mise en file…' : !automatic?'Ouvrir cette source':prospectId ? 'Enrichir ce prospect' : 'Lancer la collecte'}
         </button>

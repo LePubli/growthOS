@@ -8,6 +8,7 @@ const SOURCES: Record<string, SourceIdentity> = {
   annuaire: { label: 'Annuaire des Entreprises', favicon: 'https://annuaire-entreprises.data.gouv.fr/favicon.ico', color: '#1652a8', monogram: 'FR' },
   insee: { label: 'INSEE', favicon: 'https://www.insee.fr/favicon.ico', color: '#195daa', monogram: 'IN' },
   societe_com: { label: 'Societe.com', favicon: 'https://www.societe.com/favicon.ico', color: '#264b81', monogram: 'SC' },
+  bodacc: {label:'BODACC',favicon:'https://www.bodacc.fr/favicon.ico',color:'#1652a8',monogram:'BO'},
   pappers: { label: 'Pappers', favicon: 'https://www.pappers.fr/favicon.ico', color: '#2244ad', monogram: 'P' },
   pagesjaunes: { label: 'PagesJaunes', favicon: 'https://www.pagesjaunes.fr/favicon.ico', color: '#bd7b05', monogram: 'PJ' },
   google: { label: 'Google', favicon: 'https://www.google.com/favicon.ico', color: '#4285f4', monogram: 'G' },

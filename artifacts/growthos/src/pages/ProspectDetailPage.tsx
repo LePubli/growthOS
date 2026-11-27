@@ -1,4 +1,5 @@
-import {ProspectEnrichmentStatus,type EnrichmentRun} from '@/components/ProspectEnrichmentStatus';
+import {type EnrichmentRun} from '@/components/ProspectEnrichmentStatus';
+import {ProspectEnrichmentsTab} from '@/components/ProspectEnrichmentsTab';
 import {prospectEnrichmentUrl} from '@/lib/prospect-enrichment';
 import { ConnectorEnrichmentReturn } from '@/components/ConnectorEnrichmentReturn';
 import { ProspectProfessionalSources } from '@/components/ProspectProfessionalSources';
@@ -306,7 +307,7 @@ export default function ProspectDetailPage() {
   const id = params.id;
   const [, navigate] = useLocation();
   const [prospect, setProspect] = useState<any>(null);
-  const [active360View, setActive360View] = useState<'overview' | 'relations'>('overview');
+  const [active360View, setActive360View] = useState<'overview' | 'relations' | 'enrichments'>('overview');
   const legacyDetailsRef = useRef<HTMLDetailsElement>(null);
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -398,7 +399,7 @@ export default function ProspectDetailPage() {
     setEnriching(true);
     try {
       const run=await apiClient.post<EnrichmentRun>('/prospects/'+id+'/enrichment',{});
-      setEnrichmentRun(run);
+      setEnrichmentRun(run);setActive360View('enrichments');
       toast.info('Enrichissement lancé : les sources disponibles sont recherchées et croisées en arrière-plan.');
     } catch(error:any) {setEnriching(false);toast.error(error.message||'Enrichissement indisponible');}
   };
@@ -616,7 +617,6 @@ export default function ProspectDetailPage() {
       </div>}
       {prospect.identityMismatch && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 text-red-900 p-4 mb-4">Le SIREN et le SIRET de cette fiche ne correspondent pas. Vérifiez les identifiants avant de poursuivre.</p>}
 
-      <ProspectEnrichmentStatus run={enrichmentRun} prospectId={id}/>
       {showAddActivity && (
         <AddActivityModal prospectId={id} onClose={() => setShowAddActivity(false)} onSaved={fetchActivities} />
       )}
@@ -766,9 +766,11 @@ export default function ProspectDetailPage() {
           {id:'atlas-prospect-activities',label:'Activités',icon:<Clock size={17}/>},
           {id:'atlas-prospect-monitoring',label:'Surveillance',icon:<BadgeCheck size={17}/>},
         ].map(tab=><button key={tab.id} onClick={()=>openDetailedSection(tab.id)}>{tab.icon} {tab.label}</button>)}
+        <button className={active360View==='enrichments'?'selected':''} aria-current={active360View==='enrichments'?'page':undefined} onClick={()=>setActive360View('enrichments')}>{enriching?<Loader2 size={17} className="animate-spin"/>:<Database size={17}/>} Enrichissements</button>
         <button className={active360View==='relations'?'selected':''} aria-current={active360View==='relations'?'page':undefined}
           onClick={()=>setActive360View('relations')}><Network size={17}/> Cartographie</button>
       </nav>
+      {active360View==='enrichments'&&<ProspectEnrichmentsTab prospectId={id} run={enrichmentRun} busy={saving||enriching||editing||returnProcessing} onEnrich={()=>void handleEnrich()} onOpenSources={()=>openDetailedSection('atlas-prospect-sources')} observations={sourceHistory} activities={activities} sourceDetails={prospect.sourceDetails}/>}
       {active360View==='relations' && <div className="atlas-relationship-view">
         <ProspectRelationshipMap siren={prospect.siren} siret={prospect.siret} company={prospect.company} website={prospect.website}/>
         <ProspectPappersDossier siren={prospect.siren} siret={prospect.siret}/>
@@ -1028,7 +1030,7 @@ export default function ProspectDetailPage() {
                       <div className="atlas-360-directory-info">
                         <strong>{person.name}</strong>
                         <span>{person.role||(person.isManager?'Dirigeant · rôle à confirmer':'Contact CRM')}</span>
-                        <small>{person.source==='societe_com'?'Relevé Societe.com':person.source==='annuaire'?'Annuaire officiel':'Enregistré dans GrowthOS'}</small>
+                        <small>{person.source==='societe_com'?'Relevé Societe.com':person.source==='pappers'?'Relevé Pappers':person.source==='annuaire'?'Annuaire officiel':'Enregistré dans GrowthOS'}</small>
                         {(person.phone||person.email||person.profileUrl)&&<div className="atlas-360-directory-actions">
                           {person.phone&&<a href={'tel:'+person.phone}><Phone size={13}/> Appeler</a>}
                           {person.email&&<a href={'mailto:'+person.email}><Mail size={13}/> Email</a>}

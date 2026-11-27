@@ -45,6 +45,7 @@ const testEnv = {
   JWT_REFRESH_SECRET: randomBytes(48).toString("hex"),
   ENCRYPTION_KEY: randomBytes(32).toString("hex"),
   SETUP_TOKEN: setupToken,
+  BODACC_TEST_URL: `http://127.0.0.1:${companiesPort}/bodacc`,
   COMPANY_DIRECTORY_API_URL: `http://127.0.0.1:${companiesPort}/search`,
   GROWTHOS_SMOKE_TEST: "true",
   PAGESJAUNES_TEST_ORIGIN: `http://127.0.0.1:${pagesJaunesPort}`,
@@ -234,6 +235,30 @@ async function storeLegacyLinkedinProfiles(prospectId) {
   });
 }
 
+async function bodaccCheckpoint(prospectId,jobId,phase){
+  const code=String.raw`import {pool} from '@workspace/db';import {randomUUID} from 'node:crypto';import {fetchBodaccPage,saveBodaccPage} from './src/services/bodacc.ts';import {runProspectEnrichment} from './src/services/prospect-enrichment.ts';
+    const [prospectId,id,phase]=process.argv.slice(1),lease=randomUUID();
+    const p=(await pool.query('SELECT * FROM prospects WHERE id=$1',[prospectId])).rows[0],siren=p.siren;
+    let job=(await pool.query("UPDATE prospect_enrichment_jobs SET status='running',lease=$2,lease_until=NOW()+INTERVAL '2 minutes',steps=$3 WHERE id=$1 RETURNING *",[id,lease,JSON.stringify({bodacc:{label:'BODACC',status:'pending'}})])).rows[0];
+    await saveBodaccPage(job,siren,await fetchBodaccPage(siren,0),job.steps.bodacc);
+    job=(await pool.query('SELECT * FROM prospect_enrichment_jobs WHERE id=$1',[id])).rows[0];
+    if(phase==='replay'){
+      const final=await fetchBodaccPage(siren,job.steps.bodacc.offset);
+      await saveBodaccPage(job,siren,final,job.steps.bodacc);
+      await saveBodaccPage(job,siren,final,job.steps.bodacc);
+    }
+    const saved=(await pool.query('SELECT steps FROM prospect_enrichment_jobs WHERE id=$1',[id])).rows[0];
+    await pool.query("UPDATE prospect_enrichment_jobs SET status='queued',lease=NULL,lease_until=NULL WHERE id=$1",[id]);
+    if(phase==='replay')await runProspectEnrichment(id);
+    const result=(await pool.query('SELECT source_details FROM prospects WHERE id=$1',[prospectId])).rows[0];
+    const activity=(await pool.query("SELECT count(*)::int AS n FROM activities WHERE prospect_id=$1 AND title='Enrichissement · BODACC'",[prospectId])).rows[0];
+    console.log(JSON.stringify({checkpoint:saved.steps.bodacc,announcements:result.source_details.bodacc.announcements.length,activities:activity.n}));await pool.end();`;
+  return new Promise((resolve,reject)=>{
+    const child=spawn('node',['--import','tsx','--input-type=module','-e',code,prospectId,jobId,phase],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
+    let output='',errors='';child.stdout.on('data',s=>output+=s);child.stderr.on('data',s=>errors+=s);child.on('error',reject);child.on('exit',status=>{if(status!==0)return reject(Error(errors.slice(-2000)));try{resolve(JSON.parse(output.trim().split('\n').at(-1)));}catch(e){reject(e);}});
+  });
+}
+
 async function storeTestSourcingJob(prospectId,candidates) {
   const code=String.raw`import {pool} from '@workspace/db';
     const [id,raw]=process.argv.slice(1);
@@ -259,8 +284,16 @@ async function awaitApi(timeoutMs = 90000) {
 }
 
 const liveNord=JSON.parse(await readFile(join(root,'workers/cloud-browser/fixtures/annuaire-nord-artisan.json'),'utf8'));
+const liveBodacc=JSON.parse(await readFile(join(root,'workers/cloud-browser/fixtures/bodacc-nord-artisan.json'),'utf8'));
+let bodaccVersion=0;const bodaccCalls=[];
 let watchVersion=0,watchDown=false,watchWrongIdentity=false,watchRequests=0,watchEmptyAddress=false,watchStale=false;
 const companies = createServer((req, res) => {
+  if(req.url?.startsWith('/bodacc?')){
+    const u=new URL(req.url,'http://localhost'),siren=u.searchParams.get('where')?.match(/\d{9}/)?.[0],offset=Number(u.searchParams.get('offset')||0);
+    bodaccCalls.push({siren,offset});
+    const records=siren==='979965506'?[...liveBodacc.results,{...liveBodacc.results[0],id:'C202699999999',registre:['123456789']}]:Array.from({length:105},(_,i)=>({id:'C'+String(2026000000+i),dateparution:'2026-11-25',familleavis_lib:'Modifications diverses',commercant:'Entreprise recette',registre:[siren],modificationsgenerales:JSON.stringify({descriptif:i===0&&bodaccVersion?'Modification corrigée':'Modification publiée'})}));
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({total_count:records.length,results:records.slice(offset,offset+100)}));return;
+  }
   if (!req.url?.startsWith("/search?")) { res.writeHead(404).end(); return; }
   const directoryQuery = new URL(req.url, 'http://localhost').searchParams.get("q");
   if(directoryQuery==='Nord Artisan Lille'||directoryQuery==='97996550600012'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[liveNord]}));return;}
@@ -378,6 +411,10 @@ const cloudStub=createServer(async(req,res)=>{
     if(cloudDelay)await delay(cloudDelay);
     if(p.query==='cloud-wait'){res.end(JSON.stringify({status:'awaiting_user',message:'Connexion à vérifier',results:[]}));return;}
     if(p.query==='cloud-fail'){res.writeHead(503).end(JSON.stringify({error:'Source indisponible'}));return;}
+    if(p.source==='pappers'){
+      const siren=p.target?.siren||p.target?.siret?.slice(0,9)||'966777055',siret=siren==='979965506'?'97996550600020':p.target?.siret;
+      res.end(JSON.stringify({status:'completed',results:[{source:'pappers',company:p.target?.company||'Entreprise recette',siren,siret,address:'34 place du Général de Gaulle 59800 Lille',city:'Lille',codePostal:'59800',sourceUrl:'https://www.pappers.fr/entreprise/entreprise-'+siren,companyDetails:{fields:{'Capital social':'500 €'},managers:['Paul PAPPERS'],managerContacts:[{name:'Paul PAPPERS',role:'Président',phone:null,email:null,profileUrl:'https://www.pappers.fr/dirigeant/paul_pappers_1970-01'}],establishments:[],links:[]}}]}));return;
+    }
     if(p.target?.company==='Nord Artisan Recette'){
       if(p.source==='societe_com'){res.end(JSON.stringify({status:'completed',results:[{source:'societe_com',company:'MONSIEUR KEVIN DUVILLE',siret:'79313784500019',city:'Roubaix',address:'8 rue du Test 59100 Roubaix',codePostal:'59100',sourceUrl:'https://www.societe.com/societe/monsieur-kevin-duville-793137845.html'}]}));return;}
       res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:p.target.company,address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',
@@ -1708,6 +1745,8 @@ try {
       'Enrichissement automatique : mauvais homonyme Societe.com exclu sans altérer le prospect');
     check(autoCrm.body.phone==='03 20 55 66 77'&&autoCrm.body.sourceDetails.crossSource.conflicts.some(c=>c.source==='bing'&&c.field==='phone'),
       'Enrichissement automatique : téléphone divergent proposé, coordonnées confirmées conservées');
+    check(autoDone.body.steps.pappers.status==='completed'&&autoCrm.body.sourceDetails.pappers.companyDetails.managers.includes('Paul PAPPERS'),'Pappers : lecture cloud, données et dirigeants publics enregistrés avec provenance');
+    check(autoDone.body.steps.bodacc.status==='completed'&&autoCrm.body.sourceDetails.bodacc.announcements.length===105&&!autoCrm.body.sourceDetails.bodacc.hasMore,'BODACC : API publique paginée au-delà de 100, toutes les annonces rattachées au SIREN exact');
     const autoActivities=await request('GET','/activities?prospectId='+automaticProspect.body.id,undefined,token);
     check(autoActivities.body.some(a=>a.type==='data_update'&&a.description.includes('966777055'))&&autoCrm.body.sourceDetails.entreprises.snapshot.managers[0].includes('Alice'),
       'Enrichissement automatique : identité, dirigeants officiels et activité avant/après conservés');
@@ -1716,6 +1755,26 @@ try {
     const directRun=await request('POST',autoPath,{},token);await runEnrichmentMaintenance(directRun.body.id);
     const directResult=await request('GET',autoPath,undefined,token);
     check(inseeCalls===1&&directResult.body.steps.insee.status==='completed','Enrichissement automatique : API INSEE 3.11 appelée avec son en-tête de clé et SIRET contrôlé');
+    const stableBodacc=(await request('GET','/activities?prospectId='+automaticProspect.body.id,undefined,token)).body.filter(a=>a.title==='Enrichissement · BODACC');
+    check(stableBodacc.length===autoActivities.body.filter(a=>a.title==='Enrichissement · BODACC').length,'BODACC : pagination et relecture inchangée ne créent pas de fausses modifications');
+    bodaccVersion=1;const updatedBodaccRun=await request('POST',autoPath,{},token);await runEnrichmentMaintenance(updatedBodaccRun.body.id);
+    const changedBodaccCrm=await request('GET','/prospects/'+automaticProspect.body.id,undefined,token),changedBodaccActivities=await request('GET','/activities?prospectId='+automaticProspect.body.id,undefined,token);
+    check(changedBodaccActivities.body.filter(a=>a.title==='Enrichissement · BODACC').length===stableBodacc.length+1&&JSON.stringify(changedBodaccCrm.body.sourceDetails.bodacc.announcements).includes('Modification corrigée')&&changedBodaccCrm.body.sourceDetails.bodacc.history.length>0,'BODACC : changement réel appliqué une fois, ancienne version et activité conservées');
+    const pappersProfile=await request('POST','/browser/profiles',{source:'pappers',label:'Pappers public'},token);
+    const pappersTask=await request('POST','/browser/jobs',{profileId:pappersProfile.body.id,prospectId:liveProspect.body.id,query:'979965506'},token);await runCloudMaintenance(pappersTask.body.id);
+    const pappersCrm=await request('GET','/prospects/'+liveProspect.body.id,undefined,token);
+    check(pappersCrm.body.siret==='97996550600012'&&pappersCrm.body.sourceDetails.pappers.scope==='unite_legale','Pappers : autre siège du même SIREN ne remplace ni SIRET ni adresse de l’ancien établissement');
+    const nordRefresh=await request('POST','/prospects/'+liveProspect.body.id+'/enrichment',{},token);await runEnrichmentMaintenance(nordRefresh.body.id);
+    const nordRecords=await request('GET','/prospects/'+liveProspect.body.id,undefined,token);
+    check(nordRecords.body.sourceDetails.bodacc.announcements.length===4&&!JSON.stringify(nordRecords.body.sourceDetails.bodacc.announcements).includes('C202699999999'),'BODACC réel : quatre annonces Nord Artisan conservées, résultat d’un autre SIREN rejeté');
+    const replayProspect=await request('POST','/prospects',{company:'Reprise BODACC',siren:'966777077',siret:'96677707700019'},token),replayRun=await request('POST','/prospects/'+replayProspect.body.id+'/enrichment',{},token);
+    const replayed=await bodaccCheckpoint(replayProspect.body.id,replayRun.body.id,'replay');
+    check(replayed.checkpoint.status==='completed'&&replayed.checkpoint.offset===105&&replayed.announcements===105&&replayed.activities===1,'BODACC : curseur et source atomiques, dernière page rejouée après redémarrage sans troncature ni fausse activité');
+    const changedIdentity=await request('POST','/prospects',{company:'Identité BODACC corrigée',siren:'966777078',siret:'96677707800019'},token),identityRun=await request('POST','/prospects/'+changedIdentity.body.id+'/enrichment',{},token);
+    await bodaccCheckpoint(changedIdentity.body.id,identityRun.body.id,'prepare');
+    await request('PATCH','/prospects/'+changedIdentity.body.id,{siren:'966777079',siret:'96677707900019'},token);await runEnrichmentMaintenance(identityRun.body.id,4);
+    const identityCrm=await request('GET','/prospects/'+changedIdentity.body.id,undefined,token),identityCalls=bodaccCalls.filter(c=>c.siren==='966777079');
+    check(identityCalls[0]?.offset===0&&identityCrm.body.sourceDetails.bodacc.siren==='966777079'&&identityCrm.body.sourceDetails.bodacc.announcements.length===105,'BODACC : SIREN corrigé entre les pages, pagination repartie de zéro sans historique incomplet');
     const archiveJob=await storeTestSourcingJob(automaticProspect.body.id,Array.from({length:65},(_,i)=>({siren:String(966779000+i),company:'Archive entreprise '+i,address:i+' rue Archive 59100 Roubaix',codePostal:'59100'})));
     check((await request('GET','/sourcing/jobs/'+archiveJob+'/results',undefined,token)).body.data.length===65,'Collecte unifiée : 65 anciens résultats consultables, sans coupure de l’historique à 50');
     const officialProfile=await request('POST','/browser/profiles',{source:'entreprises',label:'Annuaire natif'},token);

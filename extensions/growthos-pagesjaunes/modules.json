@@ -64,6 +64,26 @@
     "hint": "Nom, SIREN ou SIRET ; ouvrez ensuite la fiche société complète."
   },
   {
+    "source": "pappers",
+    "name": "Pappers",
+    "description": "Données légales et dirigeants publiquement visibles.",
+    "kind": "reader",
+    "modes": [
+      "enrich"
+    ],
+    "hint": "Lecture cloud par SIREN confirmé ; les données réservées aux comptes restent absentes."
+  },
+  {
+    "source": "bodacc",
+    "name": "BODACC",
+    "description": "Annonces officielles : créations, modifications, radiations, procédures et comptes.",
+    "kind": "official",
+    "modes": [
+      "enrich"
+    ],
+    "hint": "Consultation automatique de l’API publique officielle par SIREN lors de l’enrichissement."
+  },
+  {
     "source": "linkedin",
     "name": "LinkedIn Entreprises",
     "description": "Page entreprise et coordonnées professionnelles visibles.",

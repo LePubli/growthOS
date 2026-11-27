@@ -8,7 +8,7 @@ export type ProspectPerson = {
   phone: string | null;
   email: string | null;
   profileUrl: string | null;
-  source: 'societe_com' | 'annuaire' | 'crm';
+  source: 'societe_com' | 'pappers' | 'annuaire' | 'crm';
   isManager: boolean;
 };
 
@@ -54,7 +54,8 @@ export function collectProspectPeople(prospect: ProspectPeopleInput, officialMan
     all.push(person);
   };
 
-  const societe = plainRecord(prospect.sourceDetails?.societe_com);
+  for(const source of ['societe_com','pappers'] as const){
+  const societe = plainRecord(prospect.sourceDetails?.[source]);
   const details = plainRecord(societe?.companyDetails);
   const managerContacts = details?.managerContacts;
   if (Array.isArray(managerContacts)) {
@@ -67,7 +68,7 @@ export function collectProspectPeople(prospect: ProspectPeopleInput, officialMan
         role: nonEmpty(contact?.role),
         phone: nonEmpty(contact?.phone), email: nonEmpty(contact?.email),
         profileUrl: publicHttpUrl(contact?.profileUrl),
-        source: 'societe_com', isManager: true,
+        source, isManager: true,
       });
     }
   }
@@ -80,10 +81,11 @@ export function collectProspectPeople(prospect: ProspectPeopleInput, officialMan
       const name = nonEmpty(namePart);
       if (!name) continue;
       add({id:'societe:'+normalize(name), name, role:nonEmpty(roleParts.join(' · ')),
-        phone:null,email:null,profileUrl:null,source:'societe_com',isManager:true});
+        phone:null,email:null,profileUrl:null,source,isManager:true});
     }
   }
 
+  }
   for (const item of officialManagerNames) {
     const raw = nonEmpty(item);
     if (!raw) continue;
