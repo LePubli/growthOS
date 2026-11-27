@@ -1,7 +1,7 @@
 import {collectProspectContactPoints} from '@workspace/api-zod';
 import {recordDiagnosticEvent} from '../../lib/diagnostics';
 import {businessIdentity} from '@workspace/api-zod';
-import {captureIdentityMatches} from '../../lib/enrichment-identity';
+import {captureIdentityMatches,websiteInvestigationMatches} from '../../lib/enrichment-identity';
 import { professionalSourceUrl } from '@workspace/api-zod';
 import { isDeepStrictEqual } from 'node:util';
 import { Router } from "express";
@@ -880,11 +880,12 @@ export async function applyTargetCapture(tenantId:string,userId:string,prospectI
         return {status:409,error:'L’identité juridique ou l’établissement diffère de ce prospect.'};
       const legalMatch=!!(knownSiren && incomingSiren===knownSiren);
       const exactSite=!!(prospect.siret && capture.siret===prospect.siret);
-      if(!review && !legalOnly && !exactSite && ((!legalMatch && normalizedIdentity(prospect.company||'')!==normalizedIdentity(capture.company)) ||
+      const investigationMatch=websiteInvestigationMatches(prospect,capture);
+      if(!review && !legalOnly && !exactSite && !investigationMatch && ((!legalMatch && normalizedIdentity(prospect.company||'')!==normalizedIdentity(capture.company)) ||
         (prospect.city && capture.city && normalizedIdentity(prospect.city)!==normalizedIdentity(capture.city)))
       )
         return {status:409,error:'Le nom ou la ville diffère. Vérifiez la fiche et son établissement avant enrichissement.'};
-      if(automatic&&!legalOnly&&!captureIdentityMatches(prospect,capture))return {status:409,error:'L’établissement ne correspond pas avec certitude. Vérifiez ses coordonnées.'};
+      if(automatic&&!legalOnly&&!investigationMatch&&!captureIdentityMatches(prospect,capture))return {status:409,error:'L’établissement ne correspond pas avec certitude. Vérifiez ses coordonnées.'};
       const projected=legalOnly?{...capture,siret:null,address:null,codePostal:null,city:null,phone:null,email:null,emails:[],phones:[],website:null,apeCode:null,nafLabel:null,nafVersion:null,
         sourceDetails:{[capture.source]:{...jsonRecord(jsonRecord(capture.sourceDetails)[capture.source]),scope:'unite_legale',headquarters:{siret:capture.siret,address:capture.address,city:capture.city}}}}:capture;
       const merged=await mergeProspectCapture(prospect,{...projected,targetedIdentity:true,...(review?{identityConfirmation:{userId,confirmedAt:new Date().toISOString()}}:{})},false,tenantId,tx,userId,review?review.replaceFields||[]:automatic && exactSite && capture.source==='societe_com' ? ['address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);

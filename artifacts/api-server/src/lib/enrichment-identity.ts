@@ -47,3 +47,28 @@ export function websitePublisherMatches(p:any,c:any):boolean{
   const address=addressIdentity(c.address);
   return address.length>=12&&site.addresses?.some((v:any)=>addressIdentity(v.address)===address);
 }
+
+/** Follow a person linked by the business website as a search clue. Confirm
+ * only against an official trade name AND official person/manager identity,
+ * with the website's published phone matching the CRM. A slug alone never
+ * becomes a manager or contact and cannot override a known legal identity. */
+export function websiteInvestigationMatches(p:any,c:any):boolean{
+  const known=legal(p.siren,9)||legal(p.siret,14).slice(0,9),incoming=legal(c.siren,9)||legal(c.siret,14).slice(0,9);
+  if(known||!incoming||!legal(c.siret,14))return false;
+  const site=(p.sourceDetails||p.source_details)?.website?.snapshot;
+  if(!site||site.identity!=='matched')return false;
+  try{if(new URL(site.url).hostname.replace(/^www\./,'')!==new URL(p.website).hostname.replace(/^www\./,''))return false;}catch{return false;}
+  const phone=digits(p.phone).replace(/^33/,'0');if(phone.length<9||!site.phones?.some((v:any)=>digits(v.phone).replace(/^33/,'0')===phone))return false;
+  if(c.snapshot?.fields?.['État de l’établissement']==='Fermé')return false;
+  if(addressIdentity(p.address).length>=9&&addressIdentity(c.address)!==addressIdentity(p.address))return false;
+  const brand=normalizedIdentity(p.company);if(brand.length<4)return false;
+  const fields=c.companyDetails?.fields||{};
+  const aliases=[c.company,...(c.aliases||[]),...(c.tradeNames||[]),...Object.entries(fields).filter(([k])=>/commercial|enseigne/i.test(k)).map(([,v])=>v)].flatMap(names);
+  if(!aliases.includes(brand))return false;
+  const officials=[c.company,...(c.snapshot?.managers||[]),...(c.companyDetails?.managers||[]),...(c.companyDetails?.managerContacts||[]).map((v:any)=>v.name)]
+    .map(v=>normalizedIdentity(String(v||'').split(/\s+[·–]\s+/)[0].replace(/\s*\([^)]*\)\s*$/,'').replace(/^(monsieur|madame|mme|m[.])\s+/i,'')));
+  return (site.people||[]).some((clue:any)=>{
+    if(!clue.name||!site.socials?.some((s:any)=>s.kind==='person'&&s.url===clue.profileUrl&&s.sourceUrl===clue.sourceUrl))return false;
+    const person=normalizedIdentity(clue.name);return person.length>=6&&officials.includes(person);
+  });
+}

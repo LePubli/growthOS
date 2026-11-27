@@ -8,7 +8,7 @@ export type ProspectPerson = {
   phone: string | null;
   email: string | null;
   profileUrl: string | null;
-  source: 'societe_com' | 'pappers' | 'annuaire' | 'crm';
+  source: 'societe_com' | 'pappers' | 'annuaire' | 'crm' | 'website';
   isManager: boolean;
   phones?: string[]; emails?: string[]; sources?: string[];
 };
@@ -103,6 +103,8 @@ export function collectProspectPeople(prospect: ProspectPeopleInput, officialMan
 
   const stored=prospect.sourceDetails?.contactPoints;
   if(Array.isArray(stored))for(const raw of stored){const point=plainRecord(raw),name=nonEmpty(point?.personName);const i=name?byName.get(normalize(name)):undefined;if(i===undefined)continue;const old=all[i],value=nonEmpty(point?.value);if(!value)continue;if(point?.type==='email')old.emails=[...new Set([...(old.emails||[]),value])];if(point?.type==='phone')old.phones=[...new Set([...(old.phones||[]),value])];old.email=old.email||old.emails?.[0]||null;old.phone=old.phone||old.phones?.[0]||null;}
+  const website=plainRecord(plainRecord(prospect.sourceDetails?.website)?.snapshot);
+  if(website?.identity!=='contradictory'&&Array.isArray(website?.people))for(const raw of website.people){const p=plainRecord(raw),name=nonEmpty(p?.name);if(name&&p?.nameState==='observed'&&p?.association==='company_mentioned_on_profile')add({id:'website:'+normalize(name),name,role:null,phone:null,email:null,profileUrl:publicHttpUrl(p.profileUrl),source:'website',isManager:false});}
   const crmName = [prospect.firstName, prospect.lastName].map(nonEmpty).filter(Boolean).join(' ').trim();
   if (crmName) {
     add({id:'crm:'+normalize(crmName),name:crmName,role:nonEmpty(prospect.jobTitle),

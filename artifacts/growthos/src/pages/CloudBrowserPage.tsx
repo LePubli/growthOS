@@ -1,10 +1,11 @@
 import {beginConnectorTask,isMobileConnectorRequired} from '@/lib/pagesjaunes-device';
+import {prospectReviewReturnUrl} from '@/lib/prospect-enrichment';
 import {CloudCaptureReview} from '@/components/cloud-browser/CloudCaptureReview';
 import LegacySourcingArchive from '@/components/cloud-browser/LegacySourcingArchive';
 import GeoMultiSelect from '@/components/sourcing/GeoMultiSelect';
 import {FRENCH_REGIONS,FRENCH_DEPARTMENTS} from '@/lib/france-geo';
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { Link, useSearch } from 'wouter';
+import { Link, useSearch,useLocation } from 'wouter';
 import {
   AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown,
   Clock3, ExternalLink, EyeOff, Globe2, History, Layers, LogOut,
@@ -39,6 +40,7 @@ const canResume = ['awaiting_user', 'needs_review', 'failed', 'cancelled'];
 
 export default function CloudBrowserPage(){return <CloudBrowserWorkspace key={useSearch()}/>;}
 function CloudBrowserWorkspace() {
+  const [,navigate]=useLocation();
   const params = new URLSearchParams(useSearch()), prospectId = params.get('prospectId');
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -61,8 +63,7 @@ function CloudBrowserWorkspace() {
   const [activeJobId, setActiveJobId] = useState('');
   const [verificationJobId,setVerificationJobId]=useState(params.get('jobId')||'');
   const latestVerification=useRef(verificationJobId);latestVerification.current=verificationJobId;
-  const verificationContext=useRef(source+'|'+selected);
-  useEffect(()=>{const key=source+'|'+selected;if(verificationContext.current!==key){setVerificationJobId('');verificationContext.current=key;}},[source,selected]);
+  const initialContextLoaded=useRef(false),openedSource=useRef(''),openedComparison=useRef(''),returned=useRef(false);
   const [expandedBrowser, setExpandedBrowser] = useState(false);
   const [resultsShare, setResultsShare] = useState(28);
   const [chosen, setChosen] = useState<Record<string, boolean>>({});
@@ -109,9 +110,9 @@ function CloudBrowserWorkspace() {
   useEffect(() => {
     if (prospectId) void api.get<any>('/prospects/' + prospectId).then(p => {
       setProspect(p);
-      setQuery(['societe_com','pappers','bodacc'].includes(params.get('source') || 'societe_com')
+      if(!latestVerification.current)setQuery(['societe_com','pappers','bodacc'].includes(params.get('source') || 'societe_com')
         ? (p.siret || p.siren || p.company || '') : (p.company || ''));
-      setArea(p.city || '');
+      if(!latestVerification.current)setArea(p.city||'');
     }).catch(e => setError(e.message));
   }, [prospectId]);
   useEffect(() => {
@@ -149,6 +150,41 @@ function CloudBrowserWorkspace() {
   const profile = profiles.find(p => p.id === selected);
   const automatic = native||status?.automatic.includes(profile?.source || source);
   const sourceProfiles = profiles.filter(p => p.source === source);
+  const verificationJob=jobs.find(job=>job.id===verificationJobId&&job.prospect_id===prospectId);
+  const profileBusy=jobs.some(job=>job.profile_id===selected&&['queued','running'].includes(job.status));
+  async function finishVerification(result:{prospectId:string;jobId:string}){
+    if(result.prospectId!==prospectId)throw Error('La sauvegarde ne cible pas ce prospect.');
+    returned.current=true;
+    await Promise.all([api.get('/prospects/'+result.prospectId),api.get('/activities',{params:{prospectId:result.prospectId}}),api.get('/prospects/'+result.prospectId+'/enrichment')]);
+    navigate(prospectReviewReturnUrl(result.prospectId,result.jobId),{replace:true});
+  }
+  useEffect(()=>{
+    if(!verificationJob||initialContextLoaded.current)return;
+    const target=profiles.find(p=>p.id===verificationJob.profile_id);if(!target)return;
+    initialContextLoaded.current=true;setSelected(target.id);setSource(target.source);setQuery(verificationJob.query);setArea(verificationJob.area||'');
+  },[profiles,verificationJob]);
+  useEffect(()=>{
+    if(!verificationJob||!initialContextLoaded.current)return;
+    if(verificationJob.status==='completed'&&verificationJob.result?.applied){
+      if(returned.current)return;returned.current=true;
+      void api.post<any>('/browser/jobs/'+verificationJob.id+'/finish-review',{}).then(finishVerification).catch(e=>{setError(e.message);});return;
+    }
+    if(['needs_review','awaiting_user'].includes(verificationJob.status)&&verificationJob.result?.captures?.length){
+      const key=verificationJob.id+JSON.stringify(verificationJob.result.captures);
+      if(openedComparison.current!==key){openedComparison.current=key;setReviewJob(verificationJob.id);}return;
+    }
+    const key=verificationJob.id+'|'+selected;
+    if(!native&&selected===verificationJob.profile_id&&!profileBusy&&status?.ready&&openedSource.current!==key){openedSource.current=key;void open(false,true);}
+  },[verificationJob,selected,profiles,status?.ready,profileBusy]);
+  async function readVerification(){
+    if(!verificationJob)return;
+    await perform('Lire la fiche',async()=>{
+      if(profileBusy)throw Error('Une collecte est en cours dans ce profil. Attendez sa fin avant de lire la fiche.');
+      if(['needs_review','awaiting_user'].includes(verificationJob.status)&&verificationJob.result?.captures?.length){setReviewJob(verificationJob.id);return;}
+      if(!canResume.includes(verificationJob.status))throw Error('La lecture est déjà en cours.');
+      await api.post('/browser/jobs/'+verificationJob.id+'/retry',{resume:true});await readJobs();
+    });
+  }
   const discoveryJobs = jobs.filter(job => job.mode === 'discover'&&!prospectId);
   const activeJob = discoveryJobs.find(job => job.id === activeJobId)
     || discoveryJobs.find(job => job.result?.captures?.length)
@@ -191,6 +227,7 @@ function CloudBrowserWorkspace() {
     if (!lease || !viewing || view?.busy) return;
     inputQueue.current = inputQueue.current.then(async () => {
       if (latestSelected.current !== target || control.current !== lease) return;
+      if(profileBusy)throw Error('Collecte en cours : le navigateur sera disponible à la fin de la lecture.');
       await api.post('/browser/profiles/' + target + '/action', { event, controlId: lease });
     }).catch(e => { setError(e.message); });
   }
@@ -287,20 +324,20 @@ function CloudBrowserWorkspace() {
       </div>
       {(job.error || job.result?.message) && <p className="cloud-browser-job-message">{job.error || job.result.message}</p>}
       {job.result?.applied && <p className="cloud-browser-job-message">{job.result.applied.filled.length} champ(s) mis à jour · {job.result.applied.conflicts} désaccord(s)</p>}
-      {reviewJob===job.id&&<CloudCaptureReview jobId={job.id} onClose={()=>setReviewJob(null)} onSaved={async()=>{await refresh();setNotice('Enrichissement validé et enregistré dans le CRM.');}}/>}
+      {reviewJob===job.id&&<CloudCaptureReview jobId={job.id} onClose={()=>setReviewJob(null)} onSaved={async(result)=>{await refresh();await finishVerification(result);}}/>}
       <div className="cloud-browser-job-actions">
         {job.mode === 'discover' && <button type="button" onClick={() => selectJob(job)}>Voir les résultats <ArrowRight size={13}/></button>}
-        <button type="button" onClick={() => {
+        {!prospectId&&<button type="button" onClick={() => {
           setSelected(job.profile_id);
           setNotice('Profil sélectionné. Utilisez « Reprendre le contrôle » pour consulter la page sans relancer la recherche.');
-        }}>Voir le profil</button>
-        {job.prospect_id && <Link to={'/prospects/' + job.prospect_id}>Voir le prospect <ExternalLink size={12}/></Link>}
-        {job.mode==='enrich'&&jobCaptures>0&&['needs_review','awaiting_user'].includes(job.status)&&<button type="button" onClick={()=>setReviewJob(job.id)}>Comparer et valider</button>}
+        }}>Voir le profil</button>}
+        {job.prospect_id && !prospectId && <Link to={prospectReviewReturnUrl(job.prospect_id)}>Voir le prospect <ExternalLink size={12}/></Link>}
+        {job.mode==='enrich'&&job.id!==verificationJobId&&jobCaptures>0&&['needs_review','awaiting_user'].includes(job.status)&&<button type="button" onClick={()=>setReviewJob(job.id)}>Comparer et valider</button>}
         {job.prospect_id&&canResume.includes(job.status)&&['pagesjaunes','societe_com','google_maps','google_search','bing'].includes(jobProfile?.source||source)&&<button type="button" disabled={!!busy||isMobileConnectorRequired()} title={isMobileConnectorRequired()?'La lecture locale nécessite une extension compatible sur cet appareil.':'La source sera ouverte dans votre Chrome, avec la connexion réseau de votre PC.'} onClick={()=>void perform('Ouvrir sur cet appareil',async()=>{
           await beginConnectorTask({source:jobProfile?.source||source,mode:'enrich',query:job.query,area:job.area||'',cloudJobId:job.id,prospect:{id:job.prospect_id!,company:prospect?.company||job.query}});
           setNotice('Source ouverte dans le Chrome de cet appareil. Lisez puis confirmez la capture dans l’extension ; vous reviendrez sur la comparaison du prospect.');
         })}>Lire avec Chrome sur cet appareil</button>}
-        {canResume.includes(job.status) && <button type="button" disabled={!!busy} onClick={() => void perform('Reprendre', async () => {
+        {job.id!==verificationJobId&&canResume.includes(job.status) && <button type="button" disabled={!!busy} onClick={() => void perform('Reprendre', async () => {
           await api.post('/browser/jobs/' + job.id + '/retry', { resume: true });
           setChosen(current => selectCaptureBatch(current, job.result?.captures || [], false)); await refresh();
         })}>Relire la fiche ouverte</button>}
@@ -315,7 +352,7 @@ function CloudBrowserWorkspace() {
   return <main className="cloud-browser-page" style={{ color: 'var(--text-primary)' }}>
     <div className="cloud-browser-heading">
       <div>
-        <Link to={prospectId ? '/prospects/' + prospectId : '/outils'} className="cloud-browser-back"><ArrowLeft size={14}/> {prospectId ? 'Retour au prospect' : 'Catalogue des outils'}</Link>
+        <Link to={prospectId ? prospectReviewReturnUrl(prospectId) : '/outils'} className="cloud-browser-back"><ArrowLeft size={14}/> {prospectId ? 'Retour au prospect' : 'Catalogue des outils'}</Link>
         <h1><span className="cloud-browser-heading-icon"><Globe2 size={25}/></span> Recherche et collecte</h1>
         <p>Rechercher, explorer et importer vos entreprises depuis GrowthOS.</p>
       </div>
@@ -342,14 +379,14 @@ function CloudBrowserWorkspace() {
         <label className="cloud-browser-field"><span>Source</span>
           <div className="cloud-browser-select-with-logo"><SourceLogo source={source} size="sm"/>
             <select aria-label="Source" value={source} onChange={e => {
-              setSource(e.target.value); setSelected('');
+              setVerificationJobId('');setReviewJob(null);initialContextLoaded.current=false;setSource(e.target.value); setSelected('');
               if (prospect) setQuery(e.target.value === 'societe_com'
                 ? (prospect.siret || prospect.siren || prospect.company || '') : (prospect.company || ''));
             }}>{modules.map(m => <option key={m.source} value={m.source}>{m.name}</option>)}</select>
           </div>
         </label>
         <label className="cloud-browser-field"><span>Profil de navigation</span>
-          <select aria-label="Profil utilisé" value={selected} onChange={e => setSelected(e.target.value)}>
+          <select aria-label="Profil utilisé" value={selected} onChange={e=>{setVerificationJobId('');setReviewJob(null);initialContextLoaded.current=false;setSelected(e.target.value);}}>
             <option value="">Choisir un profil</option>
             {sourceProfiles.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
@@ -366,10 +403,10 @@ function CloudBrowserWorkspace() {
         </label>
         <div className="cloud-browser-field cloud-browser-limit"><span>Résultats</span><strong>Tous les résultats accessibles</strong></div>
         <button type="button" className="cloud-browser-primary cloud-browser-launch"
-          disabled={!!busy || (!native&&!status?.ready) || (automatic&&query.trim().length < 2)
+          disabled={!!busy || profileBusy || (!native&&!status?.ready) || (automatic&&query.trim().length < 2)
             || (['societe_com','pappers'].includes(profile?.source || source) && !prospectId)}
-          onClick={() => void (automatic?launch():open())}><Play size={16}/>
-          {busy === 'Collecter' ? 'Mise en file…' : !automatic?'Ouvrir cette source':prospectId ? 'Enrichir ce prospect' : 'Lancer la collecte'}
+          onClick={()=>void (verificationJob?readVerification():automatic?launch():open())}><Play size={16}/>
+          {verificationJob?profileBusy?'Lecture en cours…':['needs_review','awaiting_user'].includes(verificationJob.status)&&verificationJob.result?.captures?.length?'Vérifier et valider':'Lire cette fiche':busy === 'Collecter' ? 'Mise en file…' : !automatic?'Ouvrir cette source':prospectId ? 'Enrichir ce prospect' : 'Lancer la collecte'}
         </button>
       </div>
       <div className="cloud-browser-command-secondary">
@@ -493,7 +530,7 @@ function CloudBrowserWorkspace() {
       {prospectId?<section id="cloud-browser-results" className="cloud-browser-results p-4 space-y-3" aria-label="Vérification de ce prospect">
         <h2 className="font-semibold">Vérification de {prospect?.company||'ce prospect'}</h2>
         <p>L’enrichissement automatique se lance et se suit depuis la fiche. Cet espace sert à consulter une source lorsqu’une intervention est nécessaire.</p>
-        <Link className="cloud-browser-primary" to={'/prospects/'+prospectId}>Retour à la fiche prospect</Link>
+        <Link className="cloud-browser-primary" to={prospectReviewReturnUrl(prospectId!)}>Retour à la fiche prospect</Link>
         {jobs.filter(job=>job.prospect_id===prospectId&&job.profile_id===selected&&(!verificationJobId||job.id===verificationJobId)).map(job=><div key={job.id}>{jobCard(job,null,null)}
           {!!job.result?.references?.length&&<details><summary>Liens Web repérés · identité à vérifier</summary>{job.result.references.map(r=><p key={r.url}><a href={r.url} target="_blank" rel="noopener noreferrer">{r.label||r.url}</a></p>)}</details>}
         </div>)}

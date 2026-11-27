@@ -9,6 +9,7 @@ import {logger} from '../../lib/logger';
 import {CLOUD_SOURCES,CLOUD_AUTOMATIC,CloudBrowserError,browserCall,cloudConfigured,cloudProfile,cloudJob,tickCloudJobs} from '../../services/cloud-browser';
 import {recordDiagnosticEvent,errorDiagnosticDetails} from '../../lib/diagnostics';
 import {diagnoseSourceIssue} from '../../lib/source-diagnosis';
+import {latestProspectEnrichment} from '../../services/prospect-enrichment';
 const router=Router();
 const workerIncidents=new Map<string,number>();
 const captureDigest=(capture:unknown)=>createHash('sha256').update(JSON.stringify(capture)).digest('hex');
@@ -136,7 +137,19 @@ router.get('/jobs/:id/review',async(req,res)=>{
   if(!capture)throw new CloudBrowserError(409,'Aucune fiche capturée. Ouvrez la bonne fiche source puis relancez sa lecture.');
   const preview=await targetCaptureReview(req.auth!.tenantId,job.prospect_id,capture);
   if(preview.status!==200)throw new CloudBrowserError(preview.status,'error' in preview?preview.error||'Comparaison indisponible.':'Comparaison indisponible.');
+  void recordDiagnosticEvent({tenantId:req.auth!.tenantId,userId:req.auth!.userId,traceId:req.traceId,level:'info',component:'crm-confirmation',code:'REVIEW_READY',message:'Comparaison prête dans le parcours du prospect',source:res.locals.source,jobId:job.id,prospectId:job.prospect_id,details:{resultCount:job.result.captures.length,blocked:preview.review?.blocked}});
   res.json({...preview.review,captureDigest:captureDigest(capture),captureIndex:index,captureCount:job.result.captures.length,alreadyApplied:!!job.result.applied});
+});
+router.post('/jobs/:id/finish-review',async(req,res)=>{
+  z.object({}).strict().parse(req.body||{});
+  const job=await cloudJob(req.auth!.tenantId,idSchema.parse(req.params.id),req.auth!.userId);
+  res.locals.jobId=job.id;res.locals.prospectId=job.prospect_id;
+  if(job.mode!=='enrich'||!job.prospect_id||job.status!=='completed'||!job.result?.applied)throw new CloudBrowserError(409,'Les données ne sont pas encore enregistrées. La comparaison reste disponible.');
+  const sourceRow=await pool.query('SELECT source FROM cloud_browser_profiles WHERE id=$1 AND tenant_id=$2',[job.profile_id,req.auth!.tenantId]);
+  res.locals.source=sourceRow.rows[0]?.source||null;
+  await latestProspectEnrichment(req.auth!.tenantId,job.prospect_id);
+  void recordDiagnosticEvent({tenantId:req.auth!.tenantId,userId:req.auth!.userId,traceId:req.traceId,level:'info',component:'crm-confirmation',code:'RETURN_TO_PROSPECT',message:'Retour autorisé vers le prospect après sauvegarde vérifiée',source:res.locals.source,prospectId:job.prospect_id,jobId:job.id,details:{filledFields:job.result.applied.filled?.length||0}});
+  res.json({prospectId:job.prospect_id,jobId:job.id,source:res.locals.source,url:'/prospects/'+job.prospect_id+'?'+new URLSearchParams({view:'enrichments',reviewedJob:job.id}).toString(),filled:job.result.applied.filled||[],conflicts:job.result.applied.conflicts||0});
 });
 router.post('/jobs/:id/confirm',async(req,res)=>{
   const tenant=req.auth!.tenantId,user=req.auth!.userId,id=idSchema.parse(req.params.id);

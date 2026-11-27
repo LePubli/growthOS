@@ -3,7 +3,7 @@ import {prospectBusinessNames,previousProspectDisplayName} from '../../../../lib
 import {collectedRelationships} from '@/lib/prospect-relationships';
 import {type EnrichmentRun} from '@/components/ProspectEnrichmentStatus';
 import {ProspectEnrichmentsTab} from '@/components/ProspectEnrichmentsTab';
-import {prospectEnrichmentUrl} from '@/lib/prospect-enrichment';
+import {enrichmentSourceLabel,prospectEnrichmentUrl,prospectViewFromSearch} from '@/lib/prospect-enrichment';
 import { ConnectorEnrichmentReturn } from '@/components/ConnectorEnrichmentReturn';
 import { ProspectProfessionalSources } from '@/components/ProspectProfessionalSources';
 import { ProspectCompanyProfile } from '@/components/ProspectCompanyProfile';
@@ -14,7 +14,7 @@ import { collectProspectPeople } from '@/lib/prospect-people';
 import { hasValidGeoPosition } from '@/lib/prospect-completeness';
 import { EditNote } from '@/components/EditNote';
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useParams, useLocation } from 'wouter';
+import { Link, useParams, useLocation,useSearch } from 'wouter';
 import {
   ArrowLeft, Edit2, Save, X, Star, Mail, Phone, Globe, Building2,
   Briefcase, Loader2, Plus, Trash2, CheckCircle, AlertCircle,
@@ -310,7 +310,12 @@ export default function ProspectDetailPage() {
   const id = params.id;
   const [, navigate] = useLocation();
   const [prospect, setProspect] = useState<any>(null);
-  const [active360View, setActive360View] = useState<'overview' | 'relations' | 'enrichments'>('overview');
+  const search=useSearch();
+  const [active360View,setActive360ViewState]=useState(()=>prospectViewFromSearch(search));
+  useEffect(()=>setActive360ViewState(prospectViewFromSearch(search)),[id,search]);
+  const setActive360View=(view:'overview'|'relations'|'enrichments')=>{setActive360ViewState(view);const p=new URLSearchParams(search);p.set('view',view);navigate('/prospects/'+id+'?'+p.toString(),{replace:true});};
+  const [sourceSavedNotice,setSourceSavedNotice]=useState('');
+  useEffect(()=>{let alive=true;setSourceSavedNotice('');const jobId=new URLSearchParams(search).get('reviewedJob');if(!jobId)return;void apiClient.get<any>('/browser/jobs/'+jobId).then(job=>{if(alive&&job.prospect_id===id&&job.status==='completed'&&job.result?.applied)setSourceSavedNotice('Enregistré depuis '+enrichmentSourceLabel(job.result.captures?.[0]?.source||'la source')+' · '+(job.result.applied.filled?.length||0)+' champ(s) mis à jour.');}).catch(()=>{});return()=>{alive=false;};},[id,search]);
   const legacyDetailsRef = useRef<HTMLDetailsElement>(null);
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -781,7 +786,7 @@ export default function ProspectDetailPage() {
         <button className={active360View==='relations'?'selected':''} aria-current={active360View==='relations'?'page':undefined}
           onClick={()=>setActive360View('relations')}><Network size={17}/> Cartographie</button>
       </nav>
-      {active360View==='enrichments'&&<ProspectEnrichmentsTab prospectId={id} run={enrichmentRun} busy={saving||enriching||editing||returnProcessing} onEnrich={()=>void handleEnrich()} onOpenSources={()=>openDetailedSection('atlas-prospect-sources')} observations={sourceHistory} activities={activities} sourceDetails={prospect.sourceDetails} onReviewed={async()=>{await Promise.all([fetchProspect(),fetchActivities()]);const run=await apiClient.get<EnrichmentRun|null>('/prospects/'+id+'/enrichment');setEnrichmentRun(run);}}/>}
+      {active360View==='enrichments'&&<ProspectEnrichmentsTab initialNotice={sourceSavedNotice} prospectId={id} run={enrichmentRun} busy={saving||enriching||editing||returnProcessing} onEnrich={()=>void handleEnrich()} onOpenSources={()=>openDetailedSection('atlas-prospect-sources')} observations={sourceHistory} activities={activities} sourceDetails={prospect.sourceDetails} onReviewed={async()=>{await Promise.all([fetchProspect(),fetchActivities()]);const run=await apiClient.get<EnrichmentRun|null>('/prospects/'+id+'/enrichment');setEnrichmentRun(run);}}/>}
       {active360View==='relations' && <div className="atlas-relationship-view">
         <ProspectRelationshipMap siren={prospect.siren} siret={prospect.siret} company={prospect.company} website={prospect.website} sourceDetails={prospect.sourceDetails}/>
         {!collectedRelationships(prospect)?.source.includes('societe.com/')&&<ProspectPappersDossier siren={prospect.siren} siret={prospect.siret}/>}
@@ -1044,7 +1049,7 @@ export default function ProspectDetailPage() {
                       <div className="atlas-360-directory-info">
                         <strong>{person.name}</strong>
                         <span>{person.role||(person.isManager?'Dirigeant · rôle à confirmer':'Contact CRM')}</span>
-                        <small>{person.source==='societe_com'?'Relevé Societe.com':person.source==='pappers'?'Relevé Pappers':person.source==='annuaire'?'Annuaire officiel':'Enregistré dans GrowthOS'}</small>
+                        <small>{person.source==='societe_com'?'Relevé Societe.com':person.source==='pappers'?'Relevé Pappers':person.source==='annuaire'?'Annuaire officiel':person.source==='website'?'Profil public lié par le site':'Enregistré dans GrowthOS'}</small>
                         {(person.phone||person.email||person.profileUrl)&&<div className="atlas-360-directory-actions">
                           {(person.phones||[]).map(phone=><a key={phone} href={'tel:'+phone}><Phone size={13}/>{phone}</a>)}
                           {(person.emails||[]).map(email=><a key={email} href={'mailto:'+email}><Mail size={13}/>{email}</a>)}
