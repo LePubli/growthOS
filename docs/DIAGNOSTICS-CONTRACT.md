@@ -47,3 +47,14 @@ Checklist de PR pour **les deux agents** :
 ## Limites honnêtes
 
 Ce centre ne remplace pas les journaux d'infrastructure : panne du processus **avant la connexion DB**, conteneur hors ligne, saturation disque ou rupture totale de réseau requièrent les logs et métriques DockPanel. Les évènements client impossibles à envoyer hors ligne ne sont pas conservés localement. Les nouveaux traitements qui masquent leurs erreurs exigent un appel explicite à `recordDiagnosticEvent` dans la même PR ; la couverture n'est pas magique.
+
+## Validation locale et coordonnées multiples
+
+- `LOCAL_CAPTURE_STAGED`, `CONFIRMATION_STARTED`, `CONFIRMATION_SAVED` : étapes de validation locale, liées au prospect, à la tâche, à la source et à la trace HTTP. L'enregistrement CRM ne dépend pas de la disponibilité du navigateur cloud.
+- `CRM_IDENTITY_DUPLICATE` (409) : SIRET/SIREN déjà rattaché à une autre fiche du même CRM ; vérifier le doublon avant de valider. La capture reste conservée et la transaction ne remplace aucune autre fiche. `CRM_IDENTITY_INCONSISTENT` : SIREN et SIRET incohérents. Ces cas ne sont pas des pannes navigateur.
+- `CRM_SAVE_FAILED` (500) : autre erreur d'enregistrement. Le code SQLSTATE imbriqué est collecté et seules les trois contraintes d'identité connues sont exposées. Aucun SQL, paramètre ni contenu de ligne dans les diagnostics. La référence est affichée dans la comparaison, qui conserve son message d'erreur jusqu'à une actualisation explicite.
+- `CONTACT_EVIDENCE_MERGED`, `WEBSITE_CONTACTS_READ`, `WEBSITE_IDENTITY_CONFLICT` : nombres de coordonnées, pages et éditeurs lus, résultat du rapprochement et nombre de champs remplis. Les adresses, emails, numéros, noms, pages HTML restent exclusivement dans le dossier métier avec leurs preuves.
+- `PRIMARY_COORDINATE_SAVED` / `PRIMARY_COORDINATE_CONFLICT` : choix explicite d'une principale parmi les preuves déjà enregistrées, concurrence et isolement par tenant. Les autres coordonnées restent conservées. Les coordonnées générales ne sont pas attribuées aux dirigeants.
+- Les événements métier expurgés sont aussi écrits dans les logs API Docker : filtrer par `traceId`, `jobId`, `prospectId` ou `code`. Si l'insertion du diagnostic en DB échoue, la trace Docker demeure disponible et l'opération métier n'est pas bloquée.
+
+`INVALID_COORDINATE_INPUT` / `CONTACT_OPERATION_FAILED` couvrent aussi la validation du choix et les échecs de lecture/écriture du répertoire Contacts. La réponse contient une trace ; aucun contenu du contact n'est inclus dans l'événement technique.

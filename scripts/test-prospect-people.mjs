@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {collectProspectPeople} from '../artifacts/growthos/src/lib/prospect-people.ts';
+import {collectProspectContactPoints} from '../lib/api-zod/src/prospect-contacts.ts';
 
 const known = collectProspectPeople({
   company:'SOLUTION ENR',
@@ -40,3 +41,8 @@ const pappersOnly=collectProspectPeople({phone:'0320112233',sourceDetails:{pappe
 assert.equal(pappersOnly.length,1);assert.equal(pappersOnly[0].source,'pappers');assert.equal(pappersOnly[0].role,'Présidente');assert.equal(pappersOnly[0].phone,null,'Pappers ne prouve pas de ligne directe lorsque seul le standard est connu');
 console.log('✓ Pappers : dirigeant visible dans le même répertoire, provenance et rôle conservés sans attribuer le standard');
 console.log('✓ Fiche Prospect 360° : dirigeants issus des sources, rôles, doublons et coordonnées non inventées');
+const multiple={sourceDetails:{societe_com:{companyDetails:{managerContacts:[{name:'Alice Exemple',email:'alice@atelier.fr',phone:'0320112233'}]}},pappers:{companyDetails:{managerContacts:[{name:'Alice Exemple',email:'alice@example.fr',phone:'0611223344'}]}},entreprises:{snapshot:{managers:['Bob Exemple · Directeur']}},website:{snapshot:{identity:'matched',emails:[{email:'contact@atelier.fr',sourceUrl:'https://atelier.fr/contact'},{email:'devis@atelier.fr',sourceUrl:'https://atelier.fr/contact'}],phones:[{phone:'0320112233'}],addresses:[{address:'8 rue du Test, Lille'},{address:'9 rue du Test, Lille'}]}}}};
+const multiplePeople=collectProspectPeople(multiple);assert.equal(multiplePeople.length,2);assert.equal(multiplePeople[0].emails.length,2);assert.equal(multiplePeople[0].phones.length,2);assert.equal(multiplePeople[1].name,'Bob Exemple');
+const allPoints=collectProspectContactPoints(multiple);assert.equal(allPoints.filter(p=>p.type==='email'&&!p.personName).length,2);assert.equal(allPoints.filter(p=>p.type==='address').length,2);assert.equal(allPoints.filter(p=>p.personName==='Alice Exemple'&&p.type==='email').length,2);
+assert.equal(collectProspectContactPoints({sourceDetails:{contactPoints:allPoints}}).length,allPoints.length,'Les coordonnées multiples survivent à une relecture persistée');
+console.log('✓ Coordonnées multiples : emails et téléphones directs regroupés par personne, contacts Annuaire persistés, adresses et preuves conservées');

@@ -1,3 +1,4 @@
+import {ProspectContactPoints} from '@/components/ProspectContactPoints';
 import {prospectBusinessNames,previousProspectDisplayName} from '../../../../lib/api-zod/src/prospect-names';
 import {collectedRelationships} from '@/lib/prospect-relationships';
 import {type EnrichmentRun} from '@/components/ProspectEnrichmentStatus';
@@ -1045,8 +1046,8 @@ export default function ProspectDetailPage() {
                         <span>{person.role||(person.isManager?'Dirigeant · rôle à confirmer':'Contact CRM')}</span>
                         <small>{person.source==='societe_com'?'Relevé Societe.com':person.source==='pappers'?'Relevé Pappers':person.source==='annuaire'?'Annuaire officiel':'Enregistré dans GrowthOS'}</small>
                         {(person.phone||person.email||person.profileUrl)&&<div className="atlas-360-directory-actions">
-                          {person.phone&&<a href={'tel:'+person.phone}><Phone size={13}/> Appeler</a>}
-                          {person.email&&<a href={'mailto:'+person.email}><Mail size={13}/> Email</a>}
+                          {(person.phones||[]).map(phone=><a key={phone} href={'tel:'+phone}><Phone size={13}/>{phone}</a>)}
+                          {(person.emails||[]).map(email=><a key={email} href={'mailto:'+email}><Mail size={13}/>{email}</a>)}
                           {person.profileUrl&&<a href={person.profileUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={13}/> Fiche source</a>}
                         </div>}
                       </div>
@@ -1055,6 +1056,7 @@ export default function ProspectDetailPage() {
                     <Users size={22}/><div><strong>Aucun nom confirmé dans les sources</strong>
                       <p>Enrichissez les dirigeants ou renseignez le contact principal pour compléter le dossier.</p></div>
                   </div>}
+                  <ProspectContactPoints prospect={prospect} onSaved={async()=>{await Promise.all([fetchProspect(),fetchActivities()]);}}/>
                   <div className="atlas-360-contact-channel-card">
                     <div><Phone size={17}/><h3>Coordonnées du prospect</h3><span>CRM · non attribuées automatiquement à un dirigeant</span></div>
                     <div className="atlas-360-contact-channels">

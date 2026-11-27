@@ -20,7 +20,9 @@ export type DiagnosticEvent = {
 // source HTML, captures or customer content in this operational diagnostic store.
 const forbiddenKey = /token|password|secret|authorization|cookie|credential|api.?key|html|body|headers|screenshot|capture|payload|email|phone|query|search.?term|address/i;
 export function safeDiagnosticText(value: unknown, limit = 400): string {
-  return String(value ?? '')
+  const raw=String(value??'');
+  if(/failed query|\b(?:insert into|select .+ from|update .+ set)\b/i.test(raw))return 'Échec de requête en base (contenu exclu des diagnostics).';
+  return raw
     .replace(/https?:\/\/\S+/gi, '[URL]')
     .replace(/\bBearer\s+\S+/gi, 'Bearer [REDACTED]')
     .replace(/\b[A-Za-z0-9_-]{22,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\b/g, '[TOKEN]')
@@ -50,6 +52,9 @@ export async function recordDiagnosticEvent(event: DiagnosticEvent): Promise<voi
   if (!event.tenantId) return;
   try {
     const details = safeDiagnosticDetails(event.details);
+    // The same scrubbed business event is available even when DB persistence fails.
+    logger[event.level]({tenantId:event.tenantId,traceId:event.traceId||null,component:event.component,
+      code:event.code,source:event.source||null,prospectId:event.prospectId||null,jobId:event.jobId||null,details},safeDiagnosticText(event.message));
     await pool.query(`INSERT INTO diagnostic_events
       (tenant_id,user_id,trace_id,level,component,code,message,source,prospect_id,job_id,details)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`, [
@@ -65,12 +70,23 @@ export async function recordDiagnosticEvent(event: DiagnosticEvent): Promise<voi
 }
 
 export function errorDiagnosticDetails(error: unknown): Record<string, unknown> {
-  const err = error as { name?: string; message?: string; status?: number; code?: string } | null;
+  const err = error as { name?: string; message?: string; status?: number; code?: string; cause?: unknown } | null;
+  let current:any=err, databaseCode:string|null=null, databaseConstraint:string|null=null;
+  for(let depth=0;current&&depth<5;depth++,current=current.cause){
+    if(typeof current.code==='string'&&/^[0-9A-Z]{5}$/.test(current.code)){
+      databaseCode=current.code;
+      // Explicit allowlist: never expose SQL, parameters, a detail or a row value.
+      databaseConstraint=['idx_prospects_tenant_siret','idx_prospects_tenant_siren','prospects_identity_consistency'].includes(current.constraint)?current.constraint:null;
+      break;
+    }
+  }
   return {
     errorType: err?.name || 'UnknownError',
-    errorCode: err?.code || null,
+    errorCode: databaseCode || (typeof err?.code==='string'&&/^[A-Z0-9_]{2,40}$/.test(err.code)?err.code:null),
+    databaseCode,databaseConstraint,
     httpStatus: typeof err?.status === 'number' ? err.status : null,
-    reason: err?.message || 'Erreur non identifiée',
+    reason: databaseCode||/failed query|\b(?:insert into|select .+ from|update .+ set)\b/i.test(err?.message||'')
+      ? 'Échec de l’enregistrement en base. Consulter le code technique.' : err?.message || 'Erreur non identifiée',
   };
 }
 

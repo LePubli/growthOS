@@ -23,11 +23,12 @@ const clean=(s:string)=>entity(s).replace(/\s+/g,' ').trim();
 export function readSiteHtml(html:string,url:string){
   // Static public HTML only. Ignore scripts, forms, templates and explicitly hidden subtrees.
   const markup=html.replace(/<!--[\s\S]*?-->/g,'').replace(/<(script|style|template|noscript|svg|iframe|form)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,'');
-  const stack:{tag:string;hidden:boolean;anchor?:{href:string;label:string}}[]=[],links:{href:string;label:string}[]=[],parts:string[]=[];let heading='',headingDepth=0;
+  const stack:{tag:string;hidden:boolean;anchor?:{href:string;label:string}}[]=[],links:{href:string;label:string}[]=[],parts:string[]=[];let heading='',headingDepth=0,sectionTitle='',sectionDepth=0,excludedSection=false;
   for(const m of markup.matchAll(/<\/?([a-z][\w:-]*)\b([^>]*?)>|([^<]+)/gi)){
-    if(m[3]!==undefined){if(!stack.some(s=>s.hidden)){const text=entity(m[3]);parts.push(text);if(headingDepth)heading+=text;const anchor=[...stack].reverse().find(s=>s.anchor)?.anchor;if(anchor)anchor.label+=text;}continue;}
+    if(m[3]!==undefined){if(!stack.some(s=>s.hidden)){const text=entity(m[3]);if(sectionDepth)sectionTitle+=text;if(!excludedSection)parts.push(text);if(headingDepth)heading+=text;const anchor=[...stack].reverse().find(s=>s.anchor)?.anchor;if(anchor)anchor.label+=text;}continue;}
     const tag=m[1].toLowerCase(),closing=m[0].startsWith('</');
-    if(closing){const i=stack.map(s=>s.tag).lastIndexOf(tag);if(i>=0){for(const node of stack.splice(i))if(node.anchor&&!node.hidden)links.push({href:node.anchor.href,label:clean(node.anchor.label)});}if(tag==='h1')headingDepth=0;parts.push('\n');continue;}
+    if(closing){const i=stack.map(s=>s.tag).lastIndexOf(tag);if(i>=0){for(const node of stack.splice(i))if(node.anchor&&!node.hidden&&!excludedSection)links.push({href:node.anchor.href,label:clean(node.anchor.label)});}if(tag==='h1')headingDepth=0;if(/^h[1-6]$/.test(tag)&&sectionDepth){excludedSection=/h[ée]berg|hosting|conception du site|cr[ée]ation du site/i.test(sectionTitle);sectionDepth=0;}if(/^(p|div|li|br|address|h[1-6]|section|article|tr)$/.test(tag))parts.push('\n');continue;}
+    if(/^h[1-6]$/.test(tag)){sectionTitle='';sectionDepth=1;excludedSection=false;}
     const attrs:Record<string,string>={};for(const a of m[2].matchAll(/([^\s=/'">]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g))attrs[a[1].toLowerCase()]=entity(a[2]??a[3]??a[4]??'');
     const hidden=stack.some(s=>s.hidden)||'hidden' in attrs||attrs['aria-hidden']==='true'||/display\s*:\s*none|visibility\s*:\s*hidden/i.test(attrs.style||'')||['head','script','style','form','template','noscript','svg','iframe'].includes(tag);
     if(/^(p|div|li|br|address|h[1-6])$/.test(tag))parts.push('\n');
@@ -40,11 +41,13 @@ export function readSiteHtml(html:string,url:string){
   for(const link of links){if(/^mailto:/i.test(link.href)){try{decodeURIComponent(link.href.slice(7).split('?')[0]).split(/[;,]/).forEach(addEmail);}catch{}}if(/^tel:/i.test(link.href)){const phone=link.href.slice(4).replace(/[ .()-]/g,'');if(/^(?:\+33|0)[1-9]\d{8}$/.test(phone))phones.add(phone.replace(/^\+33/,'0'));}}
   for(const m of text.matchAll(/\b[A-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+\b/gi))addEmail(m[0]);
   for(const m of text.matchAll(/(?<!\d)(?:\+33\s?|0)[1-9](?:[ .-]?\d{2}){4}(?!\d)/g))phones.add(m[0].replace(/[ .-]/g,'').replace(/^\+33/,'0'));
-  const ids=(label:string,length:number)=>[...new Set([...text.matchAll(new RegExp('\\b'+label+'\\s*(?:[nN]°)?\\s*[:#-]?\\s*((?:\\d[ .-]?){'+length+'})(?!\\d)','gi'))].filter(m=>!/h[ée]berg|hosting|conception du site|cr[ée]ation du site/i.test(text.slice(Math.max(0,m.index!-350),m.index))).map(m=>m[1].replace(/\D/g,'')))];
-  const addresses=[...text.matchAll(/\b\d{1,4}\s*(?:(?:bis|ter)\s+)?(?:rue|boulevard|bd\.?|avenue|av\.?|route|place|chemin|impasse|all[ée]e|quai)\s+[^\n]{3,180}\b\d{5}\s+[^\n,;]{2,70}/gi)].map(m=>clean(m[0]));
+  const ids=(label:string,length:number)=>[...new Set([...text.matchAll(new RegExp('\\b'+label+'\\s*(?:[nN]°)?\\s*[:#-]?\\s*((?:\\d[ .-]?){'+length+'})(?!\\d)','gi'))].map(m=>m[1].replace(/\D/g,'')))];
+  const publisherNames=[...text.matchAll(/(?:raison\s+sociale|d[ée]nomination\s+(?:sociale|de\s+l[’']entreprise)|(?:le\s+)?site[^\n]{0,100}(?:est\s+)?[ée]dit[ée]\s+par|[ée]diteur(?:\s+du\s+site)?)\s*[:：]\s*([^\n]{2,160})/gi)].map(m=>clean(m[1])).filter(v=>!/^https?:|siret|siren/i.test(v));
+  const apeCodes=[...new Set([...text.matchAll(/(?:code\s+)?(?:APE|NAF)(?:\s*\/\s*(?:APE|NAF))?\s*[:：-]\s*(\d{2}[ .]?\d{2}[A-Z])/gi)].map(m=>m[1].replace(/[ .]/g,'').replace(/^(\d{2})(\d{2}[A-Z])$/,'$1.$2')))];
+  const addresses=[...text.matchAll(/\b\d{1,4}\s*(?:(?:bis|ter)\s+)?(?:rue|boulevard|bd\.?|avenue|av\.?|route|place|chemin|impasse|all[ée]e|quai)\s+[^\n]{3,180}?[, \n]+\b\d{5}[ \t]+[^\n,;]{2,70}/gi)].map(m=>clean(m[0]));
   const socials:{source:string;url:string;sourceUrl:string}[]=[];
   for(const link of links)for(const source of ['linkedin','facebook','instagram','tiktok']){let target:string|null=null;try{target=professionalSourceUrl(source,new URL(link.href,url).href);}catch{}if(target&&!socials.some(s=>s.source===source&&s.url===target))socials.push({source,url:target,sourceUrl:url});}
-  return {heading:clean(heading),text,emails:[...emails].slice(0,30),phones:[...phones].slice(0,20),sirets:ids('SIRET',14),sirens:ids('SIREN',9),addresses:addresses.slice(0,10),socials,links};
+  return {heading:clean(heading),text,publisherNames,apeCodes,emails:[...emails].slice(0,30),phones:[...phones].slice(0,20),sirets:ids('SIRET',14),sirens:ids('SIREN',9),addresses:addresses.slice(0,10),socials,links};
 }
 export type MailDomainCheck={status:'mx'|'implicit_mx'|'no_mail'|'unknown';detail:string};
 export async function mailDomainCheck(domain:string,resolver:Pick<Resolver,'resolveMx'|'resolve4'|'resolve6'>=new Resolver({timeout:1500,tries:1})):Promise<MailDomainCheck>{
@@ -58,11 +61,12 @@ export async function mailDomainCheck(domain:string,resolver:Pick<Resolver,'reso
 export async function collectSite(raw:string,options:{load?:(url:URL)=>Promise<{url:string;html:string}>;mail?:(domain:string)=>Promise<MailDomainCheck>}={}){
   const initial=siteUrl(raw),host=siteHost(initial),load=options.load||((url:URL)=>publicSiteHtml(url,host));
   const pending=[initial],seen=new Set<string>(),pages:any[]=[],deadline=Date.now()+45000;
-  while(pending.length&&pages.length<5&&Date.now()<deadline){
+  while(pending.length&&pages.length<7&&Date.now()<deadline){
     const target=pending.shift()!;if(seen.has(target.href))continue;seen.add(target.href);
     try{const response=await load(target),actual=siteUrl(response.url);if(siteHost(actual)!==host)throw Error('Le domaine du site a changé.');
       const read=readSiteHtml(response.html,actual.href);pages.push({url:actual.href,read});
-      for(const link of read.links){if(!/contact|mentions?[-_ /]?l[eé]gal|qui[-_ /]?sommes|[àa][- ]propos|about/i.test(link.label+' '+link.href))continue;try{const u=siteUrl(new URL(link.href,actual).href);if(siteHost(u)===host&&!seen.has(u.href)&&!pending.some(p=>p.href===u.href))pending.push(u);}catch{}}
+      for(const link of [...read.links].sort((a,b)=>Number(/mentions|legal/i.test(b.href+' '+b.label))-Number(/mentions|legal/i.test(a.href+' '+a.label)))){if(!/contact|mentions?[-_ /]?l[eé]gal|qui[-_ /]?sommes|[àa][- ]propos|about/i.test(link.label+' '+link.href))continue;try{const u=siteUrl(new URL(link.href,actual).href);if(siteHost(u)===host&&!seen.has(u.href)&&!pending.some(p=>p.href===u.href))pending.push(u);}catch{}}
+      if(pages.length===1&&!pending.length)for(const path of ['/mentions-legales/','/contact/']){const fallback=siteUrl(new URL(path,initial).href);if(!seen.has(fallback.href))pending.push(fallback);}
     }catch(error){if(!pages.length)throw error;}
   }
   const emails=[...new Map(pages.flatMap(p=>p.read.emails.map((email:string)=>[email,{email,sourceUrl:p.url,origin:'published'}]))).values()] as {email:string;sourceUrl:string;origin:string;check?:MailDomainCheck}[];
@@ -70,7 +74,7 @@ export async function collectSite(raw:string,options:{load?:(url:URL)=>Promise<{
   for(const domain of [...new Set([host,...emails.map(e=>e.email.split('@')[1])])].slice(0,6))cache.set(domain,await mail(domain));
   for(const email of emails)email.check=cache.get(email.email.split('@')[1])||{status:'unknown',detail:'Contrôle DNS non effectué.'};
   const domainCheck=cache.get(host)!;
-  return {url:initial.href,pages:pages.map(p=>({url:p.url,heading:p.read.heading})),emails,
+  return {url:initial.href,pages:pages.map(p=>({url:p.url,heading:p.read.heading})),publishers:pages.flatMap(p=>p.read.publisherNames.map((name:string)=>({name,sourceUrl:p.url}))),apeCodes:[...new Set(pages.flatMap(p=>p.read.apeCodes))] as string[],emails,
     phones:[...new Map(pages.flatMap(p=>p.read.phones.map((phone:string)=>[phone,{phone,sourceUrl:p.url}]))).values()] as {phone:string;sourceUrl:string}[],
     socials:[...new Map<string,{source:string;url:string;sourceUrl:string}>(pages.flatMap(p=>p.read.socials.map((v:any)=>[v.source+':'+v.url,v] as [string,{source:string;url:string;sourceUrl:string}]))).values()],sirets:[...new Set(pages.flatMap(p=>p.read.sirets))] as string[],sirens:[...new Set(pages.flatMap(p=>p.read.sirens))] as string[],
     addresses:[...new Map(pages.flatMap(p=>p.read.addresses.map((address:string)=>[address,{address,sourceUrl:p.url}]))).values()] as {address:string;sourceUrl:string}[],

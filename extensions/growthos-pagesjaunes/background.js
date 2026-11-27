@@ -816,6 +816,7 @@ function taskCapture(raw,task){
   for(const [key,max] of Object.entries({address:320,codePostal:5,city:120,phone:40,email:254,website:500,siret:14,apeCode:6,nafLabel:250,nafVersion:32})){
     const value=String(raw[key]||'').trim();if(value.length>max)throw new Error('Champ trop long : '+key);if(value)capture[key]=value;
   }
+  for(const key of ['emails','phones'])if(Array.isArray(raw[key]))capture[key]=raw[key].filter(v=>typeof v==='string'&&v.length<=254).slice(0,100);
   if(capture.codePostal && !/^\d{5}$/.test(capture.codePostal))throw new Error('Code postal invalide.');
   if(capture.siret && !/^\d{14}$/.test(capture.siret))throw new Error('SIRET invalide.');
   if(capture.address && capture.codePostal && !capture.address.includes(capture.codePostal))throw new Error('Adresse et code postal incohérents.');
@@ -1005,7 +1006,7 @@ async function popupAction(message){
       return addToQueue(result.results,false,true);
     }
     if(!tab?.id || !tab.url || !['google_maps','google_search','bing'].some(s=>hostMatches(s,tab.url)))
-      throw new Error('Ouvrez un résultat Google Maps, Google Search ou Bing puis recliquez sur l’extension.');
+      throw new Error('Ouvrez la fiche source à lire (Google Maps, Google Search, Bing ou Societe.com). Pour LinkedIn et les réseaux sociaux, utilisez la saisie assistée du panneau. Pour enrichir un prospect précis, lancez cette source depuis sa fiche GrowthOS.');
     const url=new URL(tab.url);
     if(hostMatches('google_maps',tab.url) && !url.pathname.startsWith('/maps/place/')){
       return popupAction({action:'auto-capture-maps',payload:message.payload});

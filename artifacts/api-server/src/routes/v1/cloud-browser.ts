@@ -4,6 +4,7 @@ import {Router} from 'express';
 import {z} from 'zod';
 import {pool} from '@workspace/db';
 import {importCloudJob,withCloudImportStates} from '../../services/cloud-imports';
+import {isProspectIdentityDuplicate,prospectIdentityConstraint} from '../../lib/prospect-identity';
 import {logger} from '../../lib/logger';
 import {CLOUD_SOURCES,CLOUD_AUTOMATIC,CloudBrowserError,browserCall,cloudConfigured,cloudProfile,cloudJob,tickCloudJobs} from '../../services/cloud-browser';
 import {recordDiagnosticEvent,errorDiagnosticDetails} from '../../lib/diagnostics';
@@ -103,6 +104,7 @@ router.post('/local-review',async(req,res)=>{
   const data=z.object({taskId:idSchema,prospectId:idSchema,cloudJobId:idSchema.optional(),capture:z.unknown()}).strict().parse(req.body),tenant=req.auth!.tenantId,user=req.auth!.userId;
   const raw=data.capture as any;if(!raw||typeof raw!=='object'||!CLOUD_SOURCES.includes(raw.source))throw new CloudBrowserError(400,'Source locale invalide.');
   const id=data.cloudJobId||data.taskId,capture={...raw,id:'task_'+id};
+  res.locals.source=raw.source;res.locals.prospectId=data.prospectId;res.locals.jobId=id;
   const preview=await targetCaptureReview(tenant,data.prospectId,capture);if(preview.status!==200)throw new CloudBrowserError(preview.status,'error' in preview?preview.error||'Capture invalide.':'Capture invalide.');
   const client=await pool.connect();try{
     await client.query('BEGIN');
@@ -121,7 +123,7 @@ router.post('/local-review',async(req,res)=>{
     }
     const result={...job.result,captureHistory:[...(job.result?.captureHistory||[]),...(job.result?.captures||[])].slice(-20),captures:[capture],applied:undefined,localCapture:{taskId:data.taskId,capturedAt:new Date().toISOString()},message:'Capture issue du Chrome de cet appareil. Comparez puis confirmez son identité.'};
     job=(await client.query("UPDATE cloud_browser_jobs SET status='needs_review',result=$2,error=NULL,lease=NULL,lease_until=NULL,updated_at=NOW() WHERE id=$1 RETURNING *",[id,JSON.stringify(result)])).rows[0];
-    await client.query('COMMIT');res.json({job});
+    await client.query('COMMIT');void recordDiagnosticEvent({tenantId:tenant,userId:user,traceId:req.traceId,level:'info',component:'crm-confirmation',code:'LOCAL_CAPTURE_STAGED',message:'Capture locale conservée pour validation CRM',source:raw.source,prospectId:data.prospectId,jobId:id,details:{resultCount:1}});res.json({job});
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 });
 router.get('/jobs/:id/review',async(req,res)=>{
@@ -141,6 +143,9 @@ router.post('/jobs/:id/confirm',async(req,res)=>{
   const data=z.object({captureIndex:z.number().int().min(0),confirmed:z.literal(true),expectedUpdatedAt:z.string().datetime(),expectedCaptureDigest:z.string().regex(/^[a-f0-9]{64}$/),expectedValues:expectedValuesSchema.optional(),replaceFields:z.array(z.enum(['company','address','postalCode','city','phone','email','website','linkedinUrl','apeCode','nafLabel','nafVersion'])).max(11).default([])}).strict().parse(req.body);
   const job=await cloudJob(tenant,id,user);
   res.locals.jobId=job.id;res.locals.prospectId=job.prospect_id;
+  const sourceRow=await pool.query('SELECT source FROM cloud_browser_profiles WHERE id=$1 AND tenant_id=$2',[job.profile_id,tenant]);
+  res.locals.source=sourceRow.rows[0]?.source||null;
+  void recordDiagnosticEvent({tenantId:tenant,userId:user,traceId:req.traceId,level:'info',component:'crm-confirmation',code:'CONFIRMATION_STARTED',message:'Validation CRM demandée',source:res.locals.source,prospectId:job.prospect_id,jobId:id,details:{local:!!job.result?.localCapture}});
   if(job.result?.applied&&job.status==='completed'){res.json({job,alreadyApplied:true});return;}
   if(job.mode!=='enrich'||!job.prospect_id||!['needs_review','awaiting_user'].includes(job.status))throw new CloudBrowserError(409,'Cette tâche ne peut pas être confirmée dans son état actuel.');
   const capture=job.result?.captures?.[data.captureIndex];if(!capture)throw new CloudBrowserError(404,'Capture introuvable.');
@@ -150,6 +155,7 @@ router.post('/jobs/:id/confirm',async(req,res)=>{
   try{
     const applied=await applyTargetCapture(tenant,user,job.prospect_id,id,capture,false,{lease,result:{...job.result,manualConfirmation:{userId:user,captureIndex:data.captureIndex,confirmedAt:new Date().toISOString()}}},{expectedUpdatedAt:data.expectedUpdatedAt,confirmed:true,replaceFields:data.replaceFields,expectedValues:data.expectedValues});
     if(applied.status!==200)throw new CloudBrowserError(applied.status,'error' in applied?applied.error:'Confirmation impossible.');
+    void recordDiagnosticEvent({tenantId:tenant,userId:user,traceId:req.traceId,level:'info',component:'crm-confirmation',code:'CONFIRMATION_SAVED',message:'Validation CRM enregistrée',source:res.locals.source,prospectId:job.prospect_id,jobId:id,details:{filledFields:('filled' in applied?applied.filled.length:0)||0,conflicts:('conflicts' in applied?applied.conflicts:0),alreadyApplied:'alreadyApplied' in applied&&applied.alreadyApplied}});
     res.json({job:await cloudJob(tenant,id,user),...applied});
   }catch(error){await pool.query("UPDATE cloud_browser_jobs SET status='needs_review',lease=NULL,lease_until=NULL WHERE id=$1 AND tenant_id=$2 AND lease=$3",[id,tenant,lease]);throw error;}
 });
@@ -172,18 +178,26 @@ router.post('/jobs/:id/cancel',async(req,res)=>{
 router.use((error:unknown,req:any,res:any,_next:any)=>{
   const source=typeof res.locals.source==='string'?res.locals.source:null;
   const invalidInput=error instanceof z.ZodError;
+  const identityDuplicate=isProspectIdentityDuplicate(error),identityConstraint=prospectIdentityConstraint(error);
+  const saving=/\/jobs\/[^/]+\/confirm$|\/local-review$/.test(req.path);
+  const errorDetails=errorDiagnosticDetails(error);
+  if(identityDuplicate||identityConstraint){
+    void recordDiagnosticEvent({tenantId:req.auth?.tenantId,userId:req.auth?.userId,traceId:req.traceId,level:'warn',component:'crm-confirmation',code:identityDuplicate?'CRM_IDENTITY_DUPLICATE':'CRM_IDENTITY_INCONSISTENT',message:'Validation CRM bloquée par une contrainte d’identité',source,prospectId:res.locals.prospectId,jobId:res.locals.jobId,details:{...errorDetails,causeCode:identityDuplicate?'CRM_IDENTITY_DUPLICATE':'CRM_IDENTITY_INCONSISTENT',certainty:'observed',cause:identityDuplicate?'Un identifiant est déjà utilisé par une autre fiche de cette agence.':'Les identifiants légaux de la capture sont incohérents.',action:'Vérifier le doublon ou les identifiants dans le CRM avant de confirmer.'}});
+    res.status(409).json({error:identityDuplicate?'Ce SIRET ou SIREN appartient déjà à une autre fiche prospect. Vérifiez le doublon dans le CRM. La capture est conservée.':'Le SIREN et le SIRET sont incohérents. Corrigez les identifiants avant de valider.',code:identityDuplicate?'CRM_IDENTITY_DUPLICATE':'CRM_IDENTITY_INCONSISTENT',traceId:req.traceId});return;
+  }
   const expectedConflict=error instanceof CloudBrowserError&&error.status>=400&&error.status<500;
   const captureRequired=expectedConflict&&/Aucune fiche capturée|Capture introuvable/i.test(error.message);
   const diagnosis=diagnoseSourceIssue({source,status:error instanceof CloudBrowserError?'failed':undefined,httpStatus:error instanceof CloudBrowserError?error.status:undefined,reason:invalidInput?'Paramètres invalides':error instanceof Error?error.message:''});
   void recordDiagnosticEvent({tenantId:req.auth?.tenantId,userId:req.auth?.userId,traceId:req.traceId,
-    level:invalidInput||expectedConflict?'warn':'error',component:'cloud-browser',code:invalidInput?'INVALID_BROWSER_INPUT':captureRequired?'CAPTURE_REQUIRED':expectedConflict?'BROWSER_ACTION_CONFLICT':'BROWSER_OPERATION_FAILED',
+    level:invalidInput||expectedConflict?'warn':'error',component:saving?'crm-confirmation':'cloud-browser',code:invalidInput?'INVALID_BROWSER_INPUT':captureRequired?'CAPTURE_REQUIRED':expectedConflict?'BROWSER_ACTION_CONFLICT':saving?'CRM_SAVE_FAILED':'BROWSER_OPERATION_FAILED',
     message:expectedConflict?'Action navigateur non réalisable dans cet état':'Opération navigateur en erreur',source,
     jobId:typeof res.locals.jobId==='string'?res.locals.jobId:null,prospectId:typeof res.locals.prospectId==='string'?res.locals.prospectId:null,
-    details:{...(invalidInput?{errorType:'ZodError',issueCount:error.issues.length}:errorDiagnosticDetails(error)),...diagnosis}});
+    details:{...(invalidInput?{errorType:'ZodError',issueCount:error.issues.length}:errorDetails),...(saving?{causeCode:'CRM_SAVE_FAILED',certainty:'observed',cause:'L’enregistrement CRM a échoué ; la capture est conservée.',action:'Rechercher le code SQLSTATE et la trace dans les logs API.'}:diagnosis)}});
   if(error instanceof z.ZodError){res.status(400).json({error:'Paramètres du navigateur invalides.'});return;}
-  if(error instanceof CloudBrowserError){res.status(error.status).json({error:error.message});return;}
+  if(error instanceof CloudBrowserError){res.status(error.status).json({error:error.message,traceId:req.traceId});return;}
   // Never log browser input: it may include user-entered credentials.
   logger.error({reason:error instanceof Error?error.name:'unknown'},'Cloud browser operation failed');
-  res.status(503).json({error:'Navigateur temporairement indisponible. Réessayez après son rétablissement.'});
+  const workerFailure=!saving&&!errorDetails.databaseCode&&/^\/profiles\/[^/]+\/(?:open|view|action|erase)$/.test(req.path);
+  res.status(workerFailure?503:500).json({error:workerFailure?'Navigateur temporairement indisponible. Réessayez après son rétablissement.':saving?'L’enregistrement CRM a échoué. La capture est conservée ; consultez le centre de diagnostic avec cette référence.':'L’opération a échoué. Consultez le centre de diagnostic avec cette référence.',code:saving?'CRM_SAVE_FAILED':'BROWSER_OPERATION_FAILED',traceId:req.traceId});
 });
 export default router;

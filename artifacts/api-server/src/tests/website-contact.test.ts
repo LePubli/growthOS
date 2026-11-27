@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {collectSite,readSiteHtml,siteUrl,mailDomainCheck,publicSiteHtml} from '../services/website-contact-data';
+import {websitePublisherMatches} from '../lib/enrichment-identity';
 const root='https://atelier-site.fr/';
 const html=`<head><script>const secret='secret@cache.fr'</script></head><main><h1>Atelier Site</h1><a href='/contact'>Contact</a><a href='/mentions-legales'>Mentions légales</a><a href='https://other.fr/contact'>Contact externe</a><div hidden><a href='mailto:hidden@cache.fr'>Secret</a></div><a href='https://[broken'>Contact cassé</a><a href='tel:+33 3 20 11 22 33'>Appeler</a></main>`;
 const contact=`<h1>Atelier Site</h1><p>8 rue du Test 59100 Roubaix</p><a href='mailto:contact&#64;atelier-site.fr?subject=Bonjour'>Nous écrire</a><p>03 20 11 22 33</p><a href='https://www.linkedin.com/company/atelier-site/'>LinkedIn</a>`;
@@ -24,3 +25,13 @@ await assert.rejects(()=>publicSiteHtml(siteUrl(root),'atelier-site.fr',0,{resol
 const safe=await publicSiteHtml(siteUrl(root),'atelier-site.fr',0,{resolve4:async()=>['1.1.1.1'],httpsRequest:fakeRequest(200),httpRequest:fakeRequest(200)} as any);assert.equal(pinned,'1.1.1.1');assert.ok(safe.html.includes('Site'));
 await assert.rejects(()=>publicSiteHtml(siteUrl(root),'atelier-site.fr',0,{resolve4:async()=>['1.1.1.1'],httpsRequest:fakeRequest(200,undefined,'x'.repeat(550001)),httpRequest:fakeRequest(200)} as any));
 console.log('✓ Site prospect : Contact/mentions, preuves, adresse, téléphone, réseaux ; contenu caché/identifiants hébergeur exclus ; hypothèses jamais confirmées ; DNS MX/Null MX/temporaire et SSRF/redirections/DNS épinglé testés');
+const publisher=readSiteHtml(`<h1>Mentions légales</h1><p>Le site est édité par :</p><p><strong>ATELIER EDITEUR</strong></p><p>SIREN : <b>966 777 093</b></p><p>SIRET : <span>966 777 093 00019</span></p><p>Code APE/NAF : 43.22A</p><p>18 rue du Test, 59100 Roubaix</p><p>contact.atelier@gmail.com</p><p>devis@atelier.fr</p><p>03 20 11 22 33</p><p>06 11 22 33 44</p><h2>Hébergeur</h2><p>SIRET : 96688888800019</p><a href='mailto:host@hebergeur.fr'>Écrire</a><p>19 rue du Test 75000 Paris</p>`,root);
+assert.deepEqual(publisher.publisherNames,['ATELIER EDITEUR']);assert.deepEqual(publisher.sirets,['96677709300019']);assert.deepEqual(publisher.apeCodes,['43.22A']);assert.equal(publisher.emails.length,2);assert.equal(publisher.phones.length,2);assert.equal(publisher.addresses.length,1);
+const verifiedPublisher={phone:'03 20 11 22 33',sourceDetails:{website:{snapshot:{identity:'matched',publishers:[{name:'ATELIER EDITEUR'}],phones:[{phone:'0320112233'}],addresses:[{address:'18 rue du Test 59100 Roubaix'}],sirets:['96677709300019']}}}};
+const officialPublisher={company:'ATELIER EDITEUR',siret:'96677709300019',address:'18 rue du Test 59100 Roubaix'};
+assert(websitePublisherMatches(verifiedPublisher,officialPublisher));
+assert(!websitePublisherMatches({...verifiedPublisher,phone:'0600000000'},officialPublisher));
+assert(!websitePublisherMatches(verifiedPublisher,{...officialPublisher,siret:'96677709300020'}));
+assert(!websitePublisherMatches(verifiedPublisher,{...officialPublisher,address:'19 rue du Test 59100 Roubaix'}));
+assert(!websitePublisherMatches({...verifiedPublisher,siren:'999999999'},officialPublisher));
+console.log('✓ Mentions légales : éditeur, Gmail, tous les contacts, identifiants et APE ; rapprochement commercial/juridique avec téléphone et adresse officiels, hébergeur exclu');

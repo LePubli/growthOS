@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {db,pool,prospectsTable} from '@workspace/db';
 import {and,eq,sql} from 'drizzle-orm';
 import {fetchDirectory} from './official-directory';
-import {uniqueIdentityMatch,captureIdentityMatches} from '../lib/enrichment-identity';
+import {websitePublisherMatches,uniqueIdentityMatch,captureIdentityMatches} from '../lib/enrichment-identity';
 import {mergeProspectCapture} from '../routes/v1/sourcing';
 import {cloudConfigured,CloudBrowserError} from './cloud-browser';
 import {providerKeysService} from '../lib/provider-keys/ProviderKeysService';
@@ -63,7 +63,7 @@ async function mergeOfficial(job:any,candidate:any){
     const locked=await tx.execute(sql`SELECT status,lease FROM prospect_enrichment_jobs WHERE id=${job.id} AND tenant_id=${job.tenant_id} FOR UPDATE`);
     if(locked.rows[0]?.status!=='running'||locked.rows[0]?.lease!==job.lease)throw Error('Tâche interrompue.');
     const [p]=await tx.select().from(prospectsTable).where(and(eq(prospectsTable.id,job.prospect_id),eq(prospectsTable.tenantId,job.tenant_id))).for('update');
-    if(!p||!captureIdentityMatches(p,candidate))throw Error('Identité non confirmée.');
+    if(!p||!(captureIdentityMatches(p,candidate)||websitePublisherMatches(p,candidate)))throw Error('Identité non confirmée.');
     return mergeProspectCapture(p,{...candidate,id:'automatic_'+job.id+'_'+candidate.source,capturedAt:Date.now(),
       sourceDetails:{...(candidate.apeScope&&(!p.apeCode||p.apeCode===candidate.apeCode||candidate.apeScope==='etablissement')?{annuaire:{apeScope:candidate.apeScope}}:{}),[candidate.source]:{apeScope:candidate.apeScope,snapshot:candidate.snapshot,sourceUrl:candidate.sourceUrl,capturedAt:new Date().toISOString()}},targetedIdentity:false},false,job.tenant_id,tx,job.created_by,
       p.siret&&p.siret===candidate.siret?['address','postalCode','city',...(candidate.apeScope==='etablissement'?['apeCode','nafLabel','nafVersion'] as const:[])]:[]);
@@ -72,7 +72,7 @@ async function mergeOfficial(job:any,candidate:any){
 async function officialStep(job:any,p:any):Promise<Step>{
   const data=await fetchDirectory(p.siret||p.siren||p.company,p.postal_code||p.city||'');
   let candidate=uniqueIdentityMatch(normalizedProspect(p),data.candidates);
-  if(!candidate&&!p.siret&&!p.siren){const site=p.source_details?.website?.snapshot;if(site&&site.identity!=='contradictory')for(const id of [...(site.sirets||[]),...(site.sirens||[])].slice(0,3)){const found=await fetchDirectory(id,p.postal_code||p.city||'');candidate=uniqueIdentityMatch(normalizedProspect(p),found.candidates);if(candidate)break;}}
+  if(!candidate&&!p.siret&&!p.siren){const site=p.source_details?.website?.snapshot;if(site&&site.identity!=='contradictory')for(const id of [...(site.sirets||[]),...(site.sirens||[])].slice(0,3)){const found=await fetchDirectory(id,p.postal_code||p.city||'');candidate=uniqueIdentityMatch(normalizedProspect(p),found.candidates);if(!candidate){const publishers=found.candidates.filter((c:any)=>websitePublisherMatches(p,c));if(publishers.length===1)candidate=publishers[0];}if(candidate)break;}}
   if(!candidate)return {label:job.steps.entreprises.label,status:data.candidates.length?'needs_review':'empty',message:data.candidates.length?'Aucun établissement unique confirmé par les identifiants ou le nom et les coordonnées. Aucune donnée appliquée.':'Aucune correspondance officielle.'};
   const merged=await mergeOfficial(job,candidate);
   return {label:job.steps.entreprises.label,status:'completed',filled:merged.filled,conflicts:merged.conflicts,message:'Identité officielle confirmée · '+candidate.siret+' · '+(candidate.snapshot?.fields?.['État de l’établissement']==='Fermé'?'Attention : cet établissement est fermé. Le siège actuel reste distinct. ':'')+'données issues notamment du répertoire INSEE.'};
@@ -155,6 +155,7 @@ export async function runProspectEnrichment(id:string){
             ...(['failed','needs_review','awaiting_user','empty','skipped'].includes(steps[source].status)
               ? {...diagnoseSourceIssue({source,status:steps[source].status,reason:steps[source].message}),reason:steps[source].message} : {})}});
     }
+    if(source==='entreprises'&&steps.entreprises.status==='completed'&&steps.website?.legalCandidates){steps.website={label:steps.website.label,status:'pending',message:'Identité officielle confirmée : nouvelle lecture des coordonnées publiées.'};}
     if(source==='website'&&steps.website.legalCandidates&&['empty','needs_review'].includes(steps.entreprises?.status))steps.entreprises={label:steps.entreprises.label,status:'pending',message:'Identifiant publié sur le site : vérification officielle avant utilisation.'};
     const pending=Object.values(steps).some(s=>['pending','collecting'].includes(s.status));
     const completed=Object.values(steps).some(s=>s.status==='completed');
