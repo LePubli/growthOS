@@ -279,6 +279,13 @@ Conserver tous les CSS/thème et les notes de l’agent design. Le catalogue des
 - Important pour l'autre agent : ne pas réintroduire `default_popup`, `window.close()` après les actions ni `sidePanel.setOptions({tabId:...})`, qui casseraient la persistance. La largeur Chrome ne peut pas être réduite par programme ; « − » replie les commandes, « × » ferme entièrement.
 - Garder ce chapitre et les autres notes jusqu'à autorisation de lancement production ; publication du ZIP et annonce seulement après CI de l'extension vérifiée.
 
+## Correctif design : fiche 360° avec panneau latéral Chrome ouvert (27/11/2026)
+
+- Retour propriétaire sur captures : en réduisant l'espace horizontal avec le panneau Chrome et le menu GrowthOS, la fiche 360° conserve ses trois puis quatre colonnes ; la quatrième carte déborde, les titres et boutons se chevauchent et « Nom commercial / nom affiché » empiète sur sa valeur.
+- Branche design isolée `fix/atlas-prospect-sidepanel-responsive-20261127`, basée sur `fix/growthos-functional-redesign` après PR68. Périmètre limité à `artifacts/growthos/src/atlas-prospect-360.css` et aux assertions `scripts/test-prospect-harmony.mjs` ; **aucune logique de collecte, statut, source ou contact modifiée**.
+- Le conteneur de la fiche réagit à sa largeur réelle (`@container prospect-360`), indépendamment de `window.innerWidth` et de l'état du panneau Chrome. Grille 3/2/1 colonnes en haut, 4/2/1 en bas ; Copilote IA à droite tant que deux colonnes sont praticables, sinon sous les données. Titres et CTA reviennent à la ligne, et la grille des données légales ne totalise plus 100 % plus son espacement.
+- Conserver ces règles lors des changements fonctionnels sur `Prospect360Dashboard.tsx` ou `ProspectDetailPage.tsx`. Conserver toutes les notes de coordination jusqu'à l'autorisation explicite de mise en production finale par le propriétaire.
+
 Validation du lot (PR66) : **386 contrôles API avec PostgreSQL jetable**, dont confirmation d’une enseigne différente, remplacement choisi de ville/téléphone, refus d’identifiants contradictoires, changement concurrent, idempotence, isolation et réconciliation du bilan parent avec reprogrammation des sources dépendantes. Lecture Contact/mentions, email publié et preuve par champ, réseaux, hypothèses non confirmées, SSRF/DNS/redirections testés. TypeScript API/Web, builds API/Web et tests interface/extension verts. Chromium réel vert : run `46019713873` sur `85f1a37`. Dernier design ATLAS et panneau Chrome persistant (`cc78fa0`) intégrés sans modification de CSS. Publication des quatre images sur le head final restant à contrôler avant feu vert. Aucun déploiement DockPanel ; notes conservées, catalogue 306 sources différé.
 
 ## Correctif noms et validation simplifiée (27/11/2026)
