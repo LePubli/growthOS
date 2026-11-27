@@ -62,15 +62,15 @@ assert.match(css, /background:linear-gradient\(128deg,var\(--atlas-harmony-from/
 assert.match(css, /background:linear-gradient\(135deg,var\(--atlas-detail-from/);
 assert.doesNotMatch(css, /border-top:\s*3px solid/,
   'Les anciens bandeaux colorés épais ne doivent pas réapparaître');
-assert.match(layout, /container:prospect-360\s*\/\s*inline-size/,
-  'La fiche 360° doit réagir à sa largeur réelle (menu/side panel ouverts)');
-for (const size of [1250, 850, 600, 440]) {
-  assert.ok(layout.includes(`@container prospect-360 (max-width:${size}px)`),
-    `Breakpoints de contenu manquants : ${size}px`);
-}
-assert.match(layout, /\.atlas-360-legal-list\s*>div\s*\{[^}]*grid-template-columns:minmax\(0,42%\) minmax\(0,1fr\)/,
-  'Les colonnes identité doivent tenir dans la largeur de la carte');
+assert.doesNotMatch(layout, /@container prospect-360|container:prospect-360/,
+  'Les nouvelles grilles à conteneur modifient la maquette validée');
+assert.match(layout, /\.atlas-360-legal-list\s*>div\s*\{[^}]*grid-template-columns:minmax\(0,36%\) minmax\(0,1fr\)/,
+  'Conserver les proportions des colonnes identité sans chevauchement');
 assert.match(layout, /\.atlas-360-legal-list dt\s*\{[^}]*white-space:normal/,
   'Les intitulés longs, dont le nom commercial, doivent revenir à la ligne');
+assert.match(layout, /\.atlas-360-card-header h2\s*\{[^}]*white-space:normal/,
+  'Les titres des cartes doivent revenir à la ligne');
+assert.match(layout, /\.atlas-360-text-button\s*\{[^}]*white-space:normal/,
+  'Les boutons des cartes doivent revenir à la ligne');
 console.log('✓ Harmony : 7 fonds harmonisés et contrastés, 8 modules détaillés et sans liserés épais');
-console.log('✓ Fiche 360° : grille responsive au conteneur et intitulés sans chevauchement');
+console.log('✓ Fiche 360° : maquette conservée et textes sans chevauchement');

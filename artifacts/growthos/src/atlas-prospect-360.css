@@ -18,11 +18,7 @@ html[data-theme-id="atlas-orbit"] .atlas-prospect-360 {
   position:relative;max-width:none;margin:0;
   padding:0 82px 40px 18px !important;min-height:100vh;
   background:#f7f9fd !important;color:#14213a;
-  width:100%;min-width:0;box-sizing:border-box;container:prospect-360 / inline-size;
 }
-/* Une sidebar GrowthOS ou le Side Panel Chrome rétrécit le main sans changer
-   nécessairement le breakpoint global de la fenêtre. */
-html[data-theme-id="atlas-orbit"] .atlas-app-main {min-width:0;}
 .atlas-360-breadcrumb {height:48px;display:flex;align-items:center;gap:14px;font-size:13px;color:#6e7d99;padding:0 8px;}
 .atlas-360-breadcrumb button {color:#60728f;cursor:pointer;background:none;border:0;padding:0;font-weight:500;}
 .atlas-360-breadcrumb button:hover {color:#176bee;}
@@ -109,13 +105,13 @@ html[data-theme-id="atlas-orbit"] .atlas-app-main {min-width:0;}
 .atlas-360-card-header svg {color:#22375c;flex:0 0 auto;}
 .atlas-360-card-header h2 {font-size:15px;font-weight:820;color:#14213a;letter-spacing:-.015em;white-space:normal;min-width:0;overflow-wrap:break-word;}
 .atlas-360-card-header h2 small {font-weight:470;font-size:11px;color:#5e6c85;letter-spacing:0;}
-.atlas-360-text-button {display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;background:none;border:0;padding:4px 0;margin-left:auto;color:#1266f3;font-size:10.5px;font-weight:750;cursor:pointer;}
+.atlas-360-text-button {display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:normal;text-align:center;min-width:0;max-width:100%;background:none;border:0;padding:4px 0;margin-left:auto;color:#1266f3;font-size:10.5px;font-weight:750;cursor:pointer;}
 .atlas-360-text-button svg {color:inherit;}
 .atlas-360-text-button:hover {text-decoration:underline;}
 
 /* Identité légale, exactement hiérarchisée comme la première carte du visuel. */
 .atlas-360-company .atlas-360-legal-list {padding:4px 13px 14px;}
-.atlas-360-legal-list >div {display:grid;grid-template-columns:minmax(0,42%) minmax(0,1fr);align-items:center;min-height:37px;gap:8px;border-bottom:1px solid #edf1f8;padding:6px 8px;}
+.atlas-360-legal-list >div {display:grid;grid-template-columns:minmax(0,36%) minmax(0,1fr);align-items:center;min-height:37px;gap:8px;border-bottom:1px solid #edf1f8;padding:6px 8px;}
 .atlas-360-legal-list >div:last-child {border-bottom:0;}
 .atlas-360-legal-list dt {font-size:11px;color:#22304e;font-weight:550;white-space:normal;min-width:0;overflow-wrap:break-word;line-height:1.35;}
 .atlas-360-legal-list dd {display:flex;align-items:center;flex-wrap:wrap;min-width:0;gap:6px;color:#14213a;font-size:11.5px;font-weight:700;line-height:1.4;overflow-wrap:anywhere;}
@@ -277,31 +273,4 @@ html[data-theme-id="atlas-orbit"] .atlas-app-main {min-width:0;}
   .atlas-360-donut>div {height:90px;width:90px;}
   .atlas-360-card-header h2 {font-size:13px;}
   .atlas-prospect-360 .atlas-360-tabs button {padding:12px;font-size:12px;}
-}
-
-/* Breakpoints de CONTENU : fiables avec le menu interne ET le panneau latéral
-   Chrome ouverts. Aucun panneau ni champ ne déborde hors de la fiche 360°. */
-@container prospect-360 (max-width:1250px) {
-  .atlas-360-overview-grid {grid-template-columns:minmax(0,1.4fr) minmax(0,.9fr);gap:14px;}
-  .atlas-360-company {grid-column:1;grid-row:1;}
-  .atlas-360-completeness {grid-column:1;grid-row:2;}
-  .atlas-360-copilot {grid-column:2;grid-row:1 / span 2;align-self:start;}
-  .atlas-360-secondary-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
-  .atlas-360-hero-actions {justify-content:flex-start;}
-}
-@container prospect-360 (max-width:850px) {
-  .atlas-360-overview-grid {grid-template-columns:minmax(0,1fr);}
-  .atlas-360-company,.atlas-360-completeness,.atlas-360-copilot {grid-column:auto;grid-row:auto;}
-  .atlas-360-hero-actions {width:100%;}
-}
-@container prospect-360 (max-width:600px) {
-  .atlas-360-secondary-grid {grid-template-columns:minmax(0,1fr);}
-  .atlas-360-card-header {padding-inline:12px;}
-  .atlas-360-complete-body {flex-wrap:wrap;justify-content:flex-start;}
-  .atlas-360-complete-list {min-width:175px;}
-  .atlas-360-hero-button {white-space:normal;text-align:center;}
-}
-@container prospect-360 (max-width:440px) {
-  .atlas-360-legal-list >div {grid-template-columns:minmax(0,1fr);gap:4px;align-items:start;}
-  .atlas-360-legal-list dd {padding-bottom:2px;}
 }
