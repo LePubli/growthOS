@@ -141,11 +141,11 @@ export class BrowserService{
     const cursor=previous||{source:p.source,pages:[],next:searchUrl(p.source,input.query||'',input.area||'')};
     const url=cursor.next;
     if(!url||!sourceNavigation(p.source,url))throw new BrowserError(400,'Suite de recherche invalide.');
-    if(!input.resume||previous||!sourceNavigation(p.source,p.page.url()))await p.page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});
+    if(!input.resume||!previous?.awaitingUser||!sourceNavigation(p.source,p.page.url()))await p.page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});
     await pause(1200);
     const read=await p.page.evaluate(readers.general);
-    if(!read.results?.length&&!read.drafts?.length)return {status:'awaiting_user',results:[],drafts:[],cursor,message:'Aucune fiche lisible. Vérifiez la page dans le navigateur puis reprenez.'};
-    cursor.pages.push(url);
+    if(!read.results?.length&&!read.drafts?.length)return {status:'awaiting_user',results:[],drafts:[],cursor:{...cursor,awaitingUser:true},message:'Aucune fiche lisible. Vérifiez la page dans le navigateur puis reprenez.'};
+    cursor.awaitingUser=false;cursor.pages.push(p.page.url());
     const next=await p.page.locator(p.source==='bing'?'a.sb_pagN,a[rel="next"]':'a#pnnext,a[rel="next"]').evaluateAll(nodes=>nodes.map(n=>n.href));
     cursor.next=next.find(value=>sourceNavigation(p.source,value)&&!cursor.pages.includes(value))||null;
     return {status:'completed',results:read.results||[],drafts:read.drafts||[],cursor,hasMore:!!cursor.next};
@@ -227,7 +227,7 @@ export class BrowserService{
       if(!profile.name||!profile.address||!profile.codePostal)return null;
       const ape=String(profile.legal||'').match(/(?:APE|NAF)[^0-9]{0,20}(\d{2}\.\d{2}[A-Z])/i)?.[1];
       return {results:[{source:'pagesjaunes',company:profile.name,address:profile.address,codePostal:profile.codePostal,city:profile.city,
-        phone:profile.phone,email:profile.email,website:profile.website,siret:profile.siret,apeCode:ape||null,sourceUrl:profile.sourceUrl}],drafts:[]};
+        phone:profile.phone,email:profile.email,website:profile.website,siret:profile.siret,apeCode:ape||null,sourceUrl:profile.sourceUrl,pagesjaunesProfile:profile}],drafts:[]};
     }
     const read=await p.page.evaluate(readers.general);
     return read.results?.length||read.drafts?.length?{results:read.results||[],drafts:read.drafts||[]}:null;

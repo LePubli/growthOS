@@ -355,11 +355,16 @@ const cloudStub=createServer(async(req,res)=>{
       res.end(JSON.stringify({status:'completed',results:values,drafts:[]}));return;
     }
     const siret=p.query==='cloud-wrong'?'96677700900019':p.target?.siret||'96677700200019';
-    res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:p.target?'ATELIER CLOUD':'Entreprise trouvée',siret:p.source==='societe_com'?siret:null,
+    res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:p.target?p.target.company:'Entreprise trouvée',siret:p.source==='societe_com'?siret:null,
       address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone:'03 20 99 88 77',
       website:'https://cloud-recette.example.org',apeCode:'43.22A',
       sourceUrl:p.source==='societe_com'?'https://www.societe.com/societe/atelier-cloud-'+siret.slice(0,9)+'.html':p.source==='pagesjaunes'?'https://www.pagesjaunes.fr/pros/12345678':'https://www.google.com/maps/place/Entreprise/',
       ...(p.source==='societe_com'?{companyDetails:{fields:{'Forme juridique':'SAS'},managers:['Alice CLOUD'],establishments:[],links:[]}}:{}),
+      ...(p.source==='pagesjaunes'?{pagesjaunesProfile:{sourceUrl:'https://www.pagesjaunes.fr/pros/12345678',name:p.target?p.target.company:'Entreprise trouvée',
+        address:'8 rue du Test 59100 Roubaix',codePostal:'59100',city:'Roubaix',phone:'03 20 99 88 77',email:null,website:'https://cloud-recette.example.org',
+        siret:null,siren:'966777008',description:'Atelier de plomberie avec entretien et dépannage',openingHours:p.query==='cloud-pj-refresh'?'Lundi : 10h00–19h00':'Lundi : 09h00–18h00',
+        services:'Entretien · Dépannage',legal:'SIREN : 966777008',socials:{facebook:'https://www.facebook.com/atelier-recette'},rating:4.6,reviewCount:3,
+        reviews:[{author:'Client recette',date:null,text:'Intervention professionnelle, rapide et soignée.'}],capturedAt:new Date().toISOString()}}:{}),
     }],drafts:[]}));return;
   }
   res.writeHead(404).end(JSON.stringify({error:'Route inconnue'}));
@@ -1625,6 +1630,18 @@ try {
     const pjTask=await request('POST','/browser/jobs',{profileId:pjProfile.body.id,query:'plombier',area:'Roubaix'},token);await runCloudMaintenance(pjTask.body.id);
     const pjResult=await request('GET','/browser/jobs/'+pjTask.body.id,undefined,token);
     check(pjResult.body.status==='completed'&&pjResult.body.result.captures[0].source==='pagesjaunes','Cloud : résultats PagesJaunes disponibles sans passer par l’extension');
+    const pjImported=await request('POST','/browser/jobs/'+pjTask.body.id+'/import',{captureIds:[pjResult.body.result.captures[0].id]},token);
+    const pjCrmId=pjImported.body.job?.result?.imports?.[pjResult.body.result.captures[0].id]?.prospectId;
+    const pjCrm=await request('GET','/prospects/'+pjCrmId,undefined,token);
+    check(pjImported.status===200&&pjCrm.body.siren==='966777008'&&pjCrm.body.sourceDetails.pagesjaunes.openingHours.includes('09h00')&&pjCrm.body.sourceDetails.pagesjaunes.reviews.length===1,
+      'Cloud PagesJaunes : import du SIREN seul, horaires, avis, services et réseaux de la fiche détaillée');
+    const pjRefresh=await request('POST','/browser/jobs',{profileId:pjProfile.body.id,query:'cloud-pj-refresh',prospectId:pjCrmId},token);await runCloudMaintenance(pjRefresh.body.id);
+    const pjRefreshed=await request('GET','/prospects/'+pjCrmId,undefined,token);
+    const pjHistory=await request('GET','/activities?prospectId='+pjCrmId,undefined,token);
+    check(pjRefreshed.body.sourceDetails.pagesjaunes.openingHours.includes('10h00')&&pjRefreshed.body.sourceDetails.pagesjaunes.history[0].openingHours.includes('09h00'),
+      'Cloud PagesJaunes : enrichissement ciblé actualise les détails et conserve la version précédente');
+    check(JSON.stringify(pjHistory.body).includes('Informations détaillées PagesJaunes')&&JSON.stringify(pjHistory.body).includes('10h00'),
+      'Cloud PagesJaunes : modification détaillée tracée dans l’activité du prospect');
     const many=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,query:'cloud-many'},token);await runCloudMaintenance(many.body.id);
     const firstMany=await request('GET','/browser/jobs/'+many.body.id,undefined,token);
     check(firstMany.body.status==='queued'&&firstMany.body.result.hasMore&&firstMany.body.result.captures.length===25,'Cloud : la collecte de 25 fiches poursuit automatiquement sa suite');

@@ -29,7 +29,7 @@ export async function cloudJob(tenantId:string,id:string,userId?:string){
 const normalize=(v:unknown)=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const phone=(v:unknown)=>String(v||'').replace(/^\+33/,'0').replace(/\D/g,'');
 function targetMatches(p:any,c:any){
-  const known=p.siren||p.siret?.slice(0,9),incoming=c.siret?.slice(0,9)||new URL(c.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1];
+  const known=p.siren||p.siret?.slice(0,9),incoming=c.pagesjaunesProfile?.siren||c.siret?.slice(0,9)||new URL(c.sourceUrl).pathname.match(/-(\d{9})\.html/i)?.[1];
   if(known&&incoming&&known!==incoming)return false;
   if(p.siret&&c.siret)return p.siret===c.siret;
   if(c.source==='societe_com'&&known===incoming)return !p.city||!c.city||normalize(p.city)===normalize(c.city);

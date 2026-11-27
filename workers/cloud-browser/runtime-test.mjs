@@ -72,6 +72,17 @@ try{
   const mapBatch2=await service.collect({...maps,query:'plombier',area:'Roubaix',cursor:mapBatch1.cursor,resume:true});
   assert.equal(mapBatch2.results.length,10);assert.equal(mapBatch2.hasMore,false);
   assert.equal(new Set([...mapBatch1.results,...mapBatch2.results].map(c=>c.sourceUrl)).size,35,'Plus de 25 fiches réellement lues sans répétition');
+  const search={...identity,profileId:'10000000-0000-4000-8000-000000000007',source:'google_search'};
+  p=await service.profile(search);
+  await p.context.route('https://www.google.com/**',route=>route.fulfill({contentType:'text/html',body:new URL(route.request().url()).searchParams.get('q')==='selected-panel'
+    ?'<div id="rhs"><h2>Atelier choisi</h2><p>8 rue du Test 59100 Roubaix</p><a href="tel:0320112233">03 20 11 22 33</a></div>'
+    :'<p>Ouvrez une fiche lisible</p>'}));
+  const waiting=await service.collect({...search,query:'plombier'});
+  assert.equal(waiting.status,'awaiting_user');
+  await p.page.goto('https://www.google.com/search?q=selected-panel');
+  const resumed=await service.collect({...search,query:'plombier',resume:true,cursor:waiting.cursor});
+  assert.equal(resumed.status,'completed');assert.equal(resumed.results[0].company,'Atelier choisi');
+  assert.ok(p.page.url().includes('selected-panel'),'La reprise conserve le panneau choisi manuellement');
   const pj={...identity,profileId:'10000000-0000-4000-8000-000000000006',source:'pagesjaunes'};
   p=await service.profile(pj);
   await p.context.route('https://www.pagesjaunes.fr/**',route=>{
@@ -86,6 +97,7 @@ try{
   const pjBatch2=await service.collect({...pj,query:'plombier',area:'Roubaix',cursor:pjBatch1.cursor,resume:true});
   assert.equal(pjBatch2.results[0].company,'Atelier PagesJaunes 2');assert.equal(pjBatch2.hasMore,false);
   assert.equal(pjBatch2.results[0].email,'contact@atelier-recette.invalid');
+  assert.equal(pjBatch2.results[0].pagesjaunesProfile.name,'Atelier PagesJaunes 2');
   console.log('✓ Chromium réel : 35 fiches Maps en continuation et PagesJaunes recherche → détail → page suivante avec lecteurs canoniques');
   console.log('✓ Chromium réel : recherche → fiche Societe.com → extraction, vue JPEG, saisie, session persistante, séparation des comptes, contrôle et déconnexion');
 }finally{child.kill('SIGTERM');await service.close();await rm(directory,{recursive:true,force:true});}
