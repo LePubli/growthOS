@@ -133,7 +133,7 @@ export class BrowserService{
         if(!input.resume||!sourceNavigation(p.source,p.page.url()))await p.page.goto(searchUrl(p.source,input.query||'',input.area||''),{waitUntil:'domcontentloaded',timeout:25000});
         await pause(1200);return await this.societe(p,input);
       }
-      if(['google_maps','pagesjaunes'].includes(p.source))return await this.directory(p,input,cursor);
+      if(['google_maps','pagesjaunes'].includes(p.source))return await this.collectDirectory(p,input,cursor);
       return await this.searchPage(p,input,cursor);
     }finally{this.busy=false;this.touch();}
   }
@@ -150,7 +150,7 @@ export class BrowserService{
     cursor.next=next.find(value=>sourceNavigation(p.source,value)&&!cursor.pages.includes(value))||null;
     return {status:'completed',results:read.results||[],drafts:read.drafts||[],cursor,hasMore:!!cursor.next};
   }
-  async directory(p,input,previous){
+  async collectDirectory(p,input,previous){
     const initial=searchUrl(p.source,input.query||'',input.area||'');
     const isDetail=url=>p.source==='pagesjaunes'?/^https:\/\/(?:www\.)?pagesjaunes\.fr\/pros\/\d+/.test(url):new URL(url).pathname.startsWith('/maps/place/');
     if(!previous&&input.resume&&sourceNavigation(p.source,p.page.url())&&isDetail(p.page.url())){
@@ -166,6 +166,10 @@ export class BrowserService{
       const keepMap=p.source==='google_maps'&&sourceNavigation(p.source,current)&&new URL(current).pathname.startsWith('/maps/search')&&cursor.scanning===true;
       if(!keepMap)await p.page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});
       await pause(900);
+      if(isDetail(p.page.url())||(p.source==='google_maps'&&await p.page.locator('[role="main"] h1.DUwDvf').count())){
+        const read=await this.readDirectoryProfile(p);
+        return read?{status:'completed',results:read.results,drafts:read.drafts,hasMore:false}:{status:'awaiting_user',results,drafts,cursor,message:'La fiche nécessite une vérification dans le navigateur.'};
+      }
       if(p.source==='google_maps'){
         await p.page.locator('a[href*="/maps/place/"]').first().waitFor({state:'attached',timeout:10000}).catch(()=>{});
         const seen=new Set([...cursor.visited,...cursor.pending]);let stalls=0,ended=false;
