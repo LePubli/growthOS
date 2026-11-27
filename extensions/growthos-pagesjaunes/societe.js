@@ -25,9 +25,9 @@
     }
     return '';
   };
-  const shownSiren = field(['siren']).replace(/\s/g,'');
+  const shownSiren = field(['siren']).match(/(?:\d[\s\u00a0]*){9}/)?.[0].replace(/\s/g,'');
   if (shownSiren !== siren) return {error:'Le SIREN affiché ne correspond pas à l’adresse de cette fiche.'};
-  const rawSiret = field(['siret du siege social','siret du siege','siret']).replace(/\s/g,'');
+  const rawSiret = field(['siret du siege social','siret du siege','siret']).match(/(?:\d[\s\u00a0]*){14}/)?.[0].replace(/\s/g,'') || '';
   const siret = /^\d{14}$/.test(rawSiret) && rawSiret.startsWith(siren) ? rawSiret : null;
   const address = field(['adresse','adresse du siege social','adresse du siege']);
   const codePostal = address.match(/\b\d{5}\b/)?.[0];
@@ -69,7 +69,7 @@
   if(displayedStatus)details['Statut affiché']=displayedStatus.slice(0,120);
   const anchors=typeof root.querySelectorAll==='function'?[...root.querySelectorAll('a[href]')].filter(visible):[];
   const managerLink = link => {
-    try { const target=new URL(link.href,url.href);return ['societe.com','www.societe.com'].includes(target.hostname) && /^\/dirigeants?\//i.test(target.pathname); } catch {return false;}
+    try { const target=new URL(link.href,url.href);return ['societe.com','www.societe.com'].includes(target.hostname) && /^\/(?:dirigeants?|manager)\//i.test(target.pathname); } catch {return false;}
   };
   const headings=typeof root.querySelectorAll==='function'?[...root.querySelectorAll('h2, h3')].filter(visible):[];
   const heading=headings.find(element=>/^dirigeants?(?:\s|$)/i.test(clean(element.innerText)));
@@ -85,22 +85,24 @@
   const summaryManager=field(['dirigeant','dirigeants','gerant','president']);
   if(!managers.length && summaryManager && summaryManager.length<=120 && !/voir|obtenir|afficher|non disponible/i.test(summaryManager))managers.push(summaryManager);
   const managerContacts=[];
+  const managerKey=link=>String(link.href).split('#')[0];
   const managerCards=new Set();
   for(const anchor of managerAnchors){
     const name=clean(anchor.innerText);
     if(!managers.includes(name) || managerContacts.some(contact=>contact.name===name))continue;
-    let card=typeof anchor.closest==='function'?anchor.closest('article, li, [data-dirigeant], .card'):null;
+    const explicitCard=typeof anchor.closest==='function'?anchor.closest('article, li, [data-dirigeant], .card'):null;
+    let card=explicitCard;
     if(!card)card=anchor.parentElement;
     // Les cartes peuvent être des div sans classe stable. Remonter uniquement
     // tant que la zone contient un seul dirigeant et aucune autre rubrique.
-    for(let parent=card?.parentElement,depth=0;parent && parent!==root && depth<4;parent=parent.parentElement,depth++){
+    for(let parent=card?.parentElement,depth=0;!explicitCard && parent && parent!==root && depth<4;parent=parent.parentElement,depth++){
       if(typeof parent.querySelectorAll!=='function' || clean(parent.innerText).length>1500)break;
       const local=[...parent.querySelectorAll('a[href]')].filter(visible);
-      if(local.filter(managerLink).length!==1 || [...parent.querySelectorAll('h2, h3')].some(element=>/^(?:dirigeants?|contacter?|ces entreprises)\b/i.test(clean(element.innerText))))break;
+      if(new Set(local.filter(managerLink).map(managerKey)).size!==1 || [...parent.querySelectorAll('h2, h3')].some(element=>/^(?:dirigeants?|contacter?|ces entreprises)\b/i.test(clean(element.innerText))))break;
       card=parent;
     }
     const cardLinks=card && card!==root && typeof card.querySelectorAll==='function' ? [...card.querySelectorAll('a[href]')].filter(visible) : [];
-    const isolated=card && card!==root && clean(card.innerText).length<=1500 && cardLinks.filter(managerLink).length<=1;
+    const isolated=card && card!==root && clean(card.innerText).length<=1500 && new Set(cardLinks.filter(managerLink).map(managerKey)).size<=1;
     if(isolated)managerCards.add(card);
     const cardText=isolated?clean(card.innerText):'';
     const role=cardText.match(/\b(?:Pr[eé]sident(?:e)?(?:-directeur g[eé]n[eé]ral)?|G[eé]rant(?:e)?|Directeur g[eé]n[eé]ral|Administrateur|Associ[eé](?:e)?)\b/i)?.[0] || null;

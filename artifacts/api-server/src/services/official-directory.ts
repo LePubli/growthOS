@@ -11,7 +11,7 @@ export function directoryCandidates(legal:any){
     return [site.siret,{source:'entreprises',company:String(legal.nom_complet||legal.nom_raison_sociale||aliases[0]||'').slice(0,160),aliases,
       siren:legal.siren,siret:site.siret,address:site.adresse||null,codePostal:site.code_postal||null,city:site.libelle_commune||null,
       apeCode:ape||null,apeScope:site.activite_principale?'etablissement':'unite_legale',nafLabel:activityLabel(ape)||null,nafVersion:site.nomenclature_activite_principale||legal.nomenclature_activite_principale||null,
-      region:site.code_region||DEPARTMENT_TO_REGION[site.code_departement||departmentFromPostalCode(site.code_postal||'')],departement:site.code_departement||departmentFromPostalCode(site.code_postal||''),
+      region:site.code_region||site.region||DEPARTMENT_TO_REGION[site.code_departement||site.departement||departmentFromPostalCode(site.code_postal||'')],departement:site.code_departement||site.departement||departmentFromPostalCode(site.code_postal||''),
       sourceUrl:'https://annuaire-entreprises.data.gouv.fr/entreprise/'+legal.siren,
       snapshot:companySnapshot(legal,site.siret)}];
   })).values()];

@@ -2,7 +2,10 @@
 export const normalizedIdentity=(v:unknown)=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const digits=(v:unknown)=>String(v||'').replace(/\D/g,'');
 const legal=(v:unknown,size:number)=>new RegExp('^\\d{'+size+'}$').test(String(v||''))?String(v):'';
-const addressIdentity=(v:unknown)=>normalizedIdentity(String(v||'').toLowerCase().replace(/\bbd\.?\s/g,'boulevard ').replace(/\bav\.?\s/g,'avenue ').replace(/\br\.?\s/g,'rue ').replace(/\brte\.?\s/g,'route '));
+// Remove only explicit unit complements; keep street numbers, bis/ter and postal codes.
+export const addressIdentity=(v:unknown)=>normalizedIdentity(String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+  .replace(/\b(?:bureau|bur|appartement|appt|etage|batiment|bat|local|lot)\.?\s*[a-z]?\d+[a-z]?\b/g,' ')
+  .replace(/\bbd\.?\s/g,'boulevard ').replace(/\bav\.?\s/g,'avenue ').replace(/\br\.?\s/g,'rue ').replace(/\brte\.?\s/g,'route '));
 const names=(v:unknown)=>[String(v||''),...String(v||'').matchAll(/\(([^()]+)\)/g)].map(x=>normalizedIdentity(Array.isArray(x)?x[1]:x)).filter(Boolean);
 export function captureIdentityMatches(p:any,c:any):boolean{
   let urlSiren='';

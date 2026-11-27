@@ -21,7 +21,7 @@ type Job = {
   id: string; profile_id: string; prospect_id: string | null;
   mode: 'enrich' | 'discover'; query: string; area?: string; status: string; error: string | null;
   result: {
-    message?: string; hasMore?:boolean; progress?:{captured:number;discovered:number}; captures?: Capture[]; drafts?: unknown[]; imports?: Record<string,CaptureImportState>;
+    references?:{url:string;label:string}[]; message?: string; hasMore?:boolean; progress?:{captured:number;discovered:number}; captures?: Capture[]; drafts?: unknown[]; imports?: Record<string,CaptureImportState>;
     applied?: { filled: string[]; conflicts: number };
   };
 };
@@ -56,6 +56,10 @@ function CloudBrowserWorkspace() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [activeJobId, setActiveJobId] = useState('');
+  const [verificationJobId,setVerificationJobId]=useState(params.get('jobId')||'');
+  const latestVerification=useRef(verificationJobId);latestVerification.current=verificationJobId;
+  const verificationContext=useRef(source+'|'+selected);
+  useEffect(()=>{const key=source+'|'+selected;if(verificationContext.current!==key){setVerificationJobId('');verificationContext.current=key;}},[source,selected]);
   const [expandedBrowser, setExpandedBrowser] = useState(false);
   const [resultsShare, setResultsShare] = useState(28);
   const [chosen, setChosen] = useState<Record<string, boolean>>({});
@@ -71,6 +75,11 @@ function CloudBrowserWorkspace() {
   async function readJobs() {
     const version = ++jobsRequest.current;
     const result = await api.get<Job[]>('/browser/jobs');
+    const requested=latestVerification.current;
+    if(requested&&!result.some(job=>job.id===requested)){
+      const job=await api.get<Job>('/browser/jobs/'+requested).catch(()=>null);
+      if(job)result.unshift(job);
+    }
     if (version === jobsRequest.current) setJobs(result);
   }
   async function refresh() {
@@ -198,7 +207,7 @@ function CloudBrowserWorkspace() {
         profileId: target.id, query, area, ...(native?{filters:{regions,departements,codesPostaux:postalInput.split(/[\s,;]+/).filter(Boolean)}}:{}), ...(prospectId ? { prospectId } : {}),
       });
       setJobs(value => [job, ...value]);
-      if (job.mode === 'discover') setActiveJobId(job.id);
+      if (job.mode === 'discover') setActiveJobId(job.id); setVerificationJobId(job.id);
       setNotice('Recherche mise en file. Vous pouvez quitter cette page ; la tâche s’exécute sur le serveur.');
     });
   }
@@ -238,7 +247,7 @@ function CloudBrowserWorkspace() {
   }
 
   function selectJob(job: Job) {
-    setActiveJobId(job.id);
+    setActiveJobId(job.id); setVerificationJobId(job.id);
     if (job.mode === 'discover') document.getElementById('cloud-browser-results')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
@@ -476,7 +485,9 @@ function CloudBrowserWorkspace() {
         <h2 className="font-semibold">Vérification de {prospect?.company||'ce prospect'}</h2>
         <p>L’enrichissement automatique se lance et se suit depuis la fiche. Cet espace sert à consulter une source lorsqu’une intervention est nécessaire.</p>
         <Link className="cloud-browser-primary" to={'/prospects/'+prospectId}>Retour à la fiche prospect</Link>
-        {jobs.filter(job=>job.prospect_id===prospectId).map(job=>jobCard(job,null,null))}
+        {jobs.filter(job=>job.prospect_id===prospectId&&job.profile_id===selected&&(!verificationJobId||job.id===verificationJobId)).map(job=><div key={job.id}>{jobCard(job,null,null)}
+          {!!job.result?.references?.length&&<details><summary>Liens Web repérés · identité à vérifier</summary>{job.result.references.map(r=><p key={r.url}><a href={r.url} target="_blank" rel="noopener noreferrer">{r.label||r.url}</a></p>)}</details>}
+        </div>)}
       </section>:<section id="cloud-browser-results" className="cloud-browser-results" aria-label="Résultats de collecte">
         <header className="cloud-browser-results-header">
           <span><Layers size={20}/></span>

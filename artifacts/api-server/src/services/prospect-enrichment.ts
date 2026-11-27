@@ -46,7 +46,7 @@ async function officialStep(job:any,p:any):Promise<Step>{
   const candidate=uniqueIdentityMatch(normalizedProspect(p),data.candidates);
   if(!candidate)return {label:job.steps.entreprises.label,status:data.candidates.length?'needs_review':'empty',message:data.candidates.length?'Aucun établissement unique confirmé par les identifiants ou le nom et les coordonnées. Aucune donnée appliquée.':'Aucune correspondance officielle.'};
   const merged=await mergeOfficial(job,candidate);
-  return {label:job.steps.entreprises.label,status:'completed',filled:merged.filled,conflicts:merged.conflicts,message:'Identité officielle confirmée · '+candidate.siret+' · données issues notamment du répertoire INSEE.'};
+  return {label:job.steps.entreprises.label,status:'completed',filled:merged.filled,conflicts:merged.conflicts,message:'Identité officielle confirmée · '+candidate.siret+' · '+(candidate.snapshot?.fields?.['État de l’établissement']==='Fermé'?'Attention : cet établissement est fermé. Le siège actuel reste distinct. ':'')+'données issues notamment du répertoire INSEE.'};
 }
 async function inseeStep(job:any,p:any):Promise<Step>{
   const label=job.steps.insee.label;

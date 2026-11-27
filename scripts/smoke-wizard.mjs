@@ -9,7 +9,7 @@
  */
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -258,10 +258,12 @@ async function awaitApi(timeoutMs = 90000) {
   throw new Error("API did not start (check database migrations and startup logs)");
 }
 
+const liveNord=JSON.parse(await readFile(join(root,'workers/cloud-browser/fixtures/annuaire-nord-artisan.json'),'utf8'));
 let watchVersion=0,watchDown=false,watchWrongIdentity=false,watchRequests=0,watchEmptyAddress=false,watchStale=false;
 const companies = createServer((req, res) => {
   if (!req.url?.startsWith("/search?")) { res.writeHead(404).end(); return; }
   const directoryQuery = new URL(req.url, 'http://localhost').searchParams.get("q");
+  if(directoryQuery==='Nord Artisan Lille'||directoryQuery==='97996550600012'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[liveNord]}));return;}
   if(directoryQuery?.startsWith('Nord Artisan Recette')||directoryQuery==='96677705500019'){
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({results:[{siren:'966777055',nom_complet:'ATELIER OFFICIEL NORD',activite_principale:'43.22A',etat_administratif:'A',
       dirigeants:[{nom:'Recette',prenoms:'Alice',qualite:'Gérante'}],siege:{siret:'96677705500019',adresse:'8 rue du Test 59100 Roubaix',code_postal:'59100',libelle_commune:'Roubaix',noms_commerciaux:['Nord Artisan Recette'],activite_principale:'43.22A'}}]}));return;
@@ -382,6 +384,14 @@ const cloudStub=createServer(async(req,res)=>{
         phone:p.source==='bing'?'03 20 55 66 99':'03 20 55 66 77',email:'contact@nord-recette.invalid',website:'https://nord-recette.invalid',
         sourceUrl:p.source==='pagesjaunes'?'https://www.pagesjaunes.fr/pros/96677755':p.source==='google_maps'?'https://www.google.com/maps/place/Nord-Artisan-Recette/':p.source==='bing'?'https://www.bing.com/search?q=Nord':'https://www.google.com/search?q=Nord'}]}));return;
     }
+    if(p.query==='live-maps-detail'){
+      const address='38 Bd Carnot, 59800 Lille';
+      res.end(JSON.stringify({status:'completed',results:[{source:'google_maps',company:'Nord Artisan',address,city:'Lille',codePostal:'59800',phone:'07 80 99 59 59',sourceUrl:'https://www.google.com/maps/search/Nord+Artisan+Lille',mapsDetail:{title:'Nord Artisan',address}}]}));return;
+    }
+    if(p.query==='live-societe-hq'){
+      res.end(JSON.stringify({status:'completed',results:[{source:'societe_com',company:'NORD ARTISAN',siret:'97996550600020',address:'34 PLACE DU GENERAL DE GAULLE BUREAU 3, 59800 LILLE',city:'LILLE',codePostal:'59800',phone:null,sourceUrl:'https://www.societe.com/societe/nord-artisan-979965506.html',companyDetails:{fields:{'Forme juridique':'SAS'},managers:['Alice RECETTE'],managerContacts:[{name:'Alice RECETTE',role:'Présidente',phone:null,email:null,profileUrl:'https://www.societe.com/manager/Alice.RECETTE.123.html'}],establishments:[{siret:'97996550600020',address:'34 PLACE DU GENERAL DE GAULLE BUREAU 3, 59800 LILLE'}],links:[]}}]}));return;
+    }
+    if(p.query==='organic-only'){res.end(JSON.stringify({status:'completed',results:[],references:[{url:'https://nordartisan.fr/',label:'Nord Artisan'}],message:'Résultats Web consultés : aucun nouveau champ confirmé.'}));return;}
     if(p.query==='cloud-siren-only'){
       res.end(JSON.stringify({status:'completed',results:[{source:p.source,company:'Établissement ciblé',siren:'966777057',siret:null,city:'Roubaix',address:'99 rue Autre 59100 Roubaix',codePostal:'59100',phone:'03 20 55 00 99',email:'autre@recette.invalid',sourceUrl:'https://www.pagesjaunes.fr/pros/96677757'}]}));return;
     }
@@ -1667,6 +1677,19 @@ try {
     const captured=await request('GET','/browser/jobs/'+discovery.body.id,undefined,token);
     check(captured.body.status==='completed' && captured.body.mode==='discover' && captured.body.result.captures.length===1,
       'Cloud : collecte publique livre une sélection persistante avant création de prospects');
+    const liveProspect=await request('POST','/prospects',{company:'Nord Artisan',city:'Lille',address:'38 Bd Carnot, 59800 Lille',phone:'07 80 99 59 59'},token);
+    const liveRun=await request('POST','/prospects/'+liveProspect.body.id+'/enrichment',{},token);await runEnrichmentMaintenance(liveRun.body.id,1);
+    const liveCrm=await request('GET','/prospects/'+liveProspect.body.id,undefined,token);
+    check(liveCrm.body.siret==='97996550600012'&&liveCrm.body.sourceDetails.entreprises.snapshot.fields['État de l’établissement']==='Fermé','Annuaire réel Nord Artisan : BUREAU 3 / Bd Carnot, ancien établissement fermé conservé au lieu du nouveau siège');
+    const mapDetail=await request('POST','/browser/jobs',{profileId:mapProfile.body.id,prospectId:liveProspect.body.id,query:'live-maps-detail'},token);await runCloudMaintenance(mapDetail.body.id);
+    check((await request('GET','/browser/jobs/'+mapDetail.body.id,undefined,token)).body.result.applied,'Maps réel : détail visible sur URL search accepté par la validation API');
+    const hq=await request('POST','/browser/jobs',{profileId:profile.id,prospectId:liveProspect.body.id,query:'live-societe-hq'},token);await runCloudMaintenance(hq.body.id);
+    const withLegal=await request('GET','/prospects/'+liveProspect.body.id,undefined,token);
+    check(withLegal.body.siret==='97996550600012'&&withLegal.body.address.includes('38')&&withLegal.body.sourceDetails.societe_com.scope==='unite_legale'&&withLegal.body.sourceDetails.societe_com.companyDetails.managerContacts[0].role==='Présidente','Societe.com : dirigeants /manager/ du même SIREN appliqués sans déplacer le site vers le siège 00020');
+    const organicProfile=await request('POST','/browser/profiles',{source:'google_search',label:'Web organique'},token);
+    const organicJob=await request('POST','/browser/jobs',{profileId:organicProfile.body.id,prospectId:liveProspect.body.id,query:'organic-only'},token);await runCloudMaintenance(organicJob.body.id);
+    const organicResult=await request('GET','/browser/jobs/'+organicJob.body.id,undefined,token);
+    check(organicResult.body.status==='completed'&&organicResult.body.result.references[0].url==='https://nordartisan.fr/'&&!organicResult.body.result.applied,'Web organique sans fiche locale : liens conservés, aucune fausse intervention ni donnée inventée');
     const automaticProspect=await request('POST','/prospects',{company:'Nord Artisan Recette',city:'Roubaix',address:'8 rue du Test 59100 Roubaix',phone:'03 20 55 66 77'},token);
     const autoPath='/prospects/'+automaticProspect.body.id+'/enrichment';
     check((await request('POST',autoPath,{})).status===401,'Enrichissement automatique : lancement refusé sans authentification');
