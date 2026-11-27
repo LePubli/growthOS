@@ -1,6 +1,10 @@
 /* Extension MV3 : PagesJaunes depuis le navigateur, capture explicite d'autres sources.
    Aucune requête vers le VPS, aucun accès aux identifiants, aucune donnée inventée.
 */
+// Un seul panneau global pour toutes les pages : il ne disparaît pas au changement d'onglet.
+// Un clic sur l'icône Chrome l'ouvre ou le referme, sans popup éphémère.
+chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true}).catch(error=>
+  console.warn('GrowthOS : impossible de configurer le panneau latéral',error));
 let busy = false;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 function validate(payload) {

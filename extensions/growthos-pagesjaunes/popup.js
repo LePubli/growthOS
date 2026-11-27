@@ -18,7 +18,8 @@ let latestMapStatus={status:'idle'};
 const crmImportUrl='https://agile.le-publicitaire.fr/prospects/connecteur';
 function setPhase(next){
   phase=next;
-  document.body.className='phase-'+next;
+  document.body.classList.remove('phase-search','phase-collect','phase-task');
+  document.body.classList.add('phase-'+next);
   $('searchView').hidden=next!=='search';
   $('collectionView').hidden=next!=='collect';
   $('searchFooter').hidden=next!=='search';
@@ -31,6 +32,56 @@ function setPhase(next){
     el.classList.toggle('is-complete',order.indexOf(el.dataset.step)<order.indexOf(active));
     el.classList.toggle('is-active',el.dataset.step===active);
   });
+}
+function toggleCompact(compact){
+  document.body.classList.toggle('panel-minimized',compact);
+  $('minimizePanel').setAttribute('aria-pressed',String(compact));
+  $('minimizePanel').textContent=compact?'□':'−';
+  $('minimizePanel').title=compact?'Rétablir le panneau':'Réduire le panneau';
+  $('minimizePanel').setAttribute('aria-label',compact?'Rétablir le panneau':'Réduire le panneau');
+  $('compactCaptureCount').textContent=String(lastQueue.length+lastDrafts.length);
+  $('compactView').hidden=!compact;
+}
+async function closeSidePanel(){
+  const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+  if(!Number.isInteger(tab?.windowId))throw new Error('Impossible de déterminer la fenêtre Chrome à fermer.');
+  await chrome.sidePanel.close({windowId:tab.windowId});
+}
+async function synchronizeActiveTab(){
+  const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+  const url=tab?.url||'';
+  if(currentUrl===url && $('currentTab').dataset.ready==='true')return;
+  currentUrl=url;
+  const detected=sourceFromUrl(url);
+  $('currentTab').dataset.ready='true';
+  $('currentTab').textContent=detected?'· '+labels[detected]:'· Onglet sans collecteur actif';
+  // Ne jamais écraser une fiche en cours de saisie quand l'utilisateur passe sur une source.
+  const writingManual=$('manualPanel').open && ['company','address','phone','website','siret']
+    .some(id=>$(id).value.trim().length>0);
+  if(detected && !pendingDraftId && !writingManual && context?.mode!=='enrich')selectSource(detected);
+  $('autoMaps').disabled=!['google_maps','google_search'].includes(detected);
+}
+function leaveTaskMode(){
+  context=null;
+  $('taskPanel').hidden=true;
+  $('sourcePicker').hidden=false;
+  $('bulkControls').hidden=false;
+  $('selectionHead').closest('section').hidden=false;
+  $('taskFinish').textContent='Confirmer et revenir au prospect';
+  $('taskCancel').textContent='Quitter ce mode';
+  $('manualSubmit').textContent='Valider et ajouter à la sélection';
+  $('address').required=true;$('postal').required=true;
+  document.querySelector('label[for=address]').textContent='Adresse complète (avec CP) *';
+  document.querySelector('label[for=postal]').textContent='Code postal *';
+  $('growthos').href=crmImportUrl;
+  setPhase(lastQueue.length||lastDrafts.length?'collect':'search');
+}
+async function synchronizeTask(){
+  const result=await message('task-current');
+  const task=result.task;
+  if(task?.mode==='enrich'){
+    if(context?.id!==task.id || context?.status!==task.status || (task.preview?.length||0)!==(context?.preview?.length||0))renderContext(task);
+  }else if(context?.mode==='enrich')leaveTaskMode();
 }
 function sourceMark(type){
   const marks={google_maps:['maps','●'],google_search:['google','G'],bing:['bing','b'],pagesjaunes:['pj','J'],societe_com:['societe','S'],linkedin:['linkedin','in'],facebook:['facebook','f'],instagram:['instagram','◎'],tiktok:['tiktok','♪']};
@@ -213,6 +264,7 @@ async function refresh(){
   const allowed=new Set([...queue,...drafts].map(item=>item.id));
   for(const id of selectedIds)if(!allowed.has(id))selectedIds.delete(id);
   $('capturedCount').textContent=String(queue.length+drafts.length);
+  $('compactCaptureCount').textContent=String(queue.length+drafts.length);
   $('completeCount').textContent=String(queue.length);
   $('reviewCount').textContent=String(drafts.length);
   $('searchCount').textContent=String(queue.length+drafts.length);
@@ -245,7 +297,7 @@ async function refresh(){
     openMaps.addEventListener('click',async()=>{
       const location=$('area').value.trim();
       const url='https://www.google.com/maps/search/'+encodeURIComponent([draft.company,location].filter(Boolean).join(' '));
-      try{await chrome.tabs.create({url,active:true});window.close();}
+      try{await chrome.tabs.create({url,active:true});await synchronizeActiveTab();}
       catch(error){notice('Impossible d’ouvrir Google Maps : '+String(error?.message||error),true);}
     });
     const remove=document.createElement('button');remove.className='remove';remove.textContent='✕';remove.title='Ignorer ce brouillon';
@@ -259,11 +311,8 @@ async function refresh(){
 async function init(){
   try{
     $('extensionIdentity').textContent='v'+chrome.runtime.getManifest().version+' · '+chrome.runtime.id.slice(-8);
-    const tabs=await chrome.tabs.query({active:true,currentWindow:true});
-    currentUrl=tabs[0]?.url||'';
-    const current=sourceFromUrl(currentUrl);
-    $('currentTab').textContent=current?'· '+labels[current]:'· Ouvrez un moteur de recherche';
-    selectSource(current||source);
+    await synchronizeActiveTab();
+    if(!sourceFromUrl(currentUrl))selectSource(source);
     const saved=await chrome.storage.local.get('growthos_popup_prefs');
     $('query').value=saved.growthos_popup_prefs?.query||'';
     $('area').value=saved.growthos_popup_prefs?.area||'';
@@ -277,6 +326,9 @@ async function init(){
   }catch(e){notice(e.message,true);}
 }
 for(const btn of document.querySelectorAll('[data-source]'))btn.addEventListener('click',()=>selectSource(btn.dataset.source));
+$('minimizePanel').addEventListener('click',()=>toggleCompact(!document.body.classList.contains('panel-minimized')));
+$('restorePanel').addEventListener('click',()=>toggleCompact(false));
+$('closePanel').addEventListener('click',()=>closeSidePanel().catch(e=>notice(e.message,true)));
 $('sourceMore').addEventListener('click',()=>{
   const expanded=$('sourcePicker').classList.toggle('is-expanded');
   $('sourceMore').setAttribute('aria-expanded',String(expanded));
@@ -309,7 +361,10 @@ $('pauseMaps').addEventListener('click',async()=>{
 $('open').addEventListener('click',async()=>{
   const query=$('query').value.trim(),area=$('area').value.trim();
   try{await chrome.storage.local.set({growthos_popup_prefs:{query,area}});
-    await message('open-source',{source,query,area});window.close();
+    await message('open-source',{source,query,area});
+    setPhase('collect');
+    await synchronizeActiveTab();
+    notice('Recherche ouverte dans l’onglet. Le panneau reste disponible pour capturer les fiches.');
   }catch(e){notice(e.message,true);}
 });
 $('capture').addEventListener('click',async()=>{
@@ -329,7 +384,7 @@ $('autoMaps').addEventListener('click',async()=>{
   const button=$('autoMaps');button.disabled=true;
   try{
     await chrome.storage.local.set({growthos_popup_prefs:{query,area}});
-    notice('La lecture Maps a démarré. L’onglet Google va naviguer entre les fiches. Rouvrez ensuite l’extension pour voir le bilan.');
+    notice('Lecture Maps démarrée. Vous pouvez suivre le bilan ici tout en conservant ce panneau ouvert.');
     const result=await message('auto-capture-maps',{query,area});
     await refresh();
     notice(`${result.checked} fiche(s) Maps examinée(s) · ${result.added} adresse(s) complète(s) ajoutée(s).${result.status==='paused'?' Lecture en pause.':''}`);
@@ -371,7 +426,8 @@ $('manualForm').addEventListener('submit',async e=>{
     siret:source==='societe_com'?$('siret').value.trim():undefined,draftId:pendingDraftId};
   try{
     if(context?.mode==='enrich'){
-      await message('task-complete',{taskId:context.id,capture:form,confirmed:$('taskConfirmed').checked});window.close();return;
+      const result=await message('task-complete',{taskId:context.id,capture:form,confirmed:$('taskConfirmed').checked});
+      renderContext(result.task);notice('Capture enregistrée localement. Confirmez son intégration dans GrowthOS.');return;
     }
     const result=await message('manual-add',form);$('manualForm').reset();
     pendingDraftId=null;
@@ -387,7 +443,10 @@ $('taskRead').addEventListener('click',async()=>{
 $('taskFinish').addEventListener('click',async()=>{
   const selected=document.querySelector('input[name=taskCandidate]:checked');
   $('taskFinish').disabled=true;
-  try{await message('task-complete',{taskId:context.id,index:Number(selected?.value||0),confirmed:$('taskConfirmed').checked});window.close();}
+  try{
+    const result=await message('task-complete',{taskId:context.id,index:Number(selected?.value||0),confirmed:$('taskConfirmed').checked});
+    renderContext(result.task);notice('Capture confirmée. Terminez son enregistrement dans GrowthOS.');
+  }
   catch(error){notice(error.message,true);$('taskFinish').disabled=false;}
 });
 $('taskCancel').addEventListener('click',async()=>{
@@ -399,8 +458,26 @@ $('clear').addEventListener('click',async()=>{
   try{await message('clear-captures');await refresh();notice('Sélection locale vidée.');}catch(e){notice(e.message,true);}
 });
 init();
-// Une collecte Maps peut continuer quand le popup est rouvert : garder les chiffres et
-// la liste synchronisés sans modifier la sélection que l'utilisateur a déjà choisie.
+// Le panneau est global : l'onglet actif change sans recréer son interface ni vider le formulaire.
+chrome.tabs.onActivated.addListener(()=>synchronizeActiveTab().catch(()=>{}));
+chrome.tabs.onUpdated.addListener((_id,change)=>{
+  if(change.url || change.status==='complete')synchronizeActiveTab().catch(()=>{});
+});
+chrome.storage.onChanged.addListener((changes,area)=>{
+  if(area!=='local')return;
+  if(changes.growthos_contextual_tasks_v1)synchronizeTask().catch(()=>{});
+  if(['growthos_verified_captures_v1','growthos_unverified_drafts_v1','growthos_maps_batch_v1']
+    .some(key=>changes[key]))scheduleRefresh();
+});
+// La collecte est suivie à l'événement, avec un contrôle de rattrapage discret.
+let refreshTimer=null;
+function scheduleRefresh(){
+  if(phase!=='collect' || refreshTimer!==null)return;
+  refreshTimer=setTimeout(()=>{
+    refreshTimer=null;
+    refresh().catch(()=>{});
+  },180);
+}
 setInterval(()=>{
   if(phase==='collect'&&!document.hidden)refresh().catch(()=>{});
-},2800);
+},12000);

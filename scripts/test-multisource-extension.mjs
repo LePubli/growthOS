@@ -6,7 +6,10 @@ import {webcrypto} from 'node:crypto';
 const root=new URL('../extensions/growthos-pagesjaunes/',import.meta.url);
 const manifest=JSON.parse(readFileSync(new URL('manifest.json',root),'utf8'));
 assert.equal(manifest.manifest_version,3);
-assert.equal(manifest.action.default_popup,'popup.html');
+assert.equal(manifest.side_panel.default_path,'popup.html','L’extension affiche un panneau global persistant');
+assert.ok(!manifest.action.default_popup,'Le clic sur l’icône ne doit plus ouvrir un popup éphémère');
+assert.ok(manifest.permissions.includes('sidePanel'),'Permission Chrome requise pour le panneau latéral');
+assert.ok(Number(manifest.minimum_chrome_version)>=141,'La fermeture par bouton exige Chrome 141+');
 assert.ok(!manifest.host_permissions.some(host=>/linkedin|google|bing/.test(host)),
   'La lecture manuelle utilise activeTab : pas de permissions permanentes Google/LinkedIn/Bing');
 assert.ok(manifest.host_permissions.includes('https://recherche-entreprises.api.gouv.fr/*'),
@@ -52,12 +55,18 @@ const popupMarkup=readFileSync(new URL('popup.html',root),'utf8');
 assert.ok(popupMarkup.indexOf('id="taskRead"')<popupMarkup.indexOf('id="taskPreview"') &&
   popupMarkup.indexOf('id="taskPreview"')<popupMarkup.indexOf('id="taskFinish"'),'Lire précède la comparaison et le retour au prospect');
 for(const id of ['sourcePicker','searchView','collectionView','filterReview','selectAll',
-  'capturedCount','completeCount','reviewCount','pauseMaps','importAction','manualPanel']){
+  'capturedCount','completeCount','reviewCount','pauseMaps','importAction','manualPanel',
+  'minimizePanel','closePanel','restorePanel','compactView']){
   assert.ok(popupMarkup.includes(`id="${id}"`),`Le parcours ATLAS doit conserver ${id}`);
 }
 const popupLogic=readFileSync(new URL('popup.js',root),'utf8');
 assert.ok(popupLogic.includes("url.hash='selected='") && popupLogic.includes('importable(item)'),
   'La sélection du popup doit être transmise comme identifiants, sans importer directement');
+assert.ok(!popupLogic.includes('window.close()'),'Le panneau reste ouvert après navigation et capture');
+assert.ok(popupLogic.includes('chrome.tabs.onActivated.addListener') && popupLogic.includes('chrome.tabs.onUpdated.addListener'),
+  'Les changements d’onglet doivent mettre à jour la source du panneau');
+assert.ok(popupLogic.includes('chrome.sidePanel.close({windowId:tab.windowId})'),
+  'La croix ferme la barre latérale globale sans arrêter la collecte');
 const partialCard={innerText:'France Dépannage\nPlombier · 35 Av. Jean Lebas\nRoubaix\n03 20 70 48 97',
   getClientRects:()=>[{}],querySelector:()=>null,querySelectorAll:()=>[],closest:()=>null};
 const partialDocument={body:partialCard,querySelectorAll:selector=>selector==='[role="article"]'?[partialCard]:[],querySelector:()=>null};
@@ -105,6 +114,7 @@ let geocodeResponse={features:[]};
 const chrome={
   runtime:{getURL:(path='')=>'chrome-extension://unit-test/'+path,
     onMessage:{addListener:fn=>{listener=fn;}}},
+  sidePanel:{setPanelBehavior:async behavior=>{storage.panelBehavior=behavior;}},
   storage:{local:{get:async key=>({[key]:storage[key]}),set:async changes=>{Object.assign(storage,changes);}}},
   tabs:{create:async data=>{opened.push(data);return{id:12};},
     query:async()=>[{id:42,url:activeTabUrl}],
@@ -124,6 +134,9 @@ vm.runInNewContext(readFileSync(new URL('background.js',root),'utf8'),
       assert.equal(request.hostname,'recherche-entreprises.api.gouv.fr');
       return {ok:true,json:async()=>({total_results:officialResults.length,results:officialResults})};
     }},{timeout:1500});
+await Promise.resolve();
+assert.equal(storage.panelBehavior?.openPanelOnActionClick,true,
+  'Un clic sur l’icône Chrome doit ouvrir ou fermer le panneau latéral');
 const sender={url:'chrome-extension://unit-test/popup.html'};
 const growthos={url:'https://agile.le-publicitaire.fr/sourcing'};
 function send(action,payload,from=sender){

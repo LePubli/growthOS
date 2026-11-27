@@ -12,7 +12,18 @@
     <div class="brand-heading"><h1>GrowthOS</h1><span>Connecteur</span></div>
     <span class="topbar-status" title="Extension active"><i></i><span>Actif</span></span>
     <a id="growthos" href="https://agile.le-publicitaire.fr/prospects/connecteur" target="_blank" rel="noopener noreferrer" title="Ouvrir GrowthOS" aria-label="Ouvrir GrowthOS dans un onglet">↗</a>
+    <div class="panel-actions" role="group" aria-label="Affichage du panneau latéral">
+      <button type="button" id="minimizePanel" title="Réduire le panneau" aria-label="Réduire le panneau" aria-pressed="false">−</button>
+      <button type="button" id="closePanel" title="Fermer le panneau latéral" aria-label="Fermer le panneau latéral">×</button>
+    </div>
   </header>
+  <div id="compactView" class="compact-view" hidden>
+    <div class="compact-symbol">▤</div>
+    <strong>Connecteur en veille</strong>
+    <p>La collecte reste disponible pendant votre navigation.</p>
+    <div class="compact-data"><span id="compactCaptureCount">0</span> fiches conservées</div>
+    <button type="button" class="primary" id="restorePanel">Réafficher le connecteur →</button>
+  </div>
   <div id="notice" role="status" aria-live="polite" hidden></div>
   <nav class="steps" aria-label="Étapes du connecteur">
     <span class="step" data-step="source"><b>1</b> Source</span>
