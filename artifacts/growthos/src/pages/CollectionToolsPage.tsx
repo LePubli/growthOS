@@ -136,7 +136,7 @@ export default function CollectionToolsPage(){
                 :<Link to={targetFor(m.source)} className={'collection-hub-source-button'+(active?' is-primary':'')}
                   onClick={()=>setSelectedSource(m.source)}>
                   {localSearch(m.source,mode)?'Configurer la recherche':mode==='enrich'?'Consulter cette source':active?'Ouvrir la source':'Utiliser cette source'} <ArrowRight size={15}/></Link>}
-              {m.source!=='entreprises'&&!localSearch(m.source,mode)&&<details className="collection-hub-source-more">
+              {!['entreprises','pappers','bodacc'].includes(m.source)&&!localSearch(m.source,mode)&&<details className="collection-hub-source-more">
                 <summary title={'Options pour '+m.name} aria-label={'Options pour '+m.name}><MoreHorizontal size={17}/></summary>
                 <div><p>{m.hint}</p><button type="button"
                   disabled={!!busy||(mode==='enrich'&&!prospect)||query.trim().length<3}
@@ -183,7 +183,7 @@ export default function CollectionToolsPage(){
     <footer className="collection-hub-footer"><Info size={15}/>
       <span>Les imports restent traçables et les conflits sont soumis à validation.</span>
       {mode==='discover'&&<Link to="/prospects/connecteur">Vérifier et importer la sélection du connecteur <ExternalLink size={13}/></Link>}
-      <small>Les campagnes LinkedIn, RNE, BODACC et les annuaires sectoriels restent à développer.</small>
+      <small>Les campagnes LinkedIn, RNE et les annuaires sectoriels restent à développer.</small>
     </footer>
   </main>;
 }

@@ -207,3 +207,12 @@ Revue PR59 : un SIREN commun exige des coordonnées d’établissement concordan
 - Vérification manuelle : afficher la tâche et le profil de la source demandée, sans les tâches Bing des autres sources.
 
 Validation et publication en cours ; aucun déploiement DockPanel effectué.
+
+## Pappers, BODACC et onglet Enrichissements — validation en cours (27/11/2026)
+
+- Pappers : fiche publique par SIREN, données légales, dirigeants et tableaux financiers visibles avec année ; API payante non requise, coordonnées réservées non inventées. Respect du même établissement dans le CRM quand le siège est différent.
+- BODACC : API officielle DILA, pagination technique de 100 annonces poursuivie jusqu’à la fin, contrôle de chaque SIREN, événements datés et liens officiels dans le dossier. Changement versionné et tracé ; relecture identique sans fausse activité. L’historique des annonces ne remplace pas le statut actuel INSEE/Annuaire.
+- Onglet Enrichissements sur la fiche : lancement automatique, progression/bilan par source, captures, provenance, modifications enregistrées et accès aux désaccords. Thème et CSS conservés.
+- Les réseaux sociaux sans collecteur restent manuels ; PagesJaunes peut demander un contrôle Cloudflare. Les sources officielles directes continuent indépendamment.
+
+Vérifications et publication des images en cours, aucun déploiement serveur effectué.

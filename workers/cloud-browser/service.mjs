@@ -1,4 +1,5 @@
 import {mkdir,rm,readFile,writeFile,rename} from 'node:fs/promises';
+import {readPappers} from './pappers.mjs';
 import {readers,societeSearchCards,pageEvidence,mapsDetailEvidence} from './readers.mjs';
 import {join} from 'node:path';
 import {randomUUID,randomBytes,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
@@ -129,6 +130,12 @@ export class BrowserService{
     const p=await this.profile(input);if(this.busy)throw new BrowserError(423,'Une autre opération est en cours.');this.busy=true;this.touch();
     try{
       const cursor=input.cursor&&input.cursor.source===p.source?structuredClone(input.cursor):null;
+      if(p.source==='pappers'){
+        if(!input.resume||!sourceNavigation(p.source,p.page.url()))await p.page.goto(searchUrl(p.source,input.query||'',input.area||''),{waitUntil:'domcontentloaded',timeout:25000});
+        await p.page.locator('h1').first().waitFor({state:'visible',timeout:10000}).catch(()=>{});
+        const read=await p.page.evaluate(readPappers);
+        return read.results?.length?{status:'completed',results:read.results,drafts:[]}:{status:'awaiting_user',results:[],drafts:[],message:'Pappers : '+(read.error||'Vérifiez la page publique puis reprenez.')};
+      }
       if(p.source==='societe_com'){
         if(!input.resume||!sourceNavigation(p.source,p.page.url()))await p.page.goto(searchUrl(p.source,input.query||'',input.area||''),{waitUntil:'domcontentloaded',timeout:25000});
         await pause(1200);return await this.societe(p,input);

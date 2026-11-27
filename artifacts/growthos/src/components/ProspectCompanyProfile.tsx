@@ -1,3 +1,4 @@
+import {ProspectPublicRecords} from './ProspectPublicRecords';
 import {prospectEnrichmentUrl} from '@/lib/prospect-enrichment';
 import {Link} from 'wouter';
 import { useEffect, useState, useRef } from "react";
@@ -313,7 +314,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compa
                 target="_blank"
                 rel="noreferrer"
               >
-                Fiche du dirigeant sur Societe.com
+                Fiche du dirigeant sur {contact.profileUrl?.includes('pappers.fr/')?'Pappers':'Societe.com'}
               </a>
             )}
             {!contact.phone && !contact.email && (
@@ -440,6 +441,7 @@ export function ProspectCompanyProfile({ prospect,onUpdated,onManagerNames,compa
           )}
         </details>
       )}
+      <ProspectPublicRecords details={prospect.sourceDetails}/>
       {profile?.companyDetails && (
         <details>
           <summary className="cursor-pointer font-medium text-sm">

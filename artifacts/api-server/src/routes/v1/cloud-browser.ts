@@ -66,7 +66,7 @@ router.post('/jobs',async(req,res)=>{
   const profile=await cloudProfile(req.auth!.tenantId,data.profileId,req.auth!.userId);
   if(profile.source!=='entreprises'&&!cloudConfigured())throw new CloudBrowserError(503,'Configurez le navigateur cloud pour lancer une tâche.');
   if(!CLOUD_AUTOMATIC.includes(profile.source))throw new CloudBrowserError(422,'Cette source est navigable ; son collecteur automatique reste à développer.');
-  if(profile.source==='societe_com'&&!data.prospectId)throw new CloudBrowserError(422,'Choisissez le prospect à enrichir depuis Societe.com.');
+  if(['societe_com','pappers'].includes(profile.source)&&!data.prospectId)throw new CloudBrowserError(422,'Choisissez le prospect à enrichir depuis cette source.');
   if(data.prospectId){const p=await pool.query('SELECT id FROM prospects WHERE id=$1 AND tenant_id=$2',[data.prospectId,req.auth!.tenantId]);if(!p.rowCount)throw new CloudBrowserError(404,'Prospect cible introuvable.');}
   const q=await pool.query(`INSERT INTO cloud_browser_jobs(tenant_id,created_by,profile_id,prospect_id,query,area,limit_count,mode,result)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[req.auth!.tenantId,req.auth!.userId,data.profileId,data.prospectId||null,data.query,data.area,data.limit,data.prospectId?'enrich':'discover',JSON.stringify({criteria:data.filters||{}})]);

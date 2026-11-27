@@ -77,7 +77,7 @@ type CompanyRecord = {
 };
 type SearchCandidate = {
   id?: string; // Identifiant de source, utile sans SIREN
-  source?: 'entreprises' | 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin' | 'societe_com' | 'facebook' | 'instagram' | 'tiktok';
+  source?: 'entreprises' | 'pagesjaunes' | 'google_maps' | 'google_search' | 'bing' | 'linkedin' | 'societe_com' | 'pappers' | 'facebook' | 'instagram' | 'tiktok';
   sources?: string[];
   siren: string;
   siret: string | null;
@@ -365,7 +365,7 @@ async function runMultiSearch(jobId: string, tenantId: string, params: MultiPara
 
 // Import des résultats collectés dans le Chrome local, après validation côté serveur.
 // L'extension n'obtient jamais le JWT : c'est la page GrowthOS authentifiée qui poste les données.
-const deviceSources = ['entreprises','pagesjaunes','google_maps','google_search','bing','linkedin','societe_com','facebook','instagram','tiktok'] as const;
+const deviceSources = ['entreprises','pagesjaunes','google_maps','google_search','bing','linkedin','societe_com','pappers','facebook','instagram','tiktok'] as const;
 type DeviceSource = typeof deviceSources[number];
 function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
   try {
@@ -379,6 +379,7 @@ function validDeviceSourceUrl(source: DeviceSource, value: string): boolean {
         && url.pathname.startsWith('/maps');
       case 'google_search': return ['www.google.com','google.com','www.google.fr','google.fr'].includes(host);
       case 'bing': return professionalSourceUrl(source,value)!==null;
+      case 'pappers': return ['pappers.fr','www.pappers.fr'].includes(host)&&/^\/entreprise\/(?:[a-z0-9-]+-)?\d{9}\/?$/i.test(url.pathname);
       case 'societe_com': return ['societe.com','www.societe.com'].includes(host) && /^\/societe\/[a-z0-9-]+-\d{9}\.html\/?$/i.test(url.pathname);
       case 'facebook': case 'tiktok': case 'instagram': case 'linkedin':
         return professionalSourceUrl(source, value)!==null;
@@ -430,12 +431,12 @@ const companyDetailsSchema = z.object({
     name:z.string().trim().min(2).max(150),role:z.string().max(150).nullable(),
     phone:z.string().max(40).nullable(),email:z.string().email().max(254).nullable(),
     profileUrl:z.string().url().max(500).refine(value=>{
-      const url=new URL(value);return url.protocol==='https:' && ['societe.com','www.societe.com'].includes(url.hostname) && /^\/(?:dirigeants?|manager)\//i.test(url.pathname);
+      let url:URL;try{url=new URL(value);}catch{return false;}return url.protocol==='https:'&&!url.username&&!url.password&&!url.port && ((['societe.com','www.societe.com'].includes(url.hostname)&&/^\/(?:dirigeants?|manager)\//i.test(url.pathname))||(['pappers.fr','www.pappers.fr'].includes(url.hostname)&&/^\/dirigeant\//i.test(url.pathname)));
     }).nullable(),
   }).strict()).max(50).optional(),
   establishments:z.array(z.object({siret:z.string().regex(/^\d{14}$/),address:z.string().max(320).nullable()}).strict()).max(30),
   links:z.array(z.object({label:z.string().max(180),url:z.string().url().max(500).refine(value=>{
-    const url=new URL(value);return url.protocol==='https:' && ['societe.com','www.societe.com'].includes(url.hostname);
+    try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password&&!url.port && ['societe.com','www.societe.com','pappers.fr','www.pappers.fr'].includes(url.hostname);}catch{return false;}
   })}).strict()).max(20),
 }).strict();
 const deviceCandidateFieldsSchema = z.object({
@@ -463,6 +464,13 @@ const deviceCandidateFieldsSchema = z.object({
 }).strict();
 function validatePagesJaunesProfile(item:{source:string;company:string;sourceUrl?:string|null;siret?:string|null;pagesjaunesProfile?:z.infer<typeof profileSchema>},ctx:z.RefinementCtx){
   const profile=item.pagesjaunesProfile;
+  const details=(item as any).companyDetails;
+  if(details){
+    const expected=item.source==='pappers'?'pappers.fr':'societe.com';
+    if(!['pappers','societe_com'].includes(item.source)||[...(details.managerContacts||[]).map((c:any)=>c.profileUrl),...(details.links||[]).map((l:any)=>l.url)].filter(Boolean).some((value:string)=>new URL(value).hostname.replace(/^www\./,'')!==expected))ctx.addIssue({code:'custom',path:['companyDetails'],message:'Détails incohérents avec la source.'});
+  }
+  if(item.source==='pappers'&&item.sourceUrl){try{const siren=new URL(item.sourceUrl).pathname.match(/(\d{9})\/?$/)?.[1];if(!siren||item.siret&&!item.siret.startsWith(siren)||'siren' in item&&item.siren&&item.siren!==siren)ctx.addIssue({code:'custom',path:['siret'],message:'Identifiant incohérent avec la fiche Pappers.'});}catch{ctx.addIssue({code:'custom',path:['sourceUrl'],message:'Fiche Pappers invalide.'});}}
+
   if(item.siret&&'siren' in item&&item.siren&&!item.siret.startsWith(String(item.siren)))ctx.addIssue({code:'custom',path:['siren'],message:'SIREN et SIRET incohérents.'});
   if(item.source==='entreprises'&&item.siret&&item.sourceUrl&&!item.sourceUrl.endsWith('/'+item.siret.slice(0,9)))ctx.addIssue({code:'custom',path:['sourceUrl'],message:'URL officielle incohérente.'});
   if(!profile)return;
@@ -474,6 +482,7 @@ function validatePagesJaunesProfile(item:{source:string;company:string;sourceUrl
 }
 function capturedSourceDetails(item:{source:string;sourceUrl?:string|null;capturedAt?:number;companyDetails?:unknown;pagesjaunesProfile?:z.infer<typeof profileSchema>}){
   return {
+    ...(item.source==='pappers'&&item.companyDetails?{pappers:{companyDetails:item.companyDetails,sourceUrl:item.sourceUrl,capturedAt:item.capturedAt}}:{}),
     ...(item.source==='societe_com'&&item.companyDetails?{societe_com:{companyDetails:item.companyDetails,sourceUrl:item.sourceUrl,capturedAt:item.capturedAt}}:{}),
     ...(item.source==='pagesjaunes'&&item.pagesjaunesProfile?{pagesjaunes:{...item.pagesjaunesProfile,capturedAt:new Date(item.capturedAt||Date.now()).toISOString()}}:{}),
   };
@@ -675,7 +684,7 @@ export async function mergeProspectCapture(
   const sourceAdded=incomingSources.some(source=>!sources.has(source));
   for(const source of incomingSources)sources.add(source);
   if(!filled.length&&!newConflicts.length&&!sourceAdded&&alreadyObserved &&
-    !jsonRecord(item.sourceDetails).societe_com&&!jsonRecord(item.sourceDetails).pagesjaunes)
+    !jsonRecord(item.sourceDetails).pappers&&!jsonRecord(item.sourceDetails).societe_com&&!jsonRecord(item.sourceDetails).pagesjaunes)
     return {updated:false,filled,conflicts:0,newConflicts:[]};
   const observation={captureId:item.id,source:item.source,sourceUrl:item.sourceUrl||null,
     capturedAt:now,fieldsFilled:filled};
@@ -695,13 +704,13 @@ export async function mergeProspectCapture(
   if(activityScope&&item.apeCode===(updates.apeCode||existing.apeCode)&&
     (activityScope==='etablissement'||!jsonRecord(oldDetails.annuaire).apeScope))
     combinedDetails.annuaire={...jsonRecord(combinedDetails.annuaire),apeScope:activityScope};
-  if(item.source==='societe_com' && incomingDetails.societe_com){
-    const incomingProfile=jsonRecord(incomingDetails.societe_com);
-    const oldProfile=jsonRecord(oldDetails.societe_com);
+  if(['societe_com','pappers'].includes(item.source) && incomingDetails[item.source]){
+    const incomingProfile=jsonRecord(incomingDetails[item.source]);
+    const oldProfile=jsonRecord(oldDetails[item.source]);
     if(incomingProfile.companyDetails && Number(incomingProfile.capturedAt||0)>=Number(oldProfile.capturedAt||0)){
       const changed=!isDeepStrictEqual(oldProfile.companyDetails,incomingProfile.companyDetails);
       const history=Array.isArray(oldProfile.history)?oldProfile.history:[];
-      combinedDetails.societe_com={...oldProfile,...incomingProfile,
+      combinedDetails[item.source]={...oldProfile,...incomingProfile,
         history:changed && oldProfile.companyDetails ? [...history,{capturedAt:oldProfile.capturedAt,companyDetails:oldProfile.companyDetails}].slice(-10) : history};
     }
   }
@@ -736,12 +745,13 @@ export async function mergeProspectCapture(
     sourceUrl:existing.sourceUrl||captureProfileUrl(item.sourceUrl),
     sourceDetails:updatedDetails,updatedAt:new Date(),
   }).where(and(eq(prospectsTable.id,existing.id),eq(prospectsTable.tenantId,tenantId)));
-  const oldSociete=jsonRecord(oldDetails.societe_com).companyDetails;
-  const nextSociete=jsonRecord(combinedDetails.societe_com).companyDetails;
+  const legalSource=item.source==='pappers'?'pappers':'societe_com';
+  const oldSociete=jsonRecord(oldDetails[legalSource]).companyDetails;
+  const nextSociete=jsonRecord(combinedDetails[legalSource]).companyDetails;
   const detailsChanged=!!nextSociete && !isDeepStrictEqual(oldSociete,nextSociete);
   if(filled.length || newConflicts.length || detailsChanged || pagesJaunesChanged || officialDetailsChanged){
     const changes:FieldChanges=Object.fromEntries(filled.map(field=>[field,{before:existing[field as EnrichmentField],after:updates[field as EnrichmentField]}]));
-    if(detailsChanged)changes['Informations détaillées Societe.com']={before:oldSociete||null,after:nextSociete};
+    if(detailsChanged)changes['Informations détaillées '+(legalSource==='pappers'?'Pappers':'Societe.com')]={before:oldSociete||null,after:nextSociete};
     if(pagesJaunesChanged)changes['Informations détaillées PagesJaunes']={before:oldDetails.pagesjaunes||null,after:combinedDetails.pagesjaunes};
     if(officialDetailsChanged&&officialSource)changes['Données officielles · '+officialSource]={before:oldDetails[officialSource]||null,after:combinedDetails[officialSource]};
     const proposals=newConflicts.length?'\nPropositions non appliquées : '+newConflicts.map(c=>`${prospectFieldLabels[c.field]||c.field} : ${c.existing} → ${c.incoming}`).join(' ; '):'';
@@ -814,7 +824,7 @@ export async function applyTargetCapture(tenantId:string,userId:string,prospectI
       const incomingSiren=capture.siren || capture.siret?.slice(0,9);
       // A company page describes its headquarters. Reuse legal-entity details
       // only when SIREN is already confirmed; never move the prospect's site.
-      const legalOnly=!!(automatic&&cloud&&capture.source==='societe_com'&&capture.companyDetails&&knownSiren&&knownSiren===incomingSiren&&prospect.siret&&capture.siret&&prospect.siret!==capture.siret);
+      const legalOnly=!!(automatic&&cloud&&['societe_com','pappers'].includes(capture.source)&&capture.companyDetails&&knownSiren&&knownSiren===incomingSiren&&prospect.siret&&capture.siret&&prospect.siret!==capture.siret);
       if((knownSiren && incomingSiren && knownSiren!==incomingSiren) ||
         (!legalOnly && prospect.siret && capture.siret && prospect.siret!==capture.siret))
         return {status:409,error:'L’identité juridique ou l’établissement diffère de ce prospect.'};
@@ -826,7 +836,7 @@ export async function applyTargetCapture(tenantId:string,userId:string,prospectI
         return {status:409,error:'Le nom ou la ville diffère. Vérifiez la fiche et son établissement avant enrichissement.'};
       if(automatic&&!legalOnly&&!captureIdentityMatches(prospect,capture))return {status:409,error:'L’établissement ne correspond pas avec certitude. Vérifiez ses coordonnées.'};
       const projected=legalOnly?{...capture,siret:null,address:null,codePostal:null,city:null,phone:null,email:null,website:null,apeCode:null,nafLabel:null,nafVersion:null,
-        sourceDetails:{societe_com:{...jsonRecord(capture.sourceDetails.societe_com),scope:'unite_legale',headquarters:{siret:capture.siret,address:capture.address,city:capture.city}}}}:capture;
+        sourceDetails:{[capture.source]:{...jsonRecord(jsonRecord(capture.sourceDetails)[capture.source]),scope:'unite_legale',headquarters:{siret:capture.siret,address:capture.address,city:capture.city}}}}:capture;
       const merged=await mergeProspectCapture(prospect,{...projected,targetedIdentity:true},false,tenantId,tx,userId,automatic && exactSite && capture.source==='societe_com' ? ['company','address','postalCode','city','apeCode','nafLabel','nafVersion'] : []);
       return complete({status:200,filled:merged.filled,conflicts:merged.conflicts,alreadyApplied:false});
     });

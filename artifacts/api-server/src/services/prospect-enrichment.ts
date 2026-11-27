@@ -1,3 +1,4 @@
+import {fetchBodaccPage,saveBodaccPage} from './bodacc';
 import {randomUUID} from 'node:crypto';
 import {db,pool,prospectsTable} from '@workspace/db';
 import {and,eq,sql} from 'drizzle-orm';
@@ -7,8 +8,8 @@ import {mergeProspectCapture} from '../routes/v1/sourcing';
 import {cloudConfigured,CloudBrowserError} from './cloud-browser';
 import {providerKeysService} from '../lib/provider-keys/ProviderKeysService';
 
-type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number};
-const definitions=[['entreprises','Annuaire des Entreprises · données INSEE'],['google_maps','Google Maps'],['pagesjaunes','PagesJaunes'],['insee','INSEE Sirene · accès direct'],['societe_com','Societe.com'],['google_search','Google Search'],['bing','Bing']] as const;
+type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number;offset?:number};
+const definitions=[['entreprises','Annuaire des Entreprises · données INSEE'],['google_maps','Google Maps'],['pagesjaunes','PagesJaunes'],['insee','INSEE Sirene · accès direct'],['societe_com','Societe.com'],['pappers','Pappers · données publiques'],['bodacc','BODACC · annonces officielles'],['google_search','Google Search'],['bing','Bing']] as const;
 const active=(status:string)=>['queued','running'].includes(status);
 const normalizedProspect=(p:any)=>({...p,postalCode:p.postal_code,sourceDetails:p.source_details,apeCode:p.ape_code,nafLabel:p.naf_label,nafVersion:p.naf_version});
 async function getProspect(tenant:string,id:string){const q=await pool.query('SELECT * FROM prospects WHERE tenant_id=$1 AND id=$2',[tenant,id]);if(!q.rows[0])throw new CloudBrowserError(404,'Prospect introuvable.');return q.rows[0];}
@@ -65,6 +66,13 @@ async function inseeStep(job:any,p:any):Promise<Step>{
     snapshot:{siret:data.siret,etat:period.etatAdministratifEtablissement,dateMiseAJour:data.dateDernierTraitementEtablissement}};
   const merged=await mergeOfficial(job,candidate);return {label,status:'completed',filled:merged.filled,conflicts:merged.conflicts,message:'SIRET confirmé directement par l’INSEE.'};
 }
+async function bodaccStep(job:any,p:any,step:Step):Promise<Step>{
+  const siren=p.siren||p.siret?.slice(0,9);
+  if(p.siren&&p.siret&&!p.siret.startsWith(p.siren))return {...step,status:'needs_review',message:'Le SIREN et le SIRET du prospect diffèrent. Corrigez l’identité avant de rattacher les annonces.'};
+  if(!/^\d{9}$/.test(siren||''))return {...step,status:'skipped',message:'Un SIREN confirmé est nécessaire pour rattacher les annonces sans confusion.'};
+  const page=await fetchBodaccPage(siren,step.offset||0),saved=await saveBodaccPage(job,siren,page);
+  return {...step,status:page.hasMore?'collecting':saved.count?'completed':'empty',offset:page.offset,filled:saved.changed?[...new Set([...(step.filled||[]),'annoncesBodacc'])]:step.filled||[],message:saved.count+' annonce(s) officielles rattachées au SIREN '+siren+(page.hasMore?' · historique en cours de lecture.':'. Les annonces historiques ne valent pas statut actuel.')};
+}
 async function browserStep(job:any,p:any,source:string,step:Step):Promise<Step>{
   if(step.jobId){
     const q=await pool.query('SELECT * FROM cloud_browser_jobs WHERE id=$1 AND tenant_id=$2',[step.jobId,job.tenant_id]);const child=q.rows[0];
@@ -82,7 +90,7 @@ async function browserStep(job:any,p:any,source:string,step:Step):Promise<Step>{
     if(lock.rows[0]?.status!=='running'||lock.rows[0]?.lease!==job.lease)throw Error('Tâche interrompue.');
     let profile=(await client.query(`SELECT * FROM cloud_browser_profiles WHERE tenant_id=$1 AND created_by=$2 AND source=$3 AND deleted_at IS NULL ORDER BY CASE mode WHEN 'account' THEN 0 ELSE 1 END,created_at DESC LIMIT 1`,[job.tenant_id,job.created_by,source])).rows[0];
     if(!profile)profile=(await client.query('INSERT INTO cloud_browser_profiles(tenant_id,created_by,source,label) VALUES($1,$2,$3,$4) RETURNING *',[job.tenant_id,job.created_by,source,step.label+' · automatique'])).rows[0];
-    const query=source==='societe_com'?(p.siret||p.siren||p.company):p.company;
+    const query=['societe_com','pappers'].includes(source)?(p.siret||p.siren||p.company):p.company;
     if(!query) {await client.query('COMMIT');return {...step,status:'skipped',message:'Nom d’entreprise absent.'};}
     const child=(await client.query(`INSERT INTO cloud_browser_jobs(tenant_id,created_by,profile_id,prospect_id,mode,query,area,result) VALUES($1,$2,$3,$4,'enrich',$5,$6,$7) RETURNING id`,[job.tenant_id,job.created_by,profile.id,p.id,String(query).slice(0,160),p.city||'',JSON.stringify({enrichmentRunId:job.id})])).rows[0];
     const next={...step,status:'collecting',jobId:child.id,profileId:profile.id,message:'Recherche en arrière-plan…'};
@@ -100,7 +108,7 @@ export async function runProspectEnrichment(id:string){
     const p=await getProspect(job.tenant_id,job.prospect_id);
     const source=definitions.map(([s])=>s).find(s=>['pending','collecting'].includes(steps[s]?.status));
     if(source){
-      try{steps[source]=source==='entreprises'?await officialStep(job,p):source==='insee'?await inseeStep(job,p):await browserStep(job,p,source,steps[source]);}
+      try{steps[source]=source==='entreprises'?await officialStep(job,p):source==='insee'?await inseeStep(job,p):source==='bodacc'?await bodaccStep(job,p,steps[source]):await browserStep(job,p,source,steps[source]);}
       catch{steps[source]={...steps[source],status:'failed',message:'Source indisponible ou identité non confirmée. Les autres sources continuent.'};}
     }
     const pending=Object.values(steps).some(s=>['pending','collecting'].includes(s.status));
