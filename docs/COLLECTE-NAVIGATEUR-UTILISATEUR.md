@@ -1,6 +1,6 @@
 # Collecte depuis le navigateur utilisateur
 
-Lot fonctionnel du 28/11/2026, version de base extension **0.12.0**. État : implémentation et tests en cours ; aucune acceptation fournisseur/Chrome utilisateur ni disponibilité générale déclarée par ce document.
+Lot fonctionnel du 28/11/2026, version de base extension **0.12.0**. État : pilote implémenté, testé localement et soumis en PR84 ; contrôles de livraison en cours. Aucune acceptation fournisseur/Chrome utilisateur ni disponibilité générale déclarée par ce document.
 
 ## Parcours du pilote
 
