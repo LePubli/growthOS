@@ -9,8 +9,8 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const origin='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CLOUD_TEST_BROWSER?{executablePath:process.env.CLOUD_TEST_BROWSER}:{})});
 try{
- for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery','save_conflict','mobile_long','mobile_blocked','activities_fail','parent_fail','finish_fail']){
-  const mobile=scenario.startsWith('mobile_')||scenario.endsWith('_fail');const page=await browser.newPage({viewport:mobile?{width:scenario==='mobile_long'?360:390,height:844}:{width:1280,height:900},isMobile:mobile,hasTouch:mobile});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery','save_conflict','mobile_long','mobile_blocked','activities_fail','parent_fail','finish_fail','duplicate','duplicate_mobile']){
+  const mobile=scenario.startsWith('mobile_')||scenario.endsWith('_fail')||scenario.endsWith('_mobile');const page=await browser.newPage({viewport:mobile?{width:scenario==='mobile_long'?360:390,height:844}:{width:1280,height:900},isMobile:mobile,hasTouch:mobile});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>route.request().url().startsWith(origin)?route.continue():route.abort());
   const history=scenario==='history'||scenario==='discovery';
   await page.goto(origin+'/navigateur?source='+(scenario==='discovery'?'google_maps':'societe_com')+(history?'':'&prospectId=10000000-0000-4000-8000-000000000001&jobId=10000000-0000-4000-8000-000000000002')+'&scenario='+scenario);
@@ -30,6 +30,15 @@ try{
    await page.evaluate(()=>window.__releaseSource());
   }
   if(scenario==='waiting'||scenario==='busy'||scenario==='lost')await page.getByRole('button',{name:'Lire cette fiche',exact:true}).click();
+  if(scenario.startsWith('duplicate')){
+   const validate=page.getByRole('button',{name:'Valider et enregistrer',exact:true});await validate.waitFor();assert(await validate.isDisabled(),'A duplicate cannot be bypassed with the normal validation button');
+   await page.getByRole('button',{name:'Comparer les deux fiches',exact:true}).click();
+   const merge=page.getByRole('dialog',{name:'Comparer et fusionner les doublons'});await merge.waitFor();
+   await merge.getByRole('button',{name:'Confirmer la fusion et continuer',exact:true}).click();
+   await page.waitForURL(url=>!!url.searchParams.get('merged'));
+   await page.getByRole('button',{name:'Valider et enregistrer',exact:true}).waitFor();
+   assert.equal(await page.evaluate(()=>window.__reviewCalls.merge),1,'One explicit merge before source confirmation');
+  }
   if(scenario.startsWith('mobile_')){
    const dialog=page.getByRole('dialog',{name:'Comparer et valider cette fiche'});await dialog.waitFor();
    await page.getByRole('button',{name:'Reprendre le contrôle',exact:true}).click();

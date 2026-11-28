@@ -316,7 +316,7 @@ export default function ProspectDetailPage() {
   const setActive360View=(view:'overview'|'relations'|'enrichments')=>{setActive360ViewState(view);const p=new URLSearchParams(search);p.set('view',view);navigate('/prospects/'+id+'?'+p.toString(),{replace:true});};
   const [sourceSavedNotice,setSourceSavedNotice]=useState('');
   const [sourceRefreshWarning,setSourceRefreshWarning]=useState(false);
-  useEffect(()=>{let alive=true;setSourceSavedNotice('');const jobId=new URLSearchParams(search).get('reviewedJob');if(!jobId)return;void apiClient.get<any>('/browser/jobs/'+jobId).then(job=>{if(alive&&job.prospect_id===id&&job.status==='completed'&&job.result?.applied)setSourceSavedNotice('Enregistré depuis '+enrichmentSourceLabel(job.result.captures?.[0]?.source||'la source')+' · '+(job.result.applied.filled?.length||0)+' champ(s) mis à jour.'+(new URLSearchParams(search).has('refreshWarning')?' Le rafraîchissement du bilan est à reprendre.':''));}).catch(()=>{});return()=>{alive=false;};},[id,search]);
+  useEffect(()=>{let alive=true;setSourceSavedNotice('');const jobId=new URLSearchParams(search).get('reviewedJob');if(!jobId){const merged=new URLSearchParams(search).get('merged');if(merged)void apiClient.get<any[]>('/prospects/'+id+'/merges').then(rows=>{if(alive&&Array.isArray(rows)&&rows.some(row=>row.id===merged))setSourceSavedNotice('Fusion enregistrée. Les deux dossiers sont regroupés ; leurs états précédents restent consultables dans les archives de fusion.');}).catch(()=>{});return;}void apiClient.get<any>('/browser/jobs/'+jobId).then(job=>{if(alive&&job.prospect_id===id&&job.status==='completed'&&job.result?.applied)setSourceSavedNotice('Enregistré depuis '+enrichmentSourceLabel(job.result.captures?.[0]?.source||'la source')+' · '+(job.result.applied.filled?.length||0)+' champ(s) mis à jour.'+(new URLSearchParams(search).has('refreshWarning')?' Le rafraîchissement du bilan est à reprendre.':''));}).catch(()=>{});return()=>{alive=false;};},[id,search]);
   const legacyDetailsRef = useRef<HTMLDetailsElement>(null);
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -344,6 +344,7 @@ export default function ProspectDetailPage() {
   const fetchProspect = async () => {
     try {
       const data = await apiClient.get(`/prospects/${id}`);
+      if(data.mergedFromId&&data.id!==id){const target=new URLSearchParams(search);target.set('view','enrichments');target.set('mergedFrom',data.mergedFromId);navigate('/prospects/'+data.id+'?'+target.toString(),{replace:true});return;}
       setProspect(data);
       if(!editingRef.current)setForm(data);
     } catch { toast.error('Prospect introuvable'); navigate('/prospects'); }
@@ -484,7 +485,8 @@ export default function ProspectDetailPage() {
         try {
           const data = await apiClient.get(`/prospects/${id}`) as any;
           if (data.lat) {
-            setProspect(data);
+            if(data.mergedFromId&&data.id!==id){const target=new URLSearchParams(search);target.set('view','enrichments');target.set('mergedFrom',data.mergedFromId);navigate('/prospects/'+data.id+'?'+target.toString(),{replace:true});return;}
+      setProspect(data);
             setForm(data);
             clearInterval(poll);
             setGeocoding(false);

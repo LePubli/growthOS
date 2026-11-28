@@ -1,6 +1,6 @@
 import {Link} from 'wouter';
 import {Loader2,Database,ExternalLink} from 'lucide-react';
-export type EnrichmentRun={id:string;status:string;updated_at:string;steps:Record<string,{label:string;status:string;message?:string;jobId?:string;profileId?:string;filled?:string[]}>;summary:{sourcesDone:number;sourcesTotal:number;fields:string[];conflicts:number;interventions:number}};
+export type EnrichmentRun={id:string;status:string;updated_at:string;steps:Record<string,{label:string;status:string;message?:string;jobId?:string;profileId?:string;filled?:string[];duplicateId?:string;siret?:string}>;summary:{sourcesDone:number;sourcesTotal:number;fields:string[];conflicts:number;interventions:number}};
 const labels:Record<string,string>={pending:'En attente',collecting:'Recherche en cours',completed:'Correspondance confirmée',empty:'Aucun résultat confirmé',skipped:'Non disponible',needs_review:'À vérifier',awaiting_user:'Intervention requise',failed:'Indisponible',cancelled:'Annulée'};
 export function ProspectEnrichmentStatus({run,prospectId}:{run:EnrichmentRun|null;prospectId:string}){
   if(!run)return null;

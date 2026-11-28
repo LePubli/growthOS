@@ -8,6 +8,7 @@ import {getConnectorTask,acknowledgeConnectorTask} from '@/lib/pagesjaunes-devic
 export function ConnectorEnrichmentReturn({prospectId,onSaved,onBusyChange}:{prospectId:string;onSaved:()=>void|Promise<void>;onBusyChange?:(busy:boolean)=>void}){
   const [,navigate]=useLocation();
   const search=useSearch(),taskId=new URLSearchParams(search).get('enrichmentTask');
+  const requestedProspectId=new URLSearchParams(search).get('mergedFrom')||prospectId;
   const [reviewJob,setReviewJob]=useState<string|null>(null);
   const [retry,setRetry]=useState(0),[error,setError]=useState(''),[result,setResult]=useState('');
   const [conflicts,setConflicts]=useState(0);
@@ -18,22 +19,23 @@ export function ConnectorEnrichmentReturn({prospectId,onSaved,onBusyChange}:{pro
     if(!taskId)return;
     let alive=true;setReviewJob(null);setError('');setResult('');setConflicts(0);setDismissed(false);busy.current?.(true);
     (async()=>{
-      const response=await getConnectorTask(taskId,prospectId),task=response.task;
-      if(!task || task.prospect?.id!==prospectId)throw new Error('La capture ne cible pas ce prospect.');
+      if(requestedProspectId!==prospectId){const alias=await apiClient.get<any>('/prospects/'+requestedProspectId);if(alias.id!==prospectId||alias.mergedFromId!==requestedProspectId)throw Error('La capture ne cible pas ce dossier fusionné.');}
+      const response=await getConnectorTask(taskId,requestedProspectId),task=response.task;
+      if(!task || task.prospect?.id!==requestedProspectId)throw new Error('La capture ne cible pas ce prospect.');
       if(task.status==='done'){if(alive){setResult('Cet enrichissement a déjà été enregistré.');await saved.current();}return;}
       if(!task.capture || task.status!=='pending')throw new Error('Capture non confirmée dans l’extension.');
       const staged=await apiClient.post<{job:{id:string;result?:{applied?:{conflicts:number}}};alreadyApplied?:boolean}>('/browser/local-review',{taskId,prospectId,cloudJobId:task.cloudJobId,capture:task.capture});
-      if(staged.alreadyApplied){await acknowledgeConnectorTask(taskId,prospectId);if(alive){setResult('Cet enrichissement a déjà été enregistré.');await saved.current();}return;}
+      if(staged.alreadyApplied){await acknowledgeConnectorTask(taskId,requestedProspectId);if(alive){setResult('Cet enrichissement a déjà été enregistré.');await saved.current();}return;}
       if(alive)setReviewJob(staged.job.id);
     })().catch(e=>{if(alive)setError(e instanceof Error?e.message:'Enregistrement impossible.');})
       .finally(()=>{if(alive)busy.current?.(false);});
     return()=>{alive=false;busy.current?.(false);};
-  },[taskId,prospectId,retry]);
+  },[taskId,prospectId,requestedProspectId,retry]);
   if(!taskId||dismissed)return null;
   const duplicate=!error&&result==='Cet enrichissement a déjà été enregistré.';
   const pending=!error&&!result&&!reviewJob;
   const tone=error?'error':pending?'pending':duplicate?'duplicate':'success';
-  if(reviewJob&&!result)return <CloudCaptureReview jobId={reviewJob} onClose={()=>setDismissed(true)} onSaved={async(result)=>{void acknowledgeConnectorTask(taskId!,prospectId).catch(()=>apiClient.reportClientError('LOCAL_CAPTURE_ACK_PENDING','Capture enregistrée ; acquittement local à reprendre',{prospectId}));setReviewJob(null);setResult('Enrichissement confirmé et enregistré.');void Promise.resolve(saved.current()).catch(()=>{});navigate(result.url+(result.refreshWarning?'&refreshWarning=1':''),{replace:true});}}/>;
+  if(reviewJob&&!result)return <CloudCaptureReview jobId={reviewJob} onClose={()=>setDismissed(true)} onSaved={async(result)=>{void acknowledgeConnectorTask(taskId!,requestedProspectId).catch(()=>apiClient.reportClientError('LOCAL_CAPTURE_ACK_PENDING','Capture enregistrée ; acquittement local à reprendre',{prospectId}));setReviewJob(null);setResult('Enrichissement confirmé et enregistré.');void Promise.resolve(saved.current()).catch(()=>{});navigate(result.url+(result.refreshWarning?'&refreshWarning=1':''),{replace:true});}}/>;
   const Icon=error?AlertTriangle:pending?Loader2:duplicate?Info:CheckCircle2;
   return <section className={'atlas-enrichment-notice atlas-enrichment-notice--'+tone} role={error?'alert':'status'} aria-live="polite">
     <span className="atlas-enrichment-notice-icon"><Icon size={20} className={pending?'animate-spin':undefined}/></span>

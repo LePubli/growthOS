@@ -37,6 +37,12 @@ assert(!JSON.stringify(databaseError).includes('PRIVATE_'),'SQL, rows and parame
 assert.equal(diagnostics.errorDiagnosticDetails({cause:{code:'23503',constraint:'PRIVATE_CONSTRAINT'}}).databaseConstraint,null);
 const { diagnoseSourceIssue } = loadTs('artifacts/api-server/src/lib/source-diagnosis.ts');
 for (const [sample, expected] of [
+  [{source:'entreprises',databaseCode:'23505',databaseConstraint:'idx_prospects_tenant_siret'},'CRM_IDENTITY_DUPLICATE'],
+  [{source:'entreprises',databaseCode:'23503'},'CRM_DATABASE_ERROR'],
+  [{source:'societe_com',httpStatus:423,reason:'Une collecte est en cours.'},'BROWSER_BUSY'],
+  [{source:'website',reason:'Aucune page publique du site n’a pu être lue.'},'WEBSITE_READ_FAILED'],
+  [{source:'website',reason:'Page trop volumineuse.'},'SOURCE_PAGE_TOO_LARGE'],
+  [{source:'societe_com',httpStatus:502,reason:'La session ou l’onglet du navigateur a été fermé.'},'BROWSER_SESSION_CLOSED'],
   [{ source: 'bing', httpStatus: 429 }, 'SOURCE_RATE_LIMIT'],
   [{ source: 'pagesjaunes', reason: 'Cloudflare challenge' }, 'SOURCE_SECURITY_CHALLENGE'],
   [{ source: 'insee', reason: 'Accès direct non configuré' }, 'SOURCE_UNCONFIGURED'],

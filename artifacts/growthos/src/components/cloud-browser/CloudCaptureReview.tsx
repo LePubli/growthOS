@@ -3,7 +3,8 @@ import {Link} from 'wouter';
 import api from '@/lib/api-client';
 import {prospectReviewReturnUrl} from '@/lib/prospect-enrichment';
 import './source-review.css';
-type Review={version:string;captureDigest:string;expectedValues:Record<string,string|null>;captureIndex:number;captureCount:number;alreadyApplied:boolean;blocked:boolean;legalOnly:boolean;message:string;prospect:{company:string;siren?:string;siret?:string;address?:string};source:{name:string;url:string;company:string;siren?:string;siret?:string;address?:string};fields:{field:string;before:string|null;after:string;changed:boolean}[]};
+import {ProspectMergeReview} from '../ProspectMergeReview';
+type Review={duplicate?:{id:string;company:string;siret:string;address:string};version:string;captureDigest:string;expectedValues:Record<string,string|null>;captureIndex:number;captureCount:number;alreadyApplied:boolean;blocked:boolean;legalOnly:boolean;message:string;prospect:{id:string;company:string;siren?:string;siret?:string;address?:string};source:{name:string;url:string;company:string;siren?:string;siret?:string;address?:string};fields:{field:string;before:string|null;after:string;changed:boolean}[]};
 export type SavedSourceReview={prospectId:string;jobId:string;source:string;url:string;filled:string[];conflicts:number;refreshWarning?:boolean};
 type SavedJob={id?:string;mode?:string;prospect_id?:string;status:string;result?:{applied?:{filled?:string[];conflicts?:number};captures?:{source?:string}[]}};
 const labels:Record<string,string>={company:'Nom affiché (facultatif)',siren:'SIREN',siret:'SIRET',address:'Adresse',postalCode:'Code postal',city:'Ville',phone:'Téléphone',email:'Email',website:'Site web',apeCode:'Code APE / NAF',nafLabel:'Activité',linkedinUrl:'LinkedIn'};
@@ -22,7 +23,7 @@ export function CloudCaptureReview({jobId,onSaved,onClose,fallbackUrl}:{jobId:st
     }
     await callbacks.current.onSaved(result);callbacks.current.onClose();
   }
-  const [revision,setRevision]=useState(0);
+  const [revision,setRevision]=useState(0),[merging,setMerging]=useState(false);
   const [index,setIndex]=useState(0),[review,setReview]=useState<Review|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[replace,setReplace]=useState<string[]>([]),[missingCapture,setMissingCapture]=useState(false);
   const choicesFor=useRef('');
   useEffect(()=>{saved.current=false;receipt.current=null;choicesFor.current='';},[jobId]);
@@ -46,7 +47,9 @@ export function CloudCaptureReview({jobId,onSaved,onClose,fallbackUrl}:{jobId:st
       <p className="text-sm"><strong>Source : {review.source.company}</strong><br/>{review.source.siret||review.source.siren||'Identifiant absent'} · {review.source.address}<br/><a className="underline" href={review.source.url} target="_blank" rel="noreferrer">Voir la preuve source</a></p>
       {review.captureCount>1&&<label className="text-sm">Fiche capturée <select value={index} onChange={e=>setIndex(Number(e.target.value))}>{Array.from({length:review.captureCount},(_,i)=><option key={i} value={i}>{i+1}</option>)}</select></label>}
       <p className="text-sm">{review.message}</p>
-      <button type="button" className="atlas-360-link-button atlas-360-link-button-primary" disabled={busy||review.blocked||review.alreadyApplied} onClick={()=>void confirm()}>{busy?'Enregistrement…':saved.current?'Revenir au prospect':'Valider et enregistrer'}</button>
+      {review.duplicate&&<div role="status"><p>Le SIRET est déjà utilisé par {review.duplicate.company||'une autre fiche CRM'}. Comparez les deux dossiers avant d’enregistrer ces identifiants.</p><button type="button" className="atlas-360-link-button atlas-360-link-button-primary" onClick={()=>setMerging(true)}>Comparer les deux fiches</button><a href={'/prospects/'+review.duplicate.id} target="_blank" rel="noreferrer">Ouvrir la fiche existante</a></div>}
+      {merging&&review.duplicate&&<ProspectMergeReview prospectId={review.prospect.id} otherId={review.duplicate.id} jobId={jobId} captureIndex={index} source={review.source.name} onClose={()=>setMerging(false)}/>}
+      <button type="button" className="atlas-360-link-button atlas-360-link-button-primary" disabled={busy||review.blocked||review.alreadyApplied||!!review.duplicate} onClick={()=>void confirm()}>{busy?'Enregistrement…':saved.current?'Revenir au prospect':'Valider et enregistrer'}</button>
       <div className="overflow-x-auto"><table className="text-xs w-full"><thead><tr><th>Champ</th><th>CRM</th><th>Source</th><th>Choix</th></tr></thead><tbody>{review.fields.filter(f=>f.changed).map(f=><tr key={f.field}><td data-label="Champ">{labels[f.field]||f.field}</td><td data-label="CRM">{f.before||'Non renseigné'}</td><td data-label="Source">{f.after}</td><td data-label="Choix">{f.before&&!['siren','siret'].includes(f.field)&&!review.blocked&&<label><input type="checkbox" checked={replace.includes(f.field)} onChange={e=>setReplace(values=>e.target.checked?[...values,f.field]:values.filter(v=>v!==f.field))}/>Remplacer par cette valeur</label>}</td></tr>)}</tbody></table></div>
       {!review.blocked&&!review.alreadyApplied&&<p className="text-sm">En validant, vous confirmez qu’il s’agit du bon prospect. Les champs vides et les remplacements cochés seront enregistrés.{review.legalOnly?' Seules les données de l’entreprise seront rattachées.':''}</p>}
     </>:!error&&!missingCapture&&<p className="text-sm">Chargement de la comparaison…</p>}

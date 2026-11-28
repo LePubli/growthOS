@@ -59,6 +59,7 @@ function CloudBrowserWorkspace() {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  useEffect(()=>{let alive=true;const merged=params.get('merged');if(merged&&prospectId)void api.get<any[]>('/prospects/'+prospectId+'/merges').then(rows=>{if(alive&&Array.isArray(rows)&&rows.some(row=>row.id===merged))setNotice('Fusion enregistrée. Les deux dossiers sont regroupés ; vous pouvez terminer la comparaison avec la source.');}).catch(()=>{});return()=>{alive=false;};},[prospectId,params.get('merged')]);
   const [reviewJob,setReviewJob]=useState<string|null>(null);
   const [activeJobId, setActiveJobId] = useState('');
   const [verificationJobId,setVerificationJobId]=useState(params.get('jobId')||'');
@@ -110,6 +111,7 @@ function CloudBrowserWorkspace() {
   }, [profiles, source, selected]);
   useEffect(() => {
     if (prospectId) void api.get<any>('/prospects/' + prospectId).then(p => {
+      if(p.mergedFromId&&p.id!==prospectId){const next=new URLSearchParams(params);next.set('prospectId',p.id);navigate('/navigateur?'+next.toString(),{replace:true});return;}
       setProspect(p);
       if(!latestVerification.current)setQuery(['societe_com','pappers','bodacc'].includes(params.get('source') || 'societe_com')
         ? (p.siret || p.siren || p.company || '') : (p.company || ''));

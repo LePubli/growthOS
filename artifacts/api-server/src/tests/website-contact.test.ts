@@ -63,3 +63,8 @@ assert(!websiteInvestigationMatches(withPublishedIds([],['966777093']),researchC
 assert(!websiteInvestigationMatches(withPublishedIds(['96677709400027'],[]),researchCandidate),'Un autre établissement publié exige une vérification');
 assert(!websiteInvestigationMatches(withPublishedIds(['96677709400019'],['966777093']),researchCandidate),'Des identifiants publiés contradictoires bloquent le rapprochement');
 console.log('✓ Enquête : accueil et services, footer Gmail/horaires/profil personnel, lecture publique et indices non confirmés, recoupement officiel et refus des homonymes');
+
+await assert.rejects(()=>collectSite(root,{load:async()=>{throw Object.assign(Error('Site non lisible'),{status:503,code:'WEBSITE_HTTP_STATUS'});}}),error=>{
+ const e=error as any;assert.equal(e.code,'WEBSITE_READ_FAILED');assert(e.readAttempts.length>0);assert.equal(e.readAttempts[0].httpStatus,503);assert.equal(e.readAttempts[0].errorCode,'WEBSITE_HTTP_STATUS');assert(!JSON.stringify(e.readAttempts).includes(root));return true;
+});
+console.log('✓ Site illisible : codes HTTP/réseau de chaque tentative conservés sans URL ni contenu dans les diagnostics techniques');
