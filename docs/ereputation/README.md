@@ -9,7 +9,9 @@ Module de pilotage des campagnes d'e-réputation de l'agence, pour des **entité
 - **Mandat RGPD obligatoire** pour une personne physique : référence, signataire, date de signature, périmètre, **fin de conservation**. Purge automatique à échéance (toutes les 6 h) et purge manuelle par un administrateur.
 - **Historique des interventions** (qui, quoi, quand, valeurs avant/après), conservé après suppression ; expurgé pour une personne physique.
 - **Score honnête** : `null` (« Non évalué ») tant qu'aucune mesure réelle n'existe ; moyenne globale limitée aux campagnes évaluées ; plus d'alerte recréée à chaque consultation du tableau de bord.
-- Suivi SERP : saisie validée (positions 1 à 100), écart calculé avec la mesure précédente réelle.
+- Suivi SERP : saisie validée (positions 1 à 100, ou `null` = absence constatée du top 100, comptée 0 dans le score), écart calculé avec la mesure précédente réelle.
+- Une campagne personne physique ne peut pas être convertie en entité (la purge RGPD et l'expurgation dépendent du type).
+- La suppression ou la purge d'une campagne efface aussi ses copies dans la mémoire IA (`memory_documents` : audits, variations de score).
 
 ## Architecture
 

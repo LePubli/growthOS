@@ -211,6 +211,11 @@ try {
   await delay(300);
   const alertsAfter = (await db.query(`SELECT COUNT(*)::int AS n FROM erep_alerts WHERE campaign_id = $1`, [entityId])).rows[0].n;
   check(alertsAfter === alertsBefore, "Consulter le tableau de bord ne recrée pas d'alertes", { alertsBefore, alertsAfter });
+  check((await request("POST", `/ereputation/campaigns/${entityId}/serp`, { keyword: "acme lille", position: null }, token)).status === 201, "Absence du top 100 enregistrée");
+  const dashAbsent = await request("GET", `/ereputation/campaigns/${entityId}/dashboard`, undefined, token);
+  check(dashAbsent.body.scoreBreakdown.serp === 57, "Absence du top 100 comptée dans le score SERP ((70+100+0)/3 → 57)", dashAbsent.body.scoreBreakdown);
+  await db.query(`DELETE FROM erep_serp_tracking WHERE campaign_id = $1 AND position IS NULL`, [entityId]);
+  await request("GET", `/ereputation/campaigns/${entityId}/dashboard`, undefined, token);
   const global = await request("GET", "/ereputation/score-global", undefined, token);
   check(global.status === 200 && global.body.score === 85 && global.body.breakdown.evaluatedCampaigns === 1 && global.body.breakdown.campaigns === 2,
     "Score global : moyenne des seules campagnes évaluées", global.body);
@@ -224,10 +229,19 @@ try {
   // ── Suppression d'une personne : données purgées, historique expurgé
   await request("POST", `/ereputation/campaigns/${personId}/sentiment`, { text: "Albert Ducamps est un excellent professionnel" }, token);
   await request("PATCH", `/ereputation/campaigns/${personId}`, { subjectLocation: "Roubaix" }, token);
+  const toEntity = await request("PATCH", `/ereputation/campaigns/${personId}`, { targetType: "B2B" }, token);
+  check(toEntity.status === 400 && /ne peut pas devenir une entité/.test(toEntity.body.error), "Personne physique non convertible en entité (purge RGPD préservée)", toEntity.body);
+  const personAudit = await request("POST", `/ereputation/campaigns/${personId}/audit`, {}, token);
+  check(personAudit.status === 200, "Audit de la personne réalisé", personAudit.body);
+  await db.query(`INSERT INTO memory_documents (source_type, source_id, content, tenant_id, metadata) VALUES ('erep_score_change', $1, 'Score E-Rep de Albert Ducamps', $2, $3)`,
+    [`${personId}-1`, me.tenantId, JSON.stringify({ campaignId: personId, targetName: "Albert Ducamps" })]);
+  const memoryBefore = (await db.query(`SELECT COUNT(*)::int AS n FROM memory_documents WHERE content LIKE '%Ducamps%'`)).rows[0].n;
+  check(memoryBefore >= 2, "Audit et variation de score indexés dans la mémoire IA", memoryBefore);
   const removed = await request("DELETE", `/ereputation/campaigns/${personId}`, undefined, token);
   check(removed.status === 200 && removed.body.redacted === true, "Suppression d'une personne signalée comme purgée", removed.body);
   check((await request("GET", `/ereputation/campaigns/${personId}`, undefined, token)).status === 404, "Campagne personne supprimée");
   check((await db.query(`SELECT COUNT(*)::int AS n FROM erep_sentiment_logs WHERE campaign_id = $1`, [personId])).rows[0].n === 0, "Mentions collectées supprimées avec la campagne");
+  check((await db.query(`SELECT COUNT(*)::int AS n FROM memory_documents WHERE content LIKE '%Ducamps%'`)).rows[0].n === 0, "Mémoire IA : aucune copie des données de la personne après suppression");
   const personHistory = (await request("GET", `/ereputation/campaigns/${personId}/history`, undefined, token)).body;
   check(Array.isArray(personHistory) && personHistory[0].action === "delete" && personHistory.every(h => h.redacted), "Historique conservé après suppression et marqué expurgé", personHistory);
   check(!JSON.stringify(personHistory).includes("Ducamps") && !JSON.stringify(personHistory).includes("Roubaix"), "Historique : aucune donnée personnelle résiduelle", personHistory);

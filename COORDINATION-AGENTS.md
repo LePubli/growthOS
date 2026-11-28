@@ -431,3 +431,13 @@ Branche `claude/project-thread-i6xqwe`, base `6164eff` (PR83). Contenu : CRUD co
 Tests : `scripts/test-ereputation.mjs` (66 contrôles PostgreSQL 16, base jetable : validation, isolation entre agences, mandat, historique, purge, migration rejouée), `scripts/test-ereputation-ui.mjs` (rendu SSR et anti-valeurs fictives), `smoke-wizard.mjs` complet vert en local (465 contrôles), TypeScript API/Web verts. Aucun déploiement DockPanel par l'agent. Notes conservées jusqu'à l'autorisation explicite du lancement final en production.
 
 Synchronisation PR84 avec PR85 (`9c3f524`) : conserver intégralement le lot e-réputation de l’agent R et ses tests dans la CI commune ; les seuls conflits sont les ajouts de notes et la ligne de responsabilité extension, résolus en conservant les deux lots et l’attribution F pour Chrome. Aucune modification du métier e-réputation par F. Validation commune et images finales à confirmer avant feu vert.
+
+### Agent 3 — correctif lot 1 après relecture de la PR #85 (28/11/2026)
+
+Branche `claude/project-thread-i6xqwe` repartie de `9c3f524` (PR85 fusionnée). Trois défauts relevés par la relecture automatique, corrigés dans `CampaignService.ts` uniquement :
+1. Suppression ou purge d'une campagne : les documents `memory_documents` liés (audits, variations de score, `metadata.campaignId`) sont supprimés dans la même transaction. Le plugin mémoire n'est pas modifié.
+2. Une campagne personne physique ne peut plus être convertie en entité (400), pour que la purge RGPD et l'expurgation s'appliquent toujours.
+3. Score SERP : une absence constatée du top 100 (`position = null`) compte 0 au lieu d'être ignorée.
+
+Reste connu, hors périmètre de ce correctif : les notifications et signaux génériques (`notifications`, `signals`) peuvent contenir le nom de la cible sans lien vers la campagne. Ce point sera traité avec le lot des notifications. Tests : `scripts/test-ereputation.mjs` passe à 72 contrôles. Aucun déploiement DockPanel par l'agent.
+
