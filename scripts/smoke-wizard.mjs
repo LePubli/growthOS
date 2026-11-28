@@ -1964,6 +1964,7 @@ try {
     check(challengedResult.status===200&&challengedResult.body.status==='awaiting_user'&&!challengedResult.body.applied,'Navigateur utilisateur : contrôle source reçu sans capture fictive ni mise à jour CRM');
     const challengedBilan=(await request('GET','/prospects/'+deviceProspect.body.id+'/enrichment',undefined,token)).body;
     check(challengedBilan.steps.societe_com.status==='awaiting_user'&&challengedBilan.steps.societe_com.message.includes('sécurité'),'Navigateur utilisateur : bilan parent conserve le vrai motif d’intervention locale');
+    await mergeFixtureSql("UPDATE cloud_browser_jobs SET status='running',result=$2 WHERE id=$1",[blockedDeviceJob.id,JSON.stringify({deviceExecution:{state:'receiving',runId:challengedContext.runId}})]);const cloudBeforeDeviceCancel=cloudCalls.length;await request('POST','/browser/jobs/'+blockedDeviceJob.id+'/cancel',{},token);check(cloudCalls.length===cloudBeforeDeviceCancel,'Navigateur utilisateur : annulation locale ne ferme pas un navigateur cloud indépendant');
     const investigationTarget=await request('POST','/prospects',{company:'Hydreo',city:'Lille',phone:'03 20 11 22 33',website:'https://hydreo-site.fr/mentions-legales'},token);
     const investigationRun=await request('POST','/prospects/'+investigationTarget.body.id+'/enrichment',{},token);await runEnrichmentMaintenance(investigationRun.body.id,2);
     const investigationRead=(await request('GET','/prospects/'+investigationTarget.body.id,undefined,token)).body;

@@ -284,7 +284,7 @@ export async function deviceResult(
       );
     if (e.digest && e.digest !== digest)
       throw new CloudBrowserError(409, "Le résultat de cette étape a changé.");
-    const captures = [];
+    const captures: (Record<string, unknown> & { capturedAt: number })[] = [];
     for (const raw of input.captures) {
       if (!raw || typeof raw !== "object" || (raw as any).source !== source)
         throw new CloudBrowserError(

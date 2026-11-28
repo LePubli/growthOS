@@ -202,7 +202,7 @@ router.post('/jobs/:id/cancel',async(req,res)=>{
   const q=await pool.query(`UPDATE cloud_browser_jobs SET status='cancelled',updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status IN ('queued','running','awaiting_user','needs_review','failed') RETURNING *`,[id,req.auth!.tenantId]);
   if(!q.rows[0])throw new CloudBrowserError(409,'Tâche déjà terminée.');
   const profile=await cloudProfile(req.auth!.tenantId,q.rows[0].profile_id,req.auth!.userId);
-  if(previous.status==='running')await browserCall('/stop',{tenantId:req.auth!.tenantId,profileId:profile.id,source:profile.source},5000,req.traceId).catch(()=>undefined);
+  if(previous.status==='running'&&!previous.result?.deviceExecution)await browserCall('/stop',{tenantId:req.auth!.tenantId,profileId:profile.id,source:profile.source},5000,req.traceId).catch(()=>undefined);
   res.json(q.rows[0]);
 });
 router.use((error:unknown,req:any,res:any,_next:any)=>{
