@@ -204,7 +204,7 @@ router.post('/:id/merge',async(req,res)=>{
 router.get('/:id/merges',async(req,res)=>{
  const id=z.string().uuid().parse(req.params.id);
  const rows=await pool.query('SELECT id,removed_id,created_at,archive FROM prospect_merge_receipts WHERE tenant_id=$1 AND survivor_id=$2 ORDER BY created_at DESC',[req.auth!.tenantId,id]);
- res.json(rows.rows.map(r=>({id:r.id,fromId:r.removed_id,createdAt:r.created_at,profiles:r.archive.prospects.map(mergeArchiveProfile),archivedMonitoring:r.archive.monitoring.length,archivedEnrichments:r.archive.enrichmentData.length})));
+ res.json(rows.rows.map(r=>({id:r.id,fromId:r.removed_id,createdAt:r.created_at,profiles:r.archive.prospects.map(mergeArchiveProfile),changes:r.archive.changes||{},archivedMonitoring:r.archive.monitoring.length,archivedEnrichments:r.archive.enrichmentData.length})));
 });
 
 router.get("/:id", async (req, res) => {

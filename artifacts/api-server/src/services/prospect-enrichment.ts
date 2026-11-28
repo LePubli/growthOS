@@ -14,7 +14,7 @@ import {recordDiagnosticEvent,errorDiagnosticDetails} from '../lib/diagnostics';
 import {logger} from '../lib/logger';
 import {diagnoseSourceIssue} from '../lib/source-diagnosis';
 
-type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number;offset?:number;siren?:string;researchCandidates?:boolean;legalCandidates?:boolean;duplicateId?:string;siret?:string;recoveryIdentity?:string};
+type Step={status:string;label:string;message?:string;jobId?:string;profileId?:string;filled?:string[];conflicts?:number;offset?:number;siren?:string;researchCandidates?:boolean;legalCandidates?:boolean;duplicateId?:string;siret?:string;recoveryIdentity?:string;diagnosis?:ReturnType<typeof diagnoseSourceIssue>};
 const definitions=[['entreprises','Annuaire des Entreprises · données INSEE'],['website','Site web du prospect'],['google_maps','Google Maps'],['pagesjaunes','PagesJaunes'],['insee','INSEE Sirene · accès direct'],['societe_com','Societe.com'],['pappers','Pappers · données publiques'],['bodacc','BODACC · annonces officielles'],['google_search','Google Search'],['bing','Bing']] as const;
 const active=(status:string)=>['queued','running'].includes(status);
 const normalizedProspect=(p:any)=>({...p,postalCode:p.postal_code,sourceDetails:p.source_details,apeCode:p.ape_code,nafLabel:p.naf_label,nafVersion:p.naf_version});
@@ -49,11 +49,11 @@ export async function latestProspectEnrichment(tenant:string,id:string){
           changed=true;identified ||= (child.result.applied.filled||[]).some((f:string)=>['siren','siret'].includes(f));
         }
         const identity=prospect.siret||prospect.siren;
-        if(identity)for(const source of ['entreprises','insee','bodacc','pappers'])if(steps[source]?.status==='failed'&&steps[source].recoveryIdentity!==identity){steps[source]={label:steps[source].label,status:'pending',recoveryIdentity:identity,message:'Identité maintenant confirmée : reprise de la source précédemment échouée.'};changed=true;void recordDiagnosticEvent({tenantId:tenant,level:'info',component:'enrichment',code:'IDENTITY_RECOVERY_QUEUED',message:'Source échouée reprogrammée après confirmation de l’identité',source,prospectId:id,jobId:job.id,details:{retryCount:1}});}
+        if(identity&&job.status!=='cancelled')for(const source of ['entreprises','insee','bodacc','pappers'])if(steps[source]?.status==='failed'&&steps[source].recoveryIdentity!==identity){steps[source]={label:steps[source].label,status:'pending',recoveryIdentity:identity,message:'Identité maintenant confirmée : reprise de la source précédemment échouée.'};changed=true;void recordDiagnosticEvent({tenantId:tenant,level:'info',component:'enrichment',code:'IDENTITY_RECOVERY_QUEUED',message:'Source échouée reprogrammée après confirmation de l’identité',source,prospectId:id,jobId:job.id,details:{retryCount:1}});}
         if(changed){
-          if(identified)for(const source of ['entreprises','insee','bodacc','pappers'])if(steps[source]&&['skipped','empty','needs_review','awaiting_user','failed'].includes(steps[source].status))steps[source]={label:steps[source].label,status:'pending',recoveryIdentity:prospect.siret||prospect.siren,message:'Identité complétée ; nouvelle vérification programmée.'};
+          if(identified&&job.status!=='cancelled')for(const source of ['entreprises','insee','bodacc','pappers'])if(steps[source]&&['skipped','empty','needs_review','awaiting_user','failed'].includes(steps[source].status))steps[source]={label:steps[source].label,status:'pending',recoveryIdentity:prospect.siret||prospect.siren,message:'Identité complétée ; nouvelle vérification programmée.'};
           const values=Object.values(steps),pending=values.some(s=>['pending','collecting'].includes(s.status)),incomplete=values.some(s=>['failed','needs_review','awaiting_user'].includes(s.status));
-          job=(await client.query("UPDATE prospect_enrichment_jobs SET steps=$2,status=$3,updated_at=NOW() WHERE id=$1 RETURNING *",[job.id,JSON.stringify(steps),pending?'queued':incomplete?'partial':'completed'])).rows[0];
+          job=(await client.query("UPDATE prospect_enrichment_jobs SET steps=$2,status=$3,updated_at=NOW() WHERE id=$1 RETURNING *",[job.id,JSON.stringify(steps),job.status==='cancelled'?'cancelled':pending?'queued':incomplete?'partial':'completed'])).rows[0];
         }
       }
       await client.query('COMMIT');
@@ -164,7 +164,7 @@ export async function runProspectEnrichment(id:string){
         exceptionRecorded=true;
         const info=errorDiagnosticDetails(error),duplicate=isProspectIdentityDuplicate(error);
         const diagnosis=diagnoseSourceIssue({source,status:'failed',httpStatus:error instanceof CloudBrowserError?error.status:undefined,reason:String(info.reason||''),databaseCode:info.databaseCode as string,databaseConstraint:info.databaseConstraint as string});
-        steps[source]={...steps[source],status:duplicate?'needs_review':'failed',message:diagnosis.cause};
+        steps[source]={...steps[source],status:duplicate?'needs_review':'failed',message:diagnosis.cause,diagnosis};
         void recordDiagnosticEvent({tenantId:job.tenant_id,userId:job.created_by,level:duplicate?'warn':'error',component:'enrichment',code:duplicate?'CRM_IDENTITY_DUPLICATE':'SOURCE_FAILED',message:duplicate?'Enregistrement suspendu : SIRET déjà utilisé':'Source en échec',source,prospectId:job.prospect_id,jobId:id,details:{durationMs:Date.now()-started,...info}});
         void recordDiagnosticEvent({tenantId:job.tenant_id,userId:job.created_by,level:'warn',component:'source-diagnosis',code:diagnosis.causeCode,message:diagnosis.cause,source,prospectId:job.prospect_id,jobId:id,details:{...diagnosis,...info}});
       }

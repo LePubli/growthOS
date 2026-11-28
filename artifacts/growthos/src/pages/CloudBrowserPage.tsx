@@ -59,6 +59,7 @@ function CloudBrowserWorkspace() {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  useEffect(()=>{let alive=true;const merged=params.get('merged');if(merged&&prospectId)void api.get<any[]>('/prospects/'+prospectId+'/merges').then(rows=>{if(alive&&Array.isArray(rows)&&rows.some(row=>row.id===merged))setNotice('Fusion enregistrée. Les deux dossiers sont regroupés ; vous pouvez terminer la comparaison avec la source.');}).catch(()=>{});return()=>{alive=false;};},[prospectId,params.get('merged')]);
   const [reviewJob,setReviewJob]=useState<string|null>(null);
   const [activeJobId, setActiveJobId] = useState('');
   const [verificationJobId,setVerificationJobId]=useState(params.get('jobId')||'');

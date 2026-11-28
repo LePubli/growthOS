@@ -12,8 +12,8 @@ export async function publicSiteHtml(url:URL,host:string,redirects=0,dependencie
     const req=(url.protocol==='https:'?dependencies.httpsRequest:dependencies.httpRequest)(url,{method:'GET',family:4,timeout:6000,lookup:(_h,_o,cb)=>cb(null,ips[0],4),headers:{'User-Agent':'GrowthOS-ProspectEnrichment/1.0',Accept:'text/html'}},res=>{
       if([301,302,303,307,308].includes(res.statusCode||0)){res.resume();resolve({status:res.statusCode!,location:res.headers.location,html:''});return;}
       if(res.statusCode!==200||!String(res.headers['content-type']).includes('text/html')){res.resume();reject(Object.assign(Error('Site non lisible (HTTP '+res.statusCode+').'),{status:res.statusCode,code:'WEBSITE_HTTP_STATUS'}));return;}
-      const chunks:Buffer[]=[];let bytes=0;res.on('data',(b:Buffer)=>{bytes+=b.length;if(bytes>550000){req.destroy(Error('Page trop volumineuse.'));return;}chunks.push(b);});res.on('error',reject);res.on('end',()=>resolve({status:200,html:Buffer.concat(chunks).toString('utf8')}));
-    });req.on('timeout',()=>req.destroy(Error('Site trop lent.')));req.on('error',reject);req.end();
+      const chunks:Buffer[]=[];let bytes=0;res.on('data',(b:Buffer)=>{bytes+=b.length;if(bytes>550000){req.destroy(Object.assign(Error('Page trop volumineuse.'),{code:'WEBSITE_PAGE_TOO_LARGE'}));return;}chunks.push(b);});res.on('error',reject);res.on('end',()=>resolve({status:200,html:Buffer.concat(chunks).toString('utf8')}));
+    });req.on('timeout',()=>req.destroy(Object.assign(Error('Site trop lent.'),{code:'WEBSITE_TIMEOUT',status:408})));req.on('error',reject);req.end();
   });
   if(result.location)return publicSiteHtml(siteUrl(new URL(result.location,url).href),host,redirects+1,dependencies);
   return {url:url.href,html:result.html};

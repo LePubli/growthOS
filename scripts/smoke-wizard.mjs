@@ -1826,6 +1826,8 @@ try {
     await mergeFixtureSql("INSERT INTO activities(type,title,tenant_id,prospect_id,created_by) SELECT 'note','Note à conserver',tenant_id,id,created_by FROM prospects WHERE id=$1",[mergeOther.body.id]);
     await mergeFixtureSql("INSERT INTO deals(title,stage,tenant_id,prospect_id) SELECT 'Affaire à conserver','lead',tenant_id,id FROM prospects WHERE id=$1",[mergeOther.body.id]);
     await mergeFixtureSql("INSERT INTO prospect_monitoring(prospect_id,tenant_id,enabled,snapshot) SELECT id,tenant_id,true,'{\"managers\":[\"Alice Martin · Gérante\"]}'::jsonb FROM prospects WHERE id=$1",[mergeOther.body.id]);
+    await mergeFixtureSql("INSERT INTO audit_logs(tenant_id,user_id,action,entity_type,entity_id,metadata) SELECT tenant_id,created_by,'comment','prospect',id,'{}'::jsonb FROM prospects WHERE id=$1",[mergeOther.body.id]);
+    await mergeFixtureSql("UPDATE cloud_browser_jobs SET result=jsonb_set(result,'{imports}',jsonb_build_object('receipt',jsonb_build_object('status','imported','prospectId',$2::text))) WHERE id=$1",[mergeJob,mergeOther.body.id]);
     const mp=await request('POST','/prospects/'+mergeCurrent.body.id+'/merge-preview',mergeContext,token);
     check(mp.status===200&&mp.body.other.siret==='96677710100019'&&mp.body.activities.some(a=>a.prospect_id===mergeOther.body.id&&a.count===1),'Fusion : noms, SIRET, coordonnées et activités des deux dossiers présentés');
     check((await request('POST','/prospects/'+mergeCurrent.body.id+'/merge-preview',mergeContext,foreignToken)).status===404&&(await request('POST','/prospects/'+mergeCurrent.body.id+'/merge-preview',mergeContext,colleague)).status===409,'Fusion : autre agence et capture privée d’un collègue refusées');
@@ -1836,8 +1838,11 @@ try {
     const wrongProof=await request('POST','/prospects/'+mergeCurrent.body.id+'/merge',{...mergePayload,proofDigest:'0'.repeat(64)},token);
     check(wrongProof.status===409,'Fusion : preuve modifiée entre comparaison et confirmation refusée');
     await mergeFixtureSql("UPDATE cloud_browser_jobs SET status='running',lease=gen_random_uuid(),lease_until=NOW()+INTERVAL '1 minute' WHERE id=$1",[mergeJob]);
-    check((await request('POST','/prospects/'+mergeCurrent.body.id+'/merge',mergePayload,token)).status===409,'Fusion : une capture en cours ne peut pas être utilisée pour fusionner');
+    check((await request('POST','/prospects/'+mergeCurrent.body.id+'/merge',mergePayload,token)).status===423,'Fusion : une capture en cours ne peut pas être utilisée pour fusionner');
     await mergeFixtureSql("UPDATE cloud_browser_jobs SET status='needs_review',lease=NULL,lease_until=NULL WHERE id=$1",[mergeJob]);
+    const occupiedMergeJob=await mergeFixtureSql("INSERT INTO cloud_browser_jobs(tenant_id,created_by,profile_id,prospect_id,mode,query,status) SELECT tenant_id,created_by,profile_id,$2,'enrich','Fusion occupée','running' FROM cloud_browser_jobs WHERE id=$1 RETURNING id",[mergeJob,mergeOther.body.id]);
+    check((await request('POST','/prospects/'+mergeCurrent.body.id+'/merge',mergePayload,token)).status===423,'Fusion : collecte active sur l’autre dossier bloque le regroupement sans annulation silencieuse');
+    await mergeFixtureSql("UPDATE cloud_browser_jobs SET status='cancelled' WHERE id=$1",[occupiedMergeJob[0].id]);
     // A future linked table with an additional uniqueness rule must make everything roll back.
     await mergeFixtureSql("CREATE TABLE growthos_test_merge_links(id UUID DEFAULT gen_random_uuid(),tenant_id UUID NOT NULL,prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,kind TEXT,UNIQUE(prospect_id,kind))");
     try{
@@ -1846,7 +1851,9 @@ try {
       check(failedMerge.status>=400&&(await request('GET','/prospects/'+mergeOther.body.id,undefined,token)).body.siret==='96677710100019'&&!(await request('GET','/prospects/'+mergeCurrent.body.id,undefined,token)).body.siret,'Fusion : erreur sur une liaison annule toutes les écritures et restitue les deux fiches');
       check((await mergeFixtureSql('SELECT id FROM prospect_merge_receipts WHERE id=$1',[mergePayload.mergeKey])).length===0,'Fusion : aucun reçu de succès après une transaction annulée');
       await mergeFixtureSql('DELETE FROM growthos_test_merge_links WHERE prospect_id=$1',[mergeCurrent.body.id]);
-      const merged=await request('POST','/prospects/'+mergeCurrent.body.id+'/merge',mergePayload,token);
+      const parallelMerges=await Promise.all([request('POST','/prospects/'+mergeCurrent.body.id+'/merge',mergePayload,token),request('POST','/prospects/'+mergeCurrent.body.id+'/merge',mergePayload,token)]);
+      const merged=parallelMerges.find(r=>!r.body.alreadyMerged)||parallelMerges[0];
+      check(parallelMerges.every(r=>r.status===200)&&parallelMerges.filter(r=>r.body.alreadyMerged).length===1,'Fusion : deux confirmations simultanées utilisent un seul reçu et une seule transaction effective');
       check(merged.status===200&&merged.body.prospectId===mergeCurrent.body.id,'Fusion : transaction confirmée et nom commercial conservé');
       const mergedProfile=(await request('GET','/prospects/'+mergeCurrent.body.id,undefined,token)).body;
       check(mergedProfile.company==='Atelier commercial fusion'&&mergedProfile.siret==='96677710100019'&&mergedProfile.email==='commercial@atelier-fusion.fr'&&mergedProfile.website==='https://atelier-fusion.fr','Fusion : champs vides complétés, principale choisie et identité du même établissement transférées');
@@ -1861,10 +1868,13 @@ try {
       const movedActivities=(await request('GET','/activities?prospectId='+mergeCurrent.body.id+'&scope=history',undefined,token)).body;
       check(movedActivities.some(a=>a.title==='Note à conserver')&&movedActivities.filter(a=>a.title==='Fusion de fiches prospect').length===1,'Fusion : activités originales et événement de fusion présents');
       const archives=await request('GET','/prospects/'+mergeCurrent.body.id+'/merges',undefined,token);
-      check(archives.status===200&&archives.body[0].profiles.length===2&&archives.body[0].archivedMonitoring===1,'Fusion : les deux états initiaux et la surveillance sont archivés');
+      check(archives.status===200&&archives.body[0].profiles.length===2&&archives.body[0].archivedMonitoring===1&&archives.body[0].changes.siret.before===null&&archives.body[0].changes.siret.after==='96677710100019','Fusion : les deux états initiaux et la surveillance sont archivés');
       const replay=await request('POST','/prospects/'+mergeCurrent.body.id+'/merge',mergePayload,token);
       check(replay.status===200&&replay.body.alreadyMerged,'Fusion : réponse perdue puis nouvel envoi réutilisent le reçu sans doublon');
       check((await request('POST','/prospects/'+mergeCurrent.body.id+'/merge',{...mergePayload,survivorId:mergeOther.body.id},token)).status===409,'Fusion : un reçu ne permet pas de changer la décision après coup');
+      const movedAudit=await mergeFixtureSql("SELECT entity_id,metadata FROM audit_logs WHERE action='comment' AND metadata->>'mergeId'=$1",[mergePayload.mergeKey]);
+      const movedReceipt=await mergeFixtureSql("SELECT result->'imports'->'receipt'->>'prospectId' AS id FROM cloud_browser_jobs WHERE id=$1",[mergeJob]);
+      check(movedAudit.some(a=>a.entity_id===mergeCurrent.body.id&&a.metadata.mergedFromProspectId===mergeOther.body.id)&&movedReceipt[0].id===mergeCurrent.body.id,'Fusion : commentaires d’équipe et reçus d’import suivent le dossier, avec provenance d’origine');
       const reviewAfter=await request('GET','/browser/jobs/'+mergeJob+'/review',undefined,token);
       const confirmAfter=await request('POST','/browser/jobs/'+mergeJob+'/confirm',{captureIndex:0,confirmed:true,expectedUpdatedAt:reviewAfter.body.version,expectedCaptureDigest:reviewAfter.body.captureDigest,expectedValues:reviewAfter.body.expectedValues,replaceFields:[]},token);
       check(!reviewAfter.body.duplicate&&confirmAfter.status===200&&confirmAfter.body.job.status==='completed','Fusion : comparaison source reprise et enrichissement terminé après regroupement');
@@ -1876,8 +1886,36 @@ try {
       await mergeFixtureSql("UPDATE prospect_enrichment_jobs SET status='partial',steps=$2 WHERE id=$1",[recoveryId,JSON.stringify(recoveredSteps)]);
       const recoveredOnce=await request('GET','/prospects/'+mergeCurrent.body.id+'/enrichment',undefined,token);
       check(recoveredOnce.body.status==='partial'&&recoveredOnce.body.steps.entreprises.status==='failed','Bilan : un nouvel échec de la même identité ne provoque pas une reprise infinie');
+      await mergeFixtureSql("INSERT INTO diagnostic_events(tenant_id,component,code,level,message,source,prospect_id,job_id,details,created_at) SELECT tenant_id,'enrichment','SOURCE_FAILED','error','Cause historique','entreprises',id,$2,$3::jsonb,NOW() FROM prospects WHERE id=$1",[mergeCurrent.body.id,recoveryId,JSON.stringify({databaseCode:'23505',databaseConstraint:'idx_prospects_tenant_siret',reason:'Enregistrement refusé'})]);
+      const oldCause=await request('GET','/diagnostics/jobs',undefined,token);
+      check(oldCause.body.jobs.find(j=>j.id===recoveryId)?.sources.find(s=>s.source==='entreprises')?.diagnosis.causeCode==='CRM_IDENTITY_DUPLICATE','Diagnostics : ancien échec recoupé avec le vrai refus SQL, sans fausse indisponibilité de l’Annuaire');
+      await mergeFixtureSql("INSERT INTO diagnostic_events(tenant_id,component,code,level,message,source,prospect_id,job_id,details) SELECT tenant_id,'enrichment','SOURCE_FAILED','error','Nouvelle tentative','entreprises',id,$2,$3::jsonb FROM prospects WHERE id=$1",[mergeCurrent.body.id,recoveryId,JSON.stringify({databaseCode:null,reason:'fetch failed'})]);
+      const currentCause=await request('GET','/diagnostics/jobs',undefined,token);
+      check(currentCause.body.jobs.find(j=>j.id===recoveryId)?.sources.find(s=>s.source==='entreprises')?.diagnosis.causeCode==='SOURCE_NETWORK','Diagnostics : une nouvelle panne réseau remplace la cause SQL historique de la tentative précédente');
+      delete recoveredSteps.entreprises.recoveryIdentity;
+      await mergeFixtureSql("UPDATE prospect_enrichment_jobs SET status='cancelled',steps=$2 WHERE id=$1",[recoveryId,JSON.stringify(recoveredSteps)]);
+      check((await request('GET','/prospects/'+mergeCurrent.body.id+'/enrichment',undefined,token)).body.status==='cancelled','Bilan : consulter une tâche annulée ne relance aucune recherche');
+
+
 
     }finally{await mergeFixtureSql('DROP TABLE growthos_test_merge_links');}
+    const keepExistingCurrent=await request('POST','/prospects',{company:'Enseigne conservée',city:'Lille',phone:'0320556677',email:'contact@enseigne-fusion.fr'},token);
+    const keepExistingOther=await request('POST','/prospects',{company:'Identité légale de secours',siret:'96677710200019',email:'bureau@autre-atelier.fr'},token);
+    await mergeFixtureSql("UPDATE prospects SET source_details=$2::jsonb WHERE id=$1",[keepExistingCurrent.body.id,JSON.stringify({crossSource:{fieldSources:{email:{source:'website',sourceUrl:'https://enseigne-fusion.fr/contact'}}}})]);
+    await mergeFixtureSql("UPDATE prospects SET source_details=$2::jsonb WHERE id=$1",[keepExistingOther.body.id,JSON.stringify({crossSource:{fieldSources:{email:{source:'societe_com',sourceUrl:'https://www.societe.com/societe/identite-legale-966777102.html'}}}})]);
+    const keepTask=randomUUID(),keepCapture={...localCapture,id:'task_'+keepTask,company:'Identité légale de secours',siret:'96677710200019',siren:'966777102',sourceUrl:'https://www.societe.com/societe/identite-legale-966777102.html'};
+    const keepStaged=await request('POST','/browser/local-review',{taskId:keepTask,prospectId:keepExistingCurrent.body.id,capture:keepCapture},token);
+    const keepContext={otherId:keepExistingOther.body.id,jobId:keepStaged.body.job.id,captureIndex:0},kp=(await request('POST','/prospects/'+keepExistingCurrent.body.id+'/merge-preview',keepContext,token)).body;
+    const keepResult=await request('POST','/prospects/'+keepExistingCurrent.body.id+'/merge',{...keepContext,mergeKey:kp.mergeKey,proofDigest:kp.proofDigest,survivorId:keepExistingOther.body.id,confirmed:true,replaceFields:['company','email'],expectedVersions:{[keepExistingCurrent.body.id]:kp.current.updatedAt,[keepExistingOther.body.id]:kp.other.updatedAt}},token);
+    check(keepResult.status===200&&keepResult.body.prospectId===keepExistingOther.body.id,'Fusion : choix explicite de conserver la fiche existante accepté');
+    const keptExisting=(await request('GET','/prospects/'+keepExistingOther.body.id,undefined,token)).body;
+    const keptJob=(await request('GET','/browser/jobs/'+keepStaged.body.job.id,undefined,token)).body;
+    check(keptExisting.company==='Enseigne conservée'&&keptExisting.email==='contact@enseigne-fusion.fr'&&keptExisting.sourceDetails.crossSource.fieldSources.email.source==='website'&&keptExisting.sourceDetails.crossSource.fieldSources.email.sourceUrl==='https://enseigne-fusion.fr/contact'&&keptExisting.sourceDetails.contactPoints.some(p=>p.value==='bureau@autre-atelier.fr')&&keptExisting.sourceDetails.crossSource.fieldSources.company.mergedFromProspectId===keepExistingCurrent.body.id,'Fusion : nom et email choisis portent la preuve du donneur, l’ancienne principale reste conservée');
+    check(keptJob.prospect_id===keepExistingOther.body.id&&(await request('GET','/prospects/'+keepExistingCurrent.body.id,undefined,token)).body.id===keepExistingOther.body.id,'Fusion : tâche source et ancien lien suivent aussi le choix de l’autre fiche');
+    const unrelatedCurrent=await request('POST','/prospects',{company:'Autre établissement distinct',siret:'96677710300019'},token),unrelatedTask=randomUUID();
+    const unrelatedStaged=await request('POST','/browser/local-review',{taskId:unrelatedTask,prospectId:unrelatedCurrent.body.id,capture:{...keepCapture,id:'task_'+unrelatedTask}},token);
+    const unrelatedPreview=await request('POST','/prospects/'+unrelatedCurrent.body.id+'/merge-preview',{otherId:keepExistingOther.body.id,jobId:unrelatedStaged.body.job.id,captureIndex:0},token);
+    check(unrelatedPreview.status===409,'Fusion : deux SIRET connus différents restent strictement interdits malgré une capture ciblée');
     const investigationTarget=await request('POST','/prospects',{company:'Hydreo',city:'Lille',phone:'03 20 11 22 33',website:'https://hydreo-site.fr/mentions-legales'},token);
     const investigationRun=await request('POST','/prospects/'+investigationTarget.body.id+'/enrichment',{},token);await runEnrichmentMaintenance(investigationRun.body.id,2);
     const investigationRead=(await request('GET','/prospects/'+investigationTarget.body.id,undefined,token)).body;
