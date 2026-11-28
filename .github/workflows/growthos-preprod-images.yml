@@ -108,6 +108,11 @@ jobs:
           EREP_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
         run: node scripts/test-ereputation.mjs
 
+      - name: Test e-reputation watch (SERP, reviews, press, scheduling) with a local fake browser
+        env:
+          EREP_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
+        run: node scripts/test-ereputation-watch.mjs
+
       - name: Test cloud AI connectors without real API calls
         run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/ai-connector-probes.test.ts
 
@@ -140,6 +145,9 @@ jobs:
 
       - name: Exercise persistent profiles and collection with real Chromium and local page fixtures
         run: docker run --rm --ipc=host --entrypoint node growthos-browser-test workers/cloud-browser/runtime-test.mjs
+
+      - name: Read e-reputation search results and reviews with real Chromium and local page fixtures
+        run: docker run --rm --ipc=host --entrypoint node growthos-browser-test workers/cloud-browser/erep-test.mjs
 
   build-and-publish:
     needs: [validate, browser-runtime]

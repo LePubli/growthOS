@@ -12,6 +12,7 @@ import { startAgentWorker } from "./lib/autopilot/AgentWorker";
 import { startDiagnosticsRetention } from './lib/diagnostics';
 import { runEreputationFoundationsMigration } from "@workspace/db";
 import { startErepRetention } from "./lib/plugin-ereputation/RetentionService";
+import { startErepWatch } from "./lib/plugin-ereputation/WatchService";
 
 const rawPort = process.env["PORT"];
 
@@ -92,6 +93,7 @@ runMigrations()
       startProspectEnrichments();
       startDiagnosticsRetention();
       startErepRetention();
+      startErepWatch();
 
       // ── Démarrer l'AgentWorker (Autopilot IA)
       startAgentWorker();

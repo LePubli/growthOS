@@ -441,3 +441,19 @@ Branche `claude/project-thread-i6xqwe` repartie de `9c3f524` (PR85 fusionnée). 
 
 Reste connu, hors périmètre de ce correctif : les notifications et signaux génériques (`notifications`, `signals`) peuvent contenir le nom de la cible sans lien vers la campagne. Ce point sera traité avec le lot des notifications. Tests : `scripts/test-ereputation.mjs` passe à 72 contrôles. Aucun déploiement DockPanel par l'agent.
 
+
+### Agent 3 — lot 1 validé, lot 2 « veille » (28/11/2026)
+
+**Lot 1 e-réputation validé en recette réelle par le propriétaire le 28/11/2026** (création, historique, pause, suppression avec purge des données personnelles). Registre §13 mis à jour (REP-01 à REP-03 : L/T+U).
+
+**Lot 2 « veille » (périmètre validé par le propriétaire)**, branche `claude/project-thread-i6xqwe` repartie de `a3740d9` (PR84 incluse) : SERP Google/Bing (top 20 la nuit, top 50 le dimanche, nouveaux / disparus / déplacés), avis Google Maps et PagesJaunes, Google Actualités et flux RSS, fil des mentions à qualifier, écran **SEO et réputation → Veille**.
+
+**À l'attention de l'agent 2 (navigateur cloud) :**
+- Nouveau fichier `workers/cloud-browser/erep.mjs` (lecteurs SERP et avis de la veille) et son test `erep-test.mjs`. **`server.mjs` : 3 lignes** (import, `service.erepCollect`, route `/erep-collect`). `service.mjs`, `protocol.mjs`, `readers.mjs` et l'extension ne sont **pas modifiés** ; le lecteur canonique `readers.pagesjaunesProfile` est seulement réutilisé en lecture.
+- La veille **partage le verrou `busy`** du service et **cède la priorité** : côté API, aucune étape navigateur n'est lancée tant qu'un `cloud_browser_jobs` est `queued` ou `running` (nouvel essai 2 min plus tard) ; un 423 du worker est traité de la même façon. Créneau de nuit 3 h – 6 h (Paris).
+- Profils : lecture seule de `cloud_browser_profiles` (dernier profil non supprimé du tenant pour la source). Aucune écriture dans les tables de prospection.
+- Si vous changez la signature de `BrowserService.profile()`, `touch()` ou du verrou `busy`, prévenez-moi : `erep.mjs` en dépend.
+
+**Fichiers partagés touchés (ciblés) :** `artifacts/api-server/src/index.ts` (1 import + 1 appel `startErepWatch()`), `.github/workflows/growthos-preprod-images.yml` (2 étapes de test ajoutées, rien de retiré), agent 1 : `App.tsx` (1 route `/ereputation/watch`), `AppShell.tsx` (1 entrée de menu « Veille » + icône), `CampaignsPage.tsx` (bouton Veille). Aucun CSS ni composant de design modifié.
+
+Tests : `scripts/test-ereputation-watch.mjs` (59 contrôles, PostgreSQL 16, faux navigateur et faux flux), `workers/cloud-browser/erep-test.mjs` (13 contrôles, vrai Chromium, pages locales), `scripts/test-ereputation-ui.mjs` (écran Veille), lot 1 toujours vert (72). Aucun déploiement DockPanel par l'agent. Notes conservées jusqu'à l'autorisation explicite du lancement final en production.

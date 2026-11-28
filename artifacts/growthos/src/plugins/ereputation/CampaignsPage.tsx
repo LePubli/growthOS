@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Shield, Plus, Loader2, X, Search, Pencil, Trash2, History, Building2, User, Link2,
+  Shield, Plus, Loader2, X, Search, Pencil, Trash2, History, Building2, User, Link2, Radar,
 } from 'lucide-react';
+import { Link } from 'wouter';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
 
@@ -452,6 +453,8 @@ export default function CampaignsPage() {
                       <div className="flex items-center gap-1.5">
                         <button onClick={() => setModal({ mode: 'edit', campaign: c })} title="Modifier" aria-label="Modifier"
                           className="p-1.5 rounded-lg border" style={{ borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}><Pencil size={12} /></button>
+                        <Link href={`/ereputation/watch?campaign=${c.id}`} title="Veille" aria-label="Veille"
+                          className="p-1.5 rounded-lg border" style={{ borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}><Radar size={12} /></Link>
                         <button onClick={() => setHistoryOf(c)} title="Historique" aria-label="Historique"
                           className="p-1.5 rounded-lg border" style={{ borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}><History size={12} /></button>
                         <button onClick={() => setConfirmDelete(c.id)} title="Supprimer définitivement" aria-label="Supprimer"

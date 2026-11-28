@@ -3,16 +3,18 @@ import {timingSafeEqual} from 'node:crypto';
 import {chromium} from 'playwright-core';
 import {BrowserService,BrowserError} from './service.mjs';
 import {AUTOMATIC,SOURCES} from './protocol.mjs';
+import {erepCollect} from './erep.mjs'; // veille e-réputation (agent 3), fichier séparé
 
 const token=process.env.CLOUD_BROWSER_TOKEN||'';
 if(token.length<32)throw new Error('CLOUD_BROWSER_TOKEN doit contenir au moins 32 caractères.');
 const service=new BrowserService({chromium,sessionKey:token,directory:process.env.BROWSER_PROFILE_DIR||'/data/profiles'});
+service.erepCollect=input=>erepCollect(service,input);
 const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
 const server=createServer(async(req,res)=>{
   const given=Buffer.from(String(req.headers['x-worker-token']||'')),expected=Buffer.from(token);
   if(given.length!==expected.length||!timingSafeEqual(given,expected))return json(res,401,{error:'Accès refusé'});
   if(req.method==='GET'&&req.url==='/healthz')return json(res,200,{ok:true,sources:SOURCES,automatic:AUTOMATIC});
-  const operations={'/open':'open','/view':'view','/action':'action','/erase':'erase','/collect':'collect','/stop':'stop'};
+  const operations={'/open':'open','/view':'view','/action':'action','/erase':'erase','/collect':'collect','/stop':'stop','/erep-collect':'erepCollect'};
   if(req.method!=='POST'||!operations[req.url])return json(res,404,{error:'Action introuvable'});
   let requestSource=null;
   try{

@@ -7,7 +7,7 @@ import {
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
   Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route, ShieldCheck, Package, Database,
-  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift, ClipboardList, Lock, Code2, FlaskConical, CreditCard, KeyRound,
+  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift, ClipboardList, Lock, Code2, FlaskConical, CreditCard, KeyRound, Radar,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -71,6 +71,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/ereputation', label: 'E-réputation', icon: <Shield size={16} />, pluginId: 'ereputation-seo' },
       { href: '/ereputation/campaigns', label: 'Campagnes', icon: <Target size={16} />, pluginId: 'ereputation-seo' },
+      { href: '/ereputation/watch', label: 'Veille', icon: <Radar size={16} />, pluginId: 'ereputation-seo' },
       { href: '/ereputation/serp', label: 'Suivi SERP', icon: <BarChart size={16} />, pluginId: 'ereputation-seo' },
     ],
   },
