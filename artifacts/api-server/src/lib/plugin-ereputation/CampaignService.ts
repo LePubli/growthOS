@@ -307,7 +307,9 @@ export class CampaignService {
         `SELECT (SELECT COUNT(*) FROM erep_serp_tracking WHERE campaign_id = $1)::int AS serp,
                 (SELECT COUNT(*) FROM erep_sentiment_logs WHERE campaign_id = $1)::int AS mentions,
                 (SELECT COUNT(*) FROM erep_content_posts WHERE campaign_id = $1)::int AS posts,
-                (SELECT COUNT(*) FROM erep_audits WHERE campaign_id = $1)::int AS audits`,
+                (SELECT COUNT(*) FROM erep_audits WHERE campaign_id = $1)::int AS audits,
+                (SELECT COUNT(*) FROM erep_mentions WHERE campaign_id = $1)::int AS "watchMentions",
+                (SELECT COUNT(*) FROM erep_reviews WHERE campaign_id = $1)::int AS reviews`,
         [campaignId],
       );
       // Copies indexées dans la mémoire IA (audits, variations de score) : pas de

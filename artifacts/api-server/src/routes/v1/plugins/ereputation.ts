@@ -7,6 +7,7 @@ import { purgeExpiredPersonCampaigns } from "../../../lib/plugin-ereputation/Ret
 import { strategyEngine } from "../../../lib/plugin-ereputation/StrategyEngine";
 import { sentimentAnalyzer } from "../../../lib/plugin-ereputation/SentimentAnalyzer";
 import { logger } from "../../../lib/logger";
+import { watchService, kickErepWatch, WATCH_ENGINES } from "../../../lib/plugin-ereputation/WatchService";
 
 /**
  * API e-réputation (montée sur /api/v1/ereputation, authentification + tenant requis).
@@ -266,6 +267,94 @@ router.get("/score-global", async (req, res) => {
       },
     });
   } catch (error) { fail(res, error, "Score global indisponible"); }
+});
+
+// ── Lot 2 : veille (SERP Google/Bing, avis Maps/PagesJaunes, presse) ─────────
+const watchSchema = z.object({
+  engines: z.array(z.enum(WATCH_ENGINES)).max(2),
+  extraQueries: z.array(z.string().trim().max(160)).max(10),
+  mapsUrl: z.union([z.string().trim().max(2000), z.literal("")]).nullish().transform(v => v || null),
+  pagesjaunesUrl: z.union([z.string().trim().max(2000), z.literal("")]).nullish().transform(v => v || null),
+  newsEnabled: z.boolean(),
+  rssFeeds: z.array(z.string().trim().max(2000)).max(10),
+  frequency: z.enum(["off", "daily", "weekly"]),
+  dailyDepth: z.number().int().min(10).max(100),
+  weeklyDepth: z.number().int().min(10).max(100),
+}).partial().strict();
+
+/* GET /ereputation/campaigns/:id/watch — réglages, requêtes générées, profils navigateur, dernier passage */
+router.get("/campaigns/:id/watch", async (req, res) => {
+  try { res.json(await watchService.overview(String(req.params.id), req.auth!.tenantId)); }
+  catch (error) { fail(res, error, "Lecture de la veille impossible"); }
+});
+
+/* PUT /ereputation/campaigns/:id/watch */
+router.put("/campaigns/:id/watch", async (req, res) => {
+  const parsed = watchSchema.safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    await watchService.saveSettings(String(req.params.id), req.auth!.tenantId, parsed.data, req.auth!.userId);
+    res.json(await watchService.overview(String(req.params.id), req.auth!.tenantId));
+  } catch (error) { fail(res, error, "Enregistrement de la veille impossible"); }
+});
+
+/* POST /ereputation/campaigns/:id/watch/run { depth? } — « Lancer maintenant » */
+router.post("/campaigns/:id/watch/run", async (req, res) => {
+  const parsed = z.object({ depth: z.number().int().min(10).max(100).optional() }).strict().safeParse(req.body ?? {});
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    const run = await watchService.enqueue(String(req.params.id), req.auth!.tenantId, "manual", { depth: parsed.data.depth, userId: req.auth!.userId });
+    kickErepWatch();
+    res.status(202).json(run);
+  } catch (error) { fail(res, error, "Lancement de la veille impossible"); }
+});
+
+/* GET /ereputation/campaigns/:id/watch/runs */
+router.get("/campaigns/:id/watch/runs", async (req, res) => {
+  try { res.json(await watchService.listRuns(String(req.params.id))); }
+  catch (error) { fail(res, error, "Lecture des passages impossible"); }
+});
+
+/* POST /ereputation/watch/runs/:runId/resume | /cancel */
+for (const action of ["resume", "cancel"] as const) {
+  router.post(`/watch/runs/:runId/${action}`, async (req, res) => {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.runId))) { res.status(404).json({ error: "Veille introuvable" }); return; }
+    try {
+      const run = action === "resume" ? await watchService.resume(String(req.params.runId), req.auth!.tenantId) : await watchService.cancel(String(req.params.runId), req.auth!.tenantId);
+      if (action === "resume") kickErepWatch();
+      res.json(run);
+    } catch (error) { fail(res, error, "Action sur la veille impossible"); }
+  });
+}
+
+/* GET /ereputation/campaigns/:id/mentions?status=new|qualified|ignored&kind=serp|review|news */
+router.get("/campaigns/:id/mentions", async (req, res) => {
+  const parsed = z.object({ status: z.enum(["new", "qualified", "ignored"]).optional(), kind: z.enum(["serp", "review", "news"]).optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional() }).safeParse(req.query);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try { res.json(await watchService.listMentions(String(req.params.id), parsed.data)); }
+  catch (error) { fail(res, error, "Lecture des mentions impossible"); }
+});
+
+/* PATCH /ereputation/mentions/:mentionId { status } */
+router.patch("/mentions/:mentionId", async (req, res) => {
+  const parsed = z.object({ status: z.enum(["new", "qualified", "ignored"]) }).strict().safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  if (!/^[0-9a-f-]{36}$/i.test(String(req.params.mentionId))) { res.status(404).json({ error: "Mention introuvable" }); return; }
+  try { res.json(await watchService.setMentionStatus(String(req.params.mentionId), req.auth!.tenantId, parsed.data.status)); }
+  catch (error) { fail(res, error, "Qualification impossible"); }
+});
+
+/* GET /ereputation/campaigns/:id/watch/serp — dernier relevé par moteur et requête */
+router.get("/campaigns/:id/watch/serp", async (req, res) => {
+  try { res.json(await watchService.latestSerp(String(req.params.id))); }
+  catch (error) { fail(res, error, "Lecture du relevé SERP impossible"); }
+});
+
+/* GET /ereputation/campaigns/:id/reviews — note, volume et avis relevés */
+router.get("/campaigns/:id/reviews", async (req, res) => {
+  try { res.json(await watchService.reviewsOverview(String(req.params.id))); }
+  catch (error) { fail(res, error, "Lecture des avis impossible"); }
 });
 
 export default router;

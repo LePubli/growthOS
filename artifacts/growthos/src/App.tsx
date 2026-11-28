@@ -81,6 +81,7 @@ const EnrichmentPage = lazy(() => import('@/pages/EnrichmentPage'));
 const ERepDashboardPage = lazy(() => import('@/plugins/ereputation/ERepDashboardPage'));
 const ERepCampaignsPage = lazy(() => import('@/plugins/ereputation/CampaignsPage'));
 const ERepSERPPage = lazy(() => import('@/plugins/ereputation/SERPTrackingPage'));
+const ERepWatchPage = lazy(() => import('@/plugins/ereputation/WatchPage'));
 const ERepSentimentPage = lazy(() => import('@/plugins/ereputation/SentimentFeedPage'));
 const ERepSocialPage = lazy(() => import('@/plugins/ereputation/SocialCalendarPage'));
 const ERepPBNPage = lazy(() => import('@/plugins/ereputation/PBNManagerPage'));
@@ -323,6 +324,9 @@ function AppRoutes() {
 
       <Route path="/ereputation/campaigns">
         {() => <DashboardLayout><ERepCampaignsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/ereputation/watch">
+        {() => <DashboardLayout><ERepWatchPage /></DashboardLayout>}
       </Route>
       <Route path="/ereputation/serp">
         {() => <DashboardLayout><ERepSERPPage /></DashboardLayout>}
