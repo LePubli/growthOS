@@ -5,6 +5,7 @@ import { memoryService } from "../plugin-growth-memory/MemoryService";
 import { pluginEventBus } from "../plugin-runtime/event-bus";
 import { sentimentAnalyzer } from "./SentimentAnalyzer";
 import { changeLog, type ChangeActor } from "./ChangeLog";
+import { computeScore } from "./ScoreModel";
 
 /**
  * Campagnes e-réputation.
@@ -58,6 +59,11 @@ export interface Mandate {
   retentionUntil: string | null;
 }
 
+/** Date du jour à Paris (AAAA-MM-JJ). */
+export function parisDay(at = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+}
+
 export interface Campaign {
   id: string;
   name: string;
@@ -84,7 +90,7 @@ export interface Campaign {
 export interface CampaignDashboard {
   campaign: Campaign;
   reputationScore: number | null;
-  scoreBreakdown: { serp: number | null; sentiment: number | null; backlinks: number | null; social: null };
+  scoreBreakdown: { serp: number | null; sentiment: number | null; reviews: number | null; backlinks: number | null; social: null };
   serpEvolution: { date: string; avgPosition: number }[];
   sentimentSummary: { pos: number; neg: number; neu: number };
   recentPosts: Post[];
@@ -324,6 +330,12 @@ export class CampaignService {
         [campaignId, tenantId],
       );
       counts.rows[0].memoryDocuments = memory.rowCount ?? 0;
+      // Notifications de la cloche liées à la campagne (alertes) : même purge.
+      const notifications = await client.query(
+        `DELETE FROM notifications WHERE tenant_id = $2 AND payload->>'module' = 'ereputation' AND payload->>'campaignId' = $1::text`,
+        [campaignId, tenantId],
+      );
+      counts.rows[0].notifications = notifications.rowCount ?? 0;
       // Les sites PBN appartiennent à l'agence : ils sont détachés, pas supprimés (ON DELETE SET NULL).
       await client.query(`DELETE FROM erep_campaigns WHERE id = $1 AND tenant_id = $2`, [campaignId, tenantId]);
       if (person) await changeLog.redactCampaign(client, tenantId, campaignId);
@@ -372,51 +384,36 @@ export class CampaignService {
     };
   }
 
-  /** Lecture des composantes mesurées ; null = composante sans mesure. */
+  /** Lecture des composantes mesurées ; null = composante sans mesure (modèle : ScoreModel.ts). */
   private async readComponents(campaignId: string, sinceDays?: number) {
-    const serpRes = await pool.query(
-      // position NULL = absence constatée du top 100 : mesure réelle, notée 0.
-      `SELECT AVG(CASE WHEN position IS NULL THEN 0 WHEN position <= 3 THEN 100 WHEN position <= 10 THEN 70 WHEN position <= 20 THEN 40 ELSE 10 END) AS score
-       FROM erep_serp_tracking WHERE campaign_id = $1
-       ${sinceDays ? `AND date >= CURRENT_DATE - INTERVAL '${Number(sinceDays)} days'` : ""}`,
-      [campaignId],
-    );
-    const sentRes = await pool.query(
-      `SELECT COUNT(*) FILTER (WHERE sentiment = 'pos')::int AS pos, COUNT(*) FILTER (WHERE sentiment = 'neg')::int AS neg, COUNT(*)::int AS total
-       FROM erep_sentiment_logs WHERE campaign_id = $1`,
-      [campaignId],
-    );
-    const pbnRes = await pool.query(
-      `SELECT AVG(da_score) AS avg_da FROM erep_pbn_sites WHERE campaign_id = $1 AND status = 'active'`,
-      [campaignId],
-    );
-    const serp = serpRes.rows[0]?.score != null ? Math.round(Number(serpRes.rows[0].score)) : null;
-    const total = Number(sentRes.rows[0]?.total ?? 0);
-    const sentiment = total
-      ? Math.max(0, Math.min(100, Math.round((Number(sentRes.rows[0].pos) / total) * 100 - (Number(sentRes.rows[0].neg) / total) * 30)))
-      : null;
-    const backlinks = pbnRes.rows[0]?.avg_da != null ? Math.min(100, Math.round(Number(pbnRes.rows[0].avg_da) * 1.5)) : null;
-    return { serp, sentiment, backlinks };
+    const { components } = await computeScore(campaignId, sinceDays ?? 30);
+    const v = (k: string) => components.find(c => c.key === k)?.value ?? null;
+    return { serp: v("serp"), sentiment: v("sentiment"), reviews: v("reviews"), backlinks: v("backlinks") };
   }
 
   /**
-   * Score pondéré 40 % SERP + 30 % sentiment + 20 % backlinks, normalisé sur les
-   * seules composantes mesurées. Sans aucune mesure : null.
+   * Score pondéré (lot 3, validé le 28/11) : 40 % SERP + 30 % sentiment des
+   * mentions + 20 % avis + 10 % liens, normalisé sur les seules composantes
+   * mesurées. Sans aucune mesure : null. Un relevé par jour est historisé.
    * L'événement erep.score.updated n'est émis que si le score change, pour ne
    * pas recréer d'alertes à chaque consultation du tableau de bord.
    */
   async calculateReputationScore(campaignId: string): Promise<number | null> {
-    const c = await this.readComponents(campaignId, 30);
-    const readings = [
-      { score: c.serp, weight: 0.4 }, { score: c.sentiment, weight: 0.3 }, { score: c.backlinks, weight: 0.2 },
-    ].filter((r): r is { score: number; weight: number } => r.score !== null);
-    const weight = readings.reduce((sum, r) => sum + r.weight, 0);
-    const final = weight ? Math.round(readings.reduce((sum, r) => sum + r.score * r.weight, 0) / weight) : null;
+    const { score: final, components } = await computeScore(campaignId, 30);
+    const c = Object.fromEntries(components.map(x => [x.key, x.value]));
 
     const { rows } = await pool.query<{ tenant_id: string; target_name: string; reputation_score: number | null }>(
       `SELECT tenant_id, target_name, reputation_score FROM erep_campaigns WHERE id = $1`, [campaignId],
     );
     const previous = rows[0]?.reputation_score ?? null;
+    if (rows[0] && final !== null) {
+      // Historique : un relevé par jour (heure de Paris), le dernier calcul du jour fait foi.
+      await pool.query(
+        `INSERT INTO erep_score_history (campaign_id, day, score, components) VALUES ($1, $2::date, $3, $4)
+         ON CONFLICT (campaign_id, day) DO UPDATE SET score = EXCLUDED.score, components = EXCLUDED.components, updated_at = NOW()`,
+        [campaignId, parisDay(), final, JSON.stringify(c)],
+      );
+    }
     if (!rows[0] || previous === final) return final;
 
     await pool.query(
@@ -472,23 +469,27 @@ export class CampaignService {
 
   async addSentimentLog(campaignId: string, text: string, sourceUrl?: string | null) {
     const result = sentimentAnalyzer.analyzeText(text);
-    await pool.query(
-      `INSERT INTO erep_sentiment_logs (campaign_id, source_url, text, sentiment, score) VALUES ($1, $2, $3, $4, $5)`,
+    const { rows } = await pool.query(
+      `INSERT INTO erep_sentiment_logs (campaign_id, source_url, text, sentiment, score) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [campaignId, sourceUrl || null, text, result.sentiment, result.score],
     );
-    if (result.score < -0.5) {
+    // Lot 3 : alerte interne (cloche, e-mail immédiat éventuel, plan de crise) au lieu d'un signal de prospection.
+    if (result.critical || result.score < -0.5) {
       try {
-        const campaign = await pool.query(`SELECT target_name FROM erep_campaigns WHERE id = $1`, [campaignId]);
-        const targetName = campaign.rows[0]?.target_name ?? "Inconnu";
-        await pluginEventBus.emit("signal.received", {
-          type: "reputation_crisis", company: targetName,
-          title: `Mention très négative pour ${targetName}`,
-          description: `Mention très négative détectée (score: ${result.score.toFixed(2)}): "${text.slice(0, 100)}..."`,
-          impactScore: 90,
-          metadata: { campaignId, sentiment: result.sentiment, score: result.score },
-        });
+        const { alertService } = await import("./AlertService");
+        const campaign = (await pool.query(`SELECT id, tenant_id, target_name, target_type, reputation_score, status FROM erep_campaigns WHERE id = $1`, [campaignId])).rows[0];
+        const rules = await alertService.getRules(campaignId);
+        if (campaign && (result.critical ? rules.criticalMention : rules.negativeMention)) {
+          await alertService.raise(campaign, {
+            type: result.critical ? "critical_mention" : "negative_mention", severity: result.critical ? "high" : "medium",
+            dedupKey: `log:${rows[0].id}`, tab: "mentions",
+            title: `${result.critical ? "Mention critique" : "Mention très négative"} : ${campaign.target_name}`,
+            description: `« ${text.slice(0, 160)} »`, payload: { sentimentLogId: rows[0].id },
+          });
+          await alertService.evaluateCrisis(campaignId);
+        }
       } catch (err) {
-        logger.warn({ err }, "Could not emit reputation crisis signal");
+        logger.warn({ reason: err instanceof Error ? err.message : "unknown" }, "Could not raise e-reputation alert");
       }
     }
     return result;

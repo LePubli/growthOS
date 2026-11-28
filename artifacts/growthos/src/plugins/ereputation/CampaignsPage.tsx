@@ -6,6 +6,7 @@ import {
 import { Link } from 'wouter';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
+import { ScoreLink } from './AlertsPanels';
 
 /**
  * Campagnes e-réputation — lot 1 (fondations).
@@ -38,7 +39,7 @@ interface Campaign {
 
 interface HistoryEntry {
   id: string;
-  action: 'create' | 'update' | 'status' | 'delete' | 'retention_purge';
+  action: 'create' | 'update' | 'status' | 'delete' | 'retention_purge' | 'crisis_open' | 'crisis_escalate' | 'crisis_close';
   actor: { email: string | null };
   changes: Record<string, { before: unknown; after: unknown }>;
   redacted: boolean;
@@ -51,10 +52,11 @@ const STATUS_LABEL: Record<Status, string> = { active: 'Active', paused: 'En pau
 const TYPE_LABEL: Record<TargetType, string> = { B2B: 'Entité', B2C: 'Personne physique' };
 const ACTION_LABEL: Record<HistoryEntry['action'], string> = {
   create: 'Création', update: 'Modification', status: 'Statut', delete: 'Suppression', retention_purge: 'Purge RGPD (fin de conservation)',
+  crisis_open: 'Plan de crise ouvert', crisis_escalate: 'Plan de crise relevé', crisis_close: 'Plan de crise clôturé',
 };
 const FIELD_LABEL: Record<string, string> = {
   name: 'Nom', targetType: 'Type de cible', targetName: 'Cible', targetUrl: 'URL', keywords: 'Mots-clés', description: 'Description',
-  prospectId: 'Fiche CRM', subjectAliases: 'Variantes du nom', subjectLocation: 'Localisation', subjectRole: 'Fonction / activité',
+  crisisLevel: 'Niveau de crise', prospectId: 'Fiche CRM', subjectAliases: 'Variantes du nom', subjectLocation: 'Localisation', subjectRole: 'Fonction / activité',
   mandateReference: 'Référence du mandat', mandateSignatory: 'Signataire', mandateSignedAt: 'Signature du mandat',
   mandateScope: 'Périmètre du mandat', retentionUntil: 'Fin de conservation', status: 'Statut', deletedData: 'Données supprimées',
 };
@@ -439,6 +441,7 @@ export default function CampaignsPage() {
                     {c.reputationScore == null
                       ? <span className="text-xs" style={{ color: 'var(--text-muted)' }} title="Aucune mesure réelle">Non évalué</span>
                       : <span className="text-sm font-bold px-2 py-1 rounded-lg" style={{ background: SCORE_BG(c.reputationScore), color: SCORE_COLOR(c.reputationScore) }}>{c.reputationScore}/100</span>}
+                    {c.reputationScore != null && <div className="mt-1"><ScoreLink campaignId={c.id} /></div>}
                   </td>
                   <td className="px-4 py-3">
                     {confirmDelete === c.id ? (

@@ -83,7 +83,26 @@ try{
         {engine:'google_search',query:'"Acme Lille"',position:4,url:'https://r6.example/nouveau',title:'R6',previous_position:null,is_new:true,captured_at:'2026-11-28T10:02:00Z'}]);
       c.setQueryData(['erep-watch',cid,'reviews'],{stats:[{source:'google_maps',rating:4.2,review_count:128,captured_at:'2026-11-28T10:03:00Z'}],
         reviews:[{id:'v1',source:'google_maps',author:'Paul',rating:1,review_date:'il y a 1 semaine',text:'Chantier abandonné',sentiment:'neg',owner_response:true}]});
+      // Lot 3 : score expliqué, alertes, plan de crise, e-mails
+      c.setQueryData(['erep-score',cid],{score:62,level:{key:'good',label:'Bonne réputation'},summary:['62/100 — bonne réputation. Calcul sur 3 composante(s) mesurée(s)','Ce qui pèse le plus : Résultat négatif critique en position 4 (−6,2 pts).','Non mesuré : liens et autorité (aucun site de liens actif)'],
+        components:[{key:'serp',label:'Résultats de recherche',measured:true,value:55,weight:0.4,effectiveWeight:0.444,points:24.4,basis:'5 requête(s) analysée(s)',factors:[{label:'Résultat négatif critique en position 4 sur Google sur 5 requêtes',impact:-6.2,tone:'neg',url:'javascript:alert(2)'}]},
+          {key:'sentiment',label:'Sentiment des mentions',measured:true,value:60,weight:0.3,effectiveWeight:0.333,points:20,basis:'4 mention(s)',factors:[]},
+          {key:'reviews',label:'Avis clients',measured:true,value:80,weight:0.2,effectiveWeight:0.222,points:17.8,basis:'1 fiche',factors:[{label:'Google Maps : 4,2/5 sur 128 avis',impact:3.3,tone:'pos'}]},
+          {key:'backlinks',label:'Liens et autorité',measured:false,value:null,weight:0.1,effectiveWeight:0,points:null,basis:'aucun site de liens actif',factors:[]}],
+        topFactors:[],unmeasured:[{key:'backlinks',label:'Liens et autorité',basis:'aucun site de liens actif'}],previous:{day:'2026-11-27',score:66,delta:-4,byComponent:[]},history:[{day:'2026-11-27',score:66},{day:'2026-11-28',score:62}]});
+      c.setQueryData(['erep-alerts',cid,true],[{id:'a1',campaign_id:cid,campaign_name:'Réputation Acme',type:'critical_mention',severity:'high',title:'Mention critique : Acme Lille',description:'Acme Lille arnaque ?',href:null,is_resolved:false,created_at:'2026-11-28T10:06:00Z',emailed_at:'2026-11-28T10:06:05Z'}]);
+      c.setQueryData(['erep-crisis',cid],{current:{level:2,reasons:['1 mention(s) critique(s) en 72 h']},history:[],
+        open:{id:'p1',level:2,status:'open',reasons:['1 mention(s) critique(s) en 72 h'],opened_at:'2026-11-28T10:06:00Z',escalated_at:null,closed_at:null,close_note:null,
+          actions:[{id:'qualify',label:'Qualifier les nouvelles mentions négatives dans le fil de veille',level:1,done:true,doneAt:null,doneBy:'admin@agence.fr',assigneeId:null},{id:'reply_publish',label:'Publier les réponses validées aux avis négatifs (action humaine)',level:2,done:false,doneAt:null,doneBy:null,assigneeId:null}]}});
+      c.setQueryData(['erep-alert-email'],{settings:{daily:true,weekly:false,immediateCritical:true,recipients:['u1'],mode:'log',lastSends:[{kind:'daily',status:'sent',error:null,sent_at:'2026-11-28T07:00:00Z'}]},members:[{id:'u1',email:'admin@agence.fr',name:'Alice Martin',role:'admin'}]});
     },'/ereputation/watch','campaign='+cid);
+    assert.ok(watch.includes('Score de réputation expliqué')&&watch.includes('>62<')&&watch.includes('Bonne réputation')&&watch.includes('▼ 4 depuis le'),'Lot 3 : score, niveau et évolution');
+    assert.ok(watch.includes('aria-label="Pourquoi ce score"')&&watch.includes('Ce qui pèse le plus')&&watch.includes('−6,2 pts')&&watch.includes('Non mesuré'),'Lot 3 : résumé et facteurs chiffrés, composante non mesurée');
+    assert.ok(!watch.includes('javascript:alert(2)'),'Lot 3 : lien de facteur non http(s) neutralisé');
+    assert.ok(watch.includes('Mention critique : Acme Lille')&&watch.includes('e-mail envoyé')&&watch.includes('aria-label="Marquer comme traitée"'),'Lot 3 : alertes avec traitement');
+    assert.ok(watch.includes('Plan « Alerte » ouvert')&&watch.includes('fait par admin@agence.fr')&&watch.includes('Clôturer le plan'),'Lot 3 : plan de crise et actions');
+    assert.ok(watch.includes('Mode recette')&&watch.includes('Alice Martin (admin@agence.fr)')&&watch.includes('Envoyer un test'),'Lot 3 : e-mails internes, destinataires de l’agence');
+    assert.ok(watch.includes('aria-label="Corriger le sentiment"'),'Lot 3 : correction manuelle du sentiment');
     assert.ok(watch.includes('Vérification requise')&&watch.includes('Reprendre')&&watch.includes('Annuler'),'Veille : passage en attente avec reprise et annulation');
     assert.ok(watch.includes('2 nouveauté(s) · 1 disparu(s) · 3 déplacé(s)')&&watch.includes('Relevé de référence'),'Veille : nouveautés, disparus, déplacés et référence');
     assert.ok(watch.includes('2 nouveauté(s), 1 négative(s)')&&watch.includes('Nouveau')&&watch.includes('Négatif'),'Veille : fil des mentions avec nouveautés et sentiment');
@@ -91,7 +110,7 @@ try{
     assert.ok(watch.includes('▲ 1')&&watch.includes('4,2/5')&&watch.includes('128 avis')&&watch.includes('réponse publiée'),'Veille : évolution SERP, note et avis');
     assert.ok(watch.includes('Profil navigateur manquant : Bing'),'Veille : profil navigateur manquant signalé');
     assert.ok(watch.includes('aria-label="Qualifier"')&&watch.includes('aria-label="Ignorer"'),'Veille : qualification des mentions');
-    console.log('✓ E-réputation : écran Veille (passages, fil, SERP, avis, réglages) rendu');
+    console.log('✓ E-réputation : écran Veille (passages, fil, SERP, avis, réglages, score expliqué, alertes, crise, e-mails) rendu');
   `},outfile:join(temp,'test.mjs'),platform:'node',format:'esm',bundle:true,jsx:'automatic',
     tsconfig:join(root,'artifacts/growthos/tsconfig.json'),loader:{'.css':'empty'},plugins:[{name:'no-browser-transport',setup(b){
       b.onLoad({filter:/\/lib\/api-client\.ts$/},()=>({contents:'export default {get(){throw Error("Unexpected SSR request")}};',loader:'ts'}));

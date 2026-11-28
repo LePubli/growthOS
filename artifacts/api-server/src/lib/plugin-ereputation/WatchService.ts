@@ -4,6 +4,8 @@ import { logger } from "../logger";
 import { browserCall, cloudConfigured, CloudBrowserError } from "../../services/cloud-browser";
 import { sentimentAnalyzer } from "./SentimentAnalyzer";
 import { campaignService, CampaignError, type Campaign } from "./CampaignService";
+import { erepAI } from "./ErepAI";
+import { alertService } from "./AlertService";
 import { assertFeedUrl, fetchGoogleNews, fetchPublicFeed, type FeedItem } from "./FeedReader";
 
 /**
@@ -310,8 +312,11 @@ export class WatchService {
     const message = stats.awaitingUser ? "Une source demande une vérification dans le navigateur cloud, puis « Reprendre »."
       : status === "failed" ? "Aucune source n'a pu être lue : voir le détail des étapes." : null;
     await save({ steps, stats, status, message, lease: null, lease_until: null, finished_at: new Date() });
+    // Lot 3 : sentiment IA des nouvelles mentions, score historisé, puis alertes et plan de crise.
+    await erepAI.analyzePending(run.campaign_id, run.tenant_id).catch(err => logger.warn({ reason: err instanceof Error ? err.message : "unknown" }, "E-rep AI analysis failed"));
     await campaignService.calculateReputationScore(run.campaign_id).catch(() => null);
-    logger.info({ runId: run.id, campaignId: run.campaign_id, status, newItems: stats.newItems }, "E-rep watch run finished");
+    const alerts = await alertService.evaluateRun(run.id).catch(err => { logger.warn({ reason: err instanceof Error ? err.message : "unknown" }, "E-rep alert evaluation failed"); return 0; });
+    logger.info({ runId: run.id, campaignId: run.campaign_id, status, newItems: stats.newItems, alerts }, "E-rep watch run finished");
   }
 
   private async profileFor(tenantId: string, source: string): Promise<string | null> {
@@ -343,15 +348,15 @@ export class WatchService {
       : { ...stored, status: "completed", message: null };
   }
 
-  private async upsertMention(run: any, m: { kind: "serp" | "review" | "news"; source: string; fingerprint: string; url: string | null; title: string | null; excerpt: string | null; publishedAt?: string | null; sentiment: string; score: number; baseline: boolean }): Promise<boolean> {
+  private async upsertMention(run: any, m: { kind: "serp" | "review" | "news"; source: string; fingerprint: string; url: string | null; title: string | null; excerpt: string | null; publishedAt?: string | null; sentiment: string; score: number; baseline: boolean; critical?: boolean }): Promise<{ inserted: boolean; id: string }> {
     const { rows } = await pool.query(
-      `INSERT INTO erep_mentions (tenant_id, campaign_id, run_id, kind, source, fingerprint, url, title, excerpt, published_at, sentiment, score, baseline)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      `INSERT INTO erep_mentions (tenant_id, campaign_id, run_id, kind, source, fingerprint, url, title, excerpt, published_at, sentiment, score, baseline, severity)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT (campaign_id, fingerprint) DO UPDATE SET last_seen_at = NOW()
-       RETURNING (xmax = 0) AS inserted`,
+       RETURNING id, (xmax = 0) AS inserted`,
       [run.tenant_id, run.campaign_id, run.id, m.kind, m.source, m.fingerprint, m.url, m.title?.slice(0, 400) ?? null, m.excerpt?.slice(0, 1000) ?? null,
-        m.publishedAt ?? null, m.sentiment, m.score, m.baseline]);
-    return !!rows[0]?.inserted;
+        m.publishedAt ?? null, m.sentiment, m.score, m.baseline, m.critical ? "critical" : "normal"]);
+    return { inserted: !!rows[0]?.inserted, id: rows[0].id };
   }
 
   private async storeSerp(run: any, campaign: Campaign, step: WatchStep, results: Array<{ url: string; title?: string; snippet?: string; position: number }>, baseline: boolean) {
@@ -378,7 +383,7 @@ export class WatchService {
       if (previousRun && !seenBefore.has(key)) newItems++;
       const sentiment = sentimentAnalyzer.analyzeText(`${r.title ?? ""} ${r.snippet ?? ""}`);
       await this.upsertMention(run, { kind: "serp", source: step.source, fingerprint: `url:${sha(key)}`, url: r.url, title: r.title ?? null, excerpt: r.snippet ?? null,
-        sentiment: sentiment.sentiment, score: sentiment.score, baseline });
+        sentiment: sentiment.sentiment, score: sentiment.score, baseline, critical: sentiment.critical });
     }
     const currentKeys = new Set(clean.map(r => normalUrl(r.url)));
     // Comparaison limitée à la profondeur lue (un top 50 n'est pas comparé au-delà d'un top 20).
@@ -424,12 +429,12 @@ export class WatchService {
           r.date ? String(r.date).slice(0, 40) : null, text || null, !!r.ownerResponse, sentiment, score]);
       if (!inserted.rows[0]) continue;
       newItems++;
-      await this.upsertMention(run, { kind: "review", source: step.source, fingerprint: `review:${fingerprint}`, url: step.url ?? null,
+      const mention = await this.upsertMention(run, { kind: "review", source: step.source, fingerprint: `review:${fingerprint}`, url: step.url ?? null,
         title: `${SOURCE_LABEL[step.source]} · ${hasRating ? `${rating}/5` : "avis"}${r.author ? ` · ${String(r.author).slice(0, 60)}` : ""}`,
-        excerpt: text || null, sentiment, score, baseline: first });
-      // Les avis comptent dans la composante « mentions » du score.
-      await pool.query(`INSERT INTO erep_sentiment_logs (campaign_id, source_url, text, sentiment, score) VALUES ($1,$2,$3,$4,$5)`,
-        [run.campaign_id, step.url ?? null, (text || `Avis ${rating}/5`).slice(0, 2000), sentiment, score]);
+        excerpt: text || null, sentiment, score, baseline: first, critical: fromText.critical });
+      // Journal de sentiment lié à la mention (les avis ont leur propre composante du score).
+      await pool.query(`INSERT INTO erep_sentiment_logs (campaign_id, source_url, text, sentiment, score, mention_id) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [run.campaign_id, step.url ?? null, (text || `Avis ${rating}/5`).slice(0, 2000), sentiment, score, mention.id]);
     }
     return { items: reviews.length, newItems: first ? 0 : newItems };
   }
@@ -444,11 +449,11 @@ export class WatchService {
       const sentiment = sentimentAnalyzer.analyzeText(`${item.title} ${item.summary}`);
       const inserted = await this.upsertMention(run, { kind: "news", source: step.source, fingerprint: `news:${sha(item.url ? normalUrl(item.url) : normalize(item.title))}`,
         url: item.url, title: item.source ? `${item.title} — ${item.source}`.slice(0, 400) : item.title, excerpt: item.summary || null,
-        publishedAt: item.publishedAt, sentiment: sentiment.sentiment, score: sentiment.score, baseline: first });
-      if (!inserted) continue;
+        publishedAt: item.publishedAt, sentiment: sentiment.sentiment, score: sentiment.score, baseline: first, critical: sentiment.critical });
+      if (!inserted.inserted) continue;
       newItems++;
-      await pool.query(`INSERT INTO erep_sentiment_logs (campaign_id, source_url, text, sentiment, score) VALUES ($1,$2,$3,$4,$5)`,
-        [run.campaign_id, item.url, item.title.slice(0, 2000), sentiment.sentiment, sentiment.score]);
+      await pool.query(`INSERT INTO erep_sentiment_logs (campaign_id, source_url, text, sentiment, score, mention_id) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [run.campaign_id, item.url, item.title.slice(0, 2000), sentiment.sentiment, sentiment.score, inserted.id]);
     }
     return { status: "completed" as const, items: relevant.length, newItems: first ? 0 : newItems, message: null };
   }
@@ -460,11 +465,12 @@ export class WatchService {
     if (filters.kind) { values.push(filters.kind); where.push(`kind = $${values.length}`); }
     values.push(Math.max(1, Math.min(200, filters.limit ?? 100)));
     const { rows } = await pool.query(
-      `SELECT id, kind, source, url, title, excerpt, published_at, sentiment, score::float AS score, status, baseline, first_seen_at, last_seen_at
+      `SELECT id, kind, source, url, title, excerpt, published_at, sentiment, score::float AS score, status, baseline, first_seen_at, last_seen_at, severity, analysis_source, themes
          FROM erep_mentions WHERE ${where.join(" AND ")} ORDER BY first_seen_at DESC, id LIMIT $${values.length}`, values);
     const counts = (await pool.query(
       `SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status = 'new')::int AS "new", COUNT(*) FILTER (WHERE status = 'new' AND NOT baseline)::int AS "newSinceBaseline",
-              COUNT(*) FILTER (WHERE sentiment = 'neg' AND status <> 'ignored')::int AS negative
+              COUNT(*) FILTER (WHERE sentiment = 'neg' AND status <> 'ignored')::int AS negative,
+              COUNT(*) FILTER (WHERE severity = 'critical' AND status <> 'ignored')::int AS critical
          FROM erep_mentions WHERE campaign_id = $1`, [campaignId])).rows[0];
     return { mentions: rows, counts };
   }
@@ -498,7 +504,7 @@ export class WatchService {
     const stats = (await pool.query(
       `SELECT DISTINCT ON (source) source, rating::float AS rating, review_count, captured_at FROM erep_review_stats WHERE campaign_id = $1 ORDER BY source, captured_at DESC`, [campaignId])).rows;
     const reviews = (await pool.query(
-      `SELECT id, source, author, rating::float AS rating, review_date, text, owner_response, sentiment, first_seen_at FROM erep_reviews WHERE campaign_id = $1 ORDER BY first_seen_at DESC LIMIT 100`, [campaignId])).rows;
+      `SELECT id, source, author, rating::float AS rating, review_date, text, owner_response, sentiment, first_seen_at, reply_draft, reply_draft_source FROM erep_reviews WHERE campaign_id = $1 ORDER BY first_seen_at DESC LIMIT 100`, [campaignId])).rows;
     return { stats, reviews };
   }
 

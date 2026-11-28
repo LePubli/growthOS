@@ -8,6 +8,11 @@ import { strategyEngine } from "../../../lib/plugin-ereputation/StrategyEngine";
 import { sentimentAnalyzer } from "../../../lib/plugin-ereputation/SentimentAnalyzer";
 import { logger } from "../../../lib/logger";
 import { watchService, kickErepWatch, WATCH_ENGINES } from "../../../lib/plugin-ereputation/WatchService";
+import { parisDay } from "../../../lib/plugin-ereputation/CampaignService";
+import { explainScore } from "../../../lib/plugin-ereputation/ScoreModel";
+import { alertService, DEFAULT_RULES } from "../../../lib/plugin-ereputation/AlertService";
+import { erepAI } from "../../../lib/plugin-ereputation/ErepAI";
+import { erepDigest, EmailSettingsInput } from "../../../lib/plugin-ereputation/ErepDigest";
 
 /**
  * API e-réputation (montée sur /api/v1/ereputation, authentification + tenant requis).
@@ -336,13 +341,22 @@ router.get("/campaigns/:id/mentions", async (req, res) => {
   catch (error) { fail(res, error, "Lecture des mentions impossible"); }
 });
 
-/* PATCH /ereputation/mentions/:mentionId { status } */
+/* PATCH /ereputation/mentions/:mentionId { status? , sentiment?, critical? } — qualification et correction manuelle du sentiment */
 router.patch("/mentions/:mentionId", async (req, res) => {
-  const parsed = z.object({ status: z.enum(["new", "qualified", "ignored"]) }).strict().safeParse(req.body);
+  const parsed = z.object({ status: z.enum(["new", "qualified", "ignored"]).optional(), sentiment: z.enum(["pos", "neg", "neu"]).optional(), critical: z.boolean().optional() })
+    .strict().refine(v => v.status || v.sentiment, { message: "statut ou sentiment attendu" }).safeParse(req.body);
   if (!parsed.success) { invalid(res, parsed.error); return; }
-  if (!/^[0-9a-f-]{36}$/i.test(String(req.params.mentionId))) { res.status(404).json({ error: "Mention introuvable" }); return; }
-  try { res.json(await watchService.setMentionStatus(String(req.params.mentionId), req.auth!.tenantId, parsed.data.status)); }
-  catch (error) { fail(res, error, "Qualification impossible"); }
+  const mentionId = String(req.params.mentionId);
+  if (!uuidLike(mentionId)) { res.status(404).json({ error: "Mention introuvable" }); return; }
+  try {
+    let result: Record<string, unknown> = {};
+    if (parsed.data.sentiment) {
+      result = await erepAI.correct(mentionId, req.auth!.tenantId, { sentiment: parsed.data.sentiment, critical: parsed.data.critical });
+      await alertService.onMentionCorrected(mentionId).catch(() => undefined);
+    }
+    if (parsed.data.status) result = { ...result, ...(await watchService.setMentionStatus(mentionId, req.auth!.tenantId, parsed.data.status)) };
+    res.json(result);
+  } catch (error) { fail(res, error, "Qualification impossible"); }
 });
 
 /* GET /ereputation/campaigns/:id/watch/serp — dernier relevé par moteur et requête */
@@ -355,6 +369,136 @@ router.get("/campaigns/:id/watch/serp", async (req, res) => {
 router.get("/campaigns/:id/reviews", async (req, res) => {
   try { res.json(await watchService.reviewsOverview(String(req.params.id))); }
   catch (error) { fail(res, error, "Lecture des avis impossible"); }
+});
+
+// ── Lot 3 : score expliqué, alertes, plans de crise, e-mails ─────────────────
+const uuidLike = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+/* GET /ereputation/campaigns/:id/score — score, composantes, facteurs chiffrés, évolution, historique 90 jours */
+router.get("/campaigns/:id/score", async (req, res) => {
+  try {
+    await campaignService.calculateReputationScore(String(req.params.id));
+    res.json(await explainScore(String(req.params.id), parisDay()));
+  } catch (error) { fail(res, error, "Lecture du score impossible"); }
+});
+
+/* GET /ereputation/alerts?open=1&campaignId= */
+router.get("/alerts", async (req, res) => {
+  const parsed = z.object({ open: z.enum(["0", "1"]).optional(), campaignId: z.string().uuid().optional(), limit: z.coerce.number().int().min(1).max(200).optional() }).safeParse(req.query);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try { res.json(await alertService.listAlerts(req.auth!.tenantId, { campaignId: parsed.data.campaignId, open: parsed.data.open === "1", limit: parsed.data.limit })); }
+  catch (error) { fail(res, error, "Lecture des alertes impossible"); }
+});
+
+/* PATCH /ereputation/alerts/:alertId { resolved } */
+router.patch("/alerts/:alertId", async (req, res) => {
+  const parsed = z.object({ resolved: z.boolean() }).strict().safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  if (!uuidLike(String(req.params.alertId))) { res.status(404).json({ error: "Alerte introuvable" }); return; }
+  try { res.json(await alertService.resolveAlert(String(req.params.alertId), req.auth!.tenantId, req.auth!.userId, parsed.data.resolved)); }
+  catch (error) { fail(res, error, "Mise à jour de l'alerte impossible"); }
+});
+
+const rulesSchema = z.object({
+  negativeMention: z.boolean(), criticalMention: z.boolean(), lowReview: z.boolean(), watchBlocked: z.boolean(),
+  ratingDrop: z.number().min(0.1).max(2).nullable(), negativeSerpTop: z.number().int().min(1).max(20).nullable(),
+  scoreLow: z.number().int().min(1).max(99).nullable(), scoreDrop: z.number().int().min(1).max(60).nullable(),
+  crisis: z.object({
+    alertScore: z.number().int().min(1).max(99), crisisScore: z.number().int().min(1).max(99),
+    criticalAlert: z.number().int().min(1).max(20), criticalCrisis: z.number().int().min(1).max(50),
+    negativeVigilance: z.number().int().min(1).max(50), negativeAlert: z.number().int().min(1).max(100),
+  }).partial().strict(),
+}).partial().strict();
+
+/* GET / PUT /ereputation/campaigns/:id/alert-rules */
+router.get("/campaigns/:id/alert-rules", async (req, res) => {
+  try { res.json({ rules: await alertService.getRules(String(req.params.id)), defaults: DEFAULT_RULES }); }
+  catch (error) { fail(res, error, "Lecture des règles impossible"); }
+});
+router.put("/campaigns/:id/alert-rules", async (req, res) => {
+  const parsed = rulesSchema.safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    const rules = await alertService.saveRules(String(req.params.id), req.auth!.tenantId, parsed.data as any, req.auth!.userId);
+    await alertService.evaluateCrisis(String(req.params.id)).catch(() => undefined);
+    res.json({ rules, defaults: DEFAULT_RULES });
+  } catch (error) { fail(res, error, "Enregistrement des règles impossible"); }
+});
+
+/* GET /ereputation/campaigns/:id/crisis — niveau actuel, plan ouvert, plans clôturés */
+router.get("/campaigns/:id/crisis", async (req, res) => {
+  try { res.json(await alertService.crisis(String(req.params.id))); }
+  catch (error) { fail(res, error, "Lecture du plan de crise impossible"); }
+});
+
+/* POST /ereputation/campaigns/:id/crisis/evaluate — réévaluation immédiate des seuils */
+router.post("/campaigns/:id/crisis/evaluate", async (req, res) => {
+  try {
+    await campaignService.calculateReputationScore(String(req.params.id));
+    await alertService.evaluateScore(String(req.params.id));
+    await alertService.evaluateCrisis(String(req.params.id));
+    res.json(await alertService.crisis(String(req.params.id)));
+  } catch (error) { fail(res, error, "Évaluation impossible"); }
+});
+
+/* PATCH /ereputation/crisis/:planId/actions/:actionId { done?, assigneeId? } */
+router.patch("/crisis/:planId/actions/:actionId", async (req, res) => {
+  const parsed = z.object({ done: z.boolean().optional(), assigneeId: z.string().uuid().nullable().optional() }).strict().safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  if (!uuidLike(String(req.params.planId))) { res.status(404).json({ error: "Plan de crise introuvable" }); return; }
+  try { res.json(await alertService.updateAction(String(req.params.planId), req.auth!.tenantId, String(req.params.actionId).slice(0, 40), parsed.data, actorOf(req))); }
+  catch (error) { fail(res, error, "Mise à jour de l'action impossible"); }
+});
+
+/* POST /ereputation/crisis/:planId/close { note } — clôture décidée par l'agence */
+router.post("/crisis/:planId/close", async (req, res) => {
+  const parsed = z.object({ note: z.string().trim().max(1000).default("") }).strict().safeParse(req.body ?? {});
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  if (!uuidLike(String(req.params.planId))) { res.status(404).json({ error: "Plan de crise introuvable" }); return; }
+  try { res.json(await alertService.closePlan(String(req.params.planId), req.auth!.tenantId, parsed.data.note, actorOf(req))); }
+  catch (error) { fail(res, error, "Clôture impossible"); }
+});
+
+/* POST /ereputation/reviews/:reviewId/reply-draft — brouillon à relire, jamais publié automatiquement */
+router.post("/reviews/:reviewId/reply-draft", async (req, res) => {
+  if (!uuidLike(String(req.params.reviewId))) { res.status(404).json({ error: "Avis introuvable" }); return; }
+  try { res.json(await erepAI.replyDraft(String(req.params.reviewId), req.auth!.tenantId)); }
+  catch (error) { fail(res, error, "Brouillon impossible"); }
+});
+
+/* GET / PUT /ereputation/alert-email — réglages des e-mails internes (membres de l'agence uniquement) */
+router.get("/alert-email", async (req, res) => {
+  try { res.json({ settings: await erepDigest.getSettings(req.auth!.tenantId), members: await erepDigest.members(req.auth!.tenantId) }); }
+  catch (error) { fail(res, error, "Lecture des réglages e-mail impossible"); }
+});
+router.put("/alert-email", async (req, res) => {
+  const parsed = EmailSettingsInput.strict().safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    await erepDigest.saveSettings(req.auth!.tenantId, parsed.data, req.auth!.userId);
+    res.json({ settings: await erepDigest.getSettings(req.auth!.tenantId), members: await erepDigest.members(req.auth!.tenantId) });
+  } catch (error) { fail(res, error, "Enregistrement des réglages e-mail impossible"); }
+});
+
+/* GET /ereputation/alert-email/preview?kind=daily|weekly — aperçu HTML du récapitulatif */
+router.get("/alert-email/preview", async (req, res) => {
+  const kind = req.query.kind === "weekly" ? "weekly" : "daily";
+  try { const d = await erepDigest.build(req.auth!.tenantId, kind); res.json({ subject: d.subject, html: d.html, empty: d.empty }); }
+  catch (error) { fail(res, error, "Aperçu impossible"); }
+});
+
+/* POST /ereputation/alert-email/test — envoi de test aux destinataires choisis */
+router.post("/alert-email/test", async (req, res) => {
+  try { res.json(await erepDigest.sendTest(req.auth!.tenantId)); }
+  catch (error) { fail(res, error, "Envoi de test impossible"); }
+});
+
+/* POST /ereputation/alert-email/send-now { kind } — envoi du récapitulatif de la période (une fois au plus), administrateur */
+router.post("/alert-email/send-now", requireRole("admin"), async (req, res) => {
+  const parsed = z.object({ kind: z.enum(["daily", "weekly"]) }).strict().safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try { res.json(await erepDigest.send(req.auth!.tenantId, parsed.data.kind)); }
+  catch (error) { fail(res, error, "Envoi impossible"); }
 });
 
 export default router;
