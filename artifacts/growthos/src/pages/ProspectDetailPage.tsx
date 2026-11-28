@@ -315,7 +315,8 @@ export default function ProspectDetailPage() {
   useEffect(()=>setActive360ViewState(prospectViewFromSearch(search)),[id,search]);
   const setActive360View=(view:'overview'|'relations'|'enrichments')=>{setActive360ViewState(view);const p=new URLSearchParams(search);p.set('view',view);navigate('/prospects/'+id+'?'+p.toString(),{replace:true});};
   const [sourceSavedNotice,setSourceSavedNotice]=useState('');
-  useEffect(()=>{let alive=true;setSourceSavedNotice('');const jobId=new URLSearchParams(search).get('reviewedJob');if(!jobId)return;void apiClient.get<any>('/browser/jobs/'+jobId).then(job=>{if(alive&&job.prospect_id===id&&job.status==='completed'&&job.result?.applied)setSourceSavedNotice('Enregistré depuis '+enrichmentSourceLabel(job.result.captures?.[0]?.source||'la source')+' · '+(job.result.applied.filled?.length||0)+' champ(s) mis à jour.');}).catch(()=>{});return()=>{alive=false;};},[id,search]);
+  const [sourceRefreshWarning,setSourceRefreshWarning]=useState(false);
+  useEffect(()=>{let alive=true;setSourceSavedNotice('');const jobId=new URLSearchParams(search).get('reviewedJob');if(!jobId)return;void apiClient.get<any>('/browser/jobs/'+jobId).then(job=>{if(alive&&job.prospect_id===id&&job.status==='completed'&&job.result?.applied)setSourceSavedNotice('Enregistré depuis '+enrichmentSourceLabel(job.result.captures?.[0]?.source||'la source')+' · '+(job.result.applied.filled?.length||0)+' champ(s) mis à jour.'+(new URLSearchParams(search).has('refreshWarning')?' Le rafraîchissement du bilan est à reprendre.':''));}).catch(()=>{});return()=>{alive=false;};},[id,search]);
   const legacyDetailsRef = useRef<HTMLDetailsElement>(null);
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -370,7 +371,7 @@ export default function ProspectDetailPage() {
     try {
       const data = await apiClient.get('/activities', { params: { prospectId: id, scope: 'history' } }) as any[];
       setActivities(Array.isArray(data) ? data : []);
-    } catch { setActivities([]); }
+    } catch { setActivities([]);if(new URLSearchParams(search).has('reviewedJob'))setSourceRefreshWarning(true); }
   };
 
   const fetchEnrichmentHistory = async () => {
@@ -396,7 +397,7 @@ export default function ProspectDetailPage() {
         if(enrichmentStamp.current&&enrichmentStamp.current!==stamp){void fetchProspect();void fetchActivities();}
         enrichmentStamp.current=stamp;
         if(run?.summary.sourcesDone)setLastEnrichedAt(new Date(run.updated_at));
-      }catch{/* Une panne de suivi n'efface pas le dernier résultat connu. */}finally{pending=false;}
+      }catch{if(alive&&new URLSearchParams(search).has('reviewedJob'))setSourceRefreshWarning(true);}finally{pending=false;}
     };
     enrichmentStamp.current='';setEnrichmentRun(null);void read();
     const timer=window.setInterval(()=>void read(),3500);
@@ -786,7 +787,7 @@ export default function ProspectDetailPage() {
         <button className={active360View==='relations'?'selected':''} aria-current={active360View==='relations'?'page':undefined}
           onClick={()=>setActive360View('relations')}><Network size={17}/> Cartographie</button>
       </nav>
-      {active360View==='enrichments'&&<ProspectEnrichmentsTab initialNotice={sourceSavedNotice} prospectId={id} run={enrichmentRun} busy={saving||enriching||editing||returnProcessing} onEnrich={()=>void handleEnrich()} onOpenSources={()=>openDetailedSection('atlas-prospect-sources')} observations={sourceHistory} activities={activities} sourceDetails={prospect.sourceDetails} onReviewed={async()=>{await Promise.all([fetchProspect(),fetchActivities()]);const run=await apiClient.get<EnrichmentRun|null>('/prospects/'+id+'/enrichment');setEnrichmentRun(run);}}/>}
+      {active360View==='enrichments'&&<ProspectEnrichmentsTab initialNotice={[sourceSavedNotice,sourceRefreshWarning?'Certaines données de suivi ne peuvent pas être actualisées. Rechargez la fiche pour les consulter.':''].filter(Boolean).join(' ')} prospectId={id} run={enrichmentRun} busy={saving||enriching||editing||returnProcessing} onEnrich={()=>void handleEnrich()} onOpenSources={()=>openDetailedSection('atlas-prospect-sources')} observations={sourceHistory} activities={activities} sourceDetails={prospect.sourceDetails} onReviewed={async()=>{await Promise.all([fetchProspect(),fetchActivities()]);const run=await apiClient.get<EnrichmentRun|null>('/prospects/'+id+'/enrichment');setEnrichmentRun(run);}}/>}
       {active360View==='relations' && <div className="atlas-relationship-view">
         <ProspectRelationshipMap siren={prospect.siren} siret={prospect.siret} company={prospect.company} website={prospect.website} sourceDetails={prospect.sourceDetails}/>
         {!collectedRelationships(prospect)?.source.includes('societe.com/')&&<ProspectPappersDossier siren={prospect.siren} siret={prospect.siret}/>}

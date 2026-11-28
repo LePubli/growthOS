@@ -65,6 +65,7 @@ function CloudBrowserWorkspace() {
   const latestVerification=useRef(verificationJobId);latestVerification.current=verificationJobId;
   const initialContextLoaded=useRef(false),openedSource=useRef(''),openedComparison=useRef(''),returned=useRef(false);
   const [expandedBrowser, setExpandedBrowser] = useState(false);
+  const [sourceZoom,setSourceZoom]=useState(()=>window.matchMedia('(max-width:720px)').matches?1:0);
   const [resultsShare, setResultsShare] = useState(28);
   const [chosen, setChosen] = useState<Record<string, boolean>>({});
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -152,12 +153,11 @@ function CloudBrowserWorkspace() {
   const sourceProfiles = profiles.filter(p => p.source === source);
   const verificationJob=prospectId?jobs.find(job=>job.id===verificationJobId&&job.mode==='enrich'&&job.prospect_id===prospectId):undefined;
   const profileBusy=jobs.some(job=>job.profile_id===selected&&['queued','running'].includes(job.status));
-  async function finishVerification(result:{prospectId:string;jobId:string}){
-    const savedJob=await api.get<Job>('/browser/jobs/'+result.jobId);
-    if(savedJob.mode!=='enrich'||savedJob.prospect_id!==result.prospectId||savedJob.status!=='completed'||!savedJob.result?.applied)throw Error('La sauvegarde ne correspond pas à la tâche vérifiée.');
+  async function finishVerification(result:{prospectId:string;jobId:string;refreshWarning?:boolean}){
+    const target=jobs.find(job=>job.id===result.jobId);
+    if(target?.mode!=='enrich'||target.prospect_id!==result.prospectId)throw Error('La sauvegarde ne correspond pas à la tâche vérifiée.');
     returned.current=true;
-    await Promise.all([api.get('/prospects/'+result.prospectId),api.get('/activities',{params:{prospectId:result.prospectId}}),api.get('/prospects/'+result.prospectId+'/enrichment')]);
-    navigate(prospectReviewReturnUrl(result.prospectId,result.jobId),{replace:true});
+    navigate(prospectReviewReturnUrl(result.prospectId,result.jobId)+(result.refreshWarning?'&refreshWarning=1':''),{replace:true});
   }
   useEffect(()=>{
     if(!verificationJob||initialContextLoaded.current)return;
@@ -168,7 +168,7 @@ function CloudBrowserWorkspace() {
     if(!verificationJob||!initialContextLoaded.current)return;
     if(verificationJob.status==='completed'&&verificationJob.result?.applied){
       if(returned.current)return;returned.current=true;
-      void api.post<any>('/browser/jobs/'+verificationJob.id+'/finish-review',{}).then(finishVerification).catch(e=>{setError(e.message);});return;
+      setReviewJob(verificationJob.id);return;
     }
     if(['needs_review','awaiting_user'].includes(verificationJob.status)&&verificationJob.result?.captures?.length){
       const key=verificationJob.id+JSON.stringify(verificationJob.result.captures);
@@ -325,7 +325,7 @@ function CloudBrowserWorkspace() {
       </div>
       {(job.error || job.result?.message) && <p className="cloud-browser-job-message">{job.error || job.result.message}</p>}
       {job.result?.applied && <p className="cloud-browser-job-message">{job.result.applied.filled.length} champ(s) mis à jour · {job.result.applied.conflicts} désaccord(s)</p>}
-      {reviewJob===job.id&&<CloudCaptureReview jobId={job.id} onClose={()=>setReviewJob(null)} onSaved={async(result)=>{await refresh();await finishVerification(result);}}/>}
+      {reviewJob===job.id&&<CloudCaptureReview jobId={job.id} onClose={()=>setReviewJob(null)} onSaved={finishVerification}/>}
       <div className="cloud-browser-job-actions">
         {job.mode === 'discover' && <button type="button" onClick={() => selectJob(job)}>Voir les résultats <ArrowRight size={13}/></button>}
         {!prospectId&&<button type="button" onClick={() => {
@@ -437,7 +437,7 @@ function CloudBrowserWorkspace() {
       {(profile?.source || source) === 'societe_com' && !prospectId && <p className="cloud-browser-command-footnote">Pour Societe.com, ouvrez « Enrichir » depuis la fiche d'un prospect identifié.</p>}
     </section>
 
-    <div ref={workspaceRef} className={'cloud-browser-workspace' + (expandedBrowser ? ' is-expanded' : '')}
+    <div ref={workspaceRef} className={'cloud-browser-workspace' + (prospectId?' has-verification':'') + (expandedBrowser ? ' is-expanded' : '')}
       style={{ '--cb-results-share': `${resultsShare}%` } as CSSProperties}>
       <section className="cloud-browser-view-panel" aria-label="Vue du navigateur cloud">
         <div className="cloud-browser-panel-toolbar">
@@ -470,6 +470,14 @@ function CloudBrowserWorkspace() {
               }}><LogOut size={16}/></button>
           </div>}
         </div>
+        {!native&&view&&<div className="cloud-browser-view-tools" role="group" aria-label="Lisibilité de la source">
+          <button type="button" onClick={()=>setSourceZoom(0)} aria-pressed={sourceZoom===0}>Ajuster</button>
+          <button type="button" onClick={()=>setSourceZoom(1)} aria-pressed={sourceZoom===1}>Taille réelle</button>
+          <button type="button" disabled={sourceZoom>=2} onClick={()=>setSourceZoom(z=>z?Math.min(2,z+.5):1)}>Agrandir le texte</button>
+          <button type="button" disabled={profileBusy} onClick={()=>action({type:'scroll',deltaY:-550})}>Source : haut</button>
+          <button type="button" disabled={profileBusy} onClick={()=>action({type:'scroll',deltaY:550})}>Source : bas</button>
+          <small>{sourceZoom?'Déplacez la vue au doigt ou avec les barres de défilement. Touchez un lien pour l’ouvrir.':'Vue entière. Utilisez Taille réelle pour lire le texte.'}</small>
+        </div>}
         {native?<div className="p-5 space-y-4 overflow-auto">
           <h2 className="font-semibold">Annuaire des Entreprises · données officielles publiques</h2>
           <p>Recherchez par activité, nom, SIREN ou SIRET. Les résultats sont sélectionnables et importés dans le même espace que les autres sources.</p>
@@ -479,7 +487,7 @@ function CloudBrowserWorkspace() {
           <p className="text-sm">Pagination automatique jusqu’à la fin des résultats accessibles ; aucun quota total de fiches dans GrowthOS.</p>
           <small>L’Annuaire réunit notamment les données du répertoire INSEE. Aucune extension ni connexion à un navigateur n’est nécessaire.</small>
         </div>:view ? <div tabIndex={0} aria-label="Navigateur distant interactif"
-          className="cloud-browser-remote" onKeyDown={e => {
+          className={'cloud-browser-remote'+(sourceZoom?' is-zoomed':'')} onKeyDown={e => {
             if (e.altKey && e.key === 'Escape') { e.currentTarget.blur(); return; }
             if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
             const key = e.ctrlKey && e.key.toLowerCase() === 'a' ? 'Control+A' : e.key;
@@ -489,13 +497,13 @@ function CloudBrowserWorkspace() {
               e.preventDefault(); action({ type: 'text', text: e.key });
             }
           }} onPaste={e => { e.preventDefault(); action({ type: 'text', text: e.clipboardData.getData('text').slice(0, 2000) }); }}
-          onWheel={e => { action({ type: 'scroll', deltaY: Math.max(-1500, Math.min(1500, e.deltaY)) }); }}>
-          <img src={view.image} alt={view.title || 'Page de la source'} draggable={false}
+          onWheel={e => { if(sourceZoom)return;action({ type: 'scroll', deltaY: Math.max(-1500, Math.min(1500, e.deltaY)) }); }}>
+          <img style={sourceZoom?{width:(view.width||1280)*sourceZoom,maxWidth:'none',maxHeight:'none',flexShrink:0}:undefined} src={view.image} alt={view.title || 'Page de la source'} draggable={false}
             onClick={e => {
               e.currentTarget.parentElement?.focus();
               const box = e.currentTarget.getBoundingClientRect();
-              action({ type: 'click', x: Math.min(1279, Math.floor((e.clientX - box.left) / box.width * 1280)),
-                y: Math.min(799, Math.floor((e.clientY - box.top) / box.height * 800)) });
+              action({ type: 'click', x: Math.min((view.width||1280)-1, Math.floor((e.clientX - box.left) / box.width * (view.width||1280))),
+                y: Math.min((view.height||800)-1, Math.floor((e.clientY - box.top) / box.height * (view.height||800))) });
             }}/>
         </div> : <div className="cloud-browser-empty-view">
           <span><Globe2 size={36}/></span>
@@ -528,7 +536,7 @@ function CloudBrowserWorkspace() {
           }
         }}><span aria-hidden="true"/></div>}
 
-      {prospectId?<section id="cloud-browser-results" className="cloud-browser-results p-4 space-y-3" aria-label="Vérification de ce prospect">
+      {prospectId?<section id="cloud-browser-results" className="cloud-browser-results cloud-browser-verification p-4 space-y-3" aria-label="Vérification de ce prospect">
         <h2 className="font-semibold">Vérification de {prospect?.company||'ce prospect'}</h2>
         <p>L’enrichissement automatique se lance et se suit depuis la fiche. Cet espace sert à consulter une source lorsqu’une intervention est nécessaire.</p>
         <Link className="cloud-browser-primary" to={prospectReviewReturnUrl(prospectId!)}>Retour à la fiche prospect</Link>

@@ -153,6 +153,15 @@ async function runEnrichmentMaintenance(id,count=25){
   });
 }
 
+async function enrichmentReadFailure(install){
+  const command=install?'ALTER TABLE prospect_enrichment_jobs RENAME TO growthos_test_unavailable_enrichment':'ALTER TABLE growthos_test_unavailable_enrichment RENAME TO prospect_enrichment_jobs';
+  const code=`import {pool} from '@workspace/db';await pool.query(process.argv[1]);await pool.end();`;
+  await new Promise((resolve,reject)=>{
+    const child=spawn('node',['--import','tsx','--input-type=module','-e',code,command],{cwd:join(root,'artifacts/api-server'),env:testEnv,stdio:['ignore','pipe','pipe']});
+    let errors='';child.stderr.on('data',chunk=>errors+=String(chunk));child.on('error',reject);child.on('exit',status=>status===0?resolve():reject(Error('Recette indisponibilité bilan : '+errors.slice(-1000))));
+  });
+}
+
 async function cloudReceiptFailure(action){
   const code=`import {pool} from '@workspace/db';
     if(process.argv[1]==='install')await pool.query(\`CREATE FUNCTION growthos_test_receipt_failure() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -1788,6 +1797,14 @@ try {
     check(wrongSource.status===409,'Chrome local : capture d’une autre source refusée');
     const finishBefore=await request('POST',manualPath+'/finish-review',{},token);
     check(finishBefore.status===200&&finishBefore.body.prospectId===manualTarget.body.id&&finishBefore.body.url.includes('view=enrichments')&&finishBefore.body.url.includes(staged.body.job.id),'Parcours source : retour interne au bon prospect et onglet après enregistrement réel');
+    await enrichmentReadFailure(true);
+    try{
+      const finishWithoutSummary=await request('POST',manualPath+'/finish-review',{},token);
+      check(finishWithoutSummary.status===200&&finishWithoutSummary.body.prospectId===manualTarget.body.id,'Retour sauvegardé : une panne du bilan secondaire ne bloque pas la navigation');
+      let refreshLogs;
+      for(let n=0;n<20;n++){refreshLogs=await request('GET','/diagnostics/events?search=ENRICHMENT_REFRESH_FAILED',undefined,token);if(refreshLogs.body.events?.some(e=>e.job_id===staged.body.job.id))break;await new Promise(r=>setTimeout(r,20));}
+      check(refreshLogs.body.events?.some(e=>e.job_id===staged.body.job.id&&e.prospect_id===manualTarget.body.id),'Retour sauvegardé : panne du bilan tracée sans perdre la preuve CRM');
+    }finally{await enrichmentReadFailure(false);}
     check((await request('POST',reviewPath+'/finish-review',{},token)).status===409,'Parcours source : aucune redirection de succès avant sauvegarde');
     check((await request('POST',manualPath+'/finish-review',{},foreignToken)).status===404&&(await request('POST',manualPath+'/finish-review',{},colleague)).status===404,'Parcours source : retour isolé par agence et utilisateur');
     const investigationTarget=await request('POST','/prospects',{company:'Hydreo',city:'Lille',phone:'03 20 11 22 33',website:'https://hydreo-site.fr/mentions-legales'},token);
