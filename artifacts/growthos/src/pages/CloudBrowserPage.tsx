@@ -110,6 +110,7 @@ function CloudBrowserWorkspace() {
   }, [profiles, source, selected]);
   useEffect(() => {
     if (prospectId) void api.get<any>('/prospects/' + prospectId).then(p => {
+      if(p.mergedFromId&&p.id!==prospectId){const next=new URLSearchParams(params);next.set('prospectId',p.id);navigate('/navigateur?'+next.toString(),{replace:true});return;}
       setProspect(p);
       if(!latestVerification.current)setQuery(['societe_com','pappers','bodacc'].includes(params.get('source') || 'societe_com')
         ? (p.siret || p.siren || p.company || '') : (p.company || ''));

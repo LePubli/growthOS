@@ -6,6 +6,8 @@ import {
   FileClock,Info,Layers3,Loader2,RotateCw,ShieldAlert,Sparkles,TriangleAlert,
 } from 'lucide-react';
 import type {EnrichmentRun} from './ProspectEnrichmentStatus';
+const ProspectMergeReview=lazy(()=>import('./ProspectMergeReview').then(m=>({default:m.ProspectMergeReview})));
+const ProspectMergeHistory=lazy(()=>import('./ProspectMergeReview').then(m=>({default:m.ProspectMergeHistory})));
 import {ProspectPublicRecords} from './ProspectPublicRecords';
 import {SourceLogo} from './atlas/ProspectLogos';
 import '../prospect-enrichments.css';
@@ -55,6 +57,7 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
   observations:Observation[];activities:any[];sourceDetails?:Record<string,any>;onReviewed?:()=>Promise<void>;
 }){
   const [savedNotice,setSavedNotice]=useState('');
+  const [mergeId,setMergeId]=useState<string|null>(null);
   const [reviewJob,setReviewJob]=useState<{id:string;source:string;step:SourceStep}|null>(null);
   const openReview=(source:string,step:SourceStep)=>{setSavedNotice('');setReviewJob({id:step.jobId!,source,step});window.setTimeout(()=>document.getElementById('prospect-source-review')?.scrollIntoView({behavior:'smooth',block:'start'}),0);};
   const [filter,setFilter]=useState<Filter>('all');
@@ -93,7 +96,10 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
           'Aucune collecte multisource enregistrée pour ce prospect.'}</p></div>
       {run&&<button type="button" className="atlas-enrichments-banner-action" onClick={onOpenSources}>Voir les données détaillées <ArrowRight size={14}/></button>}
     </div>
+    {!!sourceDetails?.mergeHistory?.length&&<Suspense fallback={<p>Lecture des archives de fusion…</p>}><ProspectMergeHistory prospectId={prospectId}/></Suspense>}
     {(savedNotice||initialNotice)&&<p role="status" className="atlas-enrichments-banner is-success">{savedNotice||initialNotice}</p>}
+    {run&&Object.entries(run.steps).filter(([,step])=>!!step.duplicateId).map(([source,step])=><div key={'duplicate-'+source} role="status"><p>{step.message}</p><button type="button" className="atlas-enrichments-primary" onClick={()=>setMergeId(step.duplicateId!)}>Comparer le doublon CRM</button></div>)}
+    {run&&mergeId&&<Suspense fallback={<p>Lecture des dossiers…</p>}><ProspectMergeReview prospectId={prospectId} otherId={mergeId} runId={run.id} onClose={()=>setMergeId(null)}/></Suspense>}
     {reviewJob&&<div id="prospect-source-review"><Suspense fallback={<p>Chargement de la comparaison…</p>}><CloudCaptureReview key={reviewJob.id} jobId={reviewJob.id} fallbackUrl={jobUrl(reviewJob.source,reviewJob.step,prospectId)} onClose={()=>setReviewJob(null)} onSaved={async()=>{setSavedNotice('Informations enregistrées. La fiche prospect a été mise à jour.');try{await onReviewed?.();}catch{setSavedNotice('Informations enregistrées. Le bilan ne peut pas encore être actualisé ; rechargez la fiche pour le consulter.');}}}/></Suspense>
       <Link className="atlas-enrichments-priority-link" to={jobUrl(reviewJob.source,reviewJob.step,prospectId)}>Ouvrir la source si la fiche n’a pas encore pu être lue <ExternalLink size={14}/></Link></div>}
     <div className="atlas-enrichments-metrics" aria-label="Synthèse des sources">

@@ -11,7 +11,7 @@ export async function publicSiteHtml(url:URL,host:string,redirects=0,dependencie
   const result=await new Promise<{status:number;location?:string;html:string}>((resolve,reject)=>{
     const req=(url.protocol==='https:'?dependencies.httpsRequest:dependencies.httpRequest)(url,{method:'GET',family:4,timeout:6000,lookup:(_h,_o,cb)=>cb(null,ips[0],4),headers:{'User-Agent':'GrowthOS-ProspectEnrichment/1.0',Accept:'text/html'}},res=>{
       if([301,302,303,307,308].includes(res.statusCode||0)){res.resume();resolve({status:res.statusCode!,location:res.headers.location,html:''});return;}
-      if(res.statusCode!==200||!String(res.headers['content-type']).includes('text/html')){res.resume();reject(Error('Site non lisible (HTTP '+res.statusCode+').'));return;}
+      if(res.statusCode!==200||!String(res.headers['content-type']).includes('text/html')){res.resume();reject(Object.assign(Error('Site non lisible (HTTP '+res.statusCode+').'),{status:res.statusCode,code:'WEBSITE_HTTP_STATUS'}));return;}
       const chunks:Buffer[]=[];let bytes=0;res.on('data',(b:Buffer)=>{bytes+=b.length;if(bytes>550000){req.destroy(Error('Page trop volumineuse.'));return;}chunks.push(b);});res.on('error',reject);res.on('end',()=>resolve({status:200,html:Buffer.concat(chunks).toString('utf8')}));
     });req.on('timeout',()=>req.destroy(Error('Site trop lent.')));req.on('error',reject);req.end();
   });
@@ -65,7 +65,7 @@ export async function mailDomainCheck(domain:string,resolver:Pick<Resolver,'reso
 export async function collectSite(raw:string,options:{load?:(url:URL)=>Promise<{url:string;html:string}>;mail?:(domain:string)=>Promise<MailDomainCheck>}={}){
   const initial=siteUrl(raw),host=siteHost(initial),root=siteUrl(new URL('/',initial).href),load=options.load||((url:URL)=>publicSiteHtml(url,host));
   const key=(u:URL)=>u.origin+(u.pathname.replace(/\/$/,'')||'/')+u.search;
-  const pending=[root,...(key(initial)!==key(root)?[initial]:[])],seen=new Set<string>(),pages:any[]=[],attempts:{url:string;status:string;reason?:string}[]=[],deadline=Date.now()+45000;
+  const pending=[root,...(key(initial)!==key(root)?[initial]:[])],seen=new Set<string>(),pages:any[]=[],attempts:{url:string;status:string;reason?:string;errorCode?:string;httpStatus?:number}[]=[],deadline=Date.now()+45000;
   while(pending.length&&pages.length<8&&seen.size<12&&Date.now()<deadline){
     const target=pending.shift()!;if(seen.has(key(target)))continue;seen.add(key(target));
     try{
@@ -79,9 +79,9 @@ export async function collectSite(raw:string,options:{load?:(url:URL)=>Promise<{
       if(key(target)===key(root))for(const path of ['/contact','/mentions-legales']){
         const u=siteUrl(new URL(path,root).href);if(!seen.has(key(u))&&!pending.some(p=>key(p)===key(u)))pending.push(u);
       }
-    }catch(error){attempts.push({url:target.href,status:'failed',reason:error instanceof Error?error.message:'Lecture impossible.'});}
+    }catch(error){attempts.push({url:target.href,status:'failed',reason:error instanceof Error?error.message:'Lecture impossible.',...((error as any)?.code?{errorCode:String((error as any).code).slice(0,50)}:{}),...(typeof (error as any)?.status==='number'?{httpStatus:(error as any).status}:{})});}
   }
-  if(!pages.length)throw Error('Aucune page publique du site n’a pu être lue.');
+  if(!pages.length)throw Object.assign(Error('Aucune page publique du site n’a pu être lue.'),{code:'WEBSITE_READ_FAILED',readAttempts:attempts.map(({errorCode,httpStatus})=>({errorCode:errorCode||'READ_ERROR',httpStatus:httpStatus||null}))});
   const emails=[...new Map(pages.flatMap(p=>p.read.emails.map((email:string)=>[email,{email,sourceUrl:p.url,origin:'published'}]))).values()] as {email:string;sourceUrl:string;origin:string;check?:MailDomainCheck}[];
   const cache=new Map<string,MailDomainCheck>(),mail=options.mail||mailDomainCheck;
   await Promise.all([...new Set([host,...emails.map(e=>e.email.split('@')[1])])].slice(0,6).map(async domain=>{try{cache.set(domain,await mail(domain));}catch{cache.set(domain,{status:'unknown',detail:'Contrôle DNS indisponible, boîte non confirmée.'});}}));

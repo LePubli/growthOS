@@ -81,6 +81,8 @@ export function errorDiagnosticDetails(error: unknown): Record<string, unknown> 
     }
   }
   return {
+    ...((err as any)?.readAttempts?{readAttempts:(err as any).readAttempts}:{}),
+    ...((err as any)?.workerCode?{workerCode:(err as any).workerCode}:{}),
     errorType: err?.name || 'UnknownError',
     errorCode: databaseCode || (typeof err?.code==='string'&&/^[A-Z0-9_]{2,40}$/.test(err.code)?err.code:null),
     databaseCode,databaseConstraint,

@@ -1,8 +1,16 @@
 /** Source-specific technical explanations; hypotheses are explicitly labeled. */
-export function diagnoseSourceIssue(input: { source?: string | null; status?: string; httpStatus?: number | null; reason?: string | null }) {
+export function diagnoseSourceIssue(input: { source?: string | null; status?: string; httpStatus?: number | null; reason?: string | null; databaseCode?:string|null;databaseConstraint?:string|null }) {
   const reason = (input.reason || '').toLowerCase();
   const status = input.httpStatus;
   const source = input.source || 'source';
+  if(input.databaseCode==='23505'&&['idx_prospects_tenant_siret','idx_prospects_tenant_siren'].includes(input.databaseConstraint||'')||/siret.*déjà (?:utilisé|présent)|identifiant.*déjà.*(?:fiche|utilisé)/i.test(reason))
+    return {causeCode:'CRM_IDENTITY_DUPLICATE',certainty:'observed',cause:'Un identifiant légal est déjà utilisé par une autre fiche CRM de cette agence.',action:'Comparer la fiche existante et le prospect, puis confirmer une fusion contrôlée si les deux dossiers concernent le même établissement.'};
+  if(input.databaseCode)return {causeCode:'CRM_DATABASE_ERROR',certainty:'observed',cause:'Une opération de base de données a échoué ; la source externe n’est pas démontrée indisponible.',action:'Consulter le code SQLSTATE et la trace API avant de reprendre l’enregistrement.'};
+  if(status===423||/collecte est en cours|navigateur occupé|profil occupé/i.test(reason))return {causeCode:'BROWSER_BUSY',certainty:'observed',cause:'Une collecte utilise déjà ce profil de navigation.',action:'Attendre la fin de la collecte dans ce profil, puis reprendre l’action sans changer de prospect.'};
+  if(/aucune page publique.*pu être lue/i.test(reason))return {causeCode:'WEBSITE_READ_FAILED',certainty:'observed',cause:'Aucune page du site renseigné n’a pu être lue ; le motif précis figure dans les tentatives de lecture.',action:'Consulter les codes réseau et HTTP des tentatives, puis vérifier l’adresse du site et son accessibilité.'};
+  if(/page trop volumineuse/i.test(reason))return {causeCode:'SOURCE_PAGE_TOO_LARGE',certainty:'observed',cause:'La page dépasse la taille maximale acceptée par le lecteur.',action:'Vérifier la taille et la structure de la page ; adapter le lecteur si le contenu utile est public et accessible.'};
+  if(/moteur de navigation a échoué sans cause/i.test(reason))return {causeCode:'SOURCE_WORKER_FAILURE',certainty:'unknown',cause:'Le moteur de navigation a échoué sans transmettre de cause plus précise.',action:'Recouper la trace API avec le journal du conteneur navigateur avant de relancer.'};
+  if(/session ou l.onglet.*fermé/i.test(reason))return {causeCode:'BROWSER_SESSION_CLOSED',certainty:'observed',cause:'La session ou l’onglet utilisé pour lire la source a été fermé.',action:'Rouvrir le profil ciblé puis reprendre la lecture ; la capture déjà conservée reste disponible.'};
   if (status === 429 || /too many requests|rate.limit|quota|limite de (débit|requêtes)/i.test(reason))
     return { causeCode: 'SOURCE_RATE_LIMIT', certainty: 'observed', cause: `La source ${source} limite actuellement les requêtes.`, action: 'Attendre la période de réinitialisation, diminuer la fréquence et relancer seulement les fiches nécessaires.' };
   if (/cloudflare|captcha|challenge|vérification humaine|contrôle de sécurité/i.test(reason))
@@ -11,7 +19,7 @@ export function diagnoseSourceIssue(input: { source?: string | null; status?: st
     return { causeCode: 'SOURCE_ACCESS_DENIED', certainty: 'likely', cause: `La source ${source} a refusé l'accès à cette opération.`, action: 'Vérifier les droits de la session, la configuration de la connexion et la disponibilité de la page publique ; ne pas contourner les protections.' };
   if (status === 408 || status === 504 || /timeout|timed out|aborted|délai|trop lent/i.test(reason))
     return { causeCode: 'SOURCE_TIMEOUT', certainty: 'likely', cause: `La source ${source} n'a pas répondu dans le délai prévu.`, action: 'Contrôler les temps de réponse et la connectivité, puis relancer après un délai.' };
-  if (/fetch failed|enotfound|econnrefused|eai_again|dns|network error|réseau indisponible/i.test(reason))
+  if (/fetch failed|enotfound|econnrefused|eai_again|dns|network error|erreur réseau|réseau indisponible/i.test(reason))
     return { causeCode: 'SOURCE_NETWORK', certainty: 'likely', cause: `La connexion réseau vers ${source} ou le navigateur cloud a échoué.`, action: 'Vérifier le réseau du serveur, la résolution DNS, la disponibilité du conteneur et la configuration CLOUD_BROWSER_URL.' };
   if (/réponse navigateur invalide|invalid.*response|invalid json|contenu inattendu/i.test(reason))
     return { causeCode: 'SOURCE_INVALID_RESPONSE', certainty: 'observed', cause: `La réponse de ${source} ne correspond pas au format attendu par le collecteur.`, action: 'Examiner la version du collecteur et le format public de la page source ; corriger le lecteur avant de reprendre.' };

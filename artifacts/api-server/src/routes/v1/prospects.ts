@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
-import { db } from "@workspace/db";
+import { db,pool } from "@workspace/db";
+import {mergeFields,previewProspectMerge,mergeProspects,ProspectMergeError,siretDuplicate,mergeArchiveProfile} from "../../services/prospect-merges";
+import {isProspectIdentityDuplicate} from "../../lib/prospect-identity";
+import {recordDiagnosticEvent,errorDiagnosticDetails} from "../../lib/diagnostics";
 import { prospectsTable } from "@workspace/db";
 import { eq, and, or, ilike, asc, desc, count, isNull, isNotNull, inArray, sql } from "drizzle-orm";
 
@@ -8,6 +11,7 @@ import { actionLogger } from "../../lib/ActionLogger";
 
 const router = Router();
 router.use(actionLogger);
+router.use('/:id',(req,res,next)=>{if(z.string().uuid().safeParse(req.params.id).success)res.locals.prospectId=req.params.id;next();});
 
 /* ─── Geocoding via Nominatim (OpenStreetMap — free, no key) ─── */
 
@@ -186,12 +190,33 @@ router.get("/map", async (req, res) => {
   res.json({ data: withCoords, total: withCoords.length, hasGeo: withCoords.length > 0 });
 });
 
+const mergeContextSchema=z.object({otherId:z.string().uuid(),jobId:z.string().uuid().optional(),runId:z.string().uuid().optional(),captureIndex:z.number().int().min(0).max(100).default(0)}).strict();
+router.post('/:id/merge-preview',async(req,res)=>{
+ const id=z.string().uuid().parse(req.params.id),data=mergeContextSchema.parse(req.body);
+ res.json(await previewProspectMerge(req.auth!.tenantId,req.auth!.userId,id,data));
+});
+router.post('/:id/merge',async(req,res)=>{
+ const id=z.string().uuid().parse(req.params.id),data=mergeContextSchema.extend({mergeKey:z.string().uuid(),proofDigest:z.string().regex(/^[a-f0-9]{64}$/),survivorId:z.string().uuid(),confirmed:z.literal(true),expectedVersions:z.record(z.string().uuid(),z.string().datetime()),replaceFields:z.array(z.enum(mergeFields)).max(mergeFields.length).default([])}).parse(req.body);
+ const result=await mergeProspects(req.auth!.tenantId,req.auth!.userId,id,data);
+ void recordDiagnosticEvent({tenantId:req.auth!.tenantId,userId:req.auth!.userId,traceId:req.traceId,level:'info',component:'crm-merge',code:result.alreadyMerged?'PROSPECT_MERGE_REPLAYED':'PROSPECTS_MERGED',message:'Fusion contrôlée de deux fiches prospect enregistrée',prospectId:result.prospectId,jobId:data.jobId,details:{mergeId:result.mergeId,alreadyMerged:result.alreadyMerged}});
+ res.json(result);
+});
+router.get('/:id/merges',async(req,res)=>{
+ const id=z.string().uuid().parse(req.params.id);
+ const rows=await pool.query('SELECT id,removed_id,created_at,archive FROM prospect_merge_receipts WHERE tenant_id=$1 AND survivor_id=$2 ORDER BY created_at DESC',[req.auth!.tenantId,id]);
+ res.json(rows.rows.map(r=>({id:r.id,fromId:r.removed_id,createdAt:r.created_at,profiles:r.archive.prospects.map(mergeArchiveProfile),archivedMonitoring:r.archive.monitoring.length,archivedEnrichments:r.archive.enrichmentData.length})));
+});
+
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   const [prospect] = await db.select().from(prospectsTable)
     .where(and(eq(prospectsTable.id, id), eq(prospectsTable.tenantId, req.auth!.tenantId)))
     .limit(1);
-  if (!prospect) { res.status(404).json({ error: "Prospect introuvable" }); return; }
+  if (!prospect) {
+    const merged=(await pool.query('SELECT survivor_id FROM prospect_merge_receipts WHERE tenant_id=$1 AND removed_id=$2',[req.auth!.tenantId,id])).rows[0];
+    if(merged?.survivor_id){const [canonical]=await db.select().from(prospectsTable).where(and(eq(prospectsTable.id,merged.survivor_id),eq(prospectsTable.tenantId,req.auth!.tenantId)));if(canonical){res.json({...await withIdentityConflicts(canonical),mergedFromId:id});return;}}
+    res.status(404).json({ error: "Prospect introuvable" }); return;
+  }
   res.json(await withIdentityConflicts(prospect));
 });
 
@@ -434,4 +459,16 @@ router.delete("/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+router.use(async(error:any,req:any,res:any,next:any)=>{
+ if(error instanceof z.ZodError){res.status(400).json({error:'Paramètres de fusion invalides.',message:'Paramètres de fusion invalides.'});return;}
+ if(error instanceof ProspectMergeError||isProspectIdentityDuplicate(error)){
+  const duplicate=isProspectIdentityDuplicate(error);
+  const other=duplicate&&res.locals.prospectId?await siretDuplicate(req.auth.tenantId,res.locals.prospectId,req.body?.siret):null;
+  const code=duplicate?'CRM_IDENTITY_DUPLICATE':error.status===423?'CRM_MERGE_BUSY':'CRM_MERGE_CONFLICT';
+  void recordDiagnosticEvent({tenantId:req.auth?.tenantId,userId:req.auth?.userId,traceId:req.traceId,level:'warn',component:'crm-merge',code,message:'Opération CRM suspendue pour vérification',prospectId:res.locals.prospectId,details:{...errorDiagnosticDetails(error),causeCode:code}});
+  const message=duplicate?'Ce SIRET figure déjà sur une autre fiche de cette agence. Comparez les fiches avant de fusionner.':error.message;
+  res.status(duplicate?409:error.status).json({error:message,message,code,duplicate:other,traceId:req.traceId});return;
+ }
+ next(error);
+});
 export default router;

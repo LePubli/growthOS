@@ -101,6 +101,8 @@ export function collectProspectPeople(prospect: ProspectPeopleInput, officialMan
       phone:null,email:null,profileUrl:null,source:'annuaire',isManager:true});
   }
 
+  const merged=prospect.sourceDetails?.mergedPeople;
+  if(Array.isArray(merged))for(const raw of merged){const p=plainRecord(raw),name=nonEmpty(p?.name);if(name&&['societe_com','pappers','annuaire','crm','website'].includes(String(p?.source)))add({...p,name,profileUrl:publicHttpUrl(p?.profileUrl),id:'merged:'+normalize(name)} as ProspectPerson);}
   const stored=prospect.sourceDetails?.contactPoints;
   if(Array.isArray(stored))for(const raw of stored){const point=plainRecord(raw),name=nonEmpty(point?.personName);const i=name?byName.get(normalize(name)):undefined;if(i===undefined)continue;const old=all[i],value=nonEmpty(point?.value);if(!value)continue;if(point?.type==='email')old.emails=[...new Set([...(old.emails||[]),value])];if(point?.type==='phone')old.phones=[...new Set([...(old.phones||[]),value])];old.email=old.email||old.emails?.[0]||null;old.phone=old.phone||old.phones?.[0]||null;}
   const website=plainRecord(plainRecord(prospect.sourceDetails?.website)?.snapshot);

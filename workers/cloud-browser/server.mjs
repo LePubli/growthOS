@@ -38,7 +38,8 @@ const server=createServer(async(req,res)=>{
     console.error(JSON.stringify({at:new Date().toISOString(),component:'cloud-worker',operation:operations[req.url],source:requestSource,
       diagnosticId:/^[0-9a-f-]{36}$/i.test(diagnosticId)?diagnosticId:null,status,
       errorType:error?.name||'Error',errorCode:typeof error?.code==='string'?error.code.slice(0,70):null,reason:safeReason}));
-    json(res,status,{error:status===502?'Le navigateur n’a pas pu effectuer cette opération. Réessayez ou ouvrez sa session.':String(error.message).slice(0,240)});
+    const workerCode=/timeout|timed out/i.test(rawReason)?'BROWSER_TIMEOUT':/target closed|page closed|context.*closed/i.test(rawReason)?'BROWSER_SESSION_CLOSED':networkCode?'BROWSER_NETWORK':status===423?'BROWSER_BUSY':'BROWSER_ENGINE_FAILURE';
+    json(res,status,{error:status===502?'Le navigateur n’a pas pu effectuer cette opération. Réessayez ou ouvrez sa session.':String(error.message).slice(0,240),diagnostic:{code:workerCode,networkCode:networkCode?.[0]||null}});
   }
 });
 server.listen(Number(process.env.PORT||3200),'0.0.0.0');

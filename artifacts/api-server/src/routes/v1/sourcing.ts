@@ -1,3 +1,4 @@
+import {siretDuplicate} from '../../services/prospect-merges';
 import {collectProspectContactPoints} from '@workspace/api-zod';
 import {recordDiagnosticEvent} from '../../lib/diagnostics';
 import {businessIdentity} from '@workspace/api-zod';
@@ -841,8 +842,9 @@ export async function targetCaptureReview(tenantId:string,prospectId:string,raw:
   const c=parsed.data,known=p.siren||p.siret?.slice(0,9),incoming=c.siren||c.siret?.slice(0,9);
   const legalOnly=!!(['societe_com','pappers'].includes(c.source)&&c.companyDetails&&known&&known===incoming&&p.siret&&c.siret&&p.siret!==c.siret);
   const blocked=!!((known&&incoming&&known!==incoming)||(!legalOnly&&p.siret&&c.siret&&p.siret!==c.siret));
+  const duplicate=!blocked&&!legalOnly?await siretDuplicate(tenantId,prospectId,c.siret):null;
   const values=incomingFields(legalOnly?{...c,targetedIdentity:true,address:null,codePostal:null,city:null,siret:null,phone:null,email:null,emails:[],phones:[],website:null,apeCode:null,nafLabel:null,nafVersion:null}:{...c,targetedIdentity:true},false);
-  return {status:200,review:{version:p.updatedAt.toISOString(),prospect:{id:p.id,company:p.company,siren:p.siren,siret:p.siret,address:p.address,city:p.city},source:{name:c.source,url:c.sourceUrl,company:c.company,siren:incoming||null,siret:c.siret||null,address:c.address,city:c.city},blocked,legalOnly,
+  return {status:200,review:{duplicate,version:p.updatedAt.toISOString(),prospect:{id:p.id,company:p.company,siren:p.siren,siret:p.siret,address:p.address,city:p.city},source:{name:c.source,url:c.sourceUrl,company:c.company,siren:incoming||null,siret:c.siret||null,address:c.address,city:c.city},blocked,legalOnly,
     message:blocked?'Le SIREN ou le SIRET contredit une identité déjà enregistrée. Cette confirmation ne peut pas l’écraser.':legalOnly?'Même entreprise, autre établissement : seules les informations légales et les dirigeants seront rattachés.':'Vérifiez qu’il s’agit bien de ce prospect. Les champs vides et les remplacements cochés seront enregistrés. Le nom affiché est conservé par défaut.',
     expectedValues:Object.fromEntries(FIELDS.map(field=>[field,prospectValue(p,field)])),
     fields:Object.entries(values).map(([field,after])=>({field,before:(p as any)[field]||null,after,changed:normalizedField(field as EnrichmentField,(p as any)[field])!==normalizedField(field as EnrichmentField,after)}))}};

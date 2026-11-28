@@ -344,6 +344,7 @@ export default function ProspectDetailPage() {
   const fetchProspect = async () => {
     try {
       const data = await apiClient.get(`/prospects/${id}`);
+      if(data.mergedFromId&&data.id!==id){navigate('/prospects/'+data.id+'?view=enrichments',{replace:true});return;}
       setProspect(data);
       if(!editingRef.current)setForm(data);
     } catch { toast.error('Prospect introuvable'); navigate('/prospects'); }
@@ -484,7 +485,8 @@ export default function ProspectDetailPage() {
         try {
           const data = await apiClient.get(`/prospects/${id}`) as any;
           if (data.lat) {
-            setProspect(data);
+            if(data.mergedFromId&&data.id!==id){navigate('/prospects/'+data.id+'?view=enrichments',{replace:true});return;}
+      setProspect(data);
             setForm(data);
             clearInterval(poll);
             setGeocoding(false);

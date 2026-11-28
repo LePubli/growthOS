@@ -20,7 +20,11 @@ export async function browserCall(path:string,payload?:object,timeout=35000,diag
     headers:{'Content-Type':'application/json','X-Worker-Token':process.env.CLOUD_BROWSER_TOKEN!,...(diagnosticId?{'X-Diagnostic-Id':diagnosticId}:{})},...(payload?{body:JSON.stringify(payload)}:{})});
   const raw=await response.text();if(raw.length>8*1024*1024)throw new CloudBrowserError(502,'Réponse du navigateur trop volumineuse.');
   let data;try{data=JSON.parse(raw);}catch{throw new CloudBrowserError(502,'Réponse navigateur invalide.');}
-  if(!response.ok)throw new CloudBrowserError(response.status,data.error||'Navigateur indisponible.');return data;
+  if(!response.ok){
+    const causes:Record<string,string>={BROWSER_TIMEOUT:'Délai de réponse du navigateur dépassé.',BROWSER_SESSION_CLOSED:'La session ou l’onglet du navigateur a été fermé.',BROWSER_NETWORK:'La navigation rencontre une erreur réseau.',BROWSER_BUSY:'Une collecte est en cours dans ce profil.',BROWSER_ENGINE_FAILURE:'Le moteur de navigation a échoué sans cause détaillée.'};
+    const code=data.diagnostic?.code,known=Object.hasOwn(causes,code)&&(response.status>=500||code==='BROWSER_BUSY');
+    throw Object.assign(new CloudBrowserError(response.status,known?causes[code]:data.error||'Navigateur indisponible.'),known?{workerCode:code}:{});
+  }return data;
 }
 export async function cloudProfile(tenantId:string,id:string,userId?:string){
   const result=await pool.query('SELECT * FROM cloud_browser_profiles WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL',[id,tenantId]);

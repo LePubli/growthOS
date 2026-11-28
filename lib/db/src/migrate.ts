@@ -192,6 +192,19 @@ CREATE TABLE IF NOT EXISTS prospect_enrichment_jobs (
 CREATE UNIQUE INDEX IF NOT EXISTS prospect_enrichment_active ON prospect_enrichment_jobs(tenant_id,prospect_id) WHERE status IN ('queued','running');
 CREATE INDEX IF NOT EXISTS prospect_enrichment_queue ON prospect_enrichment_jobs(created_at) WHERE status IN ('queued','running');
 
+CREATE TABLE IF NOT EXISTS prospect_merge_receipts (
+  id UUID PRIMARY KEY,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  removed_id UUID NOT NULL,
+  survivor_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  request_ids JSONB NOT NULL,
+  archive JSONB NOT NULL,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(tenant_id,removed_id)
+);
+CREATE INDEX IF NOT EXISTS prospect_merge_survivor ON prospect_merge_receipts(tenant_id,survivor_id);
+
 CREATE TABLE IF NOT EXISTS prospect_monitoring (
   prospect_id UUID PRIMARY KEY REFERENCES prospects(id) ON DELETE CASCADE,
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

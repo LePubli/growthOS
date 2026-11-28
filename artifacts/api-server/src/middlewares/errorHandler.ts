@@ -23,7 +23,7 @@ export function errorHandler(
   const traceId = req.traceId ?? "unknown";
   const timestamp = new Date().toISOString();
 
-  logger.error(
+  logger[identityDuplicate||identityMismatch?'warn':'error'](
     {
       traceId,
       statusCode,
@@ -38,7 +38,7 @@ export function errorHandler(
 
   if (req.auth?.tenantId) void recordDiagnosticEvent({
     tenantId: req.auth.tenantId, userId: req.auth.userId, traceId,
-    level: 'error', component: 'api', code: 'UNHANDLED_EXCEPTION',
+    level: identityDuplicate||identityMismatch?'warn':'error', component: 'api', code: identityDuplicate?'CRM_IDENTITY_DUPLICATE':identityMismatch?'CRM_IDENTITY_INCONSISTENT':'UNHANDLED_EXCEPTION',
     message: `Exception HTTP ${statusCode}`,
     details: { method: req.method, statusCode, ...errorDiagnosticDetails(err) },
   });

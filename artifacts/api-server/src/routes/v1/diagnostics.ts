@@ -86,8 +86,13 @@ async function recentJobs(tenant: string, days: number) {
       FROM cloud_browser_jobs j LEFT JOIN cloud_browser_profiles p ON p.id=j.profile_id AND p.tenant_id=j.tenant_id
       WHERE j.tenant_id=$1 AND j.created_at>NOW()-($2::integer*INTERVAL '1 day')
       ORDER BY j.updated_at DESC LIMIT 120`, [tenant, days]),
-    pool.query(`SELECT id,prospect_id,status,steps,created_at,updated_at FROM prospect_enrichment_jobs
-      WHERE tenant_id=$1 AND created_at>NOW()-($2::integer*INTERVAL '1 day') ORDER BY updated_at DESC LIMIT 120`, [tenant, days]),
+    pool.query(`SELECT j.id,j.prospect_id,j.status,j.steps,j.created_at,j.updated_at,
+      (SELECT jsonb_object_agg(e.source,e.details) FROM (
+        SELECT DISTINCT ON(source) source,details FROM diagnostic_events
+        WHERE tenant_id=$1 AND job_id=j.id AND source IS NOT NULL AND details->>'databaseCode' IS NOT NULL
+        ORDER BY source,created_at DESC
+      ) e) AS database_causes FROM prospect_enrichment_jobs j
+      WHERE j.tenant_id=$1 AND j.created_at>NOW()-($2::integer*INTERVAL '1 day') ORDER BY j.updated_at DESC LIMIT 120`, [tenant, days]),
   ]);
   return [
     ...cloud.rows.map(j => {
@@ -103,7 +108,7 @@ async function recentJobs(tenant: string, days: number) {
     ...enrich.rows.map(j => ({ type: 'enrichment', id: j.id, prospectId: j.prospect_id, status: j.status,
       sources: Object.entries(j.steps || {}).map(([source, step]) => ({ source, status: (step as any).status,
         message: safeDiagnosticText((step as any).message || '', 220),
-        diagnosis: ['failed','needs_review','awaiting_user','empty','skipped'].includes((step as any).status)?diagnoseSourceIssue({source,status:(step as any).status,reason:(step as any).message}):null })), createdAt: j.created_at, updatedAt: j.updated_at })),
+        diagnosis: ['failed','needs_review','awaiting_user','empty','skipped'].includes((step as any).status)?diagnoseSourceIssue({source,status:(step as any).status,reason:(step as any).message,...j.database_causes?.[source]}):null })), createdAt: j.created_at, updatedAt: j.updated_at })),
   ].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
 }
 
