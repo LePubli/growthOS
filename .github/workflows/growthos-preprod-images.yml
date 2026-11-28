@@ -113,6 +113,11 @@ jobs:
           EREP_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
         run: node scripts/test-ereputation-watch.mjs
 
+      - name: Test e-reputation AI sentiment, explained score, alerts, crisis plans and internal e-mails
+        env:
+          EREP_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
+        run: node scripts/test-ereputation-alerts.mjs
+
       - name: Test cloud AI connectors without real API calls
         run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/ai-connector-probes.test.ts
 

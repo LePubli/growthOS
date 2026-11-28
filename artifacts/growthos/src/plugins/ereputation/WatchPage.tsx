@@ -4,11 +4,13 @@ import { useSearch, useLocation } from 'wouter';
 import { Radar, Loader2, Play, RotateCcw, X, Save, ExternalLink, Check, EyeOff, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
+import { ScorePanel, AlertsPanel, CrisisPanel, EmailSettingsPanel, ReplyDraft } from './AlertsPanels';
 
 /**
- * Veille e-réputation — lot 2.
+ * Veille e-réputation — lots 2 et 3.
  * SERP Google / Bing (nouveaux résultats, disparus, déplacés), avis Google Maps
  * et PagesJaunes, presse (Google Actualités, flux RSS), fil des mentions à qualifier.
+ * Lot 3 : score expliqué, sentiment IA corrigeable, alertes, plan de crise, e-mails.
  * Styles : variables du thème existant uniquement (périmètre design de l'agent 1).
  */
 
@@ -23,15 +25,16 @@ interface Settings {
 interface Step { type: 'serp' | 'reviews' | 'news' | 'rss'; source: string; query?: string; url?: string; status: string; message?: string | null; items?: number; newItems?: number; dropped?: number; moved?: number }
 interface Run { id: string; kind: string; depth: number; status: RunStatus; steps: Step[]; stats: Record<string, number | boolean>; message: string | null; createdAt: string; finishedAt: string | null }
 interface Overview { settings: Settings; queries: string[]; cloudConfigured: boolean; profiles: Record<string, boolean>; lastRun: Run | null }
-interface Mention { id: string; kind: 'serp' | 'review' | 'news'; source: string; url: string | null; title: string | null; excerpt: string | null; sentiment: 'pos' | 'neg' | 'neu'; status: 'new' | 'qualified' | 'ignored'; baseline: boolean; first_seen_at: string }
+interface Mention { id: string; kind: 'serp' | 'review' | 'news'; source: string; url: string | null; title: string | null; excerpt: string | null; sentiment: 'pos' | 'neg' | 'neu'; status: 'new' | 'qualified' | 'ignored'; baseline: boolean; first_seen_at: string; severity?: 'normal' | 'critical'; analysis_source?: 'local' | 'ai' | 'manual'; themes?: string[] }
 interface SerpRow { engine: Engine; query: string; position: number | null; url: string | null; result_count?: number; title: string | null; previous_position: number | null; is_new: boolean; captured_at: string }
-interface ReviewsOverview { stats: { source: string; rating: number | null; review_count: number | null; captured_at: string }[]; reviews: { id: string; source: string; author: string | null; rating: number | null; review_date: string | null; text: string | null; sentiment: string; owner_response: boolean }[] }
+interface ReviewsOverview { stats: { source: string; rating: number | null; review_count: number | null; captured_at: string }[]; reviews: { id: string; source: string; author: string | null; rating: number | null; review_date: string | null; text: string | null; sentiment: string; owner_response: boolean; reply_draft?: string | null }[] }
 
 export const SOURCE_LABEL: Record<string, string> = { google_search: 'Google', bing: 'Bing', google_maps: 'Google Maps', pagesjaunes: 'PagesJaunes', google_news: 'Google Actualités', rss: 'Flux RSS' };
 export const RUN_LABEL: Record<RunStatus, string> = { queued: 'En file', running: 'En cours', awaiting_user: 'Vérification requise', completed: 'Terminée', partial: 'Partielle', failed: 'Échec', cancelled: 'Annulée' };
 const RUN_COLOR: Record<RunStatus, string> = { queued: '#6B7280', running: '#2563EB', awaiting_user: '#D97706', completed: '#059669', partial: '#D97706', failed: '#DC2626', cancelled: '#6B7280' };
 const SENTIMENT: Record<string, { label: string; color: string }> = { pos: { label: 'Positif', color: '#059669' }, neg: { label: 'Négatif', color: '#DC2626' }, neu: { label: 'Neutre', color: '#6B7280' } };
 const KIND_LABEL: Record<Mention['kind'], string> = { serp: 'Résultat', review: 'Avis', news: 'Presse' };
+const ANALYSIS_LABEL: Record<string, string> = { local: 'analyse locale', ai: 'analyse IA', manual: 'corrigé par l’agence' };
 const STEP_STATUS: Record<string, string> = { pending: 'à faire', completed: 'lue', awaiting_user: 'vérification requise', skipped: 'ignorée', failed: 'échec' };
 
 function apiError(error: unknown, fallback: string): string {
@@ -46,9 +49,9 @@ const lines = (v: string) => v.split('\n').map(s => s.trim()).filter(Boolean);
 /** N'affiche un lien que s'il est http(s) (pas de javascript:). */
 const safeHref = (v: string | null) => { try { const u = new URL(v || ''); return /^https?:$/.test(u.protocol) ? u.href : null; } catch { return null; } };
 
-function Section({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
+function Section({ id, title, children, right }: { id?: string; title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <section className="rounded-xl border p-5 space-y-4" style={card}>
+    <section id={id} className="rounded-xl border p-5 space-y-4 scroll-mt-4" style={card}>
       <div className="flex items-center justify-between gap-3"><h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</h2>{right}</div>
       {children}
     </section>
@@ -155,7 +158,7 @@ export function RunsList({ runs, onResume, onCancel }: { runs: Run[]; onResume: 
   );
 }
 
-export function MentionsFeed({ mentions, onStatus }: { mentions: Mention[]; onStatus: (id: string, status: Mention['status']) => void }) {
+export function MentionsFeed({ mentions, onStatus, onCorrect }: { mentions: Mention[]; onStatus: (id: string, status: Mention['status']) => void; onCorrect?: (id: string, value: string) => void }) {
   if (!mentions.length) return <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Aucune mention pour ce filtre.</p>;
   return (
     <ul className="divide-y" style={{ borderColor: 'var(--card-border)' }}>
@@ -167,6 +170,9 @@ export function MentionsFeed({ mentions, onStatus }: { mentions: Mention[]; onSt
               <div className="flex flex-wrap items-center gap-2 text-xs mb-1">
                 <span className="px-1.5 py-0.5 rounded border" style={{ borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}>{KIND_LABEL[m.kind]} · {SOURCE_LABEL[m.source] ?? m.source}</span>
                 <span style={{ color: SENTIMENT[m.sentiment].color }}>{SENTIMENT[m.sentiment].label}</span>
+                {m.severity === 'critical' && <span className="font-semibold inline-flex items-center gap-0.5" style={{ color: '#DC2626' }}><AlertTriangle size={11} /> Critique</span>}
+                {m.analysis_source && <span style={{ color: 'var(--text-secondary)' }}>{ANALYSIS_LABEL[m.analysis_source]}</span>}
+                {m.themes?.length ? <span style={{ color: 'var(--text-secondary)' }}>· {m.themes.join(', ')}</span> : null}
                 {m.status === 'new' && !m.baseline && <span className="font-semibold" style={{ color: '#2563EB' }}>Nouveau</span>}
                 {m.baseline && <span style={{ color: 'var(--text-secondary)' }}>Référence</span>}
                 <span style={{ color: 'var(--text-secondary)' }}>{fmt(m.first_seen_at)}</span>
@@ -177,6 +183,10 @@ export function MentionsFeed({ mentions, onStatus }: { mentions: Mention[]; onSt
               {m.excerpt && <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>{m.excerpt}</p>}
             </div>
             <div className="flex items-start gap-1.5">
+              {onCorrect && <select aria-label="Corriger le sentiment" title="Corriger le sentiment" className="px-1 py-1 rounded-lg border text-xs" style={inputStyle}
+                value={m.severity === 'critical' ? 'critical' : m.sentiment} onChange={e => onCorrect(m.id, e.target.value)}>
+                <option value="pos">Positif</option><option value="neu">Neutre</option><option value="neg">Négatif</option><option value="critical">Critique</option>
+              </select>}
               {m.status !== 'qualified' && <button onClick={() => onStatus(m.id, 'qualified')} aria-label="Qualifier" title="Qualifier (à traiter)" className="p-1.5 rounded-lg border" style={{ borderColor: 'var(--card-border)', color: '#059669' }}><Check size={12} /></button>}
               {m.status !== 'ignored' && <button onClick={() => onStatus(m.id, 'ignored')} aria-label="Ignorer" title="Ignorer" className="p-1.5 rounded-lg border" style={{ borderColor: 'var(--card-border)', color: 'var(--text-secondary)' }}><EyeOff size={12} /></button>}
             </div>
@@ -246,7 +256,12 @@ export default function WatchPage() {
   const serp = useQuery({ queryKey: ['erep-watch', selected, 'serp'], enabled, queryFn: () => apiClient.get(`/ereputation/campaigns/${selected}/watch/serp`) as Promise<SerpRow[]> });
   const reviews = useQuery({ queryKey: ['erep-watch', selected, 'reviews'], enabled, queryFn: () => apiClient.get(`/ereputation/campaigns/${selected}/reviews`) as Promise<ReviewsOverview> });
   // À la fin d'un passage, recharger fil, relevés et avis.
-  useEffect(() => { if (!active && enabled) qc.invalidateQueries({ queryKey: ['erep-watch', selected] }); }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!active && enabled) for (const key of ['erep-watch', 'erep-score', 'erep-alerts', 'erep-crisis']) qc.invalidateQueries({ queryKey: [key, selected] });
+  }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Lien direct depuis une alerte ou un e-mail : ?tab=score|alerts|crisis|mentions|serp|reviews|runs
+  const tab = new URLSearchParams(search).get('tab');
+  useEffect(() => { if (tab && overview.data) document.getElementById(`erep-${tab}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [tab, !!overview.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runNow = useMutation({
     mutationFn: () => apiClient.post(`/ereputation/campaigns/${selected}/watch/run`, {}) as Promise<Run>,
@@ -258,9 +273,14 @@ export default function WatchPage() {
     onSuccess: (_r, v) => { toast.success(v.action === 'resume' ? 'Veille reprise' : 'Veille annulée'); qc.invalidateQueries({ queryKey: ['erep-watch', selected, 'runs'] }); },
     onError: e => toast.error(apiError(e, 'Action impossible')),
   });
+  const correct = useMutation({
+    mutationFn: ({ id, value }: { id: string; value: string }) => apiClient.patch(`/ereputation/mentions/${id}`, value === 'critical' ? { sentiment: 'neg', critical: true } : { sentiment: value }),
+    onSuccess: () => { toast.success('Sentiment corrigé'); for (const key of ['erep-watch', 'erep-score', 'erep-alerts', 'erep-crisis']) qc.invalidateQueries({ queryKey: [key, selected] }); },
+    onError: e => toast.error(apiError(e, 'Correction impossible')),
+  });
   const qualify = useMutation({
     mutationFn: ({ id, status }: { id: string; status: Mention['status'] }) => apiClient.patch(`/ereputation/mentions/${id}`, { status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['erep-watch', selected, 'mentions'] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['erep-watch', selected, 'mentions'] }); qc.invalidateQueries({ queryKey: ['erep-score', selected] }); },
     onError: e => toast.error(apiError(e, 'Qualification impossible')),
   });
 
@@ -276,21 +296,26 @@ export default function WatchPage() {
       </div>
       {!campaigns.length && <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Créez d'abord une campagne dans SEO et réputation → Campagnes.</p>}
       {enabled && overview.data && <>
-        <Section title="Passages" right={
+        <ScorePanel campaignId={selected} />
+        <div className="grid lg:grid-cols-2 gap-6">
+          <AlertsPanel campaignId={selected} />
+          <CrisisPanel campaignId={selected} />
+        </div>
+        <Section id="erep-runs" title="Passages" right={
           <button onClick={() => runNow.mutate()} disabled={runNow.isPending || active} className="px-3 py-2 rounded-lg text-sm font-medium text-white inline-flex items-center gap-2" style={{ background: 'var(--accent, #2563EB)', opacity: active ? 0.6 : 1 }}>
             {runNow.isPending || active ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} {active ? 'Veille en cours' : 'Lancer maintenant'}
           </button>}>
           <RunsList runs={runs.data ?? []} onResume={id => runAction.mutate({ id, action: 'resume' })} onCancel={id => runAction.mutate({ id, action: 'cancel' })} />
         </Section>
-        <Section title={`Fil des mentions${mentions.data ? ` · ${mentions.data.counts.newSinceBaseline} nouveauté(s), ${mentions.data.counts.negative} négative(s)` : ''}`} right={
+        <Section id="erep-mentions" title={`Fil des mentions${mentions.data ? ` · ${mentions.data.counts.newSinceBaseline} nouveauté(s), ${mentions.data.counts.negative} négative(s)` : ''}`} right={
           <select aria-label="Filtre des mentions" className="px-2 py-1 rounded-lg border text-sm" style={inputStyle} value={mentionStatus} onChange={e => setMentionStatus(e.target.value as typeof mentionStatus)}>
             <option value="new">À traiter</option><option value="qualified">Qualifiées</option><option value="ignored">Ignorées</option><option value="">Toutes</option>
           </select>}>
-          <MentionsFeed mentions={mentions.data?.mentions ?? []} onStatus={(id, status) => qualify.mutate({ id, status })} />
+          <MentionsFeed mentions={mentions.data?.mentions ?? []} onStatus={(id, status) => qualify.mutate({ id, status })} onCorrect={(id, value) => correct.mutate({ id, value })} />
         </Section>
         <div className="grid lg:grid-cols-2 gap-6">
-          <Section title="Résultats de recherche (dernier relevé)"><SerpTable rows={serp.data ?? []} /></Section>
-          <Section title="Avis">
+          <Section id="erep-serp" title="Résultats de recherche (dernier relevé)"><SerpTable rows={serp.data ?? []} /></Section>
+          <Section id="erep-reviews" title="Avis">
             {reviews.data?.stats.length ? <div className="flex flex-wrap gap-3">{reviews.data.stats.map(s => (
               <div key={s.source} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--card-border)' }}>
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{SOURCE_LABEL[s.source]}</p>
@@ -302,10 +327,12 @@ export default function WatchPage() {
                 <span className="text-xs" style={{ color: SENTIMENT[r.sentiment]?.color }}>{r.rating != null ? `${r.rating}/5` : SENTIMENT[r.sentiment]?.label}</span>
                 <span className="text-xs ml-2" style={{ color: 'var(--text-secondary)' }}>{SOURCE_LABEL[r.source]} · {r.author ?? 'Anonyme'} · {r.review_date ?? ''}{r.owner_response ? ' · réponse publiée' : ''}</span>
                 {r.text && <p style={{ color: 'var(--text-primary)' }}>{r.text}</p>}
+                {(r.reply_draft || (r.rating != null ? r.rating <= 3 : r.sentiment === 'neg')) && !r.owner_response && <ReplyDraft reviewId={r.id} initial={r.reply_draft} />}
               </li>))}</ul>
           </Section>
         </div>
         <Section title="Réglages de la veille"><SettingsForm campaignId={selected} overview={overview.data} /></Section>
+        <EmailSettingsPanel />
       </>}
       {enabled && overview.isLoading && <Loader2 className="animate-spin" size={20} />}
     </div>

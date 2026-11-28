@@ -15,7 +15,7 @@ export interface ChangeActor {
   email?: string | null;
 }
 
-export type ChangeAction = "create" | "update" | "status" | "delete" | "retention_purge";
+export type ChangeAction = "create" | "update" | "status" | "delete" | "retention_purge" | "crisis_open" | "crisis_escalate" | "crisis_close";
 
 export interface ChangeEntry {
   id: string;

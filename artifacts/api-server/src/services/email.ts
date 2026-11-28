@@ -152,6 +152,33 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
   }
 }
 
+/**
+ * E-mail interne à l'agence (récapitulatifs et alertes e-réputation, lot 3).
+ * Distinct des campagnes externes : n'utilise que le SMTP configuré de l'agence
+ * et un interrupteur dédié (EREP_ALERT_EMAIL_ENABLED), sans dépendre de
+ * ENABLE_OUTBOUND_EMAIL qui reste à false pendant la recette.
+ */
+export async function sendInternalEmail(opts: { tenantId: string; to: string[]; subject: string; html: string; text?: string }): Promise<SendEmailResult> {
+  const mode = process.env.EREP_ALERT_EMAIL_ENABLED;
+  if (mode !== "true" && mode !== "log") {
+    return { id: "", success: false, error: "E-mails d'alerte désactivés (EREP_ALERT_EMAIL_ENABLED=false)" };
+  }
+  if (!opts.to.length) return { id: "", success: false, error: "Aucun destinataire" };
+  if (mode === "log") {
+    // Mode recette : l'e-mail est journalisé (sujet, nombre de destinataires), rien n'est envoyé.
+    console.info(`[email] Mode journal — e-mail interne non envoyé : « ${opts.subject} » → ${opts.to.length} destinataire(s)`);
+    return { id: `log-${Date.now()}`, success: true };
+  }
+  try {
+    const smtp = await getSmtpConfiguration(opts.tenantId);
+    if (!smtp) return { id: "", success: false, error: "SMTP de l'agence non configuré ou désactivé (Paramètres → E-mail)" };
+    const sent = await smtp.transport.sendMail({ from: smtp.from, to: opts.to, subject: opts.subject, html: opts.html, text: opts.text, replyTo: smtp.replyTo });
+    return { id: sent.messageId, success: true };
+  } catch (error) {
+    return { id: "", success: false, error: `SMTP : ${error instanceof Error ? error.message : "Erreur inconnue"}` };
+  }
+}
+
 export function buildProspectingEmail(opts: {
   firstName: string;
   company: string;

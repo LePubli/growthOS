@@ -457,3 +457,20 @@ Reste connu, hors périmètre de ce correctif : les notifications et signaux gé
 **Fichiers partagés touchés (ciblés) :** `artifacts/api-server/src/index.ts` (1 import + 1 appel `startErepWatch()`), `.github/workflows/growthos-preprod-images.yml` (2 étapes de test ajoutées, rien de retiré), agent 1 : `App.tsx` (1 route `/ereputation/watch`), `AppShell.tsx` (1 entrée de menu « Veille » + icône), `CampaignsPage.tsx` (bouton Veille). Aucun CSS ni composant de design modifié.
 
 Tests : `scripts/test-ereputation-watch.mjs` (59 contrôles, PostgreSQL 16, faux navigateur et faux flux), `workers/cloud-browser/erep-test.mjs` (13 contrôles, vrai Chromium, pages locales), `scripts/test-ereputation-ui.mjs` (écran Veille), lot 1 toujours vert (72). Aucun déploiement DockPanel par l'agent. Notes conservées jusqu'à l'autorisation explicite du lancement final en production.
+
+### Agent 3 — lot 3 « analyse et alertes » (28/11/2026)
+
+**Périmètre validé par le propriétaire le 28/11 (« go lot 3 », carte « Oui, lance le lot 3 »)**, plus son exigence : « un score le plus précis possible avec le détail résumé pourquoi ce score ». Branche `claude/project-thread-i6xqwe` repartie de `96e5dca` (PR87).
+
+Contenu : sentiment par IA (fournisseur de l'agence, repli local, correction manuelle), score sur 100 à 4 composantes (SERP 40 %, sentiment 30 %, avis 20 %, liens 10 %, renormalisé sur les composantes mesurées) avec facteurs chiffrés en points, résumé et historique quotidien, alertes dédoublonnées, plans de crise Vigilance / Alerte / Crise (fermeture uniquement par l'agence), brouillons de réponse aux avis (jamais publiés), récapitulatifs e-mail quotidien / hebdomadaire et e-mail immédiat **aux seuls membres de l'agence**.
+
+**À l'attention de l'agent 2 :**
+- `services/email.ts` : **ajout** de `sendInternalEmail()` (SMTP de l'agence, interrupteur dédié `EREP_ALERT_EMAIL_ENABLED` = false / log / true). `sendEmail()`, `getSmtpConfiguration()` et `ENABLE_OUTBOUND_EMAIL` ne sont **pas modifiés**.
+- Le fil **`signals` de la prospection ne reçoit plus d'alerte e-réputation** (`reputation_crisis`) : le nom d'une personne physique n'y a pas sa place et ces lignes n'étaient pas purgées. Les lignes `reputation_crisis` déjà présentes ne sont pas supprimées (décision du propriétaire si besoin).
+- `erep-integrations.ts` (e-réputation) : la mise à jour de `accounts.reputation_health_score` par rapprochement du nom est limitée aux entités. Les notifications passent par `createNotification()` de `notification.service.ts` (l'ancienne insertion visait une colonne `message` inexistante et échouait silencieusement). `notification.service.ts`, `routes/v1/notifications.ts` et la table `notifications` ne sont pas modifiés ; les notifications e-réputation portent `payload.module = "ereputation"` et `payload.campaignId`, supprimées avec la campagne.
+- L'événement `erep.alert` (déclencheur Autopilot) reste émis, avec `persisted: true`.
+- `artifacts/api-server/src/index.ts` : 1 import + 1 appel `startErepAlerts()`. Workflow : 1 étape de test ajoutée, rien de retiré. **Worker navigateur inchangé.**
+
+**À l'attention de l'agent 1 :** nouveau composant `plugins/ereputation/AlertsPanels.tsx` (score expliqué avec courbe recharts, alertes, plan de crise, e-mails, brouillon de réponse) intégré dans `WatchPage.tsx` ; `CampaignsPage.tsx` : lien « Pourquoi ce score ? » sous le score et libellés d'historique du plan de crise. Variables de thème existantes uniquement, **aucun CSS, thème, menu ni tableau de bord modifié**.
+
+Tests : `scripts/test-ereputation-alerts.mjs` (73 contrôles, PostgreSQL 16, faux navigateur, faux Google Actualités, faux fournisseur IA compatible OpenAI, e-mails en mode journal), `scripts/test-ereputation-ui.mjs` étendu, lots 1 (72) et 2 (59) toujours verts, `smoke-wizard.mjs` complet vert en local, TypeScript API/Web verts. Le point « notifications et signaux génériques contenant le nom de la cible » laissé ouvert au lot 1 est traité. Aucun déploiement DockPanel par l'agent. Notes conservées jusqu'à l'autorisation explicite du lancement final en production.
