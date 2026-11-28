@@ -65,7 +65,7 @@ function CloudBrowserWorkspace() {
   const latestVerification=useRef(verificationJobId);latestVerification.current=verificationJobId;
   const initialContextLoaded=useRef(false),openedSource=useRef(''),openedComparison=useRef(''),returned=useRef(false);
   const [expandedBrowser, setExpandedBrowser] = useState(false);
-  const [sourceZoom,setSourceZoom]=useState(()=>window.matchMedia('(max-width:720px)').matches?1:0);
+  const [sourceZoom,setSourceZoom]=useState(()=>typeof window!=='undefined'&&window.matchMedia('(max-width:720px)').matches?1:0);
   const [resultsShare, setResultsShare] = useState(28);
   const [chosen, setChosen] = useState<Record<string, boolean>>({});
   const workspaceRef = useRef<HTMLDivElement>(null);
