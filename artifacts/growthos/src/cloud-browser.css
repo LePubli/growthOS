@@ -301,3 +301,22 @@
   .cloud-browser-result-status {font-size:8px;padding:3px 5px;}
   .cloud-browser-history-preview {display:none;}
 }
+
+/* Verification is a complete document, not a clipped collection list. */
+.cloud-browser-workspace.has-verification {height:auto;align-items:start;}
+.cloud-browser-workspace.has-verification .cloud-browser-view-panel {height:clamp(600px,calc(50vw - 57px),840px);}
+.cloud-browser-results.cloud-browser-verification {height:auto;min-height:0;overflow:visible;align-self:start;}
+.cloud-browser-view-tools {display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-bottom:1px solid #d2e0f2;}
+.cloud-browser-view-tools button {padding:6px 9px;border:1px solid #cfdef2;border-radius:8px;background:var(--card-bg,#fff);color:inherit;min-height:36px;}
+.cloud-browser-view-tools button[aria-pressed=true] {border-color:#176bee;}
+.cloud-browser-view-tools small {flex-basis:100%;font-size:11px;line-height:1.4;}
+.cloud-browser-remote.is-zoomed {display:block;overflow:auto;touch-action:pan-x pan-y;overscroll-behavior:contain;}
+.cloud-browser-remote.is-zoomed img {object-fit:unset;}
+@media(max-width:1100px) {
+  .cloud-browser-workspace.has-verification .cloud-browser-view-panel {height:clamp(530px,65vh,730px);}
+}
+@media(max-width:720px) {
+  .cloud-browser-workspace.has-verification .cloud-browser-view-panel {height:550px;}
+  .cloud-browser-view-tools button {min-height:44px;}
+  .cloud-browser-verification .cloud-browser-job-title :is(strong,small) {white-space:normal;overflow-wrap:anywhere;}
+}

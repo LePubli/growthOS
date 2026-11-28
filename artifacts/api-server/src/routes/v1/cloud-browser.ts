@@ -145,9 +145,12 @@ router.post('/jobs/:id/finish-review',async(req,res)=>{
   const job=await cloudJob(req.auth!.tenantId,idSchema.parse(req.params.id),req.auth!.userId);
   res.locals.jobId=job.id;res.locals.prospectId=job.prospect_id;
   if(job.mode!=='enrich'||!job.prospect_id||job.status!=='completed'||!job.result?.applied)throw new CloudBrowserError(409,'Les données ne sont pas encore enregistrées. La comparaison reste disponible.');
-  const sourceRow=await pool.query('SELECT source FROM cloud_browser_profiles WHERE id=$1 AND tenant_id=$2',[job.profile_id,req.auth!.tenantId]);
-  res.locals.source=sourceRow.rows[0]?.source||null;
-  await latestProspectEnrichment(req.auth!.tenantId,job.prospect_id);
+  res.locals.source=job.result.captures?.[0]?.source||null;
+  // The saved job is the receipt. Reconciliation must not hold navigation hostage.
+  void latestProspectEnrichment(req.auth!.tenantId,job.prospect_id).catch(error=>{
+    logger.warn({traceId:req.traceId,jobId:job.id,...errorDiagnosticDetails(error)},'Saved source enrichment refresh failed');
+    void recordDiagnosticEvent({tenantId:req.auth!.tenantId,userId:req.auth!.userId,traceId:req.traceId,level:'warn',component:'crm-confirmation',code:'ENRICHMENT_REFRESH_FAILED',message:'Sauvegarde confirmée ; actualisation du bilan à reprendre',source:res.locals.source,prospectId:job.prospect_id,jobId:job.id,details:errorDiagnosticDetails(error)});
+  });
   void recordDiagnosticEvent({tenantId:req.auth!.tenantId,userId:req.auth!.userId,traceId:req.traceId,level:'info',component:'crm-confirmation',code:'RETURN_TO_PROSPECT',message:'Retour autorisé vers le prospect après sauvegarde vérifiée',source:res.locals.source,prospectId:job.prospect_id,jobId:job.id,details:{filledFields:job.result.applied.filled?.length||0}});
   res.json({prospectId:job.prospect_id,jobId:job.id,source:res.locals.source,url:'/prospects/'+job.prospect_id+'?'+new URLSearchParams({view:'enrichments',reviewedJob:job.id}).toString(),filled:job.result.applied.filled||[],conflicts:job.result.applied.conflicts||0});
 });

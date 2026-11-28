@@ -33,7 +33,7 @@ export function ConnectorEnrichmentReturn({prospectId,onSaved,onBusyChange}:{pro
   const duplicate=!error&&result==='Cet enrichissement a déjà été enregistré.';
   const pending=!error&&!result&&!reviewJob;
   const tone=error?'error':pending?'pending':duplicate?'duplicate':'success';
-  if(reviewJob&&!result)return <CloudCaptureReview jobId={reviewJob} onClose={()=>setDismissed(true)} onSaved={async(result)=>{await acknowledgeConnectorTask(taskId!,prospectId);setReviewJob(null);setResult('Enrichissement confirmé et enregistré.');await saved.current();navigate(result.url,{replace:true});}}/>;
+  if(reviewJob&&!result)return <CloudCaptureReview jobId={reviewJob} onClose={()=>setDismissed(true)} onSaved={async(result)=>{void acknowledgeConnectorTask(taskId!,prospectId).catch(()=>apiClient.reportClientError('LOCAL_CAPTURE_ACK_PENDING','Capture enregistrée ; acquittement local à reprendre',{prospectId}));setReviewJob(null);setResult('Enrichissement confirmé et enregistré.');void Promise.resolve(saved.current()).catch(()=>{});navigate(result.url+(result.refreshWarning?'&refreshWarning=1':''),{replace:true});}}/>;
   const Icon=error?AlertTriangle:pending?Loader2:duplicate?Info:CheckCircle2;
   return <section className={'atlas-enrichment-notice atlas-enrichment-notice--'+tone} role={error?'alert':'status'} aria-live="polite">
     <span className="atlas-enrichment-notice-icon"><Icon size={20} className={pending?'animate-spin':undefined}/></span>
