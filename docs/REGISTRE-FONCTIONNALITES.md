@@ -98,7 +98,6 @@
 | EXT-10 · P1 | ZIP, installation locale et version effectivement chargée dans Chrome | L/T+R | [Guide connecteur](CONNECTEUR_APPAREIL.md), [PR #65](https://github.com/LePubli/growthOS/pull/65) | Télécharger le ZIP du workflow correspondant, recharger l’extension, confirmer version manifeste et reproduction sur Chrome propre. Ne pas confondre MAJ du Web avec MAJ manuelle de l’extension. | E/T |
 | EXT-11 · P2 | Utiliser le réseau/IP du PC pour les lectures locales (secours et reprise automatisée en préparation) | P/T+R | [PR #66](https://github.com/LePubli/growthOS/pull/66), [guide navigateur](NAVIGATEUR-INTEGRE-AUTOMATISATION.md) | Vérifier que l’extension exécute bien localement, sans usurpation IP ; le navigateur cloud conserve l’IP du VPS. Aucun évitement de contrôle fournisseur garanti. | E |
 | EXT-12 · P2 | Connexion, association et supervision de plusieurs comptes tiers | C/— | [Référence Linked Helper](REFERENCE-LINKED-HELPER.md) | Révocation, session expirée, profil par compte/agence, permission de chaque action ; **ne pas annoncer comme déjà fonctionnel**. | E/F |
-
 | EXT-13 · P1 | Reprise automatique des tâches d’enrichissement dans Chrome utilisateur | L/T+R (pilote, recette Chrome requise) | [PR #84](https://github.com/LePubli/growthOS/pull/84), [contrat local](COLLECTE-NAVIGATEUR-UTILISATEUR.md) (28/11) | Permissions avant lecture, file/reprise, contrôle sécurité humain, même tâche/prospect, reçu serveur, homonyme et arrêt ; recette Chrome réelle requise. F prend aussi l’extension sur demande explicite du propriétaire. | F |
 
 ## 5. Prospect 360°, identité, enrichissement et veille
@@ -158,7 +157,7 @@
 | ADV-10 · P2 | Qualification ICP/IA, listes, exclusions et logique IF/THEN | C/— | [Référence Linked Helper](REFERENCE-LINKED-HELPER.md) | Listes persistantes, score explicable, conditions sur réponses et workflow testé. | F |
 | ADV-11 · P2 | Messagerie/invitations LinkedIn, Sales Navigator, Recruiter | N/— | [Référence Linked Helper](REFERENCE-LINKED-HELPER.md) | Exiger capacités réelles du compte, autorisations et preuves avant tout envoi/collecte annoncé. | F/E |
 | ADV-12 · P2 | Tableau de bord, analytics d’utilisation, rapports, revenus et objectifs | P/T+R | [Suivi §25](../SUIVI-FONCTIONNEL.md) | Même valeur dans transaction et KPI, dates, filtres d’équipe, états vides et pas de valeurs démo. | F |
-| ADV-13 · P2 | E-réputation, campagnes, avis et portail client | P/T+R | [Suivi §24](../SUIVI-FONCTIONNEL.md) | Données réellement collectées et datées, deux clients isolés, accès partagé, validation d’une action concrète. | F |
+| ADV-13 · P2 | E-réputation, campagnes, avis et portail client — **détaillé en §13 (lignes REP-\*)** depuis le 28/11 | P/T+R | [Suivi §24](../SUIVI-FONCTIONNEL.md), [cahier des charges](ereputation/CAHIER-DES-CHARGES.md) | Données réellement collectées et datées, deux clients isolés, accès partagé, validation d’une action concrète. | R |
 | ADV-14 · P2 | Acquisition entrante, propositions, parrainage | P/R | [Suivi §26](../SUIVI-FONCTIONNEL.md) | Lead enregistré, proposition persistante, traçage d’un parrainage de bout en bout. | F |
 | ADV-15 · P2 | Marketplace, plugins et intégrations CRM externes | P/T+R | [Suivi §27](../SUIVI-FONCTIONNEL.md) | Activation/révocation, échange réel et séparation agences ; la présence d’un écran/plugin ne prouve pas le fonctionnement. | F |
 | ADV-16 · P2 | Abonnement SaaS, facturation, quotas et administration | P/T+R | [Suivi §28](../SUIVI-FONCTIONNEL.md), [CHANGELOG](../CHANGELOG.md) | Paiement avec fournisseur de test, facture, suspension, quota et rôles ; aucune facturation réelle sans validation. | F |
@@ -177,7 +176,6 @@
 | DIA-07 · P1 | Worker hors ligne, navigateur occupé, session fermée, panne de lecture | L/T+R | [PR #81](https://github.com/LePubli/growthOS/pull/81) | Tâche conservée, message utile, trace et reprise ; absence de succès fictif. | F |
 | DIA-08 · P1 | Logs Docker API/worker avec trace et rétention DB 90 jours | L/T+R | [Contrat diagnostic](DIAGNOSTICS-CONTRACT.md) | Log lisible sans PII ; moteur indisponible avant DB traité via DockPanel ; nettoyage en tâche de fond. | F |
 | DIA-09 · **P0 transversal** | Instrumentation obligatoire de tout nouveau développement | **C (règle)** | [Contrat diagnostic](DIAGNOSTICS-CONTRACT.md) | Chaque PR nouvelle ajoute codes, transitions, tests d’échec et documentation du diagnostic ; revue de couverture obligatoire. | T |
-
 | DIA-10 · P1 | Collecte dans le navigateur utilisateur et réception CRM | L/T+R | [PR #84](https://github.com/LePubli/growthOS/pull/84), [contrat local](COLLECTE-NAVIGATEUR-UTILISATEUR.md) | DEVICE_RUN_PREPARED/STOPPED, DEVICE_RESULT_RECEIVED, DEVICE_CAPTURE_APPLIED et échecs CRM ; source/tâche/prospect, résultat reçu versus appliqué, aucune donnée de connexion. | F |
 
 ## 9. Incidents ouverts, anciens bugs et critères de clôture
@@ -263,10 +261,33 @@ Le statut **ouvert** signifie ici « non encore accepté en usage après correct
 |---|---|---|---|
 | Charte ATLAS × ORBIT, Prospect 360°, CSS et maquettes | **D (agent design)** | Rendu, ergonomie, responsive après accord visuel. Pas de nouveau comportement métier implicite. | F valide que les contrats de données/callbacks survivent. |
 | Serveur API, Postgres, moteur Web cloud, veille, IA, CRM | **F (agent fonctionnel)** | Métier, migration, transactions, services, tests ; modifications de design uniquement limitées au parcours requis. | D vérifie les écarts visuels ; E vérifie le contrat du connecteur local. |
-| Extension Chrome, Side Panel, permissions et capture locale | **F pour le pilote local 0.12.0 ; E proposé pour la suite** | Sous-répertoire extensions/growthos-pagesjaunes et tests de capture/ZIP, uniquement après acceptation de son périmètre. | F valide API/import/identité ; D valide l’apparence de l’extension. |
+| Extension Chrome, Side Panel, permissions et capture locale | **F (agent fonctionnel, attribution confirmée le 28/11)** | Sous-répertoire extensions/growthos-pagesjaunes, exécuteur local et tests/ZIP ; coordination des contrats API/import/identité. | D valide l’apparence ; R conserve son périmètre e-réputation. |
+| E-réputation et SEO/GEO (entités B2B et personnes physiques B2C), campagnes, veille, PBN/netlinking, réseaux sociaux, reporting | **R (agent e-réputation, confirmé par le propriétaire le 28/11/2026)** | `plugin-ereputation`, routes `ereputation`/`client-ereputation`, `lib/db/src/migrate-ereputation.ts`, pages `plugins/ereputation` et `plugins/client-portal` (raccordement de données, sans refonte visuelle), lecteurs e-réputation dans des fichiers séparés du navigateur cloud. | F valide toute modification de ses fichiers (migrations partagées, navigateur cloud) ; D valide l'apparence. |
 | Diagnostics transversaux, CI, recette et déploiement | **T partagé** | Chaque agent instrumente son lot et fournit preuves ; **DockPanel réservé au propriétaire**. | Agent auteur contrôle CI, propriétaire accepte la recette réelle. |
 
 **Important :** E n’est pas présumé opérationnel ni autorisé à intervenir sur les fichiers de F/D par la simple présence de ce tableau. Chaque agent doit consulter les PR ouvertes et [COORDINATION-AGENTS.md](../COORDINATION-AGENTS.md) avant de commencer. **PR #62 reste un brouillon de catalogue**, à intégrer seulement après la recette prévue. **PR #27 reste ouverte** comme branche de travail de préproduction ; ne pas confondre une PR interne fusionnée avec la mise en production sur main.
+
+**Décision du propriétaire (28/11/2026, fil de l'agent e-réputation) :** le troisième agent est affecté à l'**e-réputation B2B et B2C** (R) ; l'**extension Chrome revient à l'agent F**. La ligne E ci-dessus est conservée pour l'historique mais n'a plus d'agent dédié.
+
+
+## 13. E-réputation et SEO/GEO (agent R)
+
+Référence : [cahier des charges validé](ereputation/CAHIER-DES-CHARGES.md) · [module et API](ereputation/README.md) · [catalogue de sources personnes](ereputation/CATALOGUE-SOURCES-PERSONNES-FOURNI.md). « B2B » = entité, « B2C » = personne physique.
+
+| ID / priorité | Capacité métier et état exact | État | Preuve | Critère de recette / lacune | Resp. |
+|---|---|---|---|---|---|
+| REP-01 · P1 | Campagnes : CRUD complet, statuts active/pause/archivée, cible entité ou personne, variantes du nom, lien vers une fiche CRM | L/T+R | Lot 1, branche `claude/project-thread-i6xqwe` ; `scripts/test-ereputation.mjs` (PostgreSQL 16), `scripts/test-ereputation-ui.mjs` | Créer une entité liée à un prospect et une personne avec mandat, modifier, mettre en pause, archiver, supprimer. | R |
+| REP-02 · P0 | Mandat RGPD obligatoire pour une personne physique, fin de conservation, purge automatique (6 h) et manuelle (admin), historique expurgé | L/T+R | Lot 1, mêmes tests | Personne sans mandat refusée ; à échéance, campagne et données supprimées, historique sans donnée personnelle. | R |
+| REP-03 · P1 | Historique des interventions (qui, quoi, quand, avant/après), conservé après suppression | L/T+R | Lot 1, table `erep_change_log` | Lire l'historique après modification puis suppression. Export légal horodaté prévu au lot 5. | R |
+| REP-04 · P1 | Score de réputation : null tant qu'aucune mesure réelle, moyenne des seules campagnes évaluées, plus d'alertes recréées à chaque consultation | L/T+R | Lot 1 ; migration qui efface les scores fictifs hérités sans mesure | Campagne neuve « Non évalué » ; après mesures SERP, score calculé et stable. Score historisé prévu au lot 3. | R |
+| REP-05 · P1 | Suivi SERP : saisie validée, écart avec la mesure précédente réelle (plus de variation aléatoire) | P/T+R | Lot 1 | Collecte automatique Google/Bing et détection des nouveaux résultats : **lot 2**. | R |
+| REP-06 · P1 | Veille avis, mentions et presse (Google Maps, PagesJaunes, presse, catalogue) | N/— | — | Lot 2. | R |
+| REP-07 · P2 | Sentiment IA, alertes notification + e-mail, plans de crise | P/— | Analyse par liste de mots existante | Lot 3. | R |
+| REP-08 · P2 | Audits SEO/GEO, stratégie IA, visibilité dans les moteurs IA | P/— | Brouillons IA existants | Lot 4. | R |
+| REP-09 · P2 | Reporting PDF, import/export CSV/JSON | N/— | — | Lot 5. | R |
+| REP-10 · P2 | PBN (sites de l'agence), suivi des backlinks, netlinking par opportunités et profils assistés | P/— | Saisie de sites existante (écran masqué) | Lot 6 ; aucune publication automatique sur des sites tiers. | R |
+| REP-11 · P2 | Réseaux sociaux multi-comptes, calendrier, publication | N/— | Brouillons existants | Lot 7, design avec D. | R/D |
+| REP-12 · P3 | Application mobile e-réputation | C/— | — | Reportée par le propriétaire. | R |
 
 ---
 

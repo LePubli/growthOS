@@ -12,7 +12,7 @@ interface Campaign {
   targetType: string;
   keywords: string[];
   status: string;
-  reputationScore: number;
+  reputationScore: number | null;
   activeAlerts: number;
   totalPosts: number;
   publishedPosts: number;
@@ -20,7 +20,8 @@ interface Campaign {
   updatedAt: string;
 }
 
-function ScoreBar({ score }: { score: number }) {
+function ScoreBar({ score }: { score: number | null }) {
+  if (score == null) return <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Non évalué : aucune mesure réelle</div>;
   const color = score >= 70 ? '#059669' : score >= 40 ? '#D97706' : '#DC2626';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -80,7 +81,7 @@ export default function ClientCampaignsPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {campaigns.map(c => {
-            const scoreColor = c.reputationScore >= 70 ? '#059669' : c.reputationScore >= 40 ? '#D97706' : '#DC2626';
+            const scoreColor = c.reputationScore == null ? '#9CA3AF' : c.reputationScore >= 70 ? '#059669' : c.reputationScore >= 40 ? '#D97706' : '#DC2626';
             return (
               <div key={c.id} style={{
                 background: 'var(--card-bg)',
@@ -114,7 +115,7 @@ export default function ClientCampaignsPage() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <StatusBadge status={c.status} />
-                    {c.reputationScore >= 50 ? <TrendingUp size={16} color="#059669" /> : <TrendingDown size={16} color="#DC2626" />}
+                    {c.reputationScore == null ? null : c.reputationScore >= 50 ? <TrendingUp size={16} color="#059669" /> : <TrendingDown size={16} color="#DC2626" />}
                   </div>
                 </div>
 

@@ -166,8 +166,8 @@ function ReputationScoreWidget() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 8 }}>
             {[
-              { l: 'Signaux positifs', v: breakdown?.positiveSignals ?? 0, c: '#059669', bg: '#ECFDF5' },
-              { l: 'Total signaux',    v: breakdown?.totalSignals ?? 0,    c: '#2563EB', bg: '#EFF6FF' },
+              { l: 'Mentions positives', v: breakdown?.positiveMentions ?? 0, c: '#059669', bg: '#ECFDF5' },
+              { l: 'Mentions analysées', v: breakdown?.mentions ?? 0,         c: '#2563EB', bg: '#EFF6FF' },
               { l: 'Campagnes',        v: breakdown?.campaigns ?? 0,       c: '#7C3AED', bg: '#F5F3FF' },
             ].map((item, i) => (
               <div key={i} style={{ padding: '6px 8px', borderRadius: 8, background: item.bg, textAlign: 'center' }}>
