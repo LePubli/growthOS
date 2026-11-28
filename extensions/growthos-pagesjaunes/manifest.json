@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GrowthOS — Connecteur multisource",
-  "version": "0.11.3",
+  "version": "0.12.0",
   "description": "Outils spécialisés de collecte et enrichissement ciblé des prospects GrowthOS, avec confirmation des données visibles.",
   "minimum_chrome_version": "141",
   "permissions": [
@@ -9,7 +9,8 @@
     "scripting",
     "activeTab",
     "storage",
-    "sidePanel"
+    "sidePanel",
+    "alarms"
   ],
   "action": {
     "default_title": "GrowthOS — Ouvrir ou fermer le connecteur latéral"
@@ -46,6 +47,8 @@
     "https://google.fr/*",
     "https://maps.google.com/*",
     "https://www.bing.com/*",
-    "https://bing.com/*"
+    "https://bing.com/*",
+    "https://www.pappers.fr/*",
+    "https://pappers.fr/*"
   ]
 }

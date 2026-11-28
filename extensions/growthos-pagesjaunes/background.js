@@ -1042,6 +1042,7 @@ chrome.tabs.onActivated?.addListener(async info=>{
 });
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if(String(message?.action||'').startsWith('device-'))return false;
   let origin;
   try { origin = new URL(sender.url || '').origin; } catch {}
   const fromPopup=typeof sender.url==='string' && sender.url.startsWith(chrome.runtime.getURL(''));
@@ -1102,3 +1103,5 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     .finally(()=>{busy=false;});
   return true;
 });
+
+importScripts("device-runner.js");

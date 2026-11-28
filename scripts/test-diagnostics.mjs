@@ -31,6 +31,7 @@ assert(source('artifacts/api-server/src/services/website-enrichment.ts').include
 assert(source('artifacts/api-server/src/routes/v1/contacts.ts').includes('PRIMARY_COORDINATE_CONFLICT'));
 assert(source('artifacts/api-server/src/services/website-enrichment.ts').includes('WEBSITE_CONTACTS_READ'));
 
+for(const code of ['DEVICE_RUN_PREPARED','DEVICE_RUN_STOPPED','DEVICE_CAPTURE_APPLIED','DEVICE_RESULT_RECEIVED','DEVICE_IDENTITY_CONFLICT','DEVICE_SAVE_FAILED'])assert(source('artifacts/api-server/src/services/device-enrichment.ts').includes(code));
 const databaseError=diagnostics.errorDiagnosticDetails({name:'DrizzleQueryError',message:'Failed query: PRIVATE_VALUE',cause:{code:'23505',constraint:'idx_prospects_tenant_siret',detail:'PRIVATE_ROW',query:'PRIVATE_SQL',parameters:['PRIVATE_VALUE']}});
 assert.equal(databaseError.databaseCode,'23505');assert.equal(databaseError.databaseConstraint,'idx_prospects_tenant_siret');
 assert(!JSON.stringify(databaseError).includes('PRIVATE_'),'SQL, rows and parameters must never enter technical diagnostics');

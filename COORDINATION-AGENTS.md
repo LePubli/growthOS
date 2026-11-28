@@ -403,6 +403,20 @@ Le propriétaire a demandé un **registre détaillé et durable** pour synchroni
 
 Cette note et les autres notes temporaires restent conservées jusqu'à l'autorisation explicite du propriétaire pour la mise en production finale. **Le présent lot est purement documentaire : pas de redéploiement DockPanel nécessaire.**
 
+## Prise en charge navigateur utilisateur et extension — 28/11/2026
+
+**Arbitrage explicite du propriétaire dans ce chat : « développe toi l’extension » puis « comme ça tu peux le faire en même temps que ce que tu fais ».** L’agent fonctionnel prend donc aussi le lot extension local sur `feat/local-browser-enrichment`, base partagée `6164eff`. Ne pas modifier en parallèle `extensions/growthos-pagesjaunes`, les nouveaux contrats `/browser/device-*`, ni `LocalBrowserEnrichment.tsx` sans synchronisation. Aucun troisième agent n’est lancé/presumé actif. Le design ATLAS reste au propriétaire design ; aucun CSS existant modifié.
+
+Rapport de 12:32 Paris : deux liens sociaux lus sur Plombeo, Annuaire/Societe.com confirmés, aucun nouvel événement niveau error depuis 12:12 ; 0 champ rempli lors de ces nouveaux passages ne prouve pas une panne (champs déjà présents). Google/Bing illisibles, Pappers non confirmé, PagesJaunes sous contrôle de sécurité. Le réseau local est un exécuteur de lecture, pas un proxy ouvert ni une garantie d’accès.
+
+Premier périmètre : reprendre les sources navigateur du dernier bilan d’un prospect, dans des onglets locaux dédiés et après permissions Chrome explicites ; conserver leurs résultats localement jusqu’au reçu serveur ; réutiliser les tâches source, le contrôle d’identité, les preuves et la comparaison CRM. Lecteur Pappers canonique partagé, aucun rôle ni coordonnée inventé. La file locale continue avec Chrome disponible ; GrowthOS doit être ouvert pour synchroniser. Annuaire/INSEE/BODACC restent sur leurs accès serveur. Chrome Android n’est pas annoncé compatible avec cette extension ordinateur. Une nouvelle version d’extension est nécessaire, distincte du redéploiement Web/API. Recette et publication à suivre ; aucun DockPanel ni changement de données réelles par l’agent. Notes à conserver jusqu’à autorisation finale production.
+
+Recette locale du pilote navigateur utilisateur : **486 contrôles PostgreSQL verts**, TypeScript API/Web et tests des lecteurs, de l’extension, des diagnostics et Harmony verts. La suite Chromium est étendue à 18 parcours React (collecte locale, panne de réception et réponse de préparation perdue), plus l’écran réel de permissions ; exécution CI à confirmer. Les résultats concordants sont appliqués via la politique existante ; preuves alternatives et coordonnées multiples conservées. Aucun CSS historique ni DockPanel modifié. Version extension 0.12.0 à empaqueter avec les quatre images du même SHA avant annonce.
+
+Relecture PR84 : recréer un onglet de source qui a été fermé avant un nouveau lot ; remonter le widget local par identifiant prospect pour ne pas garder les commandes d’un autre dossier. Ajouter une recette React de navigation entre fiches et un test de réouverture d’onglet. Conserver la date de lecture locale lors d’une synchronisation différée (date de réception séparée), et garder les commandes du lot accessibles même depuis une autre fiche. CI à vérifier sur le nouveau head ; aucun DockPanel.
+
+Complément de fiabilité PR84 : arrêt API et arrêt Chrome indépendants, pour que Chrome indisponible ne bloque pas la libération serveur ni ne réactive son ancien état affiché. Une consultation de progression réveille aussi une file locale interrompue. Recette React dédiée à l’arrêt avec Chrome inaccessible ajoutée (20 scénarios au total). Date de lecture locale et date de réception serveur conservées séparément ; 487 contrôles PostgreSQL locaux verts sur la version précédente de ce même contrat API.
+
 ## Agent 3 — E-réputation B2B et B2C : lot 1 « fondations » (28/11/2026)
 
 **Répartition confirmée par le propriétaire le 28/11 :** agent 1 = design, agent 2 = prospection B2B (CRM, API, navigateur cloud, **extension Chrome**), **agent 3 = e-réputation B2B (entités) et B2C (personnes physiques)**. La proposition « agent E extension » ci-dessus n'a donc pas d'agent dédié. Cahier des charges validé : [docs/ereputation/CAHIER-DES-CHARGES.md](docs/ereputation/CAHIER-DES-CHARGES.md) ; registre : §13 (`REP-*`) de [docs/REGISTRE-FONCTIONNALITES.md](docs/REGISTRE-FONCTIONNALITES.md).
@@ -415,6 +429,8 @@ Branche `claude/project-thread-i6xqwe`, base `6164eff` (PR83). Contenu : CRUD co
 - Données : la migration remet à `NULL` les scores hérités **sans aucune mesure** (valeurs fictives). Aucune autre donnée modifiée.
 
 Tests : `scripts/test-ereputation.mjs` (66 contrôles PostgreSQL 16, base jetable : validation, isolation entre agences, mandat, historique, purge, migration rejouée), `scripts/test-ereputation-ui.mjs` (rendu SSR et anti-valeurs fictives), `smoke-wizard.mjs` complet vert en local (465 contrôles), TypeScript API/Web verts. Aucun déploiement DockPanel par l'agent. Notes conservées jusqu'à l'autorisation explicite du lancement final en production.
+
+Synchronisation PR84 avec PR85 (`9c3f524`) : conserver intégralement le lot e-réputation de l’agent R et ses tests dans la CI commune ; les seuls conflits sont les ajouts de notes et la ligne de responsabilité extension, résolus en conservant les deux lots et l’attribution F pour Chrome. Aucune modification du métier e-réputation par F. Validation commune et images finales à confirmer avant feu vert.
 
 ### Agent 3 — correctif lot 1 après relecture de la PR #85 (28/11/2026)
 

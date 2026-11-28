@@ -1,4 +1,5 @@
 import {lazy,Suspense,useState} from 'react';
+const LocalBrowserEnrichment=lazy(()=>import('./LocalBrowserEnrichment').then(m=>({default:m.LocalBrowserEnrichment})));
 const CloudCaptureReview=lazy(()=>import('./cloud-browser/CloudCaptureReview').then(m=>({default:m.CloudCaptureReview})));
 import {Link} from 'wouter';
 import {
@@ -97,6 +98,7 @@ export function ProspectEnrichmentsTab({prospectId,run,busy,onEnrich,onOpenSourc
       {run&&<button type="button" className="atlas-enrichments-banner-action" onClick={onOpenSources}>Voir les données détaillées <ArrowRight size={14}/></button>}
     </div>
     {!!sourceDetails?.mergeHistory?.length&&<Suspense fallback={<p>Lecture des archives de fusion…</p>}><ProspectMergeHistory prospectId={prospectId}/></Suspense>}
+    <Suspense fallback={null}><LocalBrowserEnrichment key={prospectId} prospectId={prospectId} paused={active||busy} onSaved={onReviewed} onReview={(id,source)=>openReview(source,{label:source,status:'needs_review',jobId:id})}/></Suspense>
     {(savedNotice||initialNotice)&&<p role="status" className="atlas-enrichments-banner is-success">{savedNotice||initialNotice}</p>}
     {run&&Object.entries(run.steps).filter(([,step])=>!!step.duplicateId).map(([source,step])=><div key={'duplicate-'+source} role="status"><p>{step.message}</p><button type="button" className="atlas-enrichments-primary" onClick={()=>setMergeId(step.duplicateId!)}>Comparer le doublon CRM</button></div>)}
     {run&&mergeId&&<Suspense fallback={<p>Lecture des dossiers…</p>}><ProspectMergeReview prospectId={prospectId} otherId={mergeId} runId={run.id} onClose={()=>setMergeId(null)}/></Suspense>}

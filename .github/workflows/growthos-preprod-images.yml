@@ -75,7 +75,10 @@ jobs:
           node --check extensions/growthos-pagesjaunes/societe.js
           node --check extensions/growthos-pagesjaunes/capture.js
           node --check extensions/growthos-pagesjaunes/popup.js
+          node --check extensions/growthos-pagesjaunes/device-runner.js
+          node --check extensions/growthos-pagesjaunes/device-ui.js
           node scripts/test-multisource-extension.mjs
+          node scripts/test-device-runner.mjs
           node -e 'const m=require("./extensions/growthos-pagesjaunes/manifest.json"); if(m.manifest_version!==3 || m.host_permissions.some(p=>!p.includes("pagesjaunes.fr")&&!p.includes("recherche-entreprises.api.gouv.fr")&&!p.includes("data.geopf.fr")))process.exit(1)'
 
       - name: Test professional source links and interface rendering

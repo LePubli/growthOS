@@ -1,5 +1,5 @@
 const normalize=(value:unknown)=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
-const fields=['source','company','address','codePostal','city','phone','email','website','sourceUrl','siret','siren','apeCode','nafLabel','nafVersion','apeScope','companyDetails','pagesjaunesProfile','mapsDetail'];
+const fields=['source','company','address','codePostal','city','phone','email','emails','phones','website','sourceUrl','siret','siren','apeCode','nafLabel','nafVersion','apeScope','companyDetails','pagesjaunesProfile','mapsDetail'];
 function key(c:any){return [c.source,normalize(c.company),normalize(c.address)||String(c.sourceUrl||'').split('#')[0],c.siret||''].join('|');}
 export function appendCloudResult(previous:any,data:any,jobId:string,source:string,target=false){
   const captures=[...(previous?.captures||[])],drafts=[...(previous?.drafts||[])];

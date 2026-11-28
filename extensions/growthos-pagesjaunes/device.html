@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>GrowthOS — Collecte sur cet appareil</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-heading">
+        <h1>GrowthOS</h1>
+        <span>Collecte locale</span>
+      </div>
+    </header>
+    <main id="popupMain">
+      <section>
+        <h2 id="company">Collecte locale</h2>
+        <p>
+          Les sources sont lues dans des onglets dédiés avec les sessions de
+          votre navigateur. Les mots de passe et cookies restent dans Chrome.
+        </p>
+        <p id="status" role="status" aria-live="polite"></p>
+        <button type="button" class="primary" id="authorize">
+          Autoriser les sources et démarrer</button
+        ><button type="button" class="secondary" id="stop">Arrêter</button>
+        <p id="error" role="alert"></p>
+      </section>
+      <section id="jobs" aria-label="Progression des sources"></section>
+      <p>
+        <a
+          id="back"
+          class="primary"
+          href="https://agile.le-publicitaire.fr/"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Suivre dans GrowthOS</a
+        >
+      </p>
+      <small
+        >Gardez Chrome ouvert. Une capture reçue localement n’est enregistrée
+        dans le CRM qu’après confirmation du serveur GrowthOS. Un contrôle de
+        sécurité doit être effectué par vous sur la source.</small
+      >
+    </main>
+    <script src="device-ui.js"></script>
+  </body>
+</html>

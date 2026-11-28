@@ -52,6 +52,7 @@ type ExtensionResponse = {
   version?: string;
   extensionId?: string;
   task?: ConnectorTask | null;
+  deviceRun?: any;
 };
 export type ConnectorTask={id:string;source:string;mode:'discover'|'enrich';status:'active'|'pending'|'done';
   cloudJobId?:string;prospect?:{id:string;company:string};capture?:Partial<LocalCompany>&{id:string;company:string;source:string}};
@@ -68,7 +69,7 @@ export function localPagesJaunesLocations(filters: {
     departements.length ? departements.map(code => departmentNames[code] || code) :
     regions.map(code => regionNames[code] || code))];
 }
-function askExtension(action: 'ping'|'search'|'enrich'|'get-captures'|'get-drafts'|'ack-import'|'begin-task'|'get-task-result'|'ack-task', payload?: object, timeoutMs = 4000): Promise<ExtensionResponse> {
+function askExtension(action: 'ping'|'search'|'enrich'|'get-captures'|'get-drafts'|'ack-import'|'begin-task'|'get-task-result'|'ack-task'|'device-begin'|'device-get'|'device-ack'|'device-cancel'|'device-show', payload?: object, timeoutMs = 4000): Promise<ExtensionResponse> {
   return new Promise((resolve,reject) => {
     if (isMobile) { reject(new Error('Sur téléphone, une application Android dédiée sera nécessaire.')); return; }
     const requestId = crypto.randomUUID();
@@ -83,7 +84,7 @@ function askExtension(action: 'ping'|'search'|'enrich'|'get-captures'|'get-draft
       window.clearTimeout(timeout); window.removeEventListener('message',listener);
       if (!m.ok) { reject(new Error(m.error || 'Extension indisponible')); return; }
       resolve({results: Array.isArray(m.results) ? m.results : [], drafts: Array.isArray(m.drafts) ? m.drafts : [], warnings: Array.isArray(m.warnings) ? m.warnings : [], profile: m.profile || null,
-        task:m.task,version:m.version,extensionId:m.extensionId});
+        task:m.task,deviceRun:m.deviceRun,version:m.version,extensionId:m.extensionId});
     }
     window.addEventListener('message',listener);
     window.postMessage({channel:CHANNEL,direction:'to-extension',requestId,action,payload},window.location.origin);
@@ -121,3 +122,5 @@ export async function enrichLocalPagesJaunes(url: string): Promise<LocalProfile>
   if (!response.profile) throw new Error('La fiche PagesJaunes n’a pas pu être extraite');
   return response.profile;
 }
+
+export function localDeviceCommand(action:'device-begin'|'device-get'|'device-ack'|'device-cancel'|'device-show',payload?:object){return askExtension(action,payload,10000);}
