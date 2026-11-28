@@ -304,8 +304,8 @@
 
 /* Verification is a complete document, not a clipped collection list. */
 .cloud-browser-workspace.has-verification {height:auto;align-items:start;}
-.cloud-browser-workspace.has-verification .cloud-browser-view-panel {height:clamp(600px,calc(50vw - 57px),840px);}
-.cloud-browser-results.cloud-browser-verification {height:auto;min-height:0;overflow:visible;align-self:start;}
+.cloud-browser-workspace.has-verification .cloud-browser-view-panel {width:100%;max-width:100%;height:clamp(600px,calc(50vw - 57px),840px);}
+.cloud-browser-results.cloud-browser-verification {width:100%;max-width:100%;height:auto;min-height:0;overflow:visible;align-self:start;}
 .cloud-browser-view-tools {display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-bottom:1px solid #d2e0f2;}
 .cloud-browser-view-tools button {padding:6px 9px;border:1px solid #cfdef2;border-radius:8px;background:var(--card-bg,#fff);color:inherit;min-height:36px;}
 .cloud-browser-view-tools button[aria-pressed=true] {border-color:#176bee;}
