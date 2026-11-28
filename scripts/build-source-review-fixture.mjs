@@ -18,7 +18,7 @@ const persisted=sessionStorage.getItem('source-review-fixture');if(persisted){co
 if(scenario==='applied'){job.result.applied={filled:['email'],conflicts:0};p.email=capture.email;sessionStorage.setItem('source-review-fixture',JSON.stringify({p,job}));}
 const profiles=[{id:profileId,source:scenario==='discovery'?'google_maps':'societe_com',label:'Source de recette',mode:'public'}];
 const run=()=>({id:'run',status:job.result.applied?'completed':'partial',updated_at:p.updatedAt,steps:{societe_com:{label:'Societe.com',status:job.result.applied?'completed':job.status,jobId,profileId,filled:job.result.applied?['email']:[],message:'Fiche locale de recette'}},summary:{sourcesDone:job.result.applied?1:0,sourcesTotal:1,fields:job.result.applied?['email']:[],conflicts:0,interventions:job.result.applied?0:1}});
-window.__reviewCalls={confirm:0,finish:0,open:0,read:0,launch:0,merge:0,device:0};let locked=scenario==='busy'||scenario==='lost';window.__releaseSource=()=>locked=false;
+window.__reviewCalls={confirm:0,finish:0,open:0,read:0,launch:0,merge:0,device:0,deviceStop:0};let locked=scenario==='busy'||scenario==='lost';window.__releaseSource=()=>locked=false;
 const clone=v=>structuredClone(v);
 const apiClient={
  async get(url){
@@ -44,7 +44,7 @@ const apiClient={
  async post(url,body){
   if(url==='/browser/device-plan'){window.__devicePlanRuns=window.__devicePlanRuns||[];window.__devicePlanRuns.push(body.runId);if(scenario==='device_plan_retry'&&window.__devicePlanRuns.length===1)throw Object.assign(Error('Réponse de préparation perdue'),{status:503});return {runId:body.runId,deviceId:body.deviceId,prospect:{id,company:p.company},jobs:[{id:jobId,source:'societe_com',query:p.company,area:'Roubaix'}]};}
   if(url.endsWith('/device-result')){window.__reviewCalls.device++;if(scenario==='device_server_retry'&&window.__reviewCalls.device===1)throw Object.assign(Error('Réception temporairement indisponible'),{status:503});job.status='completed';job.result.applied={filled:['email'],conflicts:0};p.email=capture.email;sessionStorage.setItem('source-review-fixture',JSON.stringify({p,job}));return {jobId,status:'completed',applied:true};}
-  if(url==='/browser/device-stop')return {stopped:1};
+  if(url==='/browser/device-stop'){window.__reviewCalls.deviceStop++;return {stopped:1};}
   if(url.endsWith('/merge-preview'))return {mergeKey:'10000000-0000-4000-8000-000000000005',proofDigest:'b'.repeat(64),current:{id,company:p.company,siret:null,address:null,updatedAt:p.updatedAt,fields:{company:p.company,email:p.email,phone:p.phone}},other:{id:otherId,company:'Identité légale existante',siret:'96677710100019',address:'8 rue du Test',updatedAt:p.updatedAt,fields:{company:'Identité légale existante',email:'direction@atelier.example',phone:'0611223344'}},activities:[],contactCounts:[1,2]};
   if(url.endsWith('/merge')){if(body.confirmed!==true||body.survivorId!==id)throw Error('Fusion non confirmée');window.__reviewCalls.merge++;job.result.merged=true;p.siret='96677710100019';p.sourceDetails.mergeHistory=[{id:body.mergeKey}];return {prospectId:id,mergeId:body.mergeKey};}
 

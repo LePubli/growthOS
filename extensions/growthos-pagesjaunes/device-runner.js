@@ -368,7 +368,11 @@ async function drProcess() {
   }
 }
 async function drAction(action, payload = {}, sender) {
-  if (action === "device-get") return { ok: true, deviceRun: await drGet() };
+  if (action === "device-get") {
+    const run = await drGet();
+    if (run?.status === "running") void drProcess();
+    return { ok: true, deviceRun: run };
+  }
   if (action === "device-begin") {
     if (
       !UUID.test(payload.runId || "") ||

@@ -9,7 +9,7 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const origin='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CLOUD_TEST_BROWSER?{executablePath:process.env.CLOUD_TEST_BROWSER}:{})});
 try{
- for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery','save_conflict','mobile_long','mobile_blocked','activities_fail','parent_fail','finish_fail','duplicate','duplicate_mobile','device','device_server_retry','device_plan_retry','device_navigation']){
+ for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery','save_conflict','mobile_long','mobile_blocked','activities_fail','parent_fail','finish_fail','duplicate','duplicate_mobile','device','device_server_retry','device_plan_retry','device_navigation','device_stop_offline']){
   const mobile=scenario.startsWith('mobile_')||scenario.endsWith('_fail')||scenario.endsWith('_mobile');const page=await browser.newPage({viewport:mobile?{width:scenario==='mobile_long'?360:390,height:844}:{width:1280,height:900},isMobile:mobile,hasTouch:mobile});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>route.request().url().startsWith(origin)?route.continue():route.abort());
   const history=scenario==='history'||scenario==='discovery';
@@ -20,6 +20,7 @@ try{
     window.__deviceRun=()=>run;
     window.__authorizeDevice=()=>{run.status='finished';run.jobs[0].state='ready';run.jobs[0].outcome={status:'completed',captures:[{source:'societe_com',company:'Atelier de recette',email:'contact@atelier.example'}],references:[]};save();};
     window.addEventListener('message',event=>{const m=event.data;if(m?.channel!=='growthos-pagesjaunes-device-v1'||m.direction!=='to-extension')return;
+     if(m.action==='device-cancel'&&new URLSearchParams(location.search).get('scenario')==='device_stop_offline'){window.postMessage({channel:m.channel,direction:'from-extension',requestId:m.requestId,ok:false,error:'Connecteur momentanément inaccessible'},location.origin);return;}
      if(m.action==='device-begin'){run={...m.payload,status:'permission_required',jobs:m.payload.jobs.map(j=>({...j,state:'pending',acked:false}))};save();}
      if(m.action==='device-ack'){run.jobs[0].acked=true;run.jobs[0].receipt=m.payload.receipt;delete run.jobs[0].outcome;save();}
      if(m.action==='device-cancel'){run.status='cancelled';save();}
@@ -34,6 +35,7 @@ try{
    assert.equal(await page.evaluate(()=>window.__reviewCalls.device),0,'Aucun résultat serveur avant lecture locale');
    if(scenario==='device_navigation'){await page.evaluate(()=>{history.pushState(null,'','/prospects/10000000-0000-4000-8000-000000000004?view=enrichments&scenario=device_navigation');window.dispatchEvent(new PopStateEvent('popstate'));});await page.getByRole('heading',{name:'Prospect suivant',exact:true}).waitFor();const next=page.getByRole('region',{name:'Collecte sur cet appareil'});assert(await next.getByRole('button',{name:'Reprendre les sources sur cet appareil',exact:true}).isEnabled());assert.equal(await next.getByRole('button',{name:'Arrêter la collecte locale',exact:true}).count(),0,'La nouvelle fiche ne conserve pas les commandes d’arrêt du prospect précédent');assert.equal(await page.evaluate(()=>window.__deviceRun().prospect.id),'10000000-0000-4000-8000-000000000001');assert.deepEqual(errors,[]);await page.close();console.log('✓ Local device React scenario: navigation between prospects');continue;}
 
+   if(scenario==='device_stop_offline'){await local.getByRole('button',{name:'Arrêter la collecte locale',exact:true}).click();await local.getByText(/Collecte locale arrêtée/).waitFor();assert.equal(await page.evaluate(()=>window.__reviewCalls.deviceStop),1,'L’arrêt serveur ne dépend pas de Chrome');await page.waitForTimeout(2200);assert.equal(await local.getByText(/Collecte locale arrêtée/).count(),1,'Un état Chrome ancien ne réactive pas le lot arrêté');assert.equal(await page.evaluate(()=>window.__reviewCalls.device),0);assert.deepEqual(errors,[]);await page.close();console.log('✓ Local device React scenario: stop while Chrome is unavailable');continue;}
    await page.evaluate(()=>window.__authorizeDevice());
    if(scenario==='device_server_retry'){
     await local.getByRole('alert').waitFor();assert.equal(await page.evaluate(()=>window.__deviceRun().jobs[0].acked),false,'Une panne serveur ne libère pas la capture');

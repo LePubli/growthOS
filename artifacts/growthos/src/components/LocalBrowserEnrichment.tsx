@@ -73,6 +73,10 @@ export function LocalBrowserEnrichment({
         const current = (await localDeviceCommand("device-get"))
           .deviceRun as DeviceRun | null;
         if (!current || current.prospect.id !== prospectId) return;
+        if (stopped.current === current.runId) {
+          if (alive) setRun({ ...current, status: "cancelled" });
+          return;
+        }
         if (alive) setRun(current);
         if (current.status === "cancelled") {
           if (stopped.current !== current.runId) {
@@ -82,6 +86,7 @@ export function LocalBrowserEnrichment({
               deviceId: current.deviceId,
             });
             stopped.current = current.runId;
+            clearPreparation(current.runId);
           }
           return;
         }
@@ -184,17 +189,31 @@ export function LocalBrowserEnrichment({
     if (!target) return;
     setBusy(true);
     try {
-      if (run && run.runId === target.runId)
-        await localDeviceCommand("device-cancel", { runId: run.runId });
-      await apiClient.post("/browser/device-stop", {
+      const local =
+        run && run.runId === target.runId
+          ? localDeviceCommand("device-cancel", { runId: target.runId })
+          : Promise.resolve();
+      const server = apiClient.post("/browser/device-stop", {
         prospectId,
         deviceId: target.deviceId,
         runId: target.runId,
       });
-      if (run && run.runId === target.runId)
-        setRun({ ...run, status: "cancelled" });
-      stopped.current = target.runId;
-      clearPreparation(target.runId);
+      const [remote, device] = await Promise.allSettled([server, local]);
+      if (remote.status === "fulfilled") {
+        setError("");
+        stopped.current = target.runId;
+        clearPreparation(target.runId);
+        if (run && run.runId === target.runId)
+          setRun({ ...run, status: "cancelled" });
+        if (device.status === "rejected")
+          setMessage(
+            "Arrêt confirmé dans GrowthOS. Chrome est momentanément inaccessible ; ses résultats tardifs ne seront pas appliqués.",
+          );
+      } else {
+        if (device.status === "fulfilled" && run && run.runId === target.runId)
+          setRun({ ...run, status: "cancelled" });
+        throw remote.reason;
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Arrêt impossible.");
     } finally {
