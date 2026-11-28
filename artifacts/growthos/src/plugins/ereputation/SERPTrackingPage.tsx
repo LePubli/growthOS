@@ -5,10 +5,11 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import apiClient from '@/lib/api-client';
 
 interface Campaign { id: string; name: string; targetName: string; }
-interface SerpEntry { keyword: string; position: number | null; url: string | null; volume: number; date: string; }
+interface SerpEntry { keyword: string; position: number | null; url: string | null; volume: number | null; date: string; previous_position: number | null; }
 
-const PosDiff = ({ diff }: { diff: number }) => {
-  if (diff === 0) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+/** Écart avec la mesure précédente du même mot-clé ; « — » sans mesure comparable. */
+const PosDiff = ({ diff }: { diff: number | null }) => {
+  if (diff === null || diff === 0) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
   if (diff < 0) return <span className="flex items-center gap-0.5 text-green-600 font-medium"><TrendingUp size={12} />+{Math.abs(diff)}</span>;
   return <span className="flex items-center gap-0.5 text-red-500 font-medium"><TrendingDown size={12} />-{Math.abs(diff)}</span>;
 };
@@ -112,13 +113,13 @@ export default function SERPTrackingPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm">
-                  <PosDiff diff={Math.floor(Math.random() * 6) - 3} />
+                  <PosDiff diff={row.position != null && row.previous_position != null ? row.position - row.previous_position : null} />
                 </td>
                 <td className="px-4 py-3 text-xs truncate max-w-[160px]" style={{ color: 'var(--text-muted)' }}>
                   {row.url ?? '—'}
                 </td>
                 <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {(row.volume ?? 0).toLocaleString('fr-FR')}
+                  {row.volume == null ? '—' : row.volume.toLocaleString('fr-FR')}
                 </td>
               </tr>
             ))}

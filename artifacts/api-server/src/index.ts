@@ -10,6 +10,8 @@ import { registerCrossPluginEvents } from "./lib/integrations/cross-plugin-event
 import { startSignalCron } from "./lib/cron/SignalCron";
 import { startAgentWorker } from "./lib/autopilot/AgentWorker";
 import { startDiagnosticsRetention } from './lib/diagnostics';
+import { runEreputationFoundationsMigration } from "@workspace/db";
+import { startErepRetention } from "./lib/plugin-ereputation/RetentionService";
 
 const rawPort = process.env["PORT"];
 
@@ -45,6 +47,9 @@ runMigrations()
 
     await runErepIntegrationsMigration();
     logger.info("E-Rep integration tables ready (erep_alerts, erep_approvals, accounts.reputation_health_score)");
+
+    await runEreputationFoundationsMigration();
+    logger.info("E-Rep foundations ready (subject, GDPR mandate, erep_change_log)");
 
     await runRBACMigration();
     logger.info("RBAC tables ready (rbac_roles, rbac_permissions, rbac_user_roles, users.is_active)");
@@ -86,6 +91,7 @@ runMigrations()
       startCloudJobs();
       startProspectEnrichments();
       startDiagnosticsRetention();
+      startErepRetention();
 
       // ── Démarrer l'AgentWorker (Autopilot IA)
       startAgentWorker();
