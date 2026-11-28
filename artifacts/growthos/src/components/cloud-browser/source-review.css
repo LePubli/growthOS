@@ -1,0 +1,15 @@
+/* Source comparison must remain fully accessible in cards and narrow screens. */
+.cloud-capture-review {min-width:0;max-width:100%;overflow-wrap:anywhere;outline-offset:3px;}
+.cloud-capture-review table {width:100%;table-layout:fixed;border-collapse:collapse;}
+.cloud-capture-review :is(td,th) {padding:8px;vertical-align:top;text-align:left;overflow-wrap:anywhere;}
+.cloud-capture-review button {white-space:normal;min-height:40px;}
+.cloud-capture-review input[type=checkbox] {width:18px;height:18px;flex-shrink:0;}
+.cloud-capture-review label {display:inline-flex;gap:8px;align-items:flex-start;}
+@media(max-width:720px) {
+  .cloud-capture-review {padding:12px;}
+  .cloud-capture-review thead {display:none;}
+  .cloud-capture-review :is(table,tbody,tr,td) {display:block;width:100%;}
+  .cloud-capture-review tr {margin-block:12px;border:1px solid var(--card-border,#d2e0f2);border-radius:8px;}
+  .cloud-capture-review td::before {content:attr(data-label);display:block;font-weight:700;margin-bottom:4px;}
+  .cloud-capture-review :is(button,select) {min-height:44px;}
+}

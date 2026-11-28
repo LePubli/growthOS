@@ -11,6 +11,15 @@ export interface Theme { id: string; name: string; isDark: boolean; tokens: Them
 
 export const BUILT_IN_THEMES: Theme[] = [
   {
+    id:'atlas-orbit', name:'ATLAS × ORBIT · GrowthOS 2.0', isDark:false, tokens:{
+      '--color-primary':'#176BEE','--color-primary-light':'#E8F0FF','--color-primary-dark':'#1255C7','--color-accent':'#7B48EE',
+      '--sidebar-bg':'#F8FAFF','--sidebar-text':'#213454','--sidebar-hover':'#EBF2FF',
+      '--body-bg':'#F5F8FD','--card-bg':'#FFFFFF','--card-border':'#DFE7F3',
+      '--text-primary':'#101D37','--text-secondary':'#41516D','--text-muted':'#74829B',
+      '--radius-card':'1rem','--font-sans':'Inter, system-ui, sans-serif',
+    },
+  },
+  {
     id:'odoo-default', name:'GrowthOS (Odoo)', isDark:false, tokens:{
       '--color-primary':'#875A7B','--color-primary-light':'#F3EEF1','--color-primary-dark':'#6D4863','--color-accent':'#00A09D',
       '--sidebar-bg':'#2C3E50','--sidebar-text':'#B8C4CE','--sidebar-hover':'#3D5166',
@@ -77,11 +86,12 @@ export const BUILT_IN_THEMES: Theme[] = [
 
 const STORAGE_KEY = 'growthos-theme-id';
 
-function applyTokens(tokens: ThemeTokens, isDark: boolean) {
+function applyTokens(tokens: ThemeTokens, isDark: boolean, themeId: string) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   Object.entries(tokens).forEach(([k, v]) => { root.style.setProperty(k, v); });
   root.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  root.setAttribute('data-theme-id', themeId);
   isDark ? root.classList.add('dark') : root.classList.remove('dark');
 }
 
@@ -98,9 +108,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    const storedId = typeof window !== 'undefined' ? (localStorage.getItem(STORAGE_KEY) || 'odoo-default') : 'odoo-default';
+    // Nouveau design par défaut ; ne modifie jamais le choix déjà enregistré d'un utilisateur.
+    const storedId = typeof window !== 'undefined' ? (localStorage.getItem(STORAGE_KEY) || 'atlas-orbit') : 'atlas-orbit';
     const found = BUILT_IN_THEMES.find(t => t.id === storedId) || BUILT_IN_THEMES[0];
-    applyTokens(found.tokens, found.isDark);
+    applyTokens(found.tokens, found.isDark, found.id);
     setCurrent(found);
   }, []);
 
@@ -108,7 +119,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const found = BUILT_IN_THEMES.find(t => t.id === id);
     if (!found) return;
     setIsLoading(true);
-    applyTokens(found.tokens, found.isDark);
+    applyTokens(found.tokens, found.isDark, found.id);
     setCurrent(found);
     localStorage.setItem(STORAGE_KEY, id);
     setIsLoading(false);

@@ -3,6 +3,9 @@ import { Check, Loader2, Palette, CheckCircle, AlertCircle } from 'lucide-react'
 import { useTheme } from '@/providers/theme-provider';
 
 const BUILT_IN_THEMES = [
+  { id: 'atlas-orbit', name: 'ATLAS × ORBIT · GrowthOS 2.0', isDark: false,
+    desc: 'Nouveau design recommandé — clarté ATLAS et intelligence contextuelle ORBIT',
+    preview: { sidebar: '#F8FAFF', primary: '#176BEE', body: '#F5F8FD' } },
   { id: 'odoo-default', name: 'GrowthOS', isDark: false, desc: "Mauve professionnel — inspiré d'Odoo", preview: { sidebar: '#2C3E50', primary: '#875A7B', body: '#F5F5F5' } },
   { id: 'teal', name: 'Teal Pro', isDark: false, desc: 'Bleu-vert moderne et épuré', preview: { sidebar: '#1E293B', primary: '#0D9488', body: '#F8FAFC' } },
   { id: 'dark', name: 'Dark Mode', isDark: true, desc: 'Sombre élégant pour travailler tard', preview: { sidebar: '#0F172A', primary: '#14B8A6', body: '#1E293B' } },

@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp, integer, boolean, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, timestamp, integer, boolean, doublePrecision, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -11,6 +11,17 @@ export const prospectsTable = pgTable("prospects", {
   email: text("email"),
   phone: text("phone"),
   company: text("company"),
+  siren: text("siren"),
+  siret: text("siret"),
+  apeCode: text("ape_code"),
+  nafLabel: text("naf_label"),
+  nafVersion: text("naf_version"),
+  postalCode: text("postal_code"),
+  city: text("city"),
+  linkedinUrl: text("linkedin_url"),
+  source: text("source"),
+  sourceUrl: text("source_url"),
+  sourceDetails: jsonb("source_details").$type<Record<string, unknown>>().default({}),
   jobTitle: text("job_title"),
   website: text("website"),
   status: text("status").notNull().default("new"),

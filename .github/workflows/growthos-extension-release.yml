@@ -1,0 +1,110 @@
+name: GrowthOS Chrome extension package and updates
+
+# The local unpacked extension does not receive Chrome auto-updates.
+# After the owner publishes it once on Chrome Web Store and configures the
+# three publisher credentials, subsequent changes are uploaded for review.
+on:
+  push:
+    branches:
+      - fix/growthos-functional-redesign
+      - growthos-preprod
+    paths:
+      - extensions/growthos-pagesjaunes/**
+      - .github/workflows/growthos-extension-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: growthos-extension-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout connector files
+        uses: actions/checkout@v4
+
+      - name: Validate connector scripts
+        run: |
+          node --check extensions/growthos-pagesjaunes/background.js
+          node --check extensions/growthos-pagesjaunes/bridge.js
+          node --check extensions/growthos-pagesjaunes/societe.js
+          node --check extensions/growthos-pagesjaunes/capture.js
+          node --check extensions/growthos-pagesjaunes/popup.js
+          node --check extensions/growthos-pagesjaunes/device-runner.js
+          node --check extensions/growthos-pagesjaunes/device-ui.js
+          node scripts/test-multisource-extension.mjs
+          node scripts/test-device-runner.mjs
+
+      - name: Package Chrome Web Store ZIP with monotonic release version
+        env:
+          RELEASE_NUMBER: ${{ github.run_number }}
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const file = 'extensions/growthos-pagesjaunes/manifest.json';
+          const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const number = Number(process.env.RELEASE_NUMBER);
+          if (!Number.isInteger(number) || number < 1 || number > 65535)
+            throw new Error('Release number outside Chrome extension version range');
+          if (!/^\d+\.\d+\.\d+$/.test(manifest.version))
+            throw new Error('Base manifest version must contain three segments');
+          manifest.version += '.' + number;
+          fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+          console.log('Chrome Web Store package version:', manifest.version);
+          NODE
+          cd extensions/growthos-pagesjaunes
+          zip -q "$RUNNER_TEMP/growthos-connecteur-chrome.zip" \
+            manifest.json modules.json background.js bridge.js capture.js societe.js pappers.js device-runner.js device.html device-ui.js popup.html popup.css popup.js
+
+      - name: Keep verified extension ZIP available from GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: growthos-connecteur-chrome-${{ github.run_number }}
+          path: ${{ runner.temp }}/growthos-connecteur-chrome.zip
+          retention-days: 30
+
+      - name: Check one-time Chrome Web Store configuration
+        id: publisher
+        env:
+          STORE_PUBLISHER: ${{ vars.CWS_PUBLISHER_ID }}
+          STORE_EXTENSION: ${{ vars.CWS_EXTENSION_ID }}
+          STORE_CREDENTIALS: ${{ secrets.CWS_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          if [[ -n "$STORE_PUBLISHER" && -n "$STORE_EXTENSION" && -n "$STORE_CREDENTIALS" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo '::notice::Extension packaged. Automatic Chrome Web Store publication awaits first manual listing and publisher credentials.'
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate Chrome Web Store publisher
+        if: steps.publisher.outputs.enabled == 'true'
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.CWS_SERVICE_ACCOUNT_JSON }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+
+      - name: Upload release and submit to Chrome Web Store review
+        if: steps.publisher.outputs.enabled == 'true'
+        env:
+          CHROME_STORE_TOKEN: ${{ steps.auth.outputs.access_token }}
+          STORE_PUBLISHER: ${{ vars.CWS_PUBLISHER_ID }}
+          STORE_EXTENSION: ${{ vars.CWS_EXTENSION_ID }}
+        shell: bash
+        run: |
+          curl --fail-with-body --silent --show-error -X POST \
+            -H "Authorization: Bearer $CHROME_STORE_TOKEN" \
+            -H 'Content-Type: application/zip' \
+            --data-binary "@$RUNNER_TEMP/growthos-connecteur-chrome.zip" \
+            "https://chromewebstore.googleapis.com/upload/v2/publishers/$STORE_PUBLISHER/items/$STORE_EXTENSION:upload"
+          curl --fail-with-body --silent --show-error -X POST \
+            -H "Authorization: Bearer $CHROME_STORE_TOKEN" \
+            "https://chromewebstore.googleapis.com/v2/publishers/$STORE_PUBLISHER/items/$STORE_EXTENSION:publish"
+          echo 'Update submitted; Chrome distributes it after Store review and publication.'

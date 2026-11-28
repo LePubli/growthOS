@@ -43,6 +43,10 @@ export function pushSystemAlert(tenantId: string, alertType: string, data: Recor
   pushSSE(tenantId, { event: alertType, ...data });
 }
 
+export function publishNotification(tenantId:string, notification:Record<string,unknown>):void {
+  pushSSE(tenantId,{event:'notification',notification:{...notification,at:"à l'instant"}});
+}
+
 export async function createNotification(input: CreateNotifInput): Promise<void> {
   try {
     const [notif] = await db.insert(notificationsTable).values({
@@ -55,13 +59,7 @@ export async function createNotification(input: CreateNotifInput): Promise<void>
       userId: input.userId ?? null,
     }).returning();
 
-    pushSSE(input.tenantId, {
-      event: "notification",
-      notification: {
-        ...notif,
-        at: "à l'instant",
-      },
-    });
+    publishNotification(input.tenantId,notif);
   } catch (err) {
     console.error("[notifications] failed to create notification:", err);
   }

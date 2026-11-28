@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
+import { recordDiagnosticEvent } from "../lib/diagnostics";
 
 declare global {
   namespace Express {
@@ -38,6 +39,21 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
       // Never log request bodies. Failed login, bootstrap and provider-key
       // requests frequently contain passwords and API secrets.
     }, `← response ${res.statusCode}`);
+
+    // Automatic coverage for every existing AND future Express route. Avoid
+    // self-reporting and never persist URL query parameters, request bodies or tokens.
+    if (req.auth?.tenantId && !req.path.startsWith('/api/v1/diagnostics') &&
+        (res.statusCode >= 400 || (durationMs !== undefined && durationMs >= 3000))) {
+      const route = req.path.replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, ':id')
+        .replace(/\/[0-9]{4,}(?=\/|$)/g, '/:id').slice(0, 180);
+      void recordDiagnosticEvent({
+        tenantId: req.auth.tenantId, userId: req.auth.userId, traceId: req.traceId,
+        level: res.statusCode >= 500 ? 'error' : 'warn', component: 'api',
+        code: res.statusCode >= 400 ? `HTTP_${res.statusCode}` : 'SLOW_REQUEST',
+        message: res.statusCode >= 400 ? `Réponse HTTP ${res.statusCode}` : 'Requête lente',
+        details: { method: req.method, route, statusCode: res.statusCode, durationMs: Math.round(durationMs || 0) },
+      });
+    }
   });
 
   next();

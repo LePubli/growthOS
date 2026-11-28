@@ -17,12 +17,23 @@ const dealSchema = z.object({
   probability: z.number().int().min(0).max(100).optional(),
   closeDate: z.string().optional(),
   prospect: z.string().optional(),
+  prospectId: z.string().uuid().nullable().optional(),
+  priority: z.enum(["high", "medium", "low"]).optional(),
+  notes: z.string().max(10000).optional(),
 });
 
 router.get("/", async (req, res) => {
   const tenantId = req.auth!.tenantId;
+  const prospectId = req.query.prospectId;
+  if (prospectId !== undefined && !z.string().uuid().safeParse(prospectId).success) {
+    res.status(400).json({ error: "Identifiant prospect invalide" });
+    return;
+  }
   const rows = await db.select().from(dealsTable)
-    .where(eq(dealsTable.tenantId, tenantId))
+    .where(and(
+      eq(dealsTable.tenantId, tenantId),
+      ...(typeof prospectId === "string" ? [eq(dealsTable.prospectId, prospectId)] : []),
+    ))
     .orderBy(desc(dealsTable.createdAt));
 
   const deals = rows.map(d => ({
@@ -46,9 +57,25 @@ router.post("/", async (req, res) => {
     res.status(400).json({ error: "Données invalides", details: parse.error.issues });
     return;
   }
-  const { value, ...rest } = parse.data;
+  const { value, prospectId, ...rest } = parse.data;
+  let linkedProspect: typeof prospectsTable.$inferSelect | undefined;
+  if (prospectId) {
+    [linkedProspect] = await db.select().from(prospectsTable)
+      .where(and(eq(prospectsTable.id, prospectId), eq(prospectsTable.tenantId, req.auth!.tenantId)))
+      .limit(1);
+    if (!linkedProspect) {
+      res.status(404).json({ error: "Prospect introuvable dans votre espace" });
+      return;
+    }
+  }
+  const linkedName = linkedProspect
+    ? [linkedProspect.firstName, linkedProspect.lastName].filter(Boolean).join(" ") || linkedProspect.company || ""
+    : rest.prospect;
   const [deal] = await db.insert(dealsTable).values({
     ...rest,
+    prospectId: linkedProspect?.id ?? null,
+    prospect: linkedName,
+    company: linkedProspect?.company || rest.company || "",
     value: String(value ?? 0),
     tenantId: req.auth!.tenantId,
     createdBy: req.auth!.userId,
@@ -63,9 +90,26 @@ router.patch("/:id", async (req, res) => {
     res.status(400).json({ error: "Données invalides" });
     return;
   }
-  const { value, ...rest } = parse.data;
-  const updateData: any = { ...rest, updatedAt: new Date() };
+  const { value, prospectId, ...rest } = parse.data;
+  const updateData: Partial<typeof dealsTable.$inferInsert> = { ...rest, updatedAt: new Date() };
   if (value !== undefined) updateData.value = String(value);
+  if (prospectId !== undefined) {
+    if (prospectId === null) {
+      updateData.prospectId = null;
+      updateData.prospect = null;
+    } else {
+      const [linked] = await db.select().from(prospectsTable)
+        .where(and(eq(prospectsTable.id, prospectId), eq(prospectsTable.tenantId, req.auth!.tenantId)))
+        .limit(1);
+      if (!linked) {
+        res.status(404).json({ error: "Prospect introuvable dans votre espace" });
+        return;
+      }
+      updateData.prospectId = linked.id;
+      updateData.prospect = [linked.firstName, linked.lastName].filter(Boolean).join(" ") || linked.company || "";
+      updateData.company = linked.company || rest.company || "";
+    }
+  }
 
   const [prev] = await db.select().from(dealsTable)
     .where(and(eq(dealsTable.id, id), eq(dealsTable.tenantId, req.auth!.tenantId)))
@@ -109,6 +153,8 @@ const fromProspectSchema = z.object({
   stage: z.enum(["lead", "qualified", "proposal", "negotiation", "won", "lost"]).optional().default("lead"),
   probability: z.number().int().min(0).max(100).optional().default(20),
   closeDate: z.string().optional(),
+  priority: z.enum(["high", "medium", "low"]).optional().default("medium"),
+  notes: z.string().max(10000).optional(),
 });
 
 router.post("/from-prospect", async (req, res) => {
@@ -142,7 +188,7 @@ router.post("/from-prospect", async (req, res) => {
   // Mettre le prospect en statut "converted"
   await db.update(prospectsTable)
     .set({ status: "converted", updatedAt: new Date() } as any)
-    .where(eq(prospectsTable.id, prospectId));
+    .where(and(eq(prospectsTable.id, prospectId), eq(prospectsTable.tenantId, tenantId)));
 
   createNotification({
     type: "deal",

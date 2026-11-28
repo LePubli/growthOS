@@ -7,7 +7,7 @@ import {
   ChevronDown, LogOut, Plus, HelpCircle,
   Globe, Activity, Store, FileText, Menu, X, Map, Upload, Users, Trophy, Calendar as CalIcon, Share2, Brain, Video,
   Sparkles, TrendingUp, LineChart, BookOpen, Crown, Route, ShieldCheck, Package, Database,
-  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift, ClipboardList, Lock, Code2, FlaskConical, CreditCard, KeyRound,
+  Shield, BarChart, MessageCircle, CalendarDays, Link2, CheckSquare, Gift, ClipboardList, Lock, Code2, FlaskConical, CreditCard, KeyRound, Radar,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTheme } from '@/providers/theme-provider';
@@ -34,118 +34,64 @@ interface NavSection {
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    label: 'Tableau de bord',
+    label: 'Accueil',
     items: [
-      { href: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} />, exact: true },
-      { href: '/analytics', label: 'Analytics', icon: <BarChart2 size={16} /> },
-      { href: '/analytics/product', label: 'Product Analytics', icon: <FlaskConical size={16} /> },
+      { href: '/dashboard', label: 'Vue d’ensemble', icon: <LayoutDashboard size={16} />, exact: true },
     ],
   },
   {
-    label: 'CRM & Pipeline',
+    label: 'Prospection',
     items: [
+      { href: '/outils', label: 'Collecte et enrichissement', icon: <Search size={16} /> },
+      { href: '/navigateur', label: 'Navigateur cloud', icon: <Globe size={16} /> },
+      { href: '/seo-check', label: 'Diagnostic site & SEO', icon: <Globe size={16} /> },
       { href: '/prospects', label: 'Prospects', icon: <Building2 size={16} /> },
-      { href: '/accounts', label: 'Comptes', icon: <Users size={16} /> },
+      { href: '/accounts', label: 'Entreprises', icon: <Users size={16} /> },
+      { href: '/contacts', label: 'Contacts', icon: <User size={16} /> },
+    ],
+  },
+  {
+    label: 'Ventes et campagnes',
+    items: [
       { href: '/pipeline', label: 'Pipeline', icon: <GitBranch size={16} /> },
-      { href: '/activities', label: 'Activités', icon: <Activity size={16} /> },
+      { href: '/sequences', label: 'Séquences · brouillons', icon: <Mail size={16} /> },
+      { href: '/templates', label: 'Modèles d’emails', icon: <FileText size={16} /> },
     ],
   },
   {
-    label: 'Sourcing',
+    label: 'Intelligence IA',
     items: [
-      { href: '/sourcing', label: 'Scraping', icon: <Search size={16} /> },
-      { href: '/enrichment', label: 'Data Enrichment', icon: <Database size={16} /> },
-      { href: '/signals', label: 'Signaux', icon: <Zap size={16} />, pluginId: 'ai-signals' },
-      { href: '/contacts', label: 'Contact Intel', icon: <User size={16} /> },
-      { href: '/map', label: 'Carte & Tournée', icon: <Map size={16} /> },
-      { href: '/import', label: 'Import CSV', icon: <Upload size={16} /> },
+      { href: '/ai', label: 'Assistant IA · lecture seule', icon: <Bot size={16} /> },
+      { href: '/ai-sdr', label: 'Rédaction commerciale', icon: <Sparkles size={16} />, pluginId: 'ai-sdr' },
+      { href: '/signals', label: 'Signaux commerciaux', icon: <Zap size={16} />, pluginId: 'ai-signals' },
     ],
   },
   {
-    label: 'Marketing',
+    label: 'SEO et réputation',
     items: [
-      { href: '/sequences', label: 'Séquences Email', icon: <Mail size={16} /> },
-      { href: '/proposals', label: 'Propositions', icon: <FileText size={16} /> },
-      { href: '/inbound', label: 'Inbound', icon: <Download size={16} /> },
-      { href: '/abm', label: 'ABM / TAM', icon: <Target size={16} /> },
-      { href: '/templates', label: 'Templates Email', icon: <FileText size={16} /> },
-      { href: '/crm-sync', label: 'CRM Sync', icon: <RefreshCw size={16} />, pluginId: 'crm-sync' },
+      { href: '/ereputation', label: 'E-réputation', icon: <Shield size={16} />, pluginId: 'ereputation-seo' },
+      { href: '/ereputation/campaigns', label: 'Campagnes', icon: <Target size={16} />, pluginId: 'ereputation-seo' },
+      { href: '/ereputation/watch', label: 'Veille', icon: <Radar size={16} />, pluginId: 'ereputation-seo' },
+      { href: '/ereputation/serp', label: 'Suivi SERP', icon: <BarChart size={16} />, pluginId: 'ereputation-seo' },
     ],
   },
   {
-    label: 'Marketing & Réputation',
+    label: 'Automatisations · bêta',
     items: [
-      { href: '/ereputation', label: 'E-Réputation', icon: <Shield size={16} />, pluginId: 'ereputation-seo' },
-      { href: '/ereputation/campaigns', label: '↳ Campagnes', icon: <Target size={16} />, pluginId: 'ereputation-seo' },
-      { href: '/ereputation/serp', label: '↳ Suivi SERP', icon: <BarChart size={16} />, pluginId: 'ereputation-seo' },
-      { href: '/ereputation/sentiment', label: '↳ Sentiment', icon: <MessageCircle size={16} />, pluginId: 'ereputation-seo' },
-      { href: '/ereputation/social', label: '↳ Calendrier Social', icon: <CalendarDays size={16} />, pluginId: 'ereputation-seo' },
-      { href: '/ereputation/pbn', label: '↳ Réseau PBN', icon: <Link2 size={16} />, pluginId: 'ereputation-seo' },
-    ],
-  },
-  {
-    label: 'IA & Revenue',
-    items: [
-      { href: '/ai-sdr', label: 'AI SDR', icon: <Sparkles size={16} />, pluginId: 'ai-sdr' },
-      { href: '/deal-coach', label: 'Deal Coach', icon: <TrendingUp size={16} />, pluginId: 'ai-deal-coach' },
-      { href: '/revenue', label: 'Revenue Intel.', icon: <LineChart size={16} />, pluginId: 'revenue-intelligence' },
-      { href: '/knowledge', label: 'Base de Connais.', icon: <BookOpen size={16} />, pluginId: 'knowledge-base' },
-      { href: '/executive', label: 'Command Center', icon: <Crown size={16} />, pluginId: 'executive-command' },
-    ],
-  },
-  {
-    label: 'Intelligence',
-    items: [
-      { href: '/memory', label: 'Mémoire', icon: <Brain size={16} />, pluginId: 'growth-memory' },
-      { href: '/meetings', label: 'Réunions', icon: <Video size={16} />, pluginId: 'meeting-intelligence' },
-      { href: '/ai', label: 'Agent IA', icon: <Bot size={16} /> },
-      { href: '/settings/autopilot', label: 'Autopilot IA', icon: <Sparkles size={16} /> },
-      { href: '/workflows', label: 'Workflows', icon: <Globe size={16} /> },
-      { href: '/calendar', label: 'Calendrier', icon: <CalIcon size={16} /> },
-    ],
-  },
-  {
-    label: 'Équipe',
-    items: [
-      { href: '/tasks', label: 'Mes Tâches', icon: <CheckSquare size={16} /> },
-      { href: '/shared-dashboards', label: 'Dashboards Partagés', icon: <Share2 size={16} /> },
-      { href: '/team', label: 'Métriques Équipe', icon: <Trophy size={16} /> },
-    ],
-  },
-  {
-    label: 'Développeurs',
-    items: [
-      { href: '/api-docs', label: 'API Docs', icon: <Code2 size={16} /> },
-      { href: '/settings/api', label: 'Clés API', icon: <Lock size={16} /> },
+      { href: '/workflows', label: 'Workflows · brouillons', icon: <GitBranch size={16} /> },
       { href: '/integrations', label: 'Intégrations', icon: <Webhook size={16} /> },
+      { href: '/tasks', label: 'Tâches', icon: <CheckSquare size={16} /> },
     ],
   },
   {
-    label: 'Conformité',
+    label: 'Configuration',
     items: [
-      { href: '/audit-trail', label: 'Audit Trail', icon: <ClipboardList size={16} /> },
-      { href: '/compliance', label: 'RGPD & Conformité', icon: <ShieldCheck size={16} /> },
-      { href: '/settings/sso', label: 'SSO / SAML 2.0', icon: <Lock size={16} /> },
-    ],
-  },
-  {
-    label: 'Système',
-    items: [
-      { href: '/settings/billing', label: 'Facturation', icon: <CreditCard size={16} /> },
-      { href: '/help', label: 'Centre d\'aide', icon: <HelpCircle size={16} /> },
-      { href: '/referral', label: 'Parrainage', icon: <Gift size={16} /> },
-      { href: '/marketplace', label: 'Marketplace', icon: <Store size={16} />, badge: 1 },
-      { href: '/plugins', label: 'Plugins', icon: <Puzzle size={16} /> },
-      { href: '/admin/users', label: 'Utilisateurs & Rôles', icon: <Users size={16} /> },
-      { href: '/admin/plans', label: 'Plans & Abonnements', icon: <CreditCard size={16} /> },
-      { href: '/admin/audit', label: 'Journal d\'audit', icon: <Shield size={16} /> },
+      { href: '/settings', label: 'Paramètres', icon: <Settings size={16} /> },
       { href: '/admin/api-keys', label: 'Clés API Providers', icon: <KeyRound size={16} /> },
       { href: '/admin/quotas', label: 'Quotas & Limites', icon: <BarChart2 size={16} /> },
-      { href: '/admin/plugins-upload', label: 'Upload Plugins', icon: <Upload size={16} /> },
-      { href: '/admin/deep-audit', label: 'Audit Système', icon: <ShieldCheck size={16} /> },
-      { href: '/themes', label: 'Thèmes', icon: <Palette size={16} /> },
-      { href: '/route-audit', label: 'Audit Routes', icon: <Route size={16} /> },
-      { href: '/settings', label: 'Paramètres', icon: <Settings size={16} /> },
+      { href: '/admin/deep-audit', label: 'Santé technique', icon: <ShieldCheck size={16} /> },
+      { href: '/admin/diagnostics', label: 'Centre de diagnostic', icon: <Activity size={16} /> },
+      { href: '/admin/users', label: 'Utilisateurs et rôles', icon: <Users size={16} /> },
     ],
   },
 ];
@@ -186,14 +132,22 @@ function SidebarContent({
 }) {
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 12px', borderBottom: '1px solid rgba(255,255,255,.06)', flexShrink: 0 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0, background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 14 }}>G</div>
+      <div className="atlas-brand" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 12px', borderBottom: '1px solid rgba(255,255,255,.06)', flexShrink: 0 }}>
+        <div className="atlas-brand-mark" style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0, background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 14 }}>G</div>
+        <svg className="atlas-brand-symbol" viewBox="0 0 36 36" width="34" height="34" fill="none" aria-hidden="true">
+          <path d="M18 1 34 10 18 19 2 10 18 1Z" fill="#1680FF"/>
+          <path d="M2 10v9l16 9v-9L2 10Z" fill="#0057DC"/>
+          <path d="m34 10-16 9v9l16-9v-9Z" fill="#6DB9FF"/>
+          <path d="m2 20 16 9 16-9v8l-16 8L2 28v-8Z" fill="#1266E8"/>
+          <path d="m18 19 8-4-8-5-8 5 8 4Z" fill="#E4F3FF"/>
+        </svg>
         {!collapsed && (
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--sidebar-text)', lineHeight: 1.2 }}>
+            <div className="atlas-brand-name" style={{ fontWeight: 700, fontSize: 14, color: 'var(--sidebar-text)', lineHeight: 1.2 }}>
               {(tenant?.branding as any)?.companyName || 'GrowthOS'}
+              <span className="atlas-brand-version">2.0</span>
             </div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', lineHeight: 1 }}>
+            <div className="atlas-brand-meta" style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', lineHeight: 1 }}>
               {user?.email?.split('@')[1] || 'workspace'}
             </div>
           </div>
@@ -212,7 +166,7 @@ function SidebarContent({
           return (
             <div key={section.label}>
               {!collapsed && (
-                <div style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
+                <div className="atlas-nav-section" style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
                   {section.label}
                 </div>
               )}
@@ -221,6 +175,8 @@ function SidebarContent({
                 return (
                   <Link
                     key={item.href}
+                    className="atlas-nav-link"
+                    data-active={active ? 'true' : 'false'}
                     href={item.href}
                     title={collapsed ? item.label : undefined}
                     onClick={onNavClick}
@@ -256,7 +212,7 @@ function SidebarContent({
         {uploadedExtensions && uploadedExtensions.length > 0 && (
           <div>
             {!collapsed && (
-              <div style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
+              <div className="atlas-nav-section" style={{ padding: '12px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)' }}>
                 Extensions
               </div>
             )}
@@ -300,7 +256,7 @@ function SidebarContent({
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--sidebar-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.firstName || user?.email?.split('@')[0]}
               </div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>En ligne</div>
+            <div className="atlas-brand-meta" style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>En ligne</div>
             </div>
             <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#28A745', flexShrink: 0 }} />
           </button>
@@ -381,6 +337,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* SIDEBAR — desktop fixed, mobile drawer overlay */}
       <aside
+        className="atlas-sidebar"
         style={{
           width: isMobile ? 240 : (sidebarCollapsed ? 56 : 220),
           display: 'flex',
@@ -429,7 +386,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* MAIN */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         {/* HEADER */}
-        <header style={{
+        <header className="atlas-app-header" style={{
           display: 'flex', alignItems: 'center', gap: 8, padding: isMobile ? '0 12px' : '0 16px',
           height: 48, flexShrink: 0,
           background: 'var(--card-bg)', borderBottom: '1px solid var(--card-border)',
@@ -452,12 +409,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Search — hidden on small mobile */}
           {!isMobile && (
-            <button
+            <button className="atlas-global-search"
               onClick={() => setCmdOpen(true)}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', background: 'var(--body-bg)', border: '1px solid var(--card-border)', borderRadius: 8, cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13, flexShrink: 0 }}
             >
-              <Search size={13} />
-              <span>Rechercher...</span>
+              <Search size={16} />
+              <span>Rechercher un prospect, une entreprise, un contact, un deal...</span>
               <kbd style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 4, padding: '1px 5px', fontSize: 11, color: 'var(--text-muted)' }}>⌘K</kbd>
             </button>
           )}
@@ -536,7 +493,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main style={{ flex: 1, overflow: 'auto', background: 'var(--body-bg)' }}>
+        <main className="atlas-app-main" style={{ flex: 1, overflow: 'auto', background: 'var(--body-bg)' }}>
           {children}
         </main>
       </div>

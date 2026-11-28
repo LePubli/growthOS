@@ -65,7 +65,7 @@ export default function WorkflowDetailPage() {
   const [showTriggers, setShowTriggers] = useState(false);
   const [showConditions, setShowConditions] = useState(false);
   const [tab, setTab]             = useState<Tab>('builder');
-  const [logs, setLogs]           = useState(MOCK_LOGS);
+  const [logs, setLogs]           = useState<any[]>([]);
   const [expandedLog, setExpandedLog] = useState<string|null>(null);
 
   useEffect(()=>{
@@ -93,7 +93,7 @@ export default function WorkflowDetailPage() {
     if (!name.trim()) { toast.error('Donnez un nom au workflow'); return; }
     setSaving(true);
     try {
-      const payload = { name, description, trigger, triggerConfig, actions, conditions, status:workflow?.status||'draft' };
+      const payload = { name, description, trigger, triggerConfig, actions, conditions, status:workflow?.status==='active'?'paused':(workflow?.status||'draft') };
       if (isNew) { const created:any = await apiClient.post('/workflows',payload); toast.success('Workflow créé'); navigate(`/workflows/${created.id}`); }
       else { await apiClient.patch(`/workflows/${id}`,payload); toast.success('Workflow enregistré'); }
     } catch { toast.error('Erreur lors de la sauvegarde'); }
@@ -102,27 +102,19 @@ export default function WorkflowDetailPage() {
 
   const toggleStatus = async ()=>{
     if (isNew) return;
-    const newStatus = workflow?.status==='active'?'paused':'active';
-    setWorkflow((w:any)=>({ ...w,status:newStatus }));
-    toast.success(newStatus==='active'?'Workflow activé':'Mis en pause');
-    await apiClient.post(`/workflows/${id}/toggle`,{}).catch(()=>{});
+    if (workflow?.status!=='active') { toast.warning('Activation indisponible : moteur d’exécution non validé'); return; }
+    try {
+      const updated=await apiClient.post(`/workflows/${id}/toggle`,{});
+      setWorkflow(updated); toast.success('Workflow mis en pause');
+    } catch { toast.error('Impossible de mettre en pause'); }
   };
 
   const testRun = async ()=>{
-    if (actions.length===0) { toast.error('Ajoutez au moins une action avant de tester'); return; }
-    setTesting(true);
-    await new Promise(r=>setTimeout(r,1600));
-    const fakeLog = { id:`l${Date.now()}`, status:'success', trigger, triggeredBy:'Test manuel', date:'À l\'instant', duration:Math.floor(Math.random()*200+80), actions:actions.length };
-    setLogs(l=>[fakeLog,...l]);
-    setTesting(false);
-    setTab('logs');
-    toast.success(`Test exécuté avec succès — ${actions.length} action${actions.length>1?'s':''} déclenchée${actions.length>1?'s':''}`);
+    toast.warning('Exécution désactivée : aucun moteur de workflow certifié. Aucune action ne sera simulée.');
   };
 
   const retryLog = async (logId:string)=>{
-    await new Promise(r=>setTimeout(r,800));
-    setLogs(l=>l.map(log=>log.id===logId?{ ...log, status:'success', error:undefined }:log));
-    toast.success('Exécution rejouée avec succès');
+    toast.warning('Relance indisponible : aucun moteur d’exécution certifié.');
   };
 
   const triggerInfo = TRIGGERS.find(t=>t.value===trigger)||TRIGGERS[0];

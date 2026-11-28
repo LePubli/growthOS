@@ -167,24 +167,15 @@ export default function DeepAuditPage() {
   const isRunning = runAuditMutation.isPending || data?.status === 'running';
 
   return (
-    <div style={{ minHeight: '100vh', padding: 24, background: 'var(--body-bg)' }}>
+    <div style={{ minHeight: '100vh', padding: '16px clamp(16px,3vw,28px)', background: 'var(--body-bg)' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Audit Système Profond</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Santé technique · contrôle partiel</h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0' }}>
             Inventaire complet des routes et contrôles techniques limités aux lectures sûres (aucune action métier exécutée)
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => {
-              if (window.confirm('Attention : Auto-fix modifie la base de données et les états des plugins. Vérifiez la sauvegarde PostgreSQL avant de continuer. Confirmer ?')) autoFixMutation.mutate();
-            }}
-            disabled={autoFixMutation.isPending || isRunning}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10, border: '1px solid #D97706', background: '#FEF3C7', color: '#D97706', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: autoFixMutation.isPending ? .6 : 1 }}>
-            {autoFixMutation.isPending ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Wrench size={13} />}
-            Auto-fix
-          </button>
           <button
             onClick={() => runAuditMutation.mutate()}
             disabled={isRunning}

@@ -1,22 +1,25 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import {
   Search, Plus, Play, Pause, CheckCircle, Clock, AlertCircle, Loader2,
-  Globe, Users, ChevronRight, X, RotateCcw, Trash2, Eye, Zap, Filter,
+  Globe, Users, ChevronRight, X, RotateCcw, Trash2, Eye, Zap, Filter, Laptop, Smartphone, Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
+import GeoMultiSelect from '@/components/sourcing/GeoMultiSelect';
+import { FRENCH_DEPARTMENTS, FRENCH_REGIONS } from '@/lib/france-geo';
+import { pingLocalPagesJaunes, searchLocalPagesJaunes, localPagesJaunesLocations, getLocalCaptures, getLocalDrafts, isMobileConnectorRequired } from '@/lib/pagesjaunes-device';
 
 const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; color: string; fields: { key:string; label:string; placeholder:string; type?:string }[] }> = {
   entreprises: {
     name: 'Annuaire des entreprises', icon: '🇫🇷', desc: 'Entreprises françaises — données officielles publiques', color: '#2563EB',
     fields: [
-      { key: 'query', label: 'Activité / nom / localisation', placeholder: 'Ex : agence immobilière Lille' },
+      { key: 'query', label: 'Activité ou nom d’entreprise (sans ville)', placeholder: 'Ex : plombier, boulangerie' },
       { key: 'limit', label: 'Nombre de résultats (1 à 25)', placeholder: '10', type: 'number' },
     ],
   },
   linkedin: {
-    name:'LinkedIn Sales Navigator', icon:'💼', desc:'Décideurs B2B — titre, entreprise, localisation', color:'#0A66C2',
+    name:'LinkedIn · saisie assistée', icon:'💼', desc:'Fiche entreprise renseignée manuellement ; compte personnel possible', color:'#0A66C2',
     fields:[
       { key:'keywords', label:'Mots-clés / titre', placeholder:'Ex: Directeur Commercial, VP Sales, CEO' },
       { key:'location', label:'Localisation', placeholder:'Ex: Paris, Lyon, Île-de-France' },
@@ -25,8 +28,8 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
       { key:'limit', label:'Nombre max. de profils', placeholder:'100', type:'number' },
     ],
   },
-  google: {
-    name:'Google Maps', icon:'🗺️', desc:'Établissements locaux, contacts et avis', color:'#EA4335',
+  google_maps: {
+    name:'Google Maps', icon:'🗺️', desc:'Fiche visible capturée après votre clic dans l’extension', color:'#EA4335',
     fields:[
       { key:'query', label:'Recherche', placeholder:'Ex: Agences immobilières Bordeaux' },
       { key:'location', label:'Ville / Zone', placeholder:'Ex: Bordeaux, 33000' },
@@ -34,6 +37,16 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
       { key:'limit', label:'Nombre max.', placeholder:'50', type:'number' },
     ],
   },
+  google_search: {
+    name:'Google Search', icon:'🔎', desc:'Fiches locales visibles avec adresse vérifiable', color:'#4285F4', fields:[],
+  },
+  bing: {
+    name:'Bing Search', icon:'🟦', desc:'Fiches entreprises visibles avec adresse vérifiable', color:'#008CFF', fields:[],
+  },
+  societe_com: { name:'Societe.com', icon:'🏢', desc:'Fiche légale confirmée par son SIREN', color:'#1E3A5F', fields:[] },
+  facebook: { name:'Facebook Pages', icon:'📘', desc:'Page professionnelle confirmée dans Chrome', color:'#1877F2', fields:[] },
+  tiktok: { name:'TikTok professionnel', icon:'🎵', desc:'Profil d’entreprise confirmé dans Chrome', color:'#111827', fields:[] },
+  instagram: { name:'Instagram professionnel', icon:'📷', desc:'Profil d’entreprise confirmé dans Chrome', color:'#C13584', fields:[] },
   societe_info: {
     name:'Societe.info', icon:'🏢', desc:'Données légales entreprises françaises', color:'#1E3A5F',
     fields:[
@@ -42,6 +55,15 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
       { key:'size', label:'Taille (effectif)', placeholder:'Ex: 10-49, 50-249' },
       { key:'keywords', label:'Mots-clés nom', placeholder:'Ex: Tech, Digital, Conseil' },
       { key:'limit', label:'Nombre max.', placeholder:'100', type:'number' },
+    ],
+  },
+  pagesjaunes: {
+    name: 'PagesJaunes.fr', icon: '📒',
+    desc: 'Professionnels locaux — navigateur de votre appareil ou du VPS', color: '#EAB308',
+    fields: [
+      { key: 'query', label: 'Activité / métier', placeholder: 'Ex : artisans, restaurants' },
+      { key: 'location', label: 'Ville ou département', placeholder: 'Ex : Lille, 59' },
+      { key: 'limit', label: 'Nombre de résultats', placeholder: '10', type: 'number' },
     ],
   },
   twitter: {
@@ -63,7 +85,8 @@ const SCRAPER_TYPES: Record<string, { name: string; icon: string; desc: string; 
     ],
   },
 };
-const SUPPORTED_TYPES = new Set(['entreprises']);
+const SUPPORTED_TYPES = new Set(['entreprises','pagesjaunes','google_maps','google_search','bing','linkedin','societe_com','facebook','instagram','tiktok']);
+const CAPTURE_TYPES = new Set(['google_maps','google_search','bing','linkedin','societe_com','facebook','instagram','tiktok']);
 
 const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:string}> = {
   completed:{ label:'Terminé',  color:'#065F46', bg:'#ECFDF5', dot:'#10B981' },
@@ -73,37 +96,120 @@ const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string;dot:stri
   queued:   { label:'En attente',color:'#374151',bg:'#F3F4F6', dot:'#9CA3AF' },
 };
 
-function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:any)=>void }) {
+function LaunchModal({ onClose, onLaunch, initialSource, browserStatus, deviceConnected }: { onClose:()=>void; onLaunch:(job:any)=>void; initialSource:string; browserStatus: 'direct' | 'ready' | 'offline'; deviceConnected:boolean }) {
   const [step, setStep] = useState<1|2>(1);
-  const [type, setType] = useState('');
+  const [sources, setSources] = useState<string[]>([initialSource]);
   const [name, setName] = useState('');
-  const [params, setParams] = useState<Record<string,string>>({});
+  const initialCriteria=new URLSearchParams(useSearch());
+  const [params, setParams] = useState<Record<string,string>>({query:(initialCriteria.get('query')||'').slice(0,120)});
   const [launching, setLaunching] = useState(false);
+  const [launchStage, setLaunchStage] = useState<'collect'|'save'|'api'|null>(null);
+  const [captures,setCaptures] = useState<Record<string,number>>({});
+  const [draftCounts,setDraftCounts] = useState<Record<string,number>>({});
+  const [checkingCaptures,setCheckingCaptures] = useState(false);
+  const [regions, setRegions] = useState<string[]>([]);
+  const [departements, setDepartements] = useState<string[]>([]);
+  const [codesPostauxInput, setCodesPostauxInput] = useState(/^\d{5}$/.test(initialCriteria.get('area')||'')?initialCriteria.get('area')!:'');
+  const parsedCodes = codesPostauxInput.split(/[\s,;]+/).map(code => code.trim()).filter(Boolean);
+  const codesPostaux = [...new Set(parsedCodes)];
+  const zonesValid = (regions.length + departements.length + codesPostaux.length) > 0
+    && codesPostaux.length <= 25 && codesPostaux.every(code => /^\d{5}$/.test(code));
 
   const setParam = (k:string, v:string) => setParams(p=>({...p,[k]:v}));
+  const searchReady = Boolean((params.query?.trim().length ?? 0) >= 3 && zonesValid && sources.length);
 
-  const launch = async () => {
-    if (!name.trim()) { toast.error('Nom requis'); return; }
-    setLaunching(true);
+  const checkCaptures = async () => {
+    setCheckingCaptures(true);
     try {
-      const job = await apiClient.post('/sourcing/jobs', { type, name, params });
-      onLaunch(job);
-      toast.success(`${job.count ?? 0} entreprise(s) importée(s) dans le CRM`);
-      onClose();
-    } catch (error: any) {
-      toast.error(error.message ?? 'Import impossible');
-    } finally { setLaunching(false); }
+      const [items,drafts]=await Promise.all([getLocalCaptures(),getLocalDrafts()]);
+      const counts:Record<string,number>={};
+      items.forEach(item=>{if(item.source)counts[item.source]=(counts[item.source]||0)+1;});
+      setCaptures(counts);
+      const incomplete:Record<string,number>={};
+      drafts.forEach(item=>{incomplete[item.source]=(incomplete[item.source]||0)+1;});
+      setDraftCounts(incomplete);
+      toast.success(`${items.length} fiche(s) vérifiée(s) et ${drafts.length} à enrichir sur votre appareil`);
+    } catch (error:any) {toast.error(error.message||'Extension non détectée');}
+    finally {setCheckingCaptures(false);}
   };
 
-  const selectedType = SCRAPER_TYPES[type];
+  const launch = async () => {
+    if (!sources.length || sources.some(source => !SUPPORTED_TYPES.has(source))) { toast.error('Sélectionnez au moins une source disponible'); return; }
+    if (!searchReady) {
+      toast.error('Saisissez une activité et une ou plusieurs régions, départements ou codes postaux valides.');
+      return;
+    }
+    setLaunching(true);
+    let currentStage: 'collect'|'save'|'api' = sources.some(source=>source!=='entreprises') && deviceConnected ? 'collect' : 'api';
+    setLaunchStage(currentStage);
+    try {
+      const jobName = name.trim() || `${params.query.trim()} · ${sources.length} source(s)`;
+      const criteria = {sources, query:params.query.trim(), limit:params.limit || '10',regions,departements,codesPostaux};
+      let job: any;
+      if (sources.some(source=>CAPTURE_TYPES.has(source)) && !deviceConnected) {
+        throw new Error('Connectez d’abord l’extension Chrome multisource sur cet appareil.');
+      }
+      if (sources.some(source=>source!=='entreprises') && deviceConnected) {
+        const [allCaptured,allDrafts]=await Promise.all([getLocalCaptures(),getLocalDrafts()]);
+        const manuallyCaptured=allCaptured.filter(item=>item.source && sources.includes(item.source));
+        const drafts=allDrafts.filter(item=>sources.includes(item.source));
+        const localCandidates = [...manuallyCaptured];
+        const sourceErrors:Record<string,string>={};
+        if (!manuallyCaptured.length && !drafts.length && !sources.includes('pagesjaunes') && !sources.includes('entreprises')) {
+          throw new Error('Aucune fiche capturée pour les sources sélectionnées. Ouvrez l’extension GrowthOS, capturez vos fiches puis réessayez.');
+        }
+        const departmentNames = Object.fromEntries(FRENCH_DEPARTMENTS.map(item=>[item.code,item.label]));
+        const regionNames = Object.fromEntries(FRENCH_REGIONS.map(item=>[item.code,item.label]));
+        const locations = sources.includes('pagesjaunes') ? localPagesJaunesLocations({regions,departements,codesPostaux,departmentNames,regionNames}) : [];
+        if (sources.includes('pagesjaunes') && locations.length > 8) {
+          toast.error('Le connecteur local accepte 8 zones par recherche. Réduisez la sélection ou lancez plusieurs recherches.');
+          return;
+        }
+        if (sources.includes('pagesjaunes')) {
+          toast.info('Recherche PagesJaunes dans votre navigateur ; gardez GrowthOS ouvert.');
+          try {
+            const local=await searchLocalPagesJaunes({query:criteria.query,locations,limit:Number(criteria.limit)});
+            localCandidates.push(...local.results.map(result=>({...result,source:'pagesjaunes' as const})));
+            if(local.warnings.length)toast.warning(local.warnings.slice(0,2).join(' · '));
+          } catch (error:any) {
+            if(!manuallyCaptured.length && !drafts.length && !sources.includes('entreprises'))throw error;
+            sourceErrors.pagesjaunes=String(error?.message||'PagesJaunes indisponible').slice(0,200);
+            toast.warning(`PagesJaunes indisponible : ${error.message||'Erreur'}. Les autres sources restent utilisables.`);
+          }
+        }
+        currentStage = 'save';
+        setLaunchStage(currentStage);
+        if(drafts.length)toast.info(`Enrichissement de ${drafts.length} fiche(s) Google/Bing via les données locales et l’annuaire officiel…`,{duration:7000});
+        job = await apiClient.post('/sourcing/device/jobs',
+          {name:jobName,params:criteria,candidates:localCandidates,drafts,sourceErrors}, {timeoutMs: 90000});
+        const summary=job?.params?.draftEnrichment;
+        toast.success(summary?.checked
+          ? `${summary.matched} fiche(s) identifiée(s) automatiquement · ${summary.pending} restant à vérifier. Aucun import automatique.`
+          : 'Résultats regroupés. Choisissez les entreprises à importer.',{duration:7000});
+      } else {
+        job = await apiClient.post('/sourcing/jobs', {type:'multi',name:jobName,params:criteria});
+        toast.success('Recherche lancée. Les sources seront analysées indépendamment.');
+      }
+      onLaunch(job);
+      onClose();
+    } catch (error: any) {
+      const phase = currentStage === 'collect' ? 'Collecte dans le navigateur de cet appareil'
+        : currentStage === 'save' ? 'Enregistrement des résultats dans GrowthOS'
+        : 'Recherche sur le serveur';
+      toast.error(`${phase} : ${error.message ?? 'Échec inattendu'}`, {duration: 10000});
+    } finally { setLaunching(false); setLaunchStage(null); }
+  };
+
+  const toggleSource = (id: string) => setSources(previous => previous.includes(id)
+    ? previous.filter(source => source !== id) : [...previous, id]);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+      <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-green-50 flex items-center justify-center text-green-600"><Search size={16}/></div>
-            <h2 className="text-base font-bold text-gray-900">Nouveau scraping</h2>
+            <h2 className="text-base font-bold text-gray-900">Recherche d'entreprises</h2>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-xs text-gray-400">
@@ -115,54 +221,85 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
           </div>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto">
           {step === 1 ? (
             <>
-              <h3 className="font-semibold text-gray-800 mb-4">Choisissez une source</h3>
+              <h3 className="font-semibold text-gray-800 mb-2">Choisissez une ou plusieurs sources</h3>
+              <p className="text-xs text-gray-500 mb-4">Les résultats seront regroupés dans une seule recherche. Une source indisponible ne bloquera pas les autres.</p>
               <div className="grid grid-cols-2 gap-3 mb-5">
                 {Object.entries(SCRAPER_TYPES).map(([id,t])=>(
-                  <button key={id} onClick={()=>setType(id)} disabled={!SUPPORTED_TYPES.has(id)}
-                    className={`text-left p-3.5 rounded-xl border-2 transition-all ${type===id?'border-teal-500 bg-teal-50':'border-gray-200 hover:border-gray-300'} ${SUPPORTED_TYPES.has(id) ? '' : 'opacity-40 cursor-not-allowed'}`}>
+                  <button key={id} onClick={()=>toggleSource(id)} disabled={!SUPPORTED_TYPES.has(id)} aria-pressed={sources.includes(id)}
+                    className={`text-left p-3.5 rounded-xl border-2 transition-all ${sources.includes(id)?'border-teal-500 bg-teal-50':'border-gray-200 hover:border-gray-300'} ${SUPPORTED_TYPES.has(id) ? '' : 'opacity-40 cursor-not-allowed'}`}>
                     <div className="text-2xl mb-2">{t.icon}</div>
                     <div className="font-semibold text-sm text-gray-900 mb-0.5">{t.name}</div>
                     <div className="text-xs text-gray-400">{t.desc}</div>
-                    {!SUPPORTED_TYPES.has(id) && <div className="text-xs text-amber-700 mt-1">Intégration non disponible</div>}
+                    {!SUPPORTED_TYPES.has(id) && <div className="text-xs text-amber-700 mt-1">{id === 'pagesjaunes' ? 'Accord/API partenaire Solocal nécessaire' : 'Intégration non disponible'}</div>}
                   </button>
                 ))}
               </div>
+              <p className="text-xs text-gray-500 mb-4">{deviceConnected ? '🟢 Extension multisource connectée à cet appareil.' : '🟡 Connectez l’extension Chrome pour importer les fiches depuis votre appareil.'} {browserStatus === 'offline' ? 'Le navigateur VPS est hors ligne, mais la collecte locale peut fonctionner.' : ''}</p>
               <div className="flex gap-3">
                 <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
-                <button onClick={()=>setStep(2)} disabled={!type} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Suivant →</button>
+                <button onClick={()=>setStep(2)} disabled={!sources.length} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Suivant →</button>
               </div>
             </>
           ) : (
             <>
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-xl">{selectedType?.icon}</span>
-                <h3 className="font-semibold text-gray-800">{selectedType?.name}</h3>
+                <span className="text-xl">🔎</span>
+                <h3 className="font-semibold text-gray-800">Critères communs · {sources.map(id => SCRAPER_TYPES[id]?.name).join(' + ')}</h3>
               </div>
               <div className="space-y-3 mb-5">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Nom du job *</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Nom de la recherche (facultatif)</label>
                   <input value={name} onChange={e=>setName(e.target.value)} autoFocus
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    placeholder="Ex: Directeurs IT Paris Q2"/>
+                    placeholder="Ex : Plombiers Lille centre"/>
                 </div>
-                {selectedType?.fields.map(f=>(
-                  <div key={f.key}>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">{f.label}</label>
-                    <input value={params[f.key]||''} onChange={e=>setParam(f.key,e.target.value)}
-                      type={f.type||'text'}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                      placeholder={f.placeholder}/>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Métier ou activité *</label>
+                  <input value={params.query || ''} onChange={e => setParam('query', e.target.value)} placeholder="Ex : plombier, électricien, boulangerie" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Résultats maximum par source (1 à 25)</label>
+                  <input type="number" min={1} max={25} value={params.limit || '10'} onChange={e => setParam('limit', e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+                </div>
+                {sources.includes('pagesjaunes') && <p className="text-xs rounded-lg bg-amber-50 text-amber-800 p-3">{deviceConnected ? '✓ Connecteur de cet appareil actif. PagesJaunes sera consulté depuis votre navigateur actuel. Gardez cet onglet ouvert jusqu’à la fin.' : '⚠ Connecteur non activé. La recherche passera par le navigateur du VPS, qui peut être bloqué par PagesJaunes (HTTP 403). Utilisez « Connecter cet appareil » sur la page précédente.'}</p>}
+                {sources.some(source=>CAPTURE_TYPES.has(source)) && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-blue-900">Collecte multisource sur votre ordinateur</p>
+                  <p className="text-xs text-blue-800">1. Cliquez sur l’extension GrowthOS dans Chrome. 2. Ouvrez les recherches souhaitées ; pour Google/Bing, cliquez sur « Capturer les fiches visibles ». Pour LinkedIn, Societe.com, Facebook, Instagram et TikTok, confirmez manuellement la fiche entreprise. 3. Revenez ici et lancez la recherche. Vos comptes restent dans Chrome.</p>
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <button type="button" onClick={()=>void checkCaptures()} disabled={checkingCaptures || !deviceConnected}
+                      className="border border-blue-300 px-3 py-1.5 rounded-lg text-xs text-blue-900 disabled:opacity-50">{checkingCaptures?'Vérification…':'↻ Vérifier mes captures'}</button>
+                    <span className="text-xs text-blue-900">{sources.filter(source=>CAPTURE_TYPES.has(source)).map(source=>`${SCRAPER_TYPES[source].name} : ${captures[source]||0} prête(s), ${draftCounts[source]||0} à enrichir`).join(' · ')}</span>
                   </div>
-                ))}
+                  <p className="text-xs text-blue-800">Les fiches sans adresse sont rapprochées automatiquement des données officielles et des fiches locales vérifiées. Les correspondances ambiguës restent hors CRM.</p>
+                </div>}
+                {<div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 space-y-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-800">Zone de prospection *</h4>
+                    <p className="text-xs text-gray-500 mt-1">Choisissez une ou plusieurs régions, départements et/ou codes postaux. Entre les types de zone, les filtres se cumulent.</p>
+                  </div>
+                  <GeoMultiSelect label="Régions" options={FRENCH_REGIONS} values={regions} onChange={setRegions} placeholder="Choisir des régions…" />
+                  <GeoMultiSelect label="Départements" options={FRENCH_DEPARTMENTS} values={departements} onChange={setDepartements} placeholder="Choisir des départements…" />
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Codes postaux (plusieurs possibles)</label>
+                    <textarea rows={2} value={codesPostauxInput} onChange={e => setCodesPostauxInput(e.target.value)}
+                      placeholder="59000, 59100, 59800" className="w-full rounded-xl border border-gray-200 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+                    <p className={`text-xs mt-1 ${codesPostaux.length && !codesPostaux.every(code => /^\d{5}$/.test(code)) ? 'text-red-600' : 'text-gray-500'}`}>
+                      Séparez par une virgule, un espace ou un retour à la ligne · 25 codes maximum
+                    </p>
+                  </div>
+                </div>}
               </div>
               <div className="flex gap-3">
                 <button onClick={()=>setStep(1)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">← Retour</button>
-                <button onClick={launch} disabled={!name.trim()||launching}
+                <button onClick={launch} disabled={launching || !searchReady}
                   className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-                  {launching?<Loader2 size={14} className="animate-spin"/>:<Zap size={14}/>}Lancer le scraping
+                  {launching?<Loader2 size={14} className="animate-spin"/>:<Zap size={14}/>}
+                  {launching ? launchStage === 'collect' ? 'Collecte locale…'
+                    : launchStage === 'save' ? 'Enregistrement…' : 'Recherche en cours…'
+                    : 'Rechercher les entreprises'}
                 </button>
               </div>
             </>
@@ -176,14 +313,51 @@ function LaunchModal({ onClose, onLaunch }: { onClose:()=>void; onLaunch:(job:an
 export default function SourcingPage() {
   const [, navigate] = useLocation();
   const [jobs, setJobs] = useState<any[]>([]);
-  const [showNew, setShowNew] = useState(false);
+  const [jobListError,setJobListError] = useState(false);
+  const requestedSource=new URLSearchParams(useSearch()).get('source');
+  const configuredSource=requestedSource==='pagesjaunes'?'pagesjaunes':'entreprises';
+  const [showNew, setShowNew] = useState(requestedSource==='pagesjaunes'||requestedSource==='entreprises');
+  const [browserStatus, setBrowserStatus] = useState<'direct' | 'ready' | 'offline'>('direct');
+  const [initialSource, setInitialSource] = useState(configuredSource);
+  const [deviceConnected,setDeviceConnected] = useState(false);
+  const [deviceConnecting,setDeviceConnecting] = useState(false);
+  const mobileConnector = isMobileConnectorRequired();
+  const connectDevice = async () => {
+    if (mobileConnector) {
+      toast.info('Sur Android, une application compagnon est nécessaire. Le connecteur Chrome est pour ordinateur.');
+      return;
+    }
+    setDeviceConnecting(true);
+    try {
+      await pingLocalPagesJaunes();
+      setDeviceConnected(true);
+      toast.success('Extension Chrome connectée sur cet ordinateur !');
+    } catch(error:any) {
+      setDeviceConnected(false);
+      toast.error(error.message || 'Extension non détectée');
+    } finally {setDeviceConnecting(false);}
+  };
+  const openSearch = (source = 'entreprises') => { setInitialSource(source); setShowNew(true); };
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
+  useEffect(() => {
+    void apiClient.get<{ pagesjaunes?: { mode: string; browserReady: boolean } }>('/sourcing/sources/status')
+      .then(data => setBrowserStatus(data.pagesjaunes?.mode === 'browser'
+        ? (data.pagesjaunes.browserReady ? 'ready' : 'offline') : 'direct'))
+      .catch(() => setBrowserStatus('direct'));
+  }, []);
+  useEffect(()=>{
+    if(mobileConnector)return;
+    let mounted=true;
+    void pingLocalPagesJaunes().then(()=>{if(mounted)setDeviceConnected(true);})
+      .catch(()=>{if(mounted)setDeviceConnected(false);});
+    return ()=>{mounted=false;};
+  },[mobileConnector]);
   useEffect(()=>{
     let mounted = true;
     const reload = () => apiClient.get('/sourcing/jobs').then((d:any)=>{
-      if (mounted) setJobs(Array.isArray(d) ? d : d?.data ?? []);
-    }).catch((error: any)=>{ if (mounted) toast.error(error.message ?? 'Sourcing indisponible'); });
+      if (mounted) {setJobs(Array.isArray(d) ? d : d?.data ?? []); setJobListError(false);}
+    }).catch(()=>{ if (mounted) setJobListError(true); });
     reload();
     const timer = setInterval(reload, 15000);
     return ()=>{ mounted = false; clearInterval(timer); };
@@ -192,7 +366,12 @@ export default function SourcingPage() {
   const retryJob = async (id:string, e:React.MouseEvent) => {
     e.stopPropagation();
     const old = jobs.find(j=>j.id===id);
-    if (!old || !SUPPORTED_TYPES.has(old.type)) { toast.error('Source non disponible'); return; }
+    if (!old || !(SUPPORTED_TYPES.has(old.type) || old.type === 'multi')) { toast.error('Source non disponible'); return; }
+    if((old.params?.sources || []).some((source:string)=>CAPTURE_TYPES.has(source))){
+      openSearch(old.params.sources[0] || 'entreprises');
+      toast.info('Les nouvelles sources se collectent d’abord dans l’extension Chrome. Reprenez vos critères dans la fenêtre de recherche.');
+      return;
+    }
     try {
       const newJob = await apiClient.post('/sourcing/jobs', { type: old.type, name: old.name, params: old.params });
       setJobs(js=>[newJob,...js]);
@@ -206,13 +385,14 @@ export default function SourcingPage() {
     try {
       await apiClient.delete(`/sourcing/jobs/${id}`);
       setJobs(js=>js.filter(j=>j.id!==id));
-      toast.success('Job supprimé (les prospects déjà importés sont conservés)');
+      toast.success('Recherche supprimée (les prospects importés restent dans le CRM)');
     } catch (error: any) { toast.error(error.message ?? 'Suppression impossible'); }
   };
 
   const filtered = jobs.filter(j=>{
     const q = search.toLowerCase();
-    const matchSearch = !q || `${j.name} ${SCRAPER_TYPES[j.type]?.name||''}`.toLowerCase().includes(q);
+    const names = (j.params?.sources || [j.type]).map((source:string) => SCRAPER_TYPES[source]?.name || source).join(' ');
+    const matchSearch = !q || `${j.name} ${names}`.toLowerCase().includes(q);
     const matchStatus = statusFilter==='all' || j.status===statusFilter;
     return matchSearch && matchStatus;
   });
@@ -223,25 +403,29 @@ export default function SourcingPage() {
 
   return (
     <div className="min-h-screen p-6" style={{background:'var(--body-bg)'}}>
-      {showNew && <LaunchModal onClose={()=>setShowNew(false)} onLaunch={j=>setJobs(js=>[j,...js])}/>}
+      {showNew && <LaunchModal initialSource={initialSource} browserStatus={browserStatus} deviceConnected={deviceConnected} onClose={()=>setShowNew(false)} onLaunch={j=>{setJobs(js=>[j,...js]);navigate(`/sourcing/${j.id}`);}}/>}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold" style={{color:'var(--text-primary)'}}>Scraping & Sourcing</h1>
           <p className="text-sm" style={{color:'var(--text-muted)'}}>
-            {running>0?<span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse inline-block"/>{running} job{running>1?'s':''} en cours</span>:`${totalCollected} prospects collectés au total`}
+            {running>0?<span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse inline-block"/>{running} job{running>1?'s':''} en cours</span>:`${totalCollected} entreprises trouvées au total`}
           </p>
         </div>
-        <button onClick={()=>setShowNew(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white" style={{background:'var(--color-primary)'}}>
-          <Plus size={14}/>Nouveau scraping
+        <button onClick={()=>openSearch()} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white" style={{background:'var(--color-primary)'}}>
+          <Plus size={14}/>Nouvelle recherche
         </button>
       </div>
+
+      {jobListError && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs px-3 py-2 mb-4">
+        La liste des recherches n’a pas répondu au serveur. Les recherches depuis cet appareil restent accessibles : réessayez l’actualisation plus tard.
+      </div>}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          {l:'Prospects collectés', v:totalCollected, icon:<Users size={16}/>, color:'text-blue-600 bg-blue-50'},
+          {l:'Entreprises trouvées', v:totalCollected, icon:<Users size={16}/>, color:'text-blue-600 bg-blue-50'},
           {l:'Jobs terminés',       v:completed,       icon:<CheckCircle size={16}/>, color:'text-green-600 bg-green-50'},
           {l:'En cours',           v:running,         icon:<Loader2 size={16}/>, color:'text-purple-600 bg-purple-50'},
           {l:'Sources dispo.',     v:SUPPORTED_TYPES.size, icon:<Globe size={16}/>, color:'text-teal-600 bg-teal-50'},
@@ -261,13 +445,37 @@ export default function SourcingPage() {
         <div className="text-xs font-semibold mb-3 uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Sources disponibles — cliquez pour lancer</div>
         <div className="flex flex-wrap gap-2">
           {Object.entries(SCRAPER_TYPES).map(([id,t])=>(
-            <button key={id} onClick={()=>setShowNew(true)} disabled={!SUPPORTED_TYPES.has(id)}
+            <button key={id} onClick={()=>openSearch(id)} disabled={!SUPPORTED_TYPES.has(id)}
               className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-all hover:shadow-sm"
               style={{background:'var(--body-bg)',borderColor:'var(--card-border)',color:'var(--text-secondary)',opacity:SUPPORTED_TYPES.has(id)?1:.4,cursor:SUPPORTED_TYPES.has(id)?'pointer':'not-allowed'}} title={SUPPORTED_TYPES.has(id) ? t.name : 'Connecteur non disponible'}>
               <span>{t.icon}</span>{t.name.split(' ')[0]}
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Connecteur appareil : jamais de permission ou de token partagé avec le navigateur tiers. */}
+      <div className="rounded-2xl border p-4 mb-5 flex flex-wrap items-center gap-3" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
+        <div className="flex-1 min-w-[220px]">
+          <div className="flex items-center gap-2 text-sm font-semibold" style={{color:'var(--text-primary)'}}>
+            {mobileConnector ? <Smartphone size={17}/> : <Laptop size={17}/>} Connecteur PagesJaunes sur cet appareil
+            {deviceConnected && <span className="rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs">Connecté</span>}
+          </div>
+          <p className="text-xs mt-1" style={{color:'var(--text-muted)'}}>
+            {mobileConnector ? 'Android : application compagnon à installer (pas encore disponible). La version Chrome ordinateur est prête à tester.'
+              : deviceConnected ? 'Les captures Google/Maps/Bing de Chrome peuvent maintenant être importées directement dans Prospects, sans créer de recherche.'
+              : 'Installez une fois l’extension Chrome, actualisez GrowthOS, puis cliquez sur « Connecter cet appareil ». Le VPS reste inchangé.'}
+          </p>
+        </div>
+        <a href="https://github.com/LePubli/growthOS/blob/fix/growthos-functional-redesign/docs/CONNECTEUR_APPAREIL.md" target="_blank" rel="noreferrer"
+          className="flex items-center gap-1 text-xs font-medium text-teal-700 hover:underline"><Link2 size={14}/> Installation</a>
+        {deviceConnected && <button onClick={()=>navigate('/prospects/connecteur')}
+          className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700">Importer mes captures dans Prospects</button>}
+        <button onClick={connectDevice} disabled={deviceConnecting || mobileConnector}
+          className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+          style={{background:'var(--color-primary)'}}>
+          {deviceConnecting ? 'Connexion…' : deviceConnected ? 'Vérifier la connexion' : 'Connecter cet appareil'}
+        </button>
       </div>
 
       {/* Filters */}
@@ -294,15 +502,19 @@ export default function SourcingPage() {
         <div className="rounded-2xl border py-16 text-center" style={{background:'var(--card-bg)',borderColor:'var(--card-border)'}}>
           <Search size={40} className="mx-auto mb-3" style={{color:'var(--card-border)'}}/>
           <p className="text-sm mb-4" style={{color:'var(--text-muted)'}}>Aucun job trouvé</p>
-          <button onClick={()=>setShowNew(true)} className="px-4 py-2 rounded-xl text-sm text-white" style={{background:'var(--color-primary)'}}>
-            + Lancer un scraping
+          <button onClick={()=>openSearch()} className="px-4 py-2 rounded-xl text-sm text-white" style={{background:'var(--color-primary)'}}>
+            + Lancer une recherche
           </button>
         </div>
       ) : (
         <div className="space-y-3">
           {filtered.map(job=>{
-            const sc = STATUS_CONFIG[job.status]||STATUS_CONFIG.paused;
-            const src = SCRAPER_TYPES[job.type]||SCRAPER_TYPES.custom;
+            const sc = job.type === 'multi' && job.status === 'completed' && job.error
+              ? { label: 'Partiellement terminé', color: '#92400E', bg: '#FFFBEB', dot: '#F59E0B' }
+              : STATUS_CONFIG[job.status] || STATUS_CONFIG.paused;
+            const src = job.type === 'multi'
+              ? { icon: '🔎', name: (job.params?.sources || []).map((id: string) => SCRAPER_TYPES[id]?.name || id).join(' + ') || 'Recherche multisource' }
+              : SCRAPER_TYPES[job.type] || SCRAPER_TYPES.custom;
             const isRunning = job.status==='running';
             return (
               <div key={job.id}
@@ -339,7 +551,7 @@ export default function SourcingPage() {
                     {job.count>0&&(
                       <div className="text-right">
                         <div className="text-sm font-bold" style={{color:'var(--color-primary)'}}>{job.count}</div>
-                        <div className="text-xs" style={{color:'var(--text-muted)'}}>prospects</div>
+                        <div className="text-xs" style={{color:'var(--text-muted)'}}>résultats</div>
                       </div>
                     )}
 
@@ -351,7 +563,7 @@ export default function SourcingPage() {
                           <Eye size={14} style={{color:'var(--text-muted)'}}/>
                         </button>
                       )}
-                      {(job.status==='error'||job.status==='paused') && SUPPORTED_TYPES.has(job.type) && (
+                      {(job.status==='error'||job.status==='paused') && (SUPPORTED_TYPES.has(job.type)||job.type==='multi') && (
                         <button onClick={e=>retryJob(job.id,e)}
                           className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors" title="Relancer">
                           <RotateCcw size={14} style={{color:'#2563EB'}}/>

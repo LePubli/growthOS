@@ -40,6 +40,10 @@ RUN pnpm store prune 2>/dev/null || true
 
 # ── Source files (only what the frontend build needs) ────────
 COPY artifacts/growthos/ ./artifacts/growthos/
+COPY extensions/growthos-pagesjaunes/modules.json ./extensions/growthos-pagesjaunes/modules.json
+COPY lib/db/src/naf.ts ./lib/db/src/naf.ts
+# Pure URL validation shared with the API; no api-zod runtime dependency.
+COPY lib/api-zod/src/professional-sources.ts lib/api-zod/src/prospect-names.ts lib/api-zod/src/prospect-contacts.ts ./lib/api-zod/src/
 # api-client-react source is a workspace dep; pnpm already created the symlink.
 # The package.json was copied above; source not needed (growthos only uses types).
 COPY lib/api-client-react/src/ ./lib/api-client-react/src/

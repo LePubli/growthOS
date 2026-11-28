@@ -1,11 +1,19 @@
+import {startProspectEnrichments} from './services/prospect-enrichment';
+import { startProspectWatch } from './services/prospect-monitoring';
+import {startCloudJobs} from './services/cloud-browser';
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration, runProviderKeysMigration, runAutopilotMigration, runDealProspectLinkMigration, runSignalEnhanceMigration } from "@workspace/db";
+import { runMigrations, runSourcingMigration, runNotificationsMigration, runProspectGeoMigration, runEnrichmentMigration, runEreputationMigration, runTasksMigration, runEnterpriseMigration, runSaaSMigration, runErepIntegrationsMigration, runRBACMigration, runPlansMigration, runProviderKeysMigration, runAutopilotMigration, runDealProspectLinkMigration, runSignalEnhanceMigration, runDiagnosticsMigration } from "@workspace/db";
 import { seedBuiltInPlugins } from "./lib/plugin-runtime/seed-plugins";
 import { registerErepIntegrations } from "./lib/integrations/erep-integrations";
 import { registerCrossPluginEvents } from "./lib/integrations/cross-plugin-events";
 import { startSignalCron } from "./lib/cron/SignalCron";
 import { startAgentWorker } from "./lib/autopilot/AgentWorker";
+import { startDiagnosticsRetention } from './lib/diagnostics';
+import { runEreputationFoundationsMigration } from "@workspace/db";
+import { startErepRetention } from "./lib/plugin-ereputation/RetentionService";
+import { startErepWatch } from "./lib/plugin-ereputation/WatchService";
+import { startErepAlerts } from "./lib/plugin-ereputation/ErepDigest";
 
 const rawPort = process.env["PORT"];
 
@@ -42,6 +50,9 @@ runMigrations()
     await runErepIntegrationsMigration();
     logger.info("E-Rep integration tables ready (erep_alerts, erep_approvals, accounts.reputation_health_score)");
 
+    await runEreputationFoundationsMigration();
+    logger.info("E-Rep foundations ready (subject, GDPR mandate, erep_change_log)");
+
     await runRBACMigration();
     logger.info("RBAC tables ready (rbac_roles, rbac_permissions, rbac_user_roles, users.is_active)");
 
@@ -60,6 +71,9 @@ runMigrations()
     await runSignalEnhanceMigration();
     logger.info("Signal enhance ready (signals.source, signals.prospect_id)");
 
+    await runDiagnosticsMigration();
+    logger.info("Diagnostics ready (tenant-isolated diagnostic_events)");
+
     await seedBuiltInPlugins();
 
     // ── Register cross-plugin EventBus integrations
@@ -75,6 +89,13 @@ runMigrations()
 
       // ── Démarrer le cron de génération de signaux (toutes les 2h)
       startSignalCron();
+      startProspectWatch();
+      startCloudJobs();
+      startProspectEnrichments();
+      startDiagnosticsRetention();
+      startErepRetention();
+      startErepWatch();
+      startErepAlerts();
 
       // ── Démarrer l'AgentWorker (Autopilot IA)
       startAgentWorker();

@@ -1,0 +1,130 @@
+[
+  {
+    "source": "entreprises",
+    "name": "Annuaire des entreprises",
+    "description": "Identité légale, activité NAF et établissement officiel.",
+    "kind": "official",
+    "modes": [
+      "discover"
+    ],
+    "hint": "Recherche officielle avec filtres géographiques."
+  },
+  {
+    "source": "google_maps",
+    "name": "Google Maps",
+    "description": "Adresse, téléphone et site affichés sur une fiche établissement.",
+    "kind": "reader",
+    "modes": [
+      "discover",
+      "enrich"
+    ],
+    "hint": "Ouvrez la fiche détaillée du bon établissement."
+  },
+  {
+    "source": "pagesjaunes",
+    "name": "PagesJaunes",
+    "description": "Coordonnées professionnelles publiées sur une fiche détaillée.",
+    "kind": "reader",
+    "modes": [
+      "discover",
+      "enrich"
+    ],
+    "hint": "Ouvrez une fiche /pros/ puis lisez ses coordonnées."
+  },
+  {
+    "source": "google_search",
+    "name": "Google Search",
+    "description": "Rechercher une entreprise et relever une fiche locale visible.",
+    "kind": "reader",
+    "modes": [
+      "discover",
+      "enrich"
+    ],
+    "hint": "Seules les fiches locales lisibles sont proposées. Choisissez le bon résultat."
+  },
+  {
+    "source": "bing",
+    "name": "Bing",
+    "description": "Recherche complémentaire et fiches locales visibles.",
+    "kind": "reader",
+    "modes": [
+      "discover",
+      "enrich"
+    ],
+    "hint": "Choisissez une fiche locale visible, puis vérifiez son identité."
+  },
+  {
+    "source": "societe_com",
+    "name": "Societe.com",
+    "description": "Identité légale, dirigeants et informations publiques de la société.",
+    "kind": "reader",
+    "modes": [
+      "enrich"
+    ],
+    "hint": "Nom, SIREN ou SIRET ; ouvrez ensuite la fiche société complète."
+  },
+  {
+    "source": "pappers",
+    "name": "Pappers",
+    "description": "Données légales et dirigeants publiquement visibles.",
+    "kind": "reader",
+    "modes": [
+      "enrich"
+    ],
+    "hint": "Lecture cloud par SIREN confirmé ; les données réservées aux comptes restent absentes."
+  },
+  {
+    "source": "bodacc",
+    "name": "BODACC",
+    "description": "Annonces officielles : créations, modifications, radiations, procédures et comptes.",
+    "kind": "official",
+    "modes": [
+      "enrich"
+    ],
+    "hint": "Consultation automatique de l’API publique officielle par SIREN lors de l’enrichissement."
+  },
+  {
+    "source": "linkedin",
+    "name": "LinkedIn Entreprises",
+    "description": "Page entreprise et coordonnées professionnelles visibles.",
+    "kind": "assisted",
+    "modes": [
+      "discover",
+      "enrich"
+    ],
+    "hint": "Sélectionnez une page entreprise /company/. Saisie assistée, sans invitations ni messages."
+  },
+  {
+    "source": "facebook",
+    "name": "Facebook Pages",
+    "description": "Page professionnelle, contact et site publiés.",
+    "kind": "assisted",
+    "modes": [
+      "discover",
+      "enrich"
+    ],
+    "hint": "Confirmez la page professionnelle et saisissez uniquement ses données visibles."
+  },
+  {
+    "source": "instagram",
+    "name": "Instagram professionnel",
+    "description": "Profil professionnel, site et contact affichés.",
+    "kind": "assisted",
+    "modes": [
+      "discover",
+      "enrich"
+    ],
+    "hint": "Confirmez le compte professionnel et relevez les coordonnées visibles."
+  },
+  {
+    "source": "tiktok",
+    "name": "TikTok professionnel",
+    "description": "Compte professionnel et site publié.",
+    "kind": "assisted",
+    "modes": [
+      "discover",
+      "enrich"
+    ],
+    "hint": "Confirmez le compte professionnel et relevez ses informations publiques."
+  }
+]

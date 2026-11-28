@@ -28,7 +28,8 @@ router.get("/", async (req, res) => {
         grouped.set(key, {
           id: key,
           name: key,
-          domain: p.email ? p.email.split("@")[1] || "" : "",
+          // Never infer a company's website from an employee's email domain.
+          domain: p.website ? String(p.website).replace(/^https?:\/\//, "").split("/")[0] : "",
           industry: "",
           size: "",
           city: "",

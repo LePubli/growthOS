@@ -12,6 +12,9 @@ const BASE_URL =
 class ApiClient {
   private axios: AxiosInstance;
   private refreshing: Promise<string> | null = null;
+  private diagnosticWindow = 0;
+  private diagnosticCount = 0;
+  private lastDiagnostic = '';
 
   constructor() {
     this.axios = axios.create({
@@ -68,23 +71,51 @@ class ApiClient {
         const message =
           error.response?.data?.message ||
           error.response?.data?.detail ||
+          error.response?.data?.error ||
           error.message ||
           'Une erreur est survenue';
         const errorMessage = Array.isArray(message) ? message.join(', ') : message;
         if (error.response?.status && error.response.status >= 400 && error.response.status !== 401) {
           toast.error(errorMessage);
         }
-        throw new Error(errorMessage);
+        if (!error.response && !original?.url?.includes('/diagnostics')) {
+          this.reportClientError('NETWORK_REQUEST_FAILED', 'Échec de communication avec le serveur', {
+            errorType: error?.name || 'NetworkError',
+          });
+        }
+        throw Object.assign(new Error(errorMessage),{status:error.response?.status,data:error.response?.data});
       }
     );
+  }
+
+  /** Fire-and-forget telemetry: never blocks the UI or creates an Axios feedback loop. */
+  reportClientError(code: string, message: string, details: Record<string, unknown> = {}): void {
+    const token = this.getAccessToken();
+    if (!token || typeof window === 'undefined') return;
+    const now = Date.now();
+    if (now - this.diagnosticWindow > 60_000) {
+      this.diagnosticWindow = now;
+      this.diagnosticCount = 0;
+    }
+    const fingerprint = `${code}:${message}`;
+    if (this.diagnosticCount >= 12 || (this.lastDiagnostic === fingerprint && now - this.diagnosticWindow < 2000)) return;
+    this.diagnosticCount++;
+    this.lastDiagnostic = fingerprint;
+    void fetch(`${BASE_URL}/diagnostics/client-events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code: code.slice(0, 80), message: message.slice(0, 400), details }),
+      keepalive: true,
+      credentials: 'same-origin',
+    }).catch(() => undefined);
   }
 
   async get<T = any>(url: string, options?: { params?: Record<string, any> }): Promise<T> {
     return this.axios.get(url, { params: options?.params }) as unknown as T;
   }
 
-  async post<T = any>(url: string, data?: any): Promise<T> {
-    return this.axios.post(url, data) as unknown as T;
+  async post<T = any>(url: string, data?: any, options?: { timeoutMs?: number }): Promise<T> {
+    return this.axios.post(url, data, options?.timeoutMs ? { timeout: options.timeoutMs } : undefined) as unknown as T;
   }
 
   async put<T = any>(url: string, data?: any): Promise<T> {

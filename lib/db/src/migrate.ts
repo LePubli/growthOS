@@ -1,3 +1,4 @@
+import { nafCatalog } from "./naf";
 import { pool } from "./index";
 
 const SQL = `
@@ -145,9 +146,186 @@ CREATE TABLE IF NOT EXISTS webhooks (
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS cloud_browser_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  source TEXT NOT NULL,
+  label TEXT NOT NULL,
+  mode TEXT NOT NULL DEFAULT 'public' CHECK (mode IN ('public','account')),
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS cloud_browser_profiles_tenant ON cloud_browser_profiles(tenant_id);
+CREATE TABLE IF NOT EXISTS cloud_browser_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  profile_id UUID NOT NULL REFERENCES cloud_browser_profiles(id),
+  prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  mode TEXT NOT NULL DEFAULT 'discover' CHECK (mode IN ('discover','enrich')),
+  query TEXT NOT NULL,
+  area TEXT NOT NULL DEFAULT '',
+  limit_count INTEGER NOT NULL DEFAULT 10 CHECK (limit_count BETWEEN 1 AND 25),
+  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','awaiting_user','needs_review','completed','failed','cancelled')),
+  resume BOOLEAN NOT NULL DEFAULT false,
+  result JSONB NOT NULL DEFAULT '{}',
+  error TEXT,
+  lease UUID,
+  lease_until TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS cloud_browser_jobs_tenant ON cloud_browser_jobs(tenant_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS cloud_browser_jobs_queue ON cloud_browser_jobs(created_at) WHERE status='queued';
+
+CREATE TABLE IF NOT EXISTS prospect_enrichment_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  prospect_id UUID NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','completed','partial','needs_review','failed','cancelled')),
+  steps JSONB NOT NULL DEFAULT '{}',
+  lease UUID, lease_until TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS prospect_enrichment_active ON prospect_enrichment_jobs(tenant_id,prospect_id) WHERE status IN ('queued','running');
+CREATE INDEX IF NOT EXISTS prospect_enrichment_queue ON prospect_enrichment_jobs(created_at) WHERE status IN ('queued','running');
+
+CREATE TABLE IF NOT EXISTS prospect_merge_receipts (
+  id UUID PRIMARY KEY,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  removed_id UUID NOT NULL,
+  survivor_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  request_ids JSONB NOT NULL,
+  archive JSONB NOT NULL,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(tenant_id,removed_id)
+);
+CREATE INDEX IF NOT EXISTS prospect_merge_survivor ON prospect_merge_receipts(tenant_id,survivor_id);
+
+CREATE TABLE IF NOT EXISTS prospect_monitoring (
+  prospect_id UUID PRIMARY KEY REFERENCES prospects(id) ON DELETE CASCADE,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  interval_hours INTEGER NOT NULL DEFAULT 24 CHECK(interval_hours IN (24,72,168)),
+  snapshot JSONB,
+  checked_at TIMESTAMPTZ,
+  last_attempt_at TIMESTAMPTZ,
+  next_check_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_error TEXT,
+  lease_token UUID,
+  lease_until TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS prospect_monitoring_due ON prospect_monitoring(next_check_at) WHERE enabled;
+CREATE TABLE IF NOT EXISTS prospect_changes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_id UUID NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  changes JSONB NOT NULL,
+  source_url TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS prospect_changes_lookup ON prospect_changes(tenant_id,prospect_id,detected_at DESC);
+
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS siren TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS siret TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS ape_code TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS naf_label TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS naf_version TEXT;
+
+CREATE TABLE IF NOT EXISTS naf_reference (
+  code TEXT PRIMARY KEY, edition TEXT NOT NULL, label TEXT NOT NULL
+);
+INSERT INTO naf_reference(code, edition, label)
+SELECT item.key, edition.key, item.value
+FROM jsonb_each($naf$${JSON.stringify(nafCatalog)}$naf$::jsonb) edition
+CROSS JOIN LATERAL jsonb_each_text(edition.value) item
+ON CONFLICT (code) DO UPDATE SET edition = excluded.edition, label = excluded.label
+WHERE (naf_reference.edition, naf_reference.label) IS DISTINCT FROM (excluded.edition, excluded.label);
+
+CREATE OR REPLACE FUNCTION growthos_naf_edition(value TEXT) RETURNS TEXT
+LANGUAGE sql IMMUTABLE AS $fn$
+  SELECT translate(lower(trim(coalesce(value, ''))), 'é ._-', 'e')
+$fn$;
+CREATE OR REPLACE FUNCTION growthos_fill_naf_label() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+DECLARE official TEXT;
+BEGIN
+  SELECT label INTO official FROM naf_reference WHERE code = upper(trim(NEW.ape_code))
+    AND growthos_naf_edition(NEW.naf_version) IN ('', edition);
+  IF official IS NOT NULL THEN
+    NEW.naf_label := official;
+  ELSIF TG_OP = 'UPDATE' AND (NEW.ape_code, NEW.naf_version) IS DISTINCT FROM (OLD.ape_code, OLD.naf_version)
+      AND NEW.naf_label IS NOT DISTINCT FROM OLD.naf_label THEN
+    NEW.naf_label := NULL;
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+DROP TRIGGER IF EXISTS growthos_naf_label ON prospects;
+CREATE TRIGGER growthos_naf_label BEFORE INSERT OR UPDATE OF ape_code, naf_version, naf_label ON prospects
+FOR EACH ROW EXECUTE FUNCTION growthos_fill_naf_label();
+UPDATE prospects p SET naf_label = n.label FROM naf_reference n
+WHERE n.code = upper(trim(p.ape_code)) AND growthos_naf_edition(p.naf_version) IN ('', n.edition)
+  AND p.naf_label IS DISTINCT FROM n.label;
+CREATE INDEX IF NOT EXISTS idx_prospects_tenant_ape_code ON prospects(tenant_id, ape_code);
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS postal_code TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source_url TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS source_details JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prospects_tenant_siren ON prospects(tenant_id, siren) WHERE siren IS NOT NULL;
+-- Retenir les anciennes fiches en double sans supprimer leurs données. Une seule
+-- ligne de chaque groupe participe à l'index unique, les autres restent signalées.
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS identity_legacy_duplicate BOOLEAN NOT NULL DEFAULT false;
+DO $identity_index$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname='idx_prospects_tenant_siret') THEN
+    LOCK TABLE prospects IN SHARE ROW EXCLUSIVE MODE;
+    IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname='idx_prospects_tenant_siret') THEN
+    WITH ranked AS (
+      SELECT id, row_number() OVER (
+        PARTITION BY tenant_id, regexp_replace(siret, '[[:space:]]', '', 'g') ORDER BY created_at, id
+      ) AS position FROM prospects WHERE regexp_replace(siret, '[[:space:]]', '', 'g') ~ '^[0-9]{14}$'
+    ) UPDATE prospects p SET identity_legacy_duplicate=(r.position>1) FROM ranked r WHERE p.id=r.id;
+    CREATE UNIQUE INDEX idx_prospects_tenant_siret ON prospects
+      (tenant_id, (regexp_replace(siret, '[[:space:]]', '', 'g')))
+      WHERE NOT identity_legacy_duplicate AND regexp_replace(siret, '[[:space:]]', '', 'g') ~ '^[0-9]{14}$';
+    END IF;
+  END IF;
+END
+$identity_index$;
+CREATE OR REPLACE FUNCTION growthos_guard_prospect_identity() RETURNS trigger LANGUAGE plpgsql AS $identity$
+BEGIN
+  IF TG_OP='UPDATE' AND (NEW.tenant_id, NEW.siret, NEW.siren) IS NOT DISTINCT FROM (OLD.tenant_id, OLD.siret, OLD.siren) THEN
+    RETURN NEW;
+  END IF;
+  NEW.siret := nullif(regexp_replace(NEW.siret, '[[:space:]]', '', 'g'), '');
+  NEW.siren := nullif(regexp_replace(NEW.siren, '[[:space:]]', '', 'g'), '');
+  NEW.identity_legacy_duplicate := false;
+  IF (NEW.siret IS NOT NULL AND NEW.siret !~ '^[0-9]{14}$') OR
+     (NEW.siren IS NOT NULL AND NEW.siren !~ '^[0-9]{9}$') OR
+     (NEW.siret IS NOT NULL AND NEW.siren IS NOT NULL AND left(NEW.siret,9)<>NEW.siren) THEN
+    RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='prospects_identity_consistency', MESSAGE='SIREN/SIRET incohérents';
+  END IF;
+  IF NEW.siret IS NOT NULL AND EXISTS (
+    SELECT 1 FROM prospects p WHERE p.tenant_id=NEW.tenant_id AND p.id<>NEW.id
+      AND regexp_replace(p.siret, '[[:space:]]', '', 'g')=NEW.siret
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE='23505', CONSTRAINT='idx_prospects_tenant_siret', MESSAGE='SIRET déjà présent';
+  END IF;
+  RETURN NEW;
+END
+$identity$;
+DROP TRIGGER IF EXISTS growthos_prospect_identity ON prospects;
+CREATE TRIGGER growthos_prospect_identity BEFORE INSERT OR UPDATE OF tenant_id, siren, siret ON prospects
+FOR EACH ROW EXECUTE FUNCTION growthos_guard_prospect_identity();
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'medium';
 
 CREATE TABLE IF NOT EXISTS plugin_audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -985,5 +1163,30 @@ export async function runSignalEnhanceMigration(): Promise<void> {
   await pool.query(`
     ALTER TABLE signals ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
     ALTER TABLE signals ADD COLUMN IF NOT EXISTS prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL;
+  `);
+}
+
+/** Historique technique tenant-aware, indépendant des données métier et des journaux Docker. */
+export async function runDiagnosticsMigration(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS diagnostic_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      user_id UUID,
+      trace_id TEXT,
+      level TEXT NOT NULL CHECK (level IN ('info','warn','error')),
+      component TEXT NOT NULL,
+      code TEXT NOT NULL,
+      message TEXT NOT NULL,
+      source TEXT,
+      prospect_id UUID,
+      job_id UUID,
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS diagnostic_events_tenant_time ON diagnostic_events(tenant_id,created_at DESC);
+    CREATE INDEX IF NOT EXISTS diagnostic_events_tenant_level ON diagnostic_events(tenant_id,level,created_at DESC);
+    CREATE INDEX IF NOT EXISTS diagnostic_events_prospect ON diagnostic_events(tenant_id,prospect_id,created_at DESC);
+    CREATE INDEX IF NOT EXISTS diagnostic_events_job ON diagnostic_events(tenant_id,job_id,created_at DESC);
   `);
 }

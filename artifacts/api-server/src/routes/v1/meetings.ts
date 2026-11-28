@@ -41,7 +41,7 @@ router.get("/:id", async (req, res) => {
 
 /* ────────────────────────────────────────────────
    POST /api/v1/meetings
-   Create + auto-trigger processing
+   Audio ingestion and speech transcription are not yet integrated.
 ──────────────────────────────────────────────── */
 const createSchema = z.object({
   title: z.string().min(1).max(256),
@@ -55,16 +55,7 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  try {
-    const id = await meetingService.createMeeting({
-      ...parse.data,
-      tenantId: req.auth!.tenantId,
-    });
-    res.status(201).json({ id, ok: true });
-  } catch (err) {
-    logger.error({ err }, "Create meeting error");
-    res.status(500).json({ error: "Erreur lors de la création de la réunion" });
-  }
+  res.status(501).json({ error: "Transcription indisponible : aucun moteur audio n'est configuré. Aucune transcription fictive ne sera créée." });
 });
 
 /* ────────────────────────────────────────────────
@@ -72,17 +63,9 @@ router.post("/", async (req, res) => {
    Manual re-trigger (if status is pending/error)
 ──────────────────────────────────────────────── */
 router.post("/:id/process", async (req, res) => {
-  try {
-    const ok = await meetingService.triggerProcessing(req.params.id, req.auth!.tenantId);
-    if (!ok) {
-      res.status(404).json({ error: "Réunion introuvable" });
-      return;
-    }
-    res.json({ ok: true, message: "Traitement démarré" });
-  } catch (err) {
-    logger.error({ err }, "Process meeting error");
-    res.status(500).json({ error: "Erreur lors du traitement" });
-  }
+  const meeting = await meetingService.getMeeting(req.params.id, req.auth!.tenantId);
+  if (!meeting) { res.status(404).json({ error: "Réunion introuvable" }); return; }
+  res.status(501).json({ error: "Transcription audio non configurée" });
 });
 
 /* ────────────────────────────────────────────────

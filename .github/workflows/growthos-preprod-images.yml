@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - growthos-preprod
+      - fix/growthos-functional-redesign
   workflow_dispatch:
 
 permissions:
@@ -61,6 +62,39 @@ jobs:
       - name: Check interface TypeScript
         run: pnpm --filter @workspace/growthos typecheck
 
+      - name: Verify diagnostic coverage and source explanations
+        run: node scripts/test-diagnostics.mjs
+
+      - name: Validate in-house Chromium worker syntax
+        run: node --check workers/pagesjaunes-browser/server.mjs
+
+      - name: Validate local Chrome extension scripts
+        run: |
+          node --check extensions/growthos-pagesjaunes/bridge.js
+          node --check extensions/growthos-pagesjaunes/background.js
+          node --check extensions/growthos-pagesjaunes/societe.js
+          node --check extensions/growthos-pagesjaunes/capture.js
+          node --check extensions/growthos-pagesjaunes/popup.js
+          node --check extensions/growthos-pagesjaunes/device-runner.js
+          node --check extensions/growthos-pagesjaunes/device-ui.js
+          node scripts/test-multisource-extension.mjs
+          node scripts/test-device-runner.mjs
+          node -e 'const m=require("./extensions/growthos-pagesjaunes/manifest.json"); if(m.manifest_version!==3 || m.host_permissions.some(p=>!p.includes("pagesjaunes.fr")&&!p.includes("recherche-entreprises.api.gouv.fr")&&!p.includes("data.geopf.fr")))process.exit(1)'
+
+      - name: Test professional source links and interface rendering
+        run: |
+          node scripts/test-professional-sources.mjs
+          node scripts/test-collection-tools.mjs
+          node scripts/test-cloud-job-history.mjs
+          node scripts/test-cloud-import-feedback.mjs
+          node scripts/test-prospect-enrichment-actions.mjs
+          node scripts/test-cloud-browser.mjs
+          node scripts/test-prospect-people.mjs
+          node scripts/test-prospect-completeness.mjs
+          node scripts/test-prospect-logos.mjs
+          node scripts/test-prospect-harmony.mjs
+          node scripts/test-ereputation-ui.mjs
+
       - name: Build API for integration tests
         run: pnpm --filter @workspace/api-server build
 
@@ -69,11 +103,59 @@ jobs:
           SMOKE_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
         run: node scripts/smoke-wizard.mjs
 
+      - name: Test e-reputation campaigns, GDPR mandate and change history
+        env:
+          EREP_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
+        run: node scripts/test-ereputation.mjs
+
+      - name: Test e-reputation watch (SERP, reviews, press, scheduling) with a local fake browser
+        env:
+          EREP_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
+        run: node scripts/test-ereputation-watch.mjs
+
+      - name: Test e-reputation AI sentiment, explained score, alerts, crisis plans and internal e-mails
+        env:
+          EREP_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
+        run: node scripts/test-ereputation-alerts.mjs
+
       - name: Test cloud AI connectors without real API calls
         run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/ai-connector-probes.test.ts
 
+      - name: Test website contact extraction and email domain checks
+        run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/website-contact.test.ts
+
+      - name: Test SSRF protection of website audits
+        run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/seo-safety.test.ts
+
+  browser-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node for real React flow fixtures
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.26.1
+          run_install: false
+      - name: Install fixture bundler and actual interface dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Bundle actual React source review and prospect pages
+        run: node scripts/build-source-review-fixture.mjs /tmp/growthos-review-ui
+      - name: Build the isolated cloud browser
+        run: docker build -f Dockerfile.browser -t growthos-browser-test .
+      - name: Click source review through to the actual prospect enrichment tab
+        run: docker run --rm --ipc=host -v /tmp/growthos-review-ui:/fixtures:ro --entrypoint node growthos-browser-test workers/cloud-browser/review-ui-test.mjs
+
+      - name: Exercise persistent profiles and collection with real Chromium and local page fixtures
+        run: docker run --rm --ipc=host --entrypoint node growthos-browser-test workers/cloud-browser/runtime-test.mjs
+
+      - name: Read e-reputation search results and reviews with real Chromium and local page fixtures
+        run: docker run --rm --ipc=host --entrypoint node growthos-browser-test workers/cloud-browser/erep-test.mjs
+
   build-and-publish:
-    needs: validate
+    needs: [validate, browser-runtime]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -86,6 +168,10 @@ jobs:
             dockerfile: Dockerfile.api
           - component: web
             dockerfile: Dockerfile
+          - component: pagesjaunes
+            dockerfile: Dockerfile.pagesjaunes
+          - component: browser
+            dockerfile: Dockerfile.browser
     steps:
       - name: Read the preproduction branch
         uses: actions/checkout@v6
@@ -111,7 +197,13 @@ jobs:
           file: ./${{ matrix.dockerfile }}
           platforms: linux/amd64
           push: true
-          tags: ${{ env.IMAGE_PREFIX }}/growthos-${{ matrix.component }}:${{ github.sha }}
+          # Keep immutable revisions for rollback. Only the selected release branch
+          # updates the moving preprod tag after all validation checks pass.
+          # Switch release branch later with repository variable:
+          # GROWTHOS_PREPROD_SOURCE_BRANCH=growthos-preprod
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/growthos-${{ matrix.component }}:${{ github.sha }}
+            ${{ github.ref_name == (vars.GROWTHOS_PREPROD_SOURCE_BRANCH || 'fix/growthos-functional-redesign') && format('{0}/growthos-{1}:preprod', env.IMAGE_PREFIX, matrix.component) || '' }}
           build-args: |
             BASE_PATH=/
             VITE_API_URL=/api/v1

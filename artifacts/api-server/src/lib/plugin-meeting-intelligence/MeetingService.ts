@@ -110,15 +110,13 @@ class MeetingService {
     const id = result.rows[0].id;
     logger.info({ id, title: data.title }, "Meeting created");
 
-    // Fire-and-forget async processing
-    this.processMeeting(id, data.tenantId).catch((err) =>
-      logger.error({ err, id }, "Meeting processing failed"),
-    );
+    // A meeting remains pending until a real speech-to-text pipeline is configured.
 
     return id;
   }
 
   async processMeeting(id: string, tenantId: string): Promise<void> {
+    throw new Error("Transcription audio not configured; refusing synthetic results");
     // Mark as processing
     await pool.query(
       `UPDATE meetings SET status = 'processing', updated_at = NOW() WHERE id = $1`,

@@ -209,7 +209,7 @@ export default function SequencesPage() {
     apiClient.get('/sequences').then((d: any) => {
       const l = Array.isArray(d) ? d : d.data || [];
       setSequences(l);
-    }).catch(()=>{}).finally(()=>setLoading(false));
+    }).catch(()=>toast.error('Impossible de charger les séquences')).finally(()=>setLoading(false));
     const onNouveau = () => setShowNew(true);
     window.addEventListener('growthos:nouveau', onNouveau);
     return () => window.removeEventListener('growthos:nouveau', onNouveau);
@@ -218,25 +218,26 @@ export default function SequencesPage() {
   const toggle = async (id:string, e:React.MouseEvent) => {
     e.stopPropagation(); setToggling(id);
     try {
-      await apiClient.post(`/sequences/${id}/toggle`, {}).catch(()=>null);
-      setSequences(s=>s.map(x=>x.id===id?{...x,status:x.status==='active'?'paused':'active'}:x));
+      const updated:any = await apiClient.post(`/sequences/${id}/toggle`, {});
+      setSequences(s=>s.map(x=>x.id===id?updated:x));
       toast.success('Statut mis à jour');
-    } finally { setToggling(null); }
+    } catch { toast.error('Activation indisponible : moteur d’envoi non configuré'); }
+    finally { setToggling(null); }
   };
 
-  const duplicate = (seq: any, e: React.MouseEvent) => {
+  const duplicate = async (seq: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    const copy = { ...seq, id: Date.now().toString(), name: `${seq.name} (copie)`, status:'draft', enrolled:0, completed:0 };
-    setSequences(s=>[...s, copy]);
-    toast.success('Séquence dupliquée');
+    try {
+      const copy:any=await apiClient.post('/sequences', { name:`${seq.name} (copie)`, description:seq.description||'', steps:seq.steps||[], status:'draft' });
+      setSequences(s=>[copy,...s]); toast.success('Brouillon dupliqué');
+    } catch { toast.error('Duplication impossible'); }
   };
 
-  const remove = (id: string, e: React.MouseEvent) => {
+  const remove = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Supprimer cette séquence ?')) return;
-    setSequences(s=>s.filter(x=>x.id!==id));
-    apiClient.delete(`/sequences/${id}`).catch(()=>{});
-    toast.success('Séquence supprimée');
+    try { await apiClient.delete(`/sequences/${id}`); setSequences(s=>s.filter(x=>x.id!==id)); toast.success('Séquence supprimée'); }
+    catch { toast.error('Suppression impossible'); }
   };
 
   const filtered = sequences.filter(s=>{

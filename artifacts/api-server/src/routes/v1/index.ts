@@ -1,3 +1,5 @@
+import prospectEnrichmentRouter from './prospect-enrichment';
+import prospectMonitoringRouter from './prospect-monitoring';
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth";
 import { requireTenant } from "../../middlewares/tenantIsolation";
@@ -28,6 +30,7 @@ import revenueRouter from "./plugins/revenue";
 import knowledgeRouter from "./plugins/knowledge";
 import executiveRouter from "./plugins/executive";
 import sourcingRouter from "./sourcing";
+import cloudBrowserRouter from './cloud-browser';
 import notificationsRouter from "./notifications";
 import adminRouter from "./admin";
 import pluginMarketplaceRouter from "./plugin-marketplace";
@@ -56,6 +59,10 @@ import plansPublicRouter from "./plans-public";
 import autopilotRouter from "./autopilot";
 import adminCronRouter from "./admin-cron";
 import setupRouter from "./setup";
+import assistantRouter from "./assistant";
+import seoAuditRouter from "./seo-audit";
+import contactsRouter from './contacts';
+import diagnosticsRouter from './diagnostics';
 
 const router = Router();
 
@@ -74,7 +81,11 @@ mount("/plans",           plansPublicRouter);
 mount("/setup",           setupRouter);
 
 // ── ROUTES PROTÉGÉES (requireAuth + requireTenant au niveau mount) ────────
-mount("/prospects",          requireAuth, requireTenant, prospectsRouter);
+mount("/prospects",          requireAuth, requireTenant, prospectEnrichmentRouter, prospectMonitoringRouter, prospectsRouter);
+mount('/contacts',requireAuth,requireTenant,contactsRouter);
+mount('/diagnostics',        requireAuth, requireTenant, diagnosticsRouter);
+mount("/assistant",          requireAuth, requireTenant, assistantRouter);
+mount("/seo-audit",          requireAuth, requireTenant, seoAuditRouter);
 mount("/pipeline",           requireAuth, requireTenant, pipelineRouter);
 mount("/sequences",          requireAuth, requireTenant, sequencesRouter);
 mount("/signals",            requireAuth, requireTenant, signalsRouter);
@@ -99,6 +110,7 @@ mount("/revenue",            requireAuth, requireTenant, revenueRouter);
 mount("/knowledge",          requireAuth, requireTenant, knowledgeRouter);
 mount("/executive",          requireAuth, requireTenant, executiveRouter);
 mount("/sourcing",           requireAuth, requireTenant, sourcingRouter);
+mount('/browser',requireAuth,requireTenant,cloudBrowserRouter);
 mount("/notifications",      requireAuth, requireTenant, notificationsRouter);
 mount("/admin",              requireAuth, requireTenant, adminRouter);
 mount("/plugin-marketplace", requireAuth, requireTenant, pluginMarketplaceRouter);

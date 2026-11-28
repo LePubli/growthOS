@@ -5,6 +5,7 @@ import {
   Mail, BarChart2, Database, Server, Copy, ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import apiClient from '@/lib/api-client';
 
 /* ─────────────── types ─────────────── */
 
@@ -26,26 +27,15 @@ interface McpServer {
 /* ─────────────── model catalogue ─────────────── */
 
 const MODELS = [
-  { id:'gpt-4o',           provider:'openai',    label:'GPT-4o',          badge:'Rapide',   color:'#059669' },
-  { id:'gpt-4-turbo',      provider:'openai',    label:'GPT-4 Turbo',     badge:'Puissant', color:'#2563EB' },
-  { id:'o3-mini',          provider:'openai',    label:'o3-mini',         badge:'Raison.',  color:'#7C3AED' },
-  { id:'claude-3-5-sonnet',provider:'claude',    label:'Claude 3.5 Sonnet',badge:'Expert',  color:'#D97706' },
-  { id:'claude-3-haiku',   provider:'claude',    label:'Claude 3 Haiku',  badge:'Rapide',   color:'#D97706' },
-  { id:'claude-3-opus',    provider:'claude',    label:'Claude 3 Opus',   badge:'Max',      color:'#DC2626' },
-  { id:'qwen-max',         provider:'qwen',      label:'Qwen Max',        badge:'Puissant', color:'#7C3AED' },
-  { id:'qwen-turbo',       provider:'qwen',      label:'Qwen Turbo',      badge:'Rapide',   color:'#6B7280' },
-  { id:'llama3.2',         provider:'ollama',    label:'Llama 3.2',       badge:'Local',    color:'#059669' },
-  { id:'mistral',          provider:'ollama',    label:'Mistral 7B',      badge:'Local',    color:'#059669' },
-  { id:'codellama',        provider:'ollama',    label:'Code Llama',      badge:'Code',     color:'#2563EB' },
-  { id:'deepseek-r1',      provider:'ollama',    label:'DeepSeek R1',     badge:'Raison.',  color:'#7C3AED' },
+  { id:'openai', provider:'openai', label:'OpenAI · GPT-4o mini', badge:'Cloud', color:'#059669' },
+  { id:'anthropic', provider:'anthropic', label:'Claude · Haiku', badge:'Cloud', color:'#D97706' },
+  { id:'deepseek', provider:'deepseek', label:'DeepSeek', badge:'Cloud', color:'#2563EB' },
 ];
 
 const PROVIDERS = [
-  { id:'openai', label:'OpenAI',     icon:'🟢', desc:'GPT-4o, o3-mini...' },
-  { id:'claude', label:'Anthropic',  icon:'🟠', desc:'Claude 3.5 Sonnet, Opus...' },
-  { id:'qwen',   label:'Qwen',       icon:'🟣', desc:'Qwen Max, Turbo...' },
-  { id:'ollama', label:'Ollama',     icon:'🖥️', desc:'Local — Llama, Mistral...' },
-  { id:'mcp',    label:'MCP',        icon:'🔌', desc:'Custom MCP endpoints' },
+  { id:'openai', label:'OpenAI', icon:'🟢', desc:'Connexion par clé API' },
+  { id:'anthropic', label:'Claude', icon:'🟠', desc:'Connexion par clé API' },
+  { id:'deepseek', label:'DeepSeek', icon:'🔵', desc:'Connexion par clé API' },
 ];
 
 /* ─────────────── mock responses ─────────────── */
@@ -219,7 +209,7 @@ function McpPanel({ servers, onAdd, onRemove, onTest }: {
 
 export default function AIAgentPage() {
   const [messages, setMessages] = useState<Message[]>([
-    { id:'0', role:'assistant', content:MOCK_RESPONSES.default.content, timestamp:new Date() },
+    { id:'0', role:'assistant', content:'Assistant connecté aux données CRM réelles en lecture seule. Configurez une clé OpenAI, Claude ou DeepSeek avant votre première question. Je ne peux pas envoyer de messages ni modifier des données.', timestamp:new Date() },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -228,11 +218,9 @@ export default function AIAgentPage() {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTools, setShowTools] = useState(true);
-  const [mcpServers, setMcpServers] = useState<McpServer[]>([
-    { id:'1', name:'GrowthOS Internal', url:'https://api.growthos.io/mcp/sse', status:'connected', tools:['search_prospects','create_deal','send_email','get_signals'] },
-  ]);
+  const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [temperature, setTemperature] = useState(0.7);
-  const [systemPrompt, setSystemPrompt] = useState('Tu es un expert commercial B2B SaaS. Réponds en français, de façon concise et actionnable. Tu as accès au CRM GrowthOS.');
+  const [systemPrompt, setSystemPrompt] = useState('Lecture seule : analyse des données CRM réellement enregistrées.');
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -247,30 +235,25 @@ export default function AIAgentPage() {
     setMessages(m=>[...m,userMsg]);
     setLoading(true);
 
-    const resp = getResponse(msg);
-
-    // Simulate tool calls streaming
-    if (resp.tools?.length) {
-      const toolMsg:Message = { id:crypto.randomUUID(), role:'tool', content:'', timestamp:new Date(), toolCalls:resp.tools.map(t=>({...t,status:'running' as const})) };
-      setMessages(m=>[...m,toolMsg]);
-      await new Promise(r=>setTimeout(r,600));
-      // Mark done one by one
-      for (let i=0; i<resp.tools.length; i++) {
-        await new Promise(r=>setTimeout(r,400));
-        setMessages(m=>m.map(msg=>msg.id===toolMsg.id?{...msg,toolCalls:msg.toolCalls?.map((tc,j)=>j===i?{...tc,status:'done' as const}:tc)}:msg));
-      }
-    } else {
-      await new Promise(r=>setTimeout(r,800+Math.random()*600));
+    try {
+      const recent = messages.filter(m=>m.role==='user'||m.role==='assistant').slice(-6)
+        .map(m=>({ role:m.role as 'user'|'assistant', content:m.content.slice(0,1800) }));
+      const response = await apiClient.post<{ answer:string }>('/assistant/chat', {
+        message: msg, provider: selectedModel.provider, history: recent,
+      });
+      setMessages(m=>[...m,{ id:crypto.randomUUID(), role:'assistant', content:response.answer, timestamp:new Date(), model:selectedModel.label }]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Fournisseur IA indisponible';
+      toast.error(message);
+      setMessages(m=>[...m,{ id:crypto.randomUUID(), role:'assistant', content:`Impossible de répondre : ${message}. Aucune réponse fictive n'a été générée.`, timestamp:new Date() }]);
+    } finally {
+      setLoading(false);
+      inputRef.current?.focus();
     }
-
-    const assistantMsg:Message = { id:crypto.randomUUID(), role:'assistant', content:resp.content, timestamp:new Date(), model:selectedModel.label };
-    setMessages(m=>[...m,assistantMsg]);
-    setLoading(false);
-    inputRef.current?.focus();
   };
 
   const reset = () => {
-    setMessages([{ id:'0', role:'assistant', content:MOCK_RESPONSES.default.content, timestamp:new Date() }]);
+    setMessages([{ id:'0', role:'assistant', content:'Nouvelle conversation en lecture seule. Je réponds uniquement avec le fournisseur IA configuré.', timestamp:new Date() }]);
     toast.success('Nouvelle conversation démarrée');
   };
 
@@ -279,8 +262,7 @@ export default function AIAgentPage() {
   const addMcp = (s:McpServer) => setMcpServers(p=>[...p,s]);
   const removeMcp = (id:string) => setMcpServers(p=>p.filter(s=>s.id!==id));
   const testMcp = (id:string) => {
-    setMcpServers(p=>p.map(s=>s.id===id?{...s,status:'testing'}:s));
-    setTimeout(()=>setMcpServers(p=>p.map(s=>s.id===id?{...s,status:'connected',tools:['search','create','update']}:s)), 1500);
+    toast.warning('Connexion MCP non configurée : aucun serveur ne sera simulé.');
   };
 
   const providerModels = MODELS.filter(m=>m.provider===selectedProvider||(selectedProvider==='mcp'&&false));

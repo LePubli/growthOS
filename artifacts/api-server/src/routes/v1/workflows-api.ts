@@ -12,7 +12,7 @@ const workflowSchema = z.object({
   trigger: z.string().default("prospect_created"),
   triggerConfig: z.record(z.any()).optional().default({}),
   actions: z.array(z.any()).optional().default([]),
-  status: z.enum(["draft", "active", "paused"]).optional().default("draft"),
+  status: z.enum(["draft", "paused"]).optional().default("draft"),
 });
 
 router.get("/", async (req, res) => {
@@ -63,7 +63,11 @@ router.post("/:id/toggle", async (req, res) => {
     .where(and(eq(workflowsTable.id, req.params.id), eq(workflowsTable.tenantId, req.auth!.tenantId)))
     .limit(1);
   if (!wf) { res.status(404).json({ error: "Workflow introuvable" }); return; }
-  const newStatus = wf.status === "active" ? "paused" : "active";
+  if (wf.status !== "active") {
+    res.status(409).json({ error: "Activation impossible : le moteur d'exécution des workflows n'est pas encore validé." });
+    return;
+  }
+  const newStatus = "paused";
   const [updated] = await db.update(workflowsTable)
     .set({ status: newStatus, updatedAt: new Date() })
     .where(eq(workflowsTable.id, req.params.id))

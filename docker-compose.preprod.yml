@@ -22,7 +22,8 @@ services:
       retries: 12
 
   api-server:
-    image: ${GROWTHOS_IMAGE_PREFIX:-ghcr.io/lepubli}/growthos-api:${GROWTHOS_IMAGE_TAG:?Set the exact GitHub commit SHA}
+    image: ${GROWTHOS_IMAGE_PREFIX:-ghcr.io/lepubli}/growthos-api:${GROWTHOS_IMAGE_TAG:-preprod}
+    pull_policy: always
     restart: unless-stopped
     mem_limit: 1g
     cpus: 1.00
@@ -41,14 +42,40 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       ALLOW_PUBLIC_REGISTRATION: "false"
       ENABLE_OUTBOUND_EMAIL: "false"
+      CLOUD_BROWSER_URL: http://cloud-browser:3200
+      CLOUD_BROWSER_TOKEN: ${CLOUD_BROWSER_TOKEN:?Set a separate cloud browser token of at least 32 characters}
     expose:
       - "3001"
     depends_on:
       growthos-db:
         condition: service_healthy
 
+  cloud-browser:
+    image: ${GROWTHOS_IMAGE_PREFIX:-ghcr.io/lepubli}/growthos-browser:${GROWTHOS_IMAGE_TAG:-preprod}
+    pull_policy: always
+    restart: unless-stopped
+    mem_limit: 1536m
+    cpus: 1.00
+    pids_limit: 300
+    shm_size: 256m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      CLOUD_BROWSER_TOKEN: ${CLOUD_BROWSER_TOKEN:?Set a separate cloud browser token of at least 32 characters}
+      BROWSER_PROFILE_DIR: /data/profiles
+    volumes:
+      - growthos-browser-profiles:/data/profiles
+    expose:
+      - "3200"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3200/healthz',{headers:{'X-Worker-Token':process.env.CLOUD_BROWSER_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   growthos:
-    image: ${GROWTHOS_IMAGE_PREFIX:-ghcr.io/lepubli}/growthos-web:${GROWTHOS_IMAGE_TAG:?Set the exact GitHub commit SHA}
+    image: ${GROWTHOS_IMAGE_PREFIX:-ghcr.io/lepubli}/growthos-web:${GROWTHOS_IMAGE_TAG:-preprod}
+    pull_policy: always
     restart: unless-stopped
     mem_limit: 256m
     cpus: 0.25
@@ -60,4 +87,5 @@ services:
         condition: service_healthy
 
 volumes:
+  growthos-browser-profiles:
   growthos-postgres-data:

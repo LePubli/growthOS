@@ -26,7 +26,7 @@ router.get("/dashboard", async (req, res) => {
   const tenantId = req.auth!.tenantId;
   try {
     const [campaigns, alerts, posts] = await Promise.all([
-      pool.query<{ id: string; name: string; target_name: string; reputation_score: number; status: string; updated_at: string }>(
+      pool.query<{ id: string; name: string; target_name: string; reputation_score: number | null; status: string; updated_at: string }>(
         `SELECT id, name, target_name, reputation_score, status, updated_at
          FROM erep_campaigns
          WHERE tenant_id = $1
@@ -50,10 +50,11 @@ router.get("/dashboard", async (req, res) => {
       ).catch(() => ({ rows: [{ count: "0" }] as any[] })),
     ]);
 
-    const scores = campaigns.rows.map(c => Number(c.reputation_score ?? 50));
+    // Moyenne des seules campagnes évaluées ; null = aucune mesure réelle.
+    const scores = campaigns.rows.filter(c => c.reputation_score != null).map(c => Number(c.reputation_score));
     const avgScore = scores.length
       ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
-      : 50;
+      : null;
 
     const activeAlerts = alerts.rows.filter(a => !a.is_resolved);
     const crisisCount = activeAlerts.filter(a => a.severity === "high").length;
@@ -66,14 +67,14 @@ router.get("/dashboard", async (req, res) => {
         activeAlerts: activeAlerts.length,
         crisisAlerts: crisisCount,
         publishedPosts,
-        scoreColor: avgScore >= 70 ? "green" : avgScore >= 40 ? "orange" : "red",
-        scoreLabel: avgScore >= 70 ? "Excellente" : avgScore >= 40 ? "Correcte" : "Critique",
+        scoreColor: avgScore === null ? "grey" : avgScore >= 70 ? "green" : avgScore >= 40 ? "orange" : "red",
+        scoreLabel: avgScore === null ? "Non évalué" : avgScore >= 70 ? "Excellente" : avgScore >= 40 ? "Correcte" : "Critique",
       },
       recentCampaigns: campaigns.rows.map(c => ({
         id: c.id,
         name: c.name,
         targetName: c.target_name,
-        reputationScore: c.reputation_score ?? 50,
+        reputationScore: c.reputation_score ?? null,
         status: c.status,
         updatedAt: c.updated_at,
       })),
@@ -129,7 +130,7 @@ router.get("/campaigns", async (req, res) => {
       targetType: r.target_type,
       keywords: r.keywords,
       status: r.status,
-      reputationScore: r.reputation_score ?? 50,
+      reputationScore: r.reputation_score ?? null,
       activeAlerts: parseInt(r.active_alerts, 10),
       totalPosts: parseInt(r.total_posts, 10),
       publishedPosts: parseInt(r.published_posts, 10),
@@ -350,7 +351,7 @@ router.get("/reports", async (req, res) => {
     const [campaigns, alertStats, serpData, sentimentData] = await Promise.all([
       pool.query(
         `SELECT id, name, target_name, reputation_score, status, created_at, updated_at
-         FROM erep_campaigns WHERE tenant_id = $1 ORDER BY reputation_score DESC`,
+         FROM erep_campaigns WHERE tenant_id = $1 ORDER BY reputation_score DESC NULLS LAST`,
         [tenantId],
       ).catch(() => ({ rows: [] as any[] })),
       pool.query(
@@ -387,22 +388,23 @@ router.get("/reports", async (req, res) => {
     const alertRow = alertStats.rows[0] ?? { active: "0", resolved: "0", crisis: "0", warnings: "0" };
     const sentRow = sentimentData.rows[0] ?? { positive: "0", negative: "0", neutral: "0" };
 
-    const avgScore = campaigns.rows.length
-      ? Math.round(campaigns.rows.reduce((s, c) => s + (c.reputation_score ?? 50), 0) / campaigns.rows.length)
-      : 50;
+    const evaluated = campaigns.rows.filter(c => c.reputation_score != null);
+    const avgScore = evaluated.length
+      ? Math.round(evaluated.reduce((s, c) => s + Number(c.reputation_score), 0) / evaluated.length)
+      : null;
 
     res.json({
       generatedAt: new Date().toISOString(),
       summary: {
         campaignCount: campaigns.rows.length,
         averageReputationScore: avgScore,
-        scoreColor: avgScore >= 70 ? "green" : avgScore >= 40 ? "orange" : "red",
+        scoreColor: avgScore === null ? "grey" : avgScore >= 70 ? "green" : avgScore >= 40 ? "orange" : "red",
       },
       campaigns: campaigns.rows.map(c => ({
         id: c.id,
         name: c.name,
         targetName: c.target_name,
-        reputationScore: c.reputation_score ?? 50,
+        reputationScore: c.reputation_score ?? null,
         status: c.status,
       })),
       alerts: {

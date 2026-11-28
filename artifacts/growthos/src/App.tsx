@@ -1,4 +1,5 @@
-import { Switch, Route, Router as WouterRouter, useLocation, Redirect } from 'wouter';
+import {legacySourcingTarget} from '@/lib/legacy-sourcing';
+import { Switch, Route, Router as WouterRouter, useLocation, useSearch, useParams, Redirect } from 'wouter';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/providers/theme-provider';
@@ -10,13 +11,18 @@ import LoginPage from '@/pages/LoginPage';
 import { GenericPage } from '@/pages/GenericPage';
 import OnboardingWizardPage from '@/pages/OnboardingWizardPage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import apiClient from '@/lib/api-client';
 import { useSignalNotifications } from '@/hooks/useSignalNotifications';
 import { ClientShell } from '@/plugins/client-portal/ClientShell';
 import LandingPage from '@/pages/public/LandingPage';
+import UnavailablePage from '@/pages/UnavailablePage';
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
 const ProspectsPage = lazy(() => import('@/pages/ProspectsPage'));
+const CloudBrowserPage=lazy(()=>import('@/pages/CloudBrowserPage'));
+const CollectionToolsPage = lazy(() => import('@/pages/CollectionToolsPage'));
+const ConnectorImportPage = lazy(() => import('@/pages/ConnectorImportPage'));
 const ProspectDetailPage = lazy(() => import('@/pages/ProspectDetailPage'));
 const PipelinePage = lazy(() => import('@/pages/PipelinePage'));
 const DealDetailPage = lazy(() => import('@/pages/DealDetailPage'));
@@ -24,7 +30,8 @@ const SequencesPage = lazy(() => import('@/pages/SequencesPage'));
 const SequenceDetailPage = lazy(() => import('@/pages/SequenceDetailPage'));
 const SignalsPage = lazy(() => import('@/pages/SignalsPage'));
 const SignalDetailPage = lazy(() => import('@/pages/SignalDetailPage'));
-const SourcingPage = lazy(() => import('@/pages/SourcingPage'));
+function LegacySourcingRedirect(){const params=useParams<{id?:string}>();return <Redirect to={legacySourcingTarget(useSearch(),params.id)}/>;}
+const SiteAuditPage = lazy(() => import('@/pages/SiteAuditPage'));
 const PluginsPage = lazy(() => import('@/pages/PluginsPage'));
 const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage'));
 const WorkflowDetailPage = lazy(() => import('@/pages/WorkflowDetailPage'));
@@ -49,7 +56,7 @@ const ContactsPage = lazy(() => import('@/pages/ContactsPage'));
 const ImportPage = lazy(() => import('@/pages/ImportPage'));
 const ContactIntelPage = lazy(() => import('@/pages/ContactIntelPage'));
 const CRMSyncPage = lazy(() => import('@/pages/CRMSyncPage'));
-const SourcingJobPage = lazy(() => import('@/pages/SourcingJobPage'));
+
 const PluginDetailPage = lazy(() => import('@/pages/PluginDetailPage'));
 const AccountsPage = lazy(() => import('@/pages/AccountsPage'));
 const MemoryPage = lazy(() => import('@/pages/MemoryPage'));
@@ -69,10 +76,12 @@ const SharedDashboardsPage = lazy(() => import('@/pages/SharedDashboardsPage'));
 const RouteAuditPage = lazy(() => import('@/pages/RouteAuditPage'));
 const PluginUploadPage = lazy(() => import('@/pages/PluginUploadPage'));
 const DeepAuditPage = lazy(() => import('@/pages/DeepAuditPage'));
+const DiagnosticsPage = lazy(() => import('@/pages/DiagnosticsPage'));
 const EnrichmentPage = lazy(() => import('@/pages/EnrichmentPage'));
 const ERepDashboardPage = lazy(() => import('@/plugins/ereputation/ERepDashboardPage'));
 const ERepCampaignsPage = lazy(() => import('@/plugins/ereputation/CampaignsPage'));
 const ERepSERPPage = lazy(() => import('@/plugins/ereputation/SERPTrackingPage'));
+const ERepWatchPage = lazy(() => import('@/plugins/ereputation/WatchPage'));
 const ERepSentimentPage = lazy(() => import('@/plugins/ereputation/SentimentFeedPage'));
 const ERepSocialPage = lazy(() => import('@/plugins/ereputation/SocialCalendarPage'));
 const ERepPBNPage = lazy(() => import('@/plugins/ereputation/PBNManagerPage'));
@@ -128,6 +137,17 @@ function HomeEntry({ authenticated }: { authenticated: boolean }) {
 
 function AppRoutes() {
   useSignalNotifications();
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => apiClient.reportClientError('WINDOW_ERROR', 'Erreur Javascript non interceptée', {
+      errorType: event.error?.name || 'Error', reason: event.message,
+    });
+    const onRejection = (event: PromiseRejectionEvent) => apiClient.reportClientError('UNHANDLED_REJECTION', 'Promesse non traitée', {
+      errorType: event.reason?.name || 'Error', reason: String(event.reason?.message || event.reason || 'Unknown').slice(0, 300),
+    });
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => { window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onRejection); };
+  }, []);
   const { isAuthenticated } = useAuthStore();
 
   return (
@@ -157,6 +177,15 @@ function AppRoutes() {
 
       <Route path="/prospects">
         {() => <DashboardLayout><ProspectsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/navigateur">
+        {()=><DashboardLayout><CloudBrowserPage/></DashboardLayout>}
+      </Route>
+      <Route path="/outils">
+        {() => <DashboardLayout><CollectionToolsPage /></DashboardLayout>}
+      </Route>
+      <Route path="/prospects/connecteur">
+        {() => <DashboardLayout><ConnectorImportPage /></DashboardLayout>}
       </Route>
       <Route path="/prospects/:id">
         {() => <DashboardLayout><ProspectDetailPage /></DashboardLayout>}
@@ -199,10 +228,13 @@ function AppRoutes() {
       </Route>
 
       <Route path="/sourcing">
-        {() => <DashboardLayout><SourcingPage /></DashboardLayout>}
+        {() => <DashboardLayout><LegacySourcingRedirect /></DashboardLayout>}
+      </Route>
+      <Route path="/seo-check">
+        {() => <DashboardLayout><SiteAuditPage /></DashboardLayout>}
       </Route>
       <Route path="/sourcing/:id">
-        {() => <DashboardLayout><SourcingJobPage /></DashboardLayout>}
+        {() => <DashboardLayout><LegacySourcingRedirect /></DashboardLayout>}
       </Route>
 
       <Route path="/plugins">
@@ -236,10 +268,10 @@ function AppRoutes() {
         {() => <DashboardLayout><ApiPage /></DashboardLayout>}
       </Route>
       <Route path="/settings/billing">
-        {() => <DashboardLayout><BillingPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Facturation" description="Le parcours de paiement Stripe et les factures réelles ne sont pas encore certifiés." /></DashboardLayout>}
       </Route>
       <Route path="/settings/integrations">
-        {() => <DashboardLayout><IntegrationsPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Intégrations externes" description="Les statuts Gmail, Slack et autres fournisseurs doivent être reliés aux connexions réelles avant affichage." /></DashboardLayout>}
       </Route>
       <Route path="/settings/autopilot">
         {() => <DashboardLayout><AutopilotPage /></DashboardLayout>}
@@ -258,7 +290,7 @@ function AppRoutes() {
         {() => <DashboardLayout><IntegrationsHubPage /></DashboardLayout>}
       </Route>
       <Route path="/inbound">
-        {() => <DashboardLayout><InboundPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Prospection entrante" description="Les formulaires, leads et conversions affichés auparavant étaient des données de démonstration." /></DashboardLayout>}
       </Route>
       <Route path="/abm">
         {() => <DashboardLayout><ABMPage /></DashboardLayout>}
@@ -271,7 +303,7 @@ function AppRoutes() {
         {() => <DashboardLayout><ContactsPage /></DashboardLayout>}
       </Route>
       <Route path="/contact-intel">
-        {() => <DashboardLayout><ContactIntelPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Intelligence contact" description="Les données d'enrichissement contact ne sont pas encore vérifiées auprès de fournisseurs réels." /></DashboardLayout>}
       </Route>
       <Route path="/crm-sync">
         {() => <DashboardLayout><CRMSyncPage /></DashboardLayout>}
@@ -293,17 +325,20 @@ function AppRoutes() {
       <Route path="/ereputation/campaigns">
         {() => <DashboardLayout><ERepCampaignsPage /></DashboardLayout>}
       </Route>
+      <Route path="/ereputation/watch">
+        {() => <DashboardLayout><ERepWatchPage /></DashboardLayout>}
+      </Route>
       <Route path="/ereputation/serp">
         {() => <DashboardLayout><ERepSERPPage /></DashboardLayout>}
       </Route>
       <Route path="/ereputation/sentiment">
-        {() => <DashboardLayout><ERepSentimentPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Veille des mentions" description="La collecte externe d'avis et le flux de sentiments doivent être raccordés à des sources vérifiables." /></DashboardLayout>}
       </Route>
       <Route path="/ereputation/social">
-        {() => <DashboardLayout><ERepSocialPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Calendrier social" description="Les publications et résultats sociaux ne sont pas encore synchronisés avec les réseaux réels." /></DashboardLayout>}
       </Route>
       <Route path="/ereputation/pbn">
-        {() => <DashboardLayout><ERepPBNPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Réseau de sites" description="Aucun indicateur d'autorité ou de backlinks non mesuré ne doit être présenté comme réel." /></DashboardLayout>}
       </Route>
       <Route path="/ereputation">
         {() => <DashboardLayout><ERepDashboardPage /></DashboardLayout>}
@@ -333,10 +368,10 @@ function AppRoutes() {
         {() => <DashboardLayout><CalendarPage /></DashboardLayout>}
       </Route>
       <Route path="/proposals">
-        {() => <DashboardLayout><ProposalsPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Propositions commerciales" description="Le générateur de propositions n'est pas encore connecté au CRM et à un stockage permanent." /></DashboardLayout>}
       </Route>
       <Route path="/shared-dashboards">
-        {() => <DashboardLayout><SharedDashboardsPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Tableaux de bord partagés" description="La gestion réelle des accès et des tableaux partagés n'a pas encore été validée." /></DashboardLayout>}
       </Route>
       <Route path="/route-audit">
         {() => <DashboardLayout><RouteAuditPage /></DashboardLayout>}
@@ -346,6 +381,9 @@ function AppRoutes() {
       </Route>
       <Route path="/admin/deep-audit">
         {() => <DashboardLayout><DeepAuditPage /></DashboardLayout>}
+      </Route>
+      <Route path="/admin/diagnostics">
+        {() => <DashboardLayout><DiagnosticsPage /></DashboardLayout>}
       </Route>
 
       <Route path="/tasks">
@@ -358,7 +396,7 @@ function AppRoutes() {
         {() => <DashboardLayout><HelpCenterPage /></DashboardLayout>}
       </Route>
       <Route path="/referral">
-        {() => <DashboardLayout><ReferralPage /></DashboardLayout>}
+        {() => <DashboardLayout><UnavailablePage feature="Parrainage" description="Aucun programme de parrainage réel ni statistiques de commissions ne sont configurés." /></DashboardLayout>}
       </Route>
 
       <Route path="/audit-trail">

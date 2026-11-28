@@ -17,6 +17,7 @@ interface Source {
   free: boolean;
   rateLimitPerMinute: number;
   description: string;
+  implemented: boolean;
   isActive: boolean;
   hasKey: boolean;
   lastTestedAt: string | null;
@@ -125,36 +126,19 @@ export default function EnrichmentPage() {
       .finally(() => setLoadingHistory(false));
   }, [selectedProspect]);
 
-  /* Save API config */
+  /* Keys are exclusively managed by the tenant-encrypted provider vault. */
   const saveConfig = async (sourceId: string) => {
-    const inp = keyInputs[sourceId] ?? {};
-    setSaving(sourceId);
-    try {
-      await apiClient.put(`/enrich/api-config/${sourceId}`, { apiKey: inp.apiKey || undefined, apiSecret: inp.apiSecret || undefined, isActive: true });
-      toast.success('Configuration sauvegardée');
-      setExpanded(null);
-      loadSources();
-    } catch { toast.error('Erreur lors de la sauvegarde'); } finally { setSaving(null); }
+    window.location.assign('/admin/api-keys');
   };
 
   /* Test connection */
   const testConnection = async (sourceId: string) => {
-    setTesting(sourceId);
-    try {
-      const r = await apiClient.post(`/enrich/test-connection/${sourceId}`, {}) as any;
-      if (r.ok) toast.success(`${sourceId}: ${r.message}`);
-      else toast.warning(`${sourceId}: ${r.message}`);
-      loadSources();
-    } catch { toast.error('Erreur de connexion'); } finally { setTesting(null); }
+    toast.info('Test réseau non disponible pour cette source. La présence d’une clé ne prouve pas la connexion.');
   };
 
   /* Toggle source */
   const toggleSource = async (source: Source) => {
-    setToggling(source.id);
-    try {
-      await apiClient.put(`/enrich/api-config/${source.id}`, { isActive: !source.isActive });
-      loadSources();
-    } catch {} finally { setToggling(null); }
+    toast.info(source.implemented ? 'Gérez les clés depuis Clés API Providers.' : 'Connecteur non implémenté.');
   };
 
   /* Enrich prospect */
@@ -166,7 +150,8 @@ export default function EnrichmentPage() {
       const r = await apiClient.post(`/enrich/${selectedProspect.id}`, {}) as EnrichResult;
       setEnrichResult(r);
       if (r.signals.length > 0) setRecentSignals(prev => [...r.signals, ...prev].slice(0, 50));
-      toast.success(`Enrichissement terminé — score ${r.score}/100`);
+      if (r.sourcesSucceeded === 0) toast.warning('Aucune information vérifiée récupérée. Aucun contact inventé.');
+      else toast.success(`Enrichissement terminé : ${r.sourcesSucceeded} source(s) vérifiée(s).`);
     } catch (e: any) {
       toast.error(e?.message ?? 'Erreur d\'enrichissement');
     } finally {
@@ -178,14 +163,15 @@ export default function EnrichmentPage() {
   };
 
   /* ─── SECTION: CONFIG ─── */
-  const freeCount = sources.filter(s => s.free).length;
-  const paidWithKey = sources.filter(s => !s.free && s.hasKey).length;
+  const freeCount = sources.filter(s => s.implemented && s.free).length;
+  const paidWithKey = sources.filter(s => s.implemented && !s.free && s.hasKey).length;
   const activeCount = sources.filter(s => s.isActive).length;
 
   const renderConfigTab = () => (
     <div>
       {/* Stats banner */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">Le catalogue contient des sources envisagées. Seules les sources marquées « Connectée » possèdent une intégration ; une clé seule ne garantit pas le fonctionnement. Configuration des secrets dans <a href="/admin/api-keys" className="underline font-semibold">Clés API Providers</a>.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         {[
           { label: 'Sources actives', value: activeCount, color: 'teal' },
           { label: 'Gratuites', value: freeCount, color: 'green' },
@@ -219,19 +205,17 @@ export default function EnrichmentPage() {
                         {/* Toggle */}
                         <button
                           onClick={e => { e.stopPropagation(); toggleSource(src); }}
-                          disabled={toggling === src.id}
-                          className="flex-shrink-0"
-                          title={src.isActive ? 'Désactiver' : 'Activer'}
+                          className="flex-shrink-0 cursor-help"
+                          title="Indicateur en lecture seule"
                         >
-                          {toggling === src.id
-                            ? <Loader2 size={18} className="animate-spin text-gray-400"/>
-                            : src.isActive
+                          {src.isActive
                               ? <ToggleRight size={18} className="text-teal-500"/>
                               : <ToggleLeft size={18} className="text-gray-300"/>}
                         </button>
                         {/* Name */}
                         <span className={`text-sm font-medium flex-1 ${src.isActive ? 'text-gray-900' : 'text-gray-400'}`}>{src.name}</span>
                         {/* Badges */}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${src.implemented ? 'bg-teal-50 text-teal-700' : 'bg-gray-100 text-gray-500'}`}>{src.implemented ? 'Connecteur codé' : 'Non connecté'}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${SOURCE_TYPE_BADGE[src.type]}`}>{src.type}</span>
                         {src.free
                           ? <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Gratuit</span>
@@ -248,47 +232,14 @@ export default function EnrichmentPage() {
                       {expanded === src.id && (
                         <div className="px-4 pb-4 border-t border-gray-100 mt-1 pt-3">
                           <p className="text-xs text-gray-500 mb-3">{src.description}</p>
-                          {!src.free && (
-                            <div className="space-y-2 mb-3">
-                              <div>
-                                <label className="text-xs font-medium text-gray-600 block mb-1">API Key</label>
-                                <input
-                                  type="password"
-                                  placeholder="sk-•••••••••••••••"
-                                  value={keyInputs[src.id]?.apiKey ?? ''}
-                                  onChange={e => setKeyInputs(prev => ({ ...prev, [src.id]: { ...prev[src.id], apiKey: e.target.value } }))}
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs font-medium text-gray-600 block mb-1">API Secret <span className="text-gray-400">(optionnel)</span></label>
-                                <input
-                                  type="password"
-                                  placeholder="secret"
-                                  value={keyInputs[src.id]?.apiSecret ?? ''}
-                                  onChange={e => setKeyInputs(prev => ({ ...prev, [src.id]: { ...prev[src.id], apiSecret: e.target.value } }))}
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                />
-                              </div>
-                            </div>
-                          )}
+                          {!src.implemented && <p className="text-xs text-amber-700 mb-3">Cette intégration est à développer. Aucun résultat n'est simulé.</p>}
                           <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => testConnection(src.id)}
-                              disabled={testing === src.id}
-                              className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-                            >
-                              {testing === src.id ? <Loader2 size={12} className="animate-spin"/> : <Play size={12}/>}
-                              Tester la connexion
-                            </button>
-                            {!src.free && (
+                            {src.implemented && !src.free && (
                               <button
                                 onClick={() => saveConfig(src.id)}
-                                disabled={saving === src.id}
                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50"
                               >
-                                {saving === src.id ? <Loader2 size={12} className="animate-spin"/> : <Key size={12}/>}
-                                Sauvegarder la clé
+                                <Key size={12}/>Configurer la clé (coffre sécurisé)
                               </button>
                             )}
                             <span className="text-xs text-gray-400 ml-auto">

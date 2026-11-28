@@ -1,135 +1,390 @@
+import { activityLabel } from '../../../../lib/db/src/naf';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
-import { ArrowLeft, Building2, Download, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Building2, Download, ExternalLink, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
+import { enrichLocalPagesJaunes, getLocalDrafts } from '@/lib/pagesjaunes-device';
 
 type SourcingJob = {
-  id: string;
-  type: string;
-  name: string;
-  status: string;
-  count: number | null;
-  error: string | null;
-  duration: string | null;
-  createdAt: string;
-  params: { query?: string; limit?: number };
+  id: string; type: string; name: string; status: string; count: number | null;
+  error: string | null; duration: string | null; createdAt: string;
+  params: { query?: string; location?: string; codePostal?: string; regions?: string[]; departements?: string[]; codesPostaux?: string[]; limit?: number;
+    sources?: string[]; sourceStatuses?: Record<string, { status: string; count?: number; error?: string; zonesAttempted?: number; zonesTotal?: number }>;
+    draftEnrichment?: {checked:number;matched:number;pending:number;pendingItems:{id:string;company:string;source:string;reason:string}[];updatedAt:string};
+    deviceDrafts?: {id:string;company:string;source:string;address?:string|null;city?:string|null;phone?:string|null;website?:string|null}[];
+    draftImports?:Record<string,string>;
+  };
 };
-type ImportedProspect = {
-  id: string;
-  company: string | null;
-  address: string | null;
-  website: string | null;
-  email: string | null;
-  status: string;
+type Candidate = {
+  id?: string; siren: string; source?: string; sources?: string[]; siret?: string | null; company: string | null; address: string | null;
+  apeCode?:string|null;nafLabel?:string|null;nafVersion?:string|null;
+  phone?: string | null; email?: string | null; website?: string | null; sourceUrl?: string | null;
+  sourceDetails?: {annuaire?:{apeScope?:string};pagesjaunes?:{description?:string;openingHours?:string;services?:string;rating?:number;reviewCount?:number}};
+  codePostal: string; city: string | null; imported: boolean; prospectId: string | null;
 };
+const SOURCE_LABELS:Record<string,string>={entreprises:'Annuaire des entreprises',pagesjaunes:'PagesJaunes.fr',google_maps:'Google Maps',google_search:'Google Search',bing:'Bing Search',linkedin:'LinkedIn · saisie manuelle',societe_com:'Societe.com',facebook:'Facebook Pages',instagram:'Instagram professionnel',tiktok:'TikTok professionnel'};
 
 function csvCell(value: unknown): string {
-  // Always quote to preserve embedded punctuation; guard spreadsheet formula
-  // injection when exporting external company names and addresses.
   const raw = String(value ?? '');
-  const safe = /^[\s]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
-  return `"${safe.replace(/"/g, '""')}"`;
+  const safe = /^[\s]*[=+\-@]/.test(raw) ? "'" + raw : raw;
+  return '"' + safe.replace(/"/g, '""') + '"';
 }
 
 export default function SourcingJobPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const [job, setJob] = useState<SourcingJob | null>(null);
-  const [results, setResults] = useState<ImportedProspect[]>([]);
+  const [results, setResults] = useState<Candidate[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [enrichingSelection,setEnrichingSelection] = useState(false);
+  const [enrichProgress,setEnrichProgress] = useState('');
+  const [enrichingDrafts,setEnrichingDrafts] = useState(false);
+  const [selectedDrafts,setSelectedDrafts]=useState<string[]>([]);
+  const [importingDrafts,setImportingDrafts]=useState(false);
   const [error, setError] = useState('');
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (silent = false) => {
     if (!id) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const [jobInfo, resultInfo] = await Promise.all([
         apiClient.get<SourcingJob>(`/sourcing/jobs/${id}`),
-        apiClient.get<{ data: ImportedProspect[] }>(`/sourcing/jobs/${id}/results`),
+        apiClient.get<{ data: Candidate[] }>(`/sourcing/jobs/${id}/results`),
       ]);
       setJob(jobInfo);
-      setResults(resultInfo.data);
+      setResults(resultInfo.data || []);
+      setSelected(previous => previous.filter(siren => resultInfo.data?.some(
+        candidate => (candidate.id || candidate.siren) === siren,
+      )));
+      const pending=new Set(jobInfo.params.draftEnrichment?.pendingItems.map(item=>item.id)||[]);
+      setSelectedDrafts(previous=>previous.filter(draftId=>pending.has(draftId)&&
+        jobInfo.params.deviceDrafts?.some(draft=>draft.id===draftId)&&!jobInfo.params.draftImports?.[draftId]));
       setError('');
-    } catch (e: any) {
-      setError(e.message ?? 'Recherche introuvable');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Recherche introuvable');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [id]);
 
   useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    if (job?.status !== 'running' && job?.status !== 'queued') return;
+    const timer = window.setInterval(() => { void reload(true); }, 3000);
+    return () => window.clearInterval(timer);
+  }, [job?.status, reload]);
+
+  const candidateKey = (candidate: Candidate) => candidate.id || candidate.siren;
+  const available = results; // Une fiche existante peut également apporter des données manquantes.
+  const allSelected = available.length > 0 && available.every(candidate => selected.includes(candidateKey(candidate)));
+  const pendingDraftIds=new Set(job?.params.draftEnrichment?.pendingItems.map(item=>item.id)||[]);
+  const incompleteDrafts=(job?.params.deviceDrafts||[]).filter(draft=>pendingDraftIds.has(draft.id));
+  const canImportDraft=(draft: typeof incompleteDrafts[number])=>Boolean(draft.phone||draft.website||draft.address);
+
+  function toggleAll() {
+    setSelected(allSelected ? [] : available.map(candidateKey));
+  }
+
+  async function importSelection() {
+    if (!id || !selected.length || importing) return;
+    setImporting(true);
+    try {
+      const result = await apiClient.post<{ imported: number; enriched:number;conflicts:number;skipped: number }>(
+        `/sourcing/jobs/${id}/import`, { ids: selected },
+      );
+      toast.success(`${result.imported} créée(s) · ${result.enriched||0} fiche(s) enrichie(s)`+
+        `${result.conflicts?` · ${result.conflicts} conflit(s) à vérifier dans les fiches prospects`:''}`+
+        `${result.skipped?` · ${result.skipped} sans nouvelle donnée`:''}`);
+      setSelected([]);
+      await reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import impossible');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function importIncompleteDrafts(){
+    if(!id||!selectedDrafts.length||importingDrafts)return;
+    if(!window.confirm(`Importer ${selectedDrafts.length} prospect(s) incomplet(s) dans le CRM ?\n\nAucun SIREN, SIRET, code postal ou email manquant ne sera inventé. Ces fiches devront être vérifiées avant toute campagne.`))return;
+    setImportingDrafts(true);
+    try{
+      const result=await apiClient.post<{imported:number;skipped:number}>(
+        `/sourcing/device/jobs/${id}/import-drafts`,{ids:selectedDrafts});
+      toast.success(`${result.imported} prospect(s) provisoire(s) créé(s)${result.skipped?` · ${result.skipped} ignoré(s)` : ''}`);
+      setSelectedDrafts([]);
+      await reload();
+    }catch(cause){toast.error(cause instanceof Error?cause.message:'Import incomplet impossible');}
+    finally{setImportingDrafts(false);}
+  }
+
+  async function enrichSelection() {
+    if(!id || !selected.length || enrichingSelection)return;
+    const targets=results.filter(item=>selected.includes(candidateKey(item)) && !item.imported && item.sourceUrl &&
+      /^https:\/\/(?:www\.)?pagesjaunes\.fr\/pros\/\d+/i.test(item.sourceUrl));
+    if(!targets.length){toast.error('Sélectionnez au moins une entreprise disposant d’une fiche PagesJaunes.');return;}
+    setEnrichingSelection(true);
+    let successful=0;
+    const errors:string[]=[];
+    try {
+      for(let i=0;i<targets.length;i++){
+        const item=targets[i];
+        setEnrichProgress(`${i+1}/${targets.length} : ${item.company || 'Entreprise'}`);
+        try{
+          const profile=await enrichLocalPagesJaunes(item.sourceUrl!);
+          await apiClient.post(`/sourcing/device/jobs/${id}/enrich`,
+            {candidateId:candidateKey(item),profile},{timeoutMs:60000});
+          successful++;
+        }catch(cause){
+          errors.push(`${item.company}: ${cause instanceof Error?cause.message:'Erreur de lecture'}`);
+        }
+        if(i<targets.length-1)await new Promise(resolve=>setTimeout(resolve,5000));
+      }
+      await reload();
+      if(successful)toast.success(`${successful} fiche(s) PagesJaunes complétée(s). Vérifiez les données avant import.`);
+      if(errors.length)toast.warning(errors.slice(0,2).join(' · '),{duration:12000});
+    } finally {
+      setEnrichingSelection(false);
+      setEnrichProgress('');
+    }
+  }
+
+  async function autoEnrichDrafts() {
+    if(!id || enrichingDrafts)return;
+    setEnrichingDrafts(true);
+    try{
+      const sourceNames=job?.params.sources||[];
+      const drafts=(await getLocalDrafts()).filter(item=>sourceNames.includes(item.source));
+      if(!drafts.length){toast.warning('Aucune fiche Google/Bing à enrichir dans cette extension (conservation 24 h).');return;}
+      toast.info(`Rapprochement de ${drafts.length} fiche(s) avec l’annuaire officiel. Patientez…`,{duration:8000});
+      const response=await apiClient.post<{enrichment:{matched:number;pending:number}}>(
+        `/sourcing/device/jobs/${id}/enrich-drafts`,{drafts},{timeoutMs:90000});
+      await reload();
+      toast.success(`${response.enrichment.matched} rapprochement(s) confirmé(s) · ${response.enrichment.pending} fiche(s) à vérifier.`,{duration:8500});
+    }catch(cause){toast.error(cause instanceof Error?cause.message:'Enrichissement indisponible',{duration:12000});}
+    finally{setEnrichingDrafts(false);}
+  }
 
   function exportCsv() {
     if (!results.length) return;
     const lines = [
-      ['Entreprise', 'Adresse', 'Site', 'Email', 'Statut'],
-      ...results.map(p => [p.company, p.address, p.website, p.email, p.status]),
+      ['Sources', 'SIREN', 'SIRET', 'Entreprise', 'Code APE / NAF', 'Libellé NAF', 'Nomenclature', 'Adresse', 'Code postal', 'Ville', 'Téléphone', 'Email', 'Site web', 'Fiche source', 'Présentation', 'Horaires', 'Prestations', 'Note', 'Avis', 'Déjà importée'],
+      ...results.map(p => [(p.sources || [p.source]).filter(Boolean).join(', '), p.siren, p.siret, p.company, p.apeCode, p.nafLabel,p.nafVersion,p.address, p.codePostal, p.city, p.phone, p.email, p.website, p.sourceUrl,
+        p.sourceDetails?.pagesjaunes?.description, p.sourceDetails?.pagesjaunes?.openingHours,p.sourceDetails?.pagesjaunes?.services,p.sourceDetails?.pagesjaunes?.rating,p.sourceDetails?.pagesjaunes?.reviewCount,p.imported ? 'Oui' : 'Non']),
     ];
     const csv = '\uFEFF' + lines.map(line => line.map(csvCell).join(';')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `growthos-entreprises-${id}.csv`;
+    link.download = `growthos-recherche-${id}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-    toast.success('Export CSV créé');
+    toast.success('Résultats exportés en CSV');
   }
 
-  return <main style={{ background: 'var(--body-bg)', minHeight: '100vh', padding: 24 }}>
-    <button onClick={() => navigate('/sourcing')} style={{ border: 0, background: 'none', color: 'var(--text-muted)', display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer', marginBottom: 20 }}>
-      <ArrowLeft size={16} /> Retour aux recherches
-    </button>
+  return (
+    <main style={{ background: 'var(--body-bg)', minHeight: '100vh', padding: 24 }}>
+      <button onClick={() => navigate('/sourcing')} style={{ border: 0, background: 'none', color: 'var(--text-muted)', display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer', marginBottom: 20 }}>
+        <ArrowLeft size={16} /> Retour aux recherches
+      </button>
 
-    {loading && <div style={{ padding: 48, textAlign: 'center' }}><Loader2 size={28} className="animate-spin" /></div>}
-    {error && <div role="alert" style={{ padding: 20, color: '#B91C1C', background: '#FEE2E2', borderRadius: 12 }}>{error}</div>}
-    {!loading && job && !error && <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'center', flexWrap: 'wrap', marginBottom: 22 }}>
-        <div>
-          <h1 style={{ fontWeight: 800, fontSize: 24, color: 'var(--text-primary)', margin: '0 0 7px' }}>{job.name}</h1>
-          <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 13 }}>
-            {job.type === 'entreprises' ? 'Annuaire officiel des entreprises françaises' : 'Ancien connecteur'} · {new Date(job.createdAt).toLocaleString('fr-FR')}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={reload} style={{ border: '1px solid var(--card-border)', color: 'var(--text-primary)', background: 'var(--card-bg)', padding: '10px 14px', borderRadius: 10, display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}><RefreshCw size={15}/> Actualiser</button>
-          <button onClick={exportCsv} disabled={!results.length} style={{ border: 0, color: '#fff', background: '#2563EB', opacity: results.length ? 1 : .5, padding: '10px 14px', borderRadius: 10, display: 'flex', gap: 7, alignItems: 'center', cursor: results.length ? 'pointer' : 'not-allowed' }}><Download size={15}/> Export CSV</button>
-        </div>
-      </div>
-
-      <div style={{ padding: 20, border: '1px solid var(--card-border)', background: 'var(--card-bg)', borderRadius: 16, marginBottom: 20 }}>
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ background: job.status === 'completed' ? '#D1FAE5' : job.status === 'error' ? '#FEE2E2' : '#DBEAFE', color: job.status === 'completed' ? '#065F46' : job.status === 'error' ? '#991B1B' : '#1E40AF', padding: '5px 11px', borderRadius: 100, fontSize: 12, fontWeight: 700 }}>
-            {job.status === 'completed' ? 'Terminé' : job.status === 'error' ? 'Erreur' : job.status}
-          </span>
-          <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{job.count ?? 0} entreprise(s) importée(s)</span>
-          <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Durée : {job.duration ?? '—'}</span>
-        </div>
-        <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Recherche : <strong>{job.params?.query ?? 'Non renseignée'}</strong></div>
-        {job.error && <p style={{ fontSize: 13, color: '#B91C1C' }}>{job.error}</p>}
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 0 }}>
-          Les entreprises sont déjà enregistrées dans le CRM. L'annuaire ne fournit pas d'adresses email de prospection ni de sites web vérifiés : aucun contact n'est inventé.
-        </p>
-      </div>
-
-      <section style={{ border: '1px solid var(--card-border)', background: 'var(--card-bg)', borderRadius: 16, overflow: 'hidden' }}>
-        <h2 style={{ padding: 18, margin: 0, fontSize: 17, color: 'var(--text-primary)' }}>Entreprises enregistrées ({results.length})</h2>
-        {results.length === 0 ? <p style={{ padding: 25, color: 'var(--text-muted)', fontSize: 13 }}>Aucun résultat enregistré pour cette recherche.</p> :
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead style={{ background: 'var(--body-bg)', color: 'var(--text-muted)' }}><tr>
-                {['Entreprise', 'Adresse', 'Email connu', 'CRM'].map(label => <th key={label} style={{ textAlign: 'left', padding: 12 }}>{label}</th>)}
-              </tr></thead>
-              <tbody>{results.map(p => <tr key={p.id} style={{ borderTop: '1px solid var(--card-border)' }}>
-                <td style={{ padding: 12, color: 'var(--text-primary)', fontWeight: 650 }}><Building2 size={14} style={{ display: 'inline', marginRight: 7 }}/>{p.company ?? 'Inconnu'}</td>
-                <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{p.address ?? '—'}</td>
-                <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{p.email ?? 'Non disponible'}</td>
-                <td style={{ padding: 12 }}><button onClick={() => navigate(`/prospects/${p.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 5, border: 0, background: 'none', color: '#2563EB', cursor: 'pointer' }}>Ouvrir <ExternalLink size={12}/></button></td>
-              </tr>)}</tbody>
-            </table>
+      {loading && <div style={{ padding: 48, textAlign: 'center' }}><Loader2 size={28} className="animate-spin" /></div>}
+      {error && <div role="alert" style={{ padding: 20, color: '#B91C1C', background: '#FEE2E2', borderRadius: 12 }}>{error}</div>}
+      {!loading && job && !error && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'center', flexWrap: 'wrap', marginBottom: 22 }}>
+            <div>
+              <h1 style={{ fontWeight: 800, fontSize: 24, color: 'var(--text-primary)', margin: '0 0 7px' }}>{job.name}</h1>
+              <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 13 }}>{job.type === 'multi' ? 'Recherche multisource' : job.type === 'pagesjaunes' ? 'PagesJaunes.fr · extraction HTML' : 'Annuaire des entreprises'} · {new Date(job.createdAt).toLocaleString('fr-FR')}</p>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => { void reload(); }} style={{ border: '1px solid var(--card-border)', color: 'var(--text-primary)', background: 'var(--card-bg)', padding: '10px 14px', borderRadius: 10, display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}><RefreshCw size={15}/> Actualiser</button>
+              <button onClick={exportCsv} disabled={!results.length} style={{ border: 0, color: '#fff', background: '#2563EB', opacity: results.length ? 1 : .5, padding: '10px 14px', borderRadius: 10, display: 'flex', gap: 7, alignItems: 'center', cursor: results.length ? 'pointer' : 'not-allowed' }}><Download size={15}/> Export CSV</button>
+            </div>
           </div>
-        }
-      </section>
-    </>}
-  </main>;
+
+          <div style={{ padding: 18, border: '1px solid var(--card-border)', background: 'var(--card-bg)', borderRadius: 16, marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+              <strong style={{ color: 'var(--text-primary)' }}>{results.length} entreprise(s) trouvée(s)</strong>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>· {results.filter(item => item.imported).length} déjà dans le CRM</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>· {job.duration || '—'}</span>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', margin: '0 0 8px', fontSize: 13 }}>Recherche : {job.params?.query || '—'} · Zone : {[
+              job.params?.regions?.length ? `Régions ${job.params.regions.join(', ')}` : '',
+              job.params?.departements?.length ? `Départements ${job.params.departements.join(', ')}` : '',
+              job.params?.codesPostaux?.length ? `CP ${job.params.codesPostaux.join(', ')}` : '',
+              job.params?.codePostal ? `CP ${job.params.codePostal}` : '',
+              job.params?.location ? job.params.location : '',
+            ].filter(Boolean).join(' · ') || 'Non précisée'}</p>
+            <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 12 }}>
+              Les entreprises ci-dessous ne sont pas importées automatiquement. Cochez celles qui vous intéressent.
+              L'annuaire officiel ne garantit ni email, ni téléphone, ni site web : aucune coordonnée n'est inventée.
+            </p>
+            {job.error && <p style={{ color: '#B91C1C', fontSize: 12 }}>{job.error}</p>}
+          </div>
+
+          {job.type === 'multi' && <div className="rounded-2xl border p-4 mb-4 space-y-3" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>État des sources</h2>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{job.status === 'running' ? 'Recherche en cours…' : job.status === 'completed' ? (job.error ? 'Recherche partiellement terminée' : 'Recherche terminée') : 'Recherche interrompue'}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {(job.params.sources || []).map(source => {
+                const state = job.params.sourceStatuses?.[source];
+                const status = state?.status || 'pending';
+                return <div key={source} className={`rounded-xl border px-3 py-2.5 text-sm ${status === 'error' ? 'bg-red-50 border-red-200' : status === 'completed' ? 'bg-green-50 border-green-200' : status === 'incomplete' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <strong>{SOURCE_LABELS[source]||source}</strong>
+                    <span className="text-xs">{status === 'completed' ? '✓ Terminé' : status === 'error' ? 'Échec' : status === 'running' ? 'En cours…' : status === 'incomplete' ? 'À enrichir' : 'À collecter'}</span>
+                  </div>
+                  {status === 'completed' && <p className="text-xs mt-1">{state?.count ?? 0} résultat(s) · fiches consultées</p>}
+                  {status === 'pending' && <p className="text-xs mt-1">Ouvrez l’extension GrowthOS, capturez cette source puis relancez une nouvelle recherche.</p>}
+                  {status === 'incomplete' && <p className="text-xs mt-1">Fiches capturées, mais aucune adresse confirmée. Consultez la section Enrichissement ci-dessous.</p>}
+                  {state?.zonesTotal && <p className="text-xs mt-1">{state.zonesAttempted ?? 0}/{state.zonesTotal} zone(s) consultée(s)</p>}
+                  {state?.error && <p role="alert" className="text-xs text-red-800 mt-1 break-words">{state.error}</p>}
+                </div>;
+              })}
+            </div>
+            {(job.status === 'running' || job.status === 'queued') && <p className="text-xs text-gray-500">Les résultats apparaissent progressivement. Aucune entreprise n'est importée automatiquement.</p>}
+          </div>}
+
+          {(job.params.sources||[]).some(source=>['google_maps','google_search','bing'].includes(source)) &&
+            <section className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4 mb-4 space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Enrichissement automatique des fiches Google / Bing</h2>
+                  <p className="text-xs text-slate-600 mt-1">Recherche une correspondance unique dans l’Annuaire officiel ou les fiches locales vérifiées. Aucune adresse n’est inventée.</p>
+                </div>
+                <button onClick={()=>void autoEnrichDrafts()} disabled={enrichingDrafts||job.status!=='completed'}
+                  className="rounded-xl bg-teal-700 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">
+                  {enrichingDrafts?'Identification en cours…':'↻ Enrichir automatiquement mes fiches'}
+                </button>
+              </div>
+              {job.params.draftEnrichment && <>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="bg-white rounded-lg border px-3 py-2">{job.params.draftEnrichment.checked} fiche(s) analysée(s)</span>
+                  <span className="bg-green-100 text-green-800 rounded-lg px-3 py-2">{job.params.draftEnrichment.matched} identifiée(s)</span>
+                  <span className="bg-amber-100 text-amber-900 rounded-lg px-3 py-2">{job.params.draftEnrichment.pending} à vérifier</span>
+                </div>
+                {job.params.draftEnrichment.pendingItems.length>0 && <details className="text-xs text-slate-700">
+                  <summary className="cursor-pointer font-semibold">Voir les fiches non rapprochées (import provisoire possible sur sélection)</summary>
+                  <ul className="mt-2 max-h-44 overflow-auto divide-y divide-slate-200">
+                    {job.params.draftEnrichment.pendingItems.map(item=><li key={item.id} className="py-1.5"><strong>{item.company}</strong> · {item.reason}</li>)}
+                  </ul>
+                </details>}
+              </>}
+            </section>}
+
+          {incompleteDrafts.length>0 && <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 mb-4 space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Prospects incomplets · import sur décision</h2>
+                <p className="text-xs text-slate-700 mt-1">Ces fiches ont été trouvées sur Google/Bing mais leur adresse complète n’a pas été confirmée. Tu peux conserver une piste commerciale avec ses seules coordonnées visibles. Aucune donnée manquante n’est inventée.</p>
+              </div>
+              <button onClick={()=>void importIncompleteDrafts()}
+                disabled={!selectedDrafts.length||importingDrafts||job.status!=='completed'}
+                className="rounded-xl bg-amber-700 px-4 py-2.5 text-white text-sm font-semibold disabled:opacity-50">
+                {importingDrafts?'Import en cours…':`Importer ${selectedDrafts.length} prospect(s) à compléter`}
+              </button>
+            </div>
+            <div className="max-h-64 overflow-y-auto divide-y divide-amber-200 rounded-lg border border-amber-200 bg-white">
+              {incompleteDrafts.map(draft=>{
+                const importedId=job.params.draftImports?.[draft.id];
+                const selectable=!importedId&&canImportDraft(draft);
+                return <label key={draft.id} className="flex items-center gap-3 p-3 text-xs cursor-pointer">
+                  <input type="checkbox" aria-label={`Importer la fiche incomplète ${draft.company}`}
+                    disabled={!selectable} checked={Boolean(importedId)||selectedDrafts.includes(draft.id)}
+                    onChange={()=>setSelectedDrafts(previous=>previous.includes(draft.id)
+                      ? previous.filter(item=>item!==draft.id)
+                      : previous.length<25?[...previous,draft.id]:previous)} />
+                  <span className="flex-1 min-w-0">
+                    <strong className="text-slate-900">{draft.company}</strong>
+                    <span className="block text-slate-600">{SOURCE_LABELS[draft.source]||draft.source} · {[draft.phone,draft.address,draft.city].filter(Boolean).join(' · ')||'Aucune coordonnée vérifiée'}</span>
+                  </span>
+                  {importedId?<button type="button" onClick={event=>{event.preventDefault();navigate(`/prospects/${importedId}`);}}
+                    className="text-green-700 font-semibold">Dans le CRM ↗</button>
+                    :<span className={selectable?'text-amber-700':'text-red-700'}>{selectable?'À compléter':'Données insuffisantes'}</span>}
+                </label>;
+              })}
+            </div>
+            <p className="text-xs text-amber-900">Les coordonnées absentes restent vides ; ces fiches doivent être vérifiées avant la prospection ou l’envoi d’emails.</p>
+          </section>}
+
+          <section style={{ border: '1px solid var(--card-border)', background: 'var(--card-bg)', borderRadius: 16, overflow: 'hidden' }}>
+            <div style={{ padding: 16, display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+              <h2 style={{ fontWeight: 700, fontSize: 16, margin: 0, color: 'var(--text-primary)' }}>Sélection des entreprises ({selected.length})</h2>
+              <div className="flex gap-2 flex-wrap items-center">
+              {(job.params.sources || []).includes('pagesjaunes') && <button onClick={enrichSelection}
+                disabled={!selected.length || enrichingSelection || importing || job.status !== 'completed'}
+                className="px-3 py-2 rounded-xl text-sm border border-teal-500 text-teal-700 disabled:opacity-50"
+                title="Lit les fiches PagesJaunes des entreprises sélectionnées depuis votre extension Chrome">
+                {enrichingSelection ? `Lecture ${enrichProgress}` : 'Compléter les fiches sélectionnées'}
+              </button>}
+              <button onClick={importSelection} disabled={!selected.length || importing || enrichingSelection || job.status !== 'completed'}
+                style={{ background: 'var(--color-primary)', color: '#fff', opacity: selected.length && !importing && job.status === 'completed' ? 1 : .5, padding: '9px 14px', border: 0, borderRadius: 10, cursor: selected.length ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
+                {importing ? 'Import en cours…' : job.status !== 'completed' ? 'Import disponible après la recherche' : `Importer / enrichir ${selected.length} entreprise(s)`}
+              </button></div>
+            </div>
+            {results.length === 0 ? (
+              <p style={{ padding: 25, color: 'var(--text-muted)', fontSize: 13 }}>
+                {job.status === 'running' ? 'Recherche en cours : les résultats apparaîtront ici.' : 'Aucun résultat exploitable. Essayez une activité plus large ou une autre zone. Pour PagesJaunes, le site peut refuser l’accès ou sa structure peut avoir changé.'}
+              </p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead style={{ background: 'var(--body-bg)', color: 'var(--text-muted)' }}>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: 12 }}>
+                        <input aria-label="Sélectionner les entreprises à créer ou enrichir" type="checkbox" checked={allSelected} disabled={!available.length} onChange={toggleAll} />
+                      </th>
+                      {['Entreprise / source', 'Activité APE / NAF', 'Adresse locale', 'Code postal', 'SIREN', 'SIRET', 'Téléphone', 'Site', 'CRM'].map(label =>
+                        <th key={label} style={{ textAlign: 'left', padding: 12 }}>{label}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>{results.map(candidate => (
+                    <tr key={candidateKey(candidate)} style={{ borderTop: '1px solid var(--card-border)' }}>
+                      <td style={{ padding: 12 }}>
+                        <input type="checkbox" aria-label={`Sélectionner ${candidate.company || candidate.siren}`}
+                          checked={selected.includes(candidateKey(candidate))}
+                          onChange={() => setSelected(previous => previous.includes(candidateKey(candidate))
+                            ? previous.filter(id => id !== candidateKey(candidate)) : [...previous, candidateKey(candidate)])} />
+                      </td>
+                      <td style={{ padding: 12, color: 'var(--text-primary)', fontWeight: 650 }}>
+                        <Building2 size={14} style={{ display: 'inline', marginRight: 7 }}/>{candidate.company || 'Inconnue'}
+                         <div className="text-xs text-teal-700 mt-1">{(candidate.sources || [candidate.source]).filter(Boolean).map(source => SOURCE_LABELS[source!]||source).join(' + ')}</div>
+                      </td>
+                      <td style={{ padding: 12, color: 'var(--text-secondary)' }}>
+                        <strong>{candidate.apeCode || '—'}</strong>
+                        {candidate.apeCode && <div className="text-xs mt-1">{candidate.sourceDetails?.annuaire?.apeScope === 'unite_legale' && 'Activité de l’entreprise · '}{activityLabel(candidate.apeCode, candidate.nafVersion) || candidate.nafLabel || 'Libellé à vérifier'}</div>}
+                      </td>
+                      <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.address || 'Non renseignée'}</td>
+                      <td style={{ padding: 12, color: 'var(--text-secondary)' }}>{candidate.codePostal || '—'}</td>
+                      <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.siren || '—'}</td>
+                       <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.siret || '—'}</td>
+                       <td style={{ padding: 12, color: 'var(--text-muted)' }}>
+                    {candidate.phone || '—'}
+                    {candidate.sourceDetails?.pagesjaunes && <div className="text-xs text-green-700 mt-1">Fiche détaillée consultée</div>}
+                  </td>
+                       <td style={{ padding: 12, color: 'var(--text-muted)' }}>{candidate.sourceUrl ? <a href={candidate.sourceUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline">Fiche source</a> : candidate.website ? <a href={candidate.website} target="_blank" rel="noreferrer" className="text-teal-700 underline">Site</a> : '—'}</td>
+                      <td style={{ padding: 12 }}>
+                        {candidate.imported ? (
+                          <button onClick={() => candidate.prospectId && navigate(`/prospects/${candidate.prospectId}`)}
+                            disabled={!candidate.prospectId} style={{ border: 0, background: 'none', color: '#059669', cursor: 'pointer', display: 'flex', gap: 5, alignItems: 'center' }}>
+                            <CheckCircle size={13}/> Dans le CRM <ExternalLink size={12}/>
+                          </button>
+                        ) : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>À sélectionner</span>}
+                      </td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </main>
+  );
 }

@@ -2,15 +2,17 @@
  * E-Réputation ↔ GrowthOS Interconnexion
  *
  * Branche le plugin E-Réputation sur le reste de la plateforme via l'EventBus :
- *   erep.score.updated   → stocke en erep_alerts si score critique, met à jour accounts
- *   erep.alert           → crée un signal dans signals + notification
- *   signal.received      → (erep) persiste en signal réputationnel dans la table signals
+ *   erep.score.updated   → met à jour le compte CRM d'une entité, mémoire IA
+ *   erep.alert           → persiste une alerte historique non enregistrée + notification
+ * Lot 3 : alertes, notifications et plans de crise sont gérés par AlertService ;
+ * plus aucune écriture dans le fil « signals » de la prospection.
  */
 
 import { pool } from "@workspace/db";
 import { pluginEventBus } from "../plugin-runtime/event-bus";
 import { memoryService } from "../plugin-growth-memory/MemoryService";
 import { logger } from "../logger";
+import { createNotification } from "../../services/notification.service";
 
 const PLUGIN_ID = "erep-integrations";
 
@@ -76,27 +78,6 @@ async function persistAlert(payload: ErepAlertPayload): Promise<string | null> {
   }
 }
 
-/** Crée un signal réputationnel dans la table signals (rattaché au tenant). */
-async function createReputationSignal(
-  tenantId: string,
-  company: string,
-  title: string,
-  description: string,
-  score: number,
-): Promise<void> {
-  try {
-    await pool.query(
-      `INSERT INTO signals
-         (tenant_id, type, company, title, description, score, is_read, is_starred, detected_at)
-       VALUES ($1, 'reputation_crisis', $2, $3, $4, $5, false, false, NOW())`,
-      [tenantId, company, title, description, Math.min(100, score)],
-    );
-    logger.info({ tenantId, company, title }, "Reputation signal persisted in signals table");
-  } catch (err) {
-    logger.warn({ err }, "Could not create reputation signal in signals table");
-  }
-}
-
 /** Met à jour le score de réputation moyen sur accounts pour le tenant. */
 async function updateAccountReputationScore(tenantId: string, targetName: string, score: number): Promise<void> {
   try {
@@ -112,92 +93,25 @@ async function updateAccountReputationScore(tenantId: string, targetName: string
   }
 }
 
-/** Émet une notification temps réel pour un tenant. */
-async function createNotification(
-  tenantId: string,
-  type: string,
-  title: string,
-  message: string,
-): Promise<void> {
-  try {
-    await pool.query(
-      `INSERT INTO notifications (tenant_id, type, title, message, read)
-       VALUES ($1, $2, $3, $4, false)`,
-      [tenantId, type, title, message],
-    );
-  } catch {
-    // notifications table may not have these columns — non-fatal
-  }
-}
-
 // ──────────────────────────────────────────────────────────────────────────────
 //  Enregistrement des listeners EventBus
 // ──────────────────────────────────────────────────────────────────────────────
 
 export function registerErepIntegrations(): void {
   // ── 1. erep.score.updated ──────────────────────────────────────────────────
-  //      Déclenché par CampaignService.calculateReputationScore()
-  //      • Score < 40 → alerte critique + signal
-  //      • Chute > 10 points → alerte warning
-  //      • Met à jour le compte correspondant dans accounts
+  //      Déclenché par CampaignService.calculateReputationScore().
+  //      Les alertes de score (seuil, baisse sur 7 jours) et les plans de crise
+  //      sont gérés par AlertService (lot 3) : ici, seulement la mise à jour du
+  //      compte CRM d'une entité et la mémoire IA.
   pluginEventBus.on<ErepScoreUpdatedPayload>(
     "erep.score.updated",
     PLUGIN_ID,
     async (p) => {
       logger.info({ campaignId: p.campaignId, score: p.newScore }, "erep.score.updated received");
+      const kind = await pool.query<{ target_type: string }>(`SELECT target_type FROM erep_campaigns WHERE id = $1`, [p.campaignId]).catch(() => null);
+      // Jamais de rapprochement par nom pour une personne physique.
+      if (kind?.rows[0]?.target_type === "B2B") await updateAccountReputationScore(p.tenantId, p.targetName, p.newScore);
 
-      // Mise à jour du score sur accounts
-      await updateAccountReputationScore(p.tenantId, p.targetName, p.newScore);
-
-      // Score critique < 40 → alert HIGH
-      if (p.newScore < 40) {
-        await persistAlert({
-          campaignId: p.campaignId,
-          tenantId: p.tenantId,
-          targetName: p.targetName,
-          alertType: "crisis",
-          severity: "high",
-          title: `Réputation critique pour ${p.targetName} (score ${p.newScore}/100)`,
-          description: `Le score de réputation est tombé à ${p.newScore}/100. Action urgente recommandée.`,
-          score: p.newScore,
-        });
-
-        await createReputationSignal(
-          p.tenantId,
-          p.targetName,
-          `Crise réputationnelle : ${p.targetName} — score ${p.newScore}/100`,
-          `Le score E-Rep de ${p.targetName} est critique (${p.newScore}/100). Action immédiate recommandée.`,
-          p.newScore,
-        );
-
-        await createNotification(
-          p.tenantId,
-          "erep_crisis",
-          `⚠️ Score E-Rep critique : ${p.targetName}`,
-          `Score tombé à ${p.newScore}/100 — action urgente recommandée.`,
-        );
-      } else if (p.previousScore - p.newScore >= 10) {
-        // Chute significative → warning
-        await persistAlert({
-          campaignId: p.campaignId,
-          tenantId: p.tenantId,
-          targetName: p.targetName,
-          alertType: "score_drop",
-          severity: "medium",
-          title: `Chute de réputation pour ${p.targetName} (-${p.previousScore - p.newScore} pts)`,
-          description: `Score passé de ${p.previousScore} à ${p.newScore} (-${p.previousScore - p.newScore} pts). Surveillance accrue recommandée.`,
-          score: p.newScore,
-        });
-
-        await createNotification(
-          p.tenantId,
-          "erep_warning",
-          `Score E-Rep en baisse : ${p.targetName}`,
-          `Score passé de ${p.previousScore} à ${p.newScore}/100.`,
-        );
-      }
-
-      // Indexer en mémoire si variation significative
       if (Math.abs(p.previousScore - p.newScore) >= 5) {
         await memoryService.indexDocument({
           sourceType: "erep_score_change",
@@ -211,100 +125,25 @@ export function registerErepIntegrations(): void {
   );
 
   // ── 2. erep.alert ──────────────────────────────────────────────────────────
-  //      Déclenché par CampaignService (SERP drop, nouveaux audits, etc.)
-  //      • Persiste en erep_alerts + signal dans signals table
-  pluginEventBus.on<ErepAlertPayload>(
+  //      Les alertes d'AlertService arrivent déjà enregistrées (persisted: true)
+  //      et notifiées. Un émetteur historique sans enregistrement est persisté ici,
+  //      sans écriture dans le fil « signals » de la prospection.
+  pluginEventBus.on<ErepAlertPayload & { persisted?: boolean }>(
     "erep.alert",
     PLUGIN_ID,
     async (p) => {
+      if (p.persisted) return;
       logger.info({ campaignId: p.campaignId, alertType: p.alertType }, "erep.alert received");
-
-      await persistAlert(p);
-
-      // Toutes les alertes HIGH deviennent des signaux
-      if (p.severity === "high") {
-        await createReputationSignal(
-          p.tenantId,
-          p.targetName,
-          p.title,
-          p.description,
-          p.score,
-        );
+      const id = await persistAlert(p);
+      if (id) {
+        await createNotification({
+          type: "signal", title: p.title, body: p.description, tenantId: p.tenantId,
+          href: `/ereputation/watch?campaign=${p.campaignId}&tab=alerts`,
+          payload: { module: "ereputation", campaignId: p.campaignId, alertId: id, severity: p.severity },
+        });
       }
-
-      await createNotification(
-        p.tenantId,
-        `erep_${p.alertType}`,
-        p.title,
-        p.description,
-      );
     },
   );
 
-  // ── 3. signal.received (type=reputation_crisis) ───────────────────────────
-  //      Émis par CampaignService.addSentimentLog() sur mention très négative.
-  //      • On persiste le signal dans signals table avec tenant lookup
-  //      • On crée une alerte dans erep_alerts
-  pluginEventBus.on<SignalReceivedPayload>(
-    "signal.received",
-    PLUGIN_ID,
-    async (p) => {
-      if (p.type !== "reputation_crisis") return; // Ignorer les autres types
-
-      logger.info({ company: p.company }, "signal.received (reputation_crisis) intercepted by erep-integrations");
-
-      const metadata = p.metadata as Record<string, unknown> | undefined;
-      const campaignId = metadata?.campaignId as string | undefined;
-
-      if (!campaignId) return;
-
-      // Lookup tenant depuis la campagne
-      let tenantId = p.tenantId;
-      if (!tenantId) {
-        try {
-          const { rows } = await pool.query<{ tenant_id: string }>(
-            `SELECT tenant_id FROM erep_campaigns WHERE id = $1`,
-            [campaignId],
-          );
-          tenantId = rows[0]?.tenant_id;
-        } catch { return; }
-      }
-
-      if (!tenantId) return;
-
-      // Persiste le signal réputationnel
-      await createReputationSignal(
-        tenantId,
-        p.company,
-        p.title,
-        p.description ?? "",
-        p.impactScore,
-      );
-
-      // Crée une alerte E-Rep
-      await persistAlert({
-        campaignId,
-        tenantId,
-        targetName: p.company,
-        alertType: "crisis",
-        severity: "high",
-        title: p.title,
-        description: p.description ?? "Crise réputationnelle détectée via analyse de sentiment.",
-        score: Math.max(0, 50 - p.impactScore * 0.5),
-      }).catch(() => {});
-
-      // Notification temps réel
-      await createNotification(
-        tenantId,
-        "erep_crisis",
-        `🚨 Crise réputationnelle : ${p.company}`,
-        p.title,
-      ).catch(() => {});
-    },
-  );
-
-  logger.info(
-    { events: ["erep.score.updated", "erep.alert", "signal.received"] },
-    "E-Réputation integrations registered on EventBus",
-  );
+  logger.info({ events: ["erep.score.updated", "erep.alert"] }, "E-Réputation integrations registered on EventBus");
 }

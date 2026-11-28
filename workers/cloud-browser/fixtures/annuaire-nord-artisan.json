@@ -1,0 +1,42 @@
+{
+  "siren": "979965506",
+  "nom_complet": "NORD ARTISAN",
+  "nom_raison_sociale": "NORD ARTISAN",
+  "activite_principale": "43.32B",
+  "etat_administratif": "A",
+  "siege": {
+    "activite_principale": "43.32B",
+    "adresse": "BUREAU 3 34 PLACE DU GENERAL DE GAULLE 59800 LILLE",
+    "code_postal": "59800",
+    "date_fermeture": null,
+    "departement": "59",
+    "etat_administratif": "A",
+    "libelle_commune": "LILLE",
+    "region": "32",
+    "siret": "97996550600020"
+  },
+  "matching_etablissements": [
+    {
+      "activite_principale": "43.32B",
+      "ancien_siege": false,
+      "adresse": "BUREAU 3 34 PLACE DU GENERAL DE GAULLE 59800 LILLE",
+      "code_postal": "59800",
+      "date_fermeture": null,
+      "etat_administratif": "A",
+      "libelle_commune": "LILLE",
+      "region": "32",
+      "siret": "97996550600020"
+    },
+    {
+      "activite_principale": "43.32B",
+      "ancien_siege": true,
+      "adresse": "BUREAU 3 38 BOULEVARD CARNOT 59800 LILLE",
+      "code_postal": "59800",
+      "date_fermeture": "2025-03-14",
+      "etat_administratif": "F",
+      "libelle_commune": "LILLE",
+      "region": "32",
+      "siret": "97996550600012"
+    }
+  ]
+}

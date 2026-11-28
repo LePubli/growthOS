@@ -6,52 +6,83 @@ import { toast } from 'sonner';
 interface ParsedRow {
   firstName: string; lastName: string; email: string;
   company: string; phone: string; linkedin: string; status: string;
+  apeCode:string;nafLabel:string;nafVersion:string;
   _valid: boolean; _errors: string[]; _duplicate?: boolean;
 }
 
 function parseCSV(text: string): ParsedRow[] {
-  const lines = text.split('\n').filter(l=>l.trim());
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/['"]/g,''));
-  const map: Record<string,string[]> = {
-    firstName: ['prénom','prenom','firstname','first_name','first name'],
-    lastName:  ['nom','lastname','last_name','last name'],
-    email:     ['email','mail','e-mail','courriel'],
-    company:   ['entreprise','société','company','organization','org','societe'],
-    phone:     ['téléphone','telephone','phone','tel','mobile'],
-    linkedin:  ['linkedin','profil linkedin','linkedin url'],
-    status:    ['statut','status','étape'],
-  };
-  const colMap: Record<string,number> = {};
-  for (const [field, aliases] of Object.entries(map)) {
-    for (let i=0;i<headers.length;i++) {
-      if (aliases.includes(headers[i])) { colMap[field]=i; break; }
+  const source = text.replace(/^\uFEFF/, '');
+  const firstLine = source.split(/\r?\n/, 1)[0] || '';
+  const separator = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : ',';
+  const records: string[][] = [];
+  let row: string[] = [], field = '', quoted = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    if (char === '"') {
+      if (quoted && source[i + 1] === '"') { field += '"'; i++; }
+      else quoted = !quoted;
+    } else if (char === separator && !quoted) {
+      row.push(field); field = '';
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && source[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      if (row.some(cell => cell.trim())) records.push(row);
+      row = [];
+    } else {
+      field += char;
     }
   }
-  const get = (row:string[],f:string)=>(colMap[f]!==undefined?(row[colMap[f]]||'').replace(/['"]/g,'').trim():'');
-  return lines.slice(1).map(line=>{
-    const row = line.split(',');
-    const email = get(row,'email');
+  if (quoted) throw new Error('CSV invalide : guillemets non terminés');
+  row.push(field);
+  if (row.some(cell => cell.trim())) records.push(row);
+  if (records.length < 2) return [];
+
+  const headers = records[0].map(h => h.trim().toLowerCase());
+  const map: Record<string,string[]> = {
+    firstName: ['prénom','prenom','firstname','first_name','first name'],
+    lastName: ['nom','lastname','last_name','last name'],
+    email: ['email','mail','e-mail','courriel'],
+    company: ['entreprise','société','company','organization','org','societe'],
+    phone: ['téléphone','telephone','phone','tel','mobile'],
+    linkedin: ['linkedin','profil linkedin','linkedin url'],
+    status: ['statut','status','étape'],
+    apeCode: ['code ape / naf','code ape','code naf','ape','naf','ape_code'],
+    nafLabel: ['libellé naf','libelle naf','libellé activité','libelle activite','secteur d’activité','secteur d activite'],
+    nafVersion: ['nomenclature','naf version','naf_version'],
+  };
+  const colMap: Record<string,number> = {};
+  for (const [name, aliases] of Object.entries(map)) {
+    const index = headers.findIndex(h => aliases.includes(h));
+    if (index !== -1) colMap[name] = index;
+  }
+  const get = (cells: string[], field: string) =>
+    colMap[field] === undefined ? '' : (cells[colMap[field]] || '').trim();
+  const allowed = new Set(['new','contacted','qualified','negotiation','won','lost']);
+  return records.slice(1).map(cells => {
+    const email = get(cells, 'email').toLowerCase();
+    const firstName = get(cells, 'firstName');
+    const lastName = get(cells, 'lastName');
+    const status = get(cells, 'status').toLowerCase() || 'new';
     const errors: string[] = [];
     if (!email) errors.push('Email manquant');
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('Email invalide');
-    if (!get(row,'firstName')&&!get(row,'lastName')) errors.push('Nom manquant');
-    return { firstName:get(row,'firstName'), lastName:get(row,'lastName'), email, company:get(row,'company'), phone:get(row,'phone'), linkedin:get(row,'linkedin'), status:get(row,'status')||'new', _valid:errors.length===0, _errors:errors };
+    if (!firstName && !lastName) errors.push('Nom manquant');
+    if (!allowed.has(status)) errors.push('Statut invalide');
+    const apeCode=get(cells,'apeCode').toUpperCase();
+    if (apeCode && !/^\d{2}\.\d{2}[A-Z]$/.test(apeCode)) errors.push('Code APE / NAF invalide');
+    return { firstName, lastName, email, company:get(cells,'company'),
+      phone:get(cells,'phone'), linkedin:get(cells,'linkedin'), status,
+      apeCode,nafLabel:get(cells,'nafLabel'),nafVersion:get(cells,'nafVersion'),
+      _valid: errors.length === 0, _errors: errors };
   });
 }
 
-const SAMPLE_CSV = `prénom,nom,email,entreprise,téléphone,linkedin,statut
-Sophie,Martin,sophie.martin@techcorp.fr,TechCorp,+33612345678,linkedin.com/in/sophie-martin,qualified
-Paul,Dupont,paul.dupont@bigsales.fr,BigSales SAS,+33634567890,,contacted
-Emma,Leroy,emma@startupx.io,StartupX,,,new
-Marc,Bernard,m.bernard@alphatech.fr,AlphaTech,+33698765432,linkedin.com/in/marc-bernard,new
-Alice,Rousseau,alice@,DataInc,,,new`;
-
-const IMPORT_HISTORY = [
-  { id:'h1', filename:'prospects_q2_2026.csv', rows:142, imported:139, duplicates:2, errors:1, date:'Il y a 3j', status:'success' },
-  { id:'h2', filename:'linkedin_export.csv',   rows:88,  imported:81,  duplicates:5, errors:2, date:'Il y a 1sem', status:'success' },
-  { id:'h3', filename:'crm_migration.csv',     rows:400, imported:388, duplicates:8, errors:4, date:'Il y a 2sem', status:'success' },
-];
+const SAMPLE_CSV = `prénom,nom,email,entreprise,téléphone,statut,code ape / naf,libellé naf,nomenclature
+Alice,Durand,alice.growthos@example.com,Entreprise Test A,,new,43.22A,Travaux d'installation d'eau et de gaz,NAFRev2
+Bob,Martin,bob.growthos@example.com,Entreprise Test B,,contacted,,,
+Alice,Durand,alice.growthos@example.com,Entreprise Test A,,new,43.22A,Travaux d'installation d'eau et de gaz,NAFRev2
+Erreur,Email,adresse-invalide,Entreprise Test,,new,,,
+`;
 
 type Step = 'upload'|'preview'|'mapping'|'importing'|'done';
 
@@ -69,16 +100,27 @@ export default function ImportPage() {
 
   const processFile = (f: File) => {
     if (!f.name.endsWith('.csv')&&!f.name.endsWith('.txt')) { toast.error('Format non supporté. Utilisez un fichier CSV.'); return; }
+    if (f.size > 10 * 1024 * 1024) { toast.error('Fichier limité à 10 Mo.'); return; }
     setFile(f);
     const reader = new FileReader();
     reader.onload = e => {
       const text = e.target?.result as string;
-      const parsed = parseCSV(text);
-      // mark some as duplicates for demo
-      const withDupes = parsed.map((r,i)=>({ ...r, _duplicate: i===1||i===3 }));
+      let parsed: ParsedRow[];
+      try { parsed = parseCSV(text); }
+      catch (error) { toast.error(error instanceof Error ? error.message : 'CSV invalide'); return; }
+      if (!parsed.length) { toast.error('Fichier vide ou colonnes CSV invalides.'); return; }
+      if (parsed.length > 1000) { toast.error('Maximum 1 000 contacts par import.'); return; }
+      const seen = new Set<string>();
+      const withDupes = parsed.map(r => {
+        const email = r.email.trim().toLowerCase();
+        const duplicate = !!email && seen.has(email);
+        if (email) seen.add(email);
+        return { ...r, email, _duplicate: duplicate };
+      });
       setRows(withDupes);
       setStep('preview');
     };
+    reader.onerror = () => toast.error('Impossible de lire le fichier.');
     reader.readAsText(f, 'UTF-8');
   };
 
@@ -89,20 +131,40 @@ export default function ImportPage() {
   }, []);
 
   const runImport = async () => {
+    if (importing) return;
+    const validRows = rows.filter(r => r._valid);
+    if (!validRows.length) { toast.error('Aucun prospect valide.'); return; }
     setStep('importing');
     setImporting(true);
-    const validRows = rows.filter(r=>r._valid&&!(r._duplicate&&duplicateMode==='skip'));
-    const total = validRows.length;
-    for (let i=0;i<=total;i++) {
-      await new Promise(r=>setTimeout(r,40));
-      setProgress(Math.round((i/total)*100));
-    }
+    setProgress(10);
     try {
-      await apiClient.post('/prospects/bulk', { prospects:validRows.map(r=>({ firstName:r.firstName, lastName:r.lastName, email:r.email, company:r.company, phone:r.phone, linkedin:r.linkedin, status:r.status })), duplicateMode });
-    } catch {}
-    setImportResult({ total:rows.length, imported:validRows.length, duplicates:rows.filter(r=>r._duplicate).length, errors:rows.filter(r=>!r._valid).length });
-    setImporting(false);
-    setStep('done');
+      const result = await apiClient.post<{ imported: number; updated: number; duplicates: number; skipped: number }>(
+        '/prospects/bulk', {
+          prospects: validRows.map(r => ({
+            firstName:r.firstName, lastName:r.lastName, email:r.email,
+            company:r.company, phone:r.phone, status:r.status,
+            apeCode:r.apeCode,nafLabel:r.nafLabel,nafVersion:r.nafVersion,
+          })),
+          duplicateMode,
+        },
+      );
+      setImportResult({
+        total:rows.length,
+        imported:result.imported,
+        updated:result.updated,
+        skipped:result.skipped,
+        duplicates:result.duplicates,
+        errors:rows.filter(r => !r._valid).length,
+      });
+      setProgress(100);
+      setStep('done');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Import échoué');
+      setProgress(0);
+      setStep('mapping');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const reset = () => { setStep('upload'); setFile(null); setRows([]); setProgress(0); setImportResult(null); };
@@ -115,6 +177,7 @@ export default function ImportPage() {
 
   const valid    = rows.filter(r=>r._valid&&!r._duplicate).length;
   const invalid  = rows.filter(r=>!r._valid).length;
+  const eligible = rows.filter(r=>r._valid&&(!r._duplicate||duplicateMode!=='skip')).length;
   const dupes    = rows.filter(r=>r._duplicate).length;
   const filtered = rows.filter(r=>previewFilter==='all'?true:previewFilter==='valid'?r._valid&&!r._duplicate:!r._valid||r._duplicate);
 
@@ -237,7 +300,7 @@ export default function ImportPage() {
             <div style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)', borderRadius:16, padding:20 }}>
               <h2 style={{ fontSize:15, fontWeight:700, color:'var(--text-primary)', marginBottom:16 }}>Options d'import</h2>
               <div style={{ marginBottom:20 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)', marginBottom:10 }}>Gestion des doublons ({dupes} détectés)</div>
+                <div style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)', marginBottom:10 }}>Doublons dans le fichier ({dupes} détectés ; la base est vérifiée à l'import)</div>
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   {([['skip','Ignorer les doublons','Ne pas importer les contacts déjà présents'],['update','Mettre à jour les doublons','Mettre à jour les champs des contacts existants'],['create','Créer quand même','Importer même si un contact similaire existe']] as const).map(([v,l,desc])=>(
                     <label key={v} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 14px', borderRadius:12, border:`1px solid ${duplicateMode===v?'var(--color-primary)':'var(--card-border)'}`, background:duplicateMode===v?`color-mix(in srgb, var(--color-primary) 6%, transparent)`:'var(--body-bg)', cursor:'pointer' }}>
@@ -255,16 +318,16 @@ export default function ImportPage() {
                   Récapitulatif d'import
                 </div>
                 <div style={{ display:'flex', gap:16, fontSize:12, color:'var(--text-secondary)' }}>
-                  <span><strong>{valid}</strong> contacts à importer</span>
+                  <span><strong>{eligible}</strong> contacts à traiter</span>
                   {dupes>0 && <span><strong>{dupes}</strong> doublons ({duplicateMode==='skip'?'ignorés':duplicateMode==='update'?'mis à jour':'créés'})</span>}
                   {invalid>0 && <span><strong>{invalid}</strong> lignes en erreur (ignorées)</span>}
                 </div>
               </div>
               <div style={{ display:'flex', gap:10 }}>
                 <button onClick={()=>setStep('preview')} style={{ flex:1, padding:'10px', borderRadius:10, border:'1px solid var(--card-border)', background:'transparent', color:'var(--text-secondary)', fontSize:13, cursor:'pointer' }}>Retour</button>
-                <button onClick={runImport} disabled={valid===0}
-                  style={{ flex:2, padding:'10px', borderRadius:10, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6, opacity:valid===0?0.5:1 }}>
-                  <Upload size={14}/>Lancer l'import ({valid} contacts)
+                <button onClick={runImport} disabled={eligible===0}
+                  style={{ flex:2, padding:'10px', borderRadius:10, border:'none', background:'var(--color-primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6, opacity:eligible===0?0.5:1 }}>
+                  <Upload size={14}/>Lancer l'import ({eligible} contacts)
                 </button>
               </div>
             </div>
@@ -292,7 +355,7 @@ export default function ImportPage() {
                 <CheckCircle size={32} style={{ color:'#059669' }}/>
               </div>
               <h2 style={{ fontSize:20, fontWeight:700, color:'var(--text-primary)', marginBottom:8 }}>Import terminé !</h2>
-              <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:20 }}>{importResult.imported} prospects importés avec succès.</p>
+              <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:20 }}>{importResult.imported} prospects créés, {importResult.updated} mis à jour, {importResult.skipped} ignorés.</p>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
                 {[
                   { l:'Importés',  v:importResult.imported,   color:'#059669', bg:'#ECFDF5' },
@@ -322,7 +385,7 @@ export default function ImportPage() {
             <div style={{ fontSize:12, fontWeight:700, color:'var(--text-muted)', marginBottom:12, textTransform:'uppercase', letterSpacing:'0.05em' }}>Format attendu</div>
             <div style={{ fontSize:12, color:'var(--text-secondary)', lineHeight:1.8 }}>
               <p style={{ margin:'0 0 6px', fontWeight:600, color:'var(--text-primary)' }}>Colonnes reconnues :</p>
-              {[['prénom / firstname','✓ Prénom'],['nom / lastname','✓ Nom'],['email / mail','✓ Email (requis)'],['entreprise / company','✓ Entreprise'],['téléphone / phone','✓ Téléphone'],['linkedin','✓ LinkedIn URL'],['statut / status','✓ Statut CRM']].map(([k,v])=>(
+              {[['prénom / firstname','✓ Prénom'],['nom / lastname','✓ Nom'],['email / mail','✓ Email (requis)'],['entreprise / company','✓ Entreprise'],['téléphone / phone','✓ Téléphone'],['linkedin','✓ LinkedIn URL'],['statut / status','✓ Statut CRM'],['code ape / naf','✓ Code activité'],['libellé naf','✓ Activité'],['nomenclature','✓ Version NAF']].map(([k,v])=>(
                 <div key={k} style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
                   <code style={{ fontSize:11, color:'var(--color-primary)' }}>{k}</code>
                   <span style={{ fontSize:11, color:'#059669', fontWeight:500 }}>{v}</span>
@@ -338,17 +401,13 @@ export default function ImportPage() {
           <div style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)', borderRadius:16, padding:16 }}>
             <div style={{ fontSize:12, fontWeight:700, color:'var(--text-muted)', marginBottom:12, textTransform:'uppercase', letterSpacing:'0.05em' }}>Historique</div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {IMPORT_HISTORY.map(h=>(
-                <div key={h.id} style={{ padding:'9px 12px', borderRadius:10, border:'1px solid var(--card-border)', background:'var(--body-bg)' }}>
-                  <div style={{ fontSize:12, fontWeight:600, color:'var(--text-primary)', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.filename}</div>
-                  <div style={{ fontSize:11, color:'var(--text-muted)', display:'flex', gap:8 }}>
-                    <span style={{ color:'#059669' }}>{h.imported} importés</span>
-                    {h.duplicates>0 && <span style={{ color:'#D97706' }}>{h.duplicates} dupes</span>}
-                    {h.errors>0 && <span style={{ color:'#DC2626' }}>{h.errors} erreurs</span>}
-                  </div>
-                  <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:2 }}>{h.date}</div>
+              {importResult ? (
+                <div style={{ fontSize:12, color:'var(--text-secondary)' }}>
+                  Dernier import : {importResult.imported} créés, {importResult.updated} mis à jour, {importResult.skipped} ignorés.
                 </div>
-              ))}
+              ) : (
+                <div style={{ fontSize:12, color:'var(--text-muted)' }}>Aucun import réalisé dans cette session.</div>
+              )}
             </div>
           </div>
         </div>

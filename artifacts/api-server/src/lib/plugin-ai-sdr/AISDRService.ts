@@ -274,11 +274,11 @@ Return ONLY valid JSON, no markdown, no explanation.`;
           };
         }
       } catch {
-        logger.warn({ raw, provider }, "Failed to parse LLM JSON, falling back to mock");
+        logger.warn({ provider }, "LLM returned invalid JSON for email draft");
       }
     }
 
-    return mockEmail(accountName, ctx.goal, tone, signals, memories);
+    throw new Error("Aucune réponse IA exploitable : configurez une clé et vérifiez le fournisseur.");
   }
 
   async draftLinkedInMessage(ctx: DraftContext): Promise<LinkedInDraft> {
@@ -308,11 +308,11 @@ Return ONLY valid JSON, no markdown.`;
           };
         }
       } catch {
-        logger.warn({ raw, provider }, "Failed to parse LLM JSON, falling back to mock");
+        logger.warn({ provider }, "LLM returned invalid JSON for LinkedIn draft");
       }
     }
 
-    return mockLinkedIn(accountName, ctx.goal, tone, signals, memories);
+    throw new Error("Aucune réponse IA exploitable pour le brouillon LinkedIn.");
   }
 
   async generateSequence(ctx: DraftContext): Promise<SequenceDraft> {
@@ -342,11 +342,11 @@ Return ONLY valid JSON.`;
           };
         }
       } catch {
-        logger.warn({ raw, provider }, "Failed to parse LLM sequence JSON, falling back to mock");
+        logger.warn({ provider }, "LLM returned invalid JSON for sequence");
       }
     }
 
-    return mockSequence(accountName, ctx.goal, signals, memories);
+    throw new Error("Aucune réponse IA exploitable pour la séquence.");
   }
 
   getTemplates(): PromptTemplate[] {
@@ -487,5 +487,5 @@ Return ONLY valid JSON, no markdown.`;
     } catch { /* fall through */ }
   }
 
-  return mockPlaybook(accountName, signals, memories);
+  throw new Error("Aucune réponse IA exploitable pour le playbook.");
 }

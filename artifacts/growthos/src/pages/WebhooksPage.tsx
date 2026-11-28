@@ -105,8 +105,8 @@ export default function WebhooksPage() {
     setLoading(true);
     try {
       const data = await apiClient.get('/webhooks') as any[];
-      setWebhooks(Array.isArray(data)&&data.length>0 ? data : MOCK_WEBHOOKS);
-    } catch { setWebhooks(MOCK_WEBHOOKS); }
+      setWebhooks(Array.isArray(data)?data:[]);
+    } catch { setWebhooks([]); toast.error('Impossible de charger les webhooks'); }
     finally { setLoading(false); }
   };
 
@@ -116,16 +116,17 @@ export default function WebhooksPage() {
     const wh = webhooks.find(w=>w.id===id);
     if (!wh) return;
     const newStatus = wh.status==='active'?'paused':'active';
-    setWebhooks(w=>w.map(x=>x.id===id?{...x,status:newStatus}:x));
-    toast.success(newStatus==='active'?'Webhook activé':'Webhook mis en pause');
-    await apiClient.post(`/webhooks/${id}/toggle`,{}).catch(()=>{});
+    try {
+      const updated:any=await apiClient.post(`/webhooks/${id}/toggle`,{});
+      setWebhooks(w=>w.map(x=>x.id===id?updated:x));
+      toast.success(newStatus==='active'?'Webhook activé':'Webhook mis en pause');
+    } catch { toast.error('Changement de statut impossible'); }
   };
 
   const deleteWebhook = async (id:string)=>{
     if (!confirm('Supprimer ce webhook ?')) return;
-    setWebhooks(w=>w.filter(x=>x.id!==id));
-    toast.success('Webhook supprimé');
-    await apiClient.delete(`/webhooks/${id}`).catch(()=>{});
+    try { await apiClient.delete(`/webhooks/${id}`); setWebhooks(w=>w.filter(x=>x.id!==id)); toast.success('Webhook supprimé'); }
+    catch { toast.error('Suppression impossible'); }
   };
 
   const copy = (key:string, text:string)=>{
@@ -135,24 +136,16 @@ export default function WebhooksPage() {
   };
 
   const testWebhook = async (id:string)=>{
-    setTesting(id);
-    await new Promise(r=>setTimeout(r,1200));
-    const wh = webhooks.find(w=>w.id===id);
-    const fakeLog = { id:`l${Date.now()}`, event:'test', status:200, date:'À l\'instant', duration:Math.floor(Math.random()*200+50), payload:'{"test":true,"timestamp":"'+new Date().toISOString()+'"}' };
-    setWebhooks(w=>w.map(x=>x.id===id?{...x,logs:[fakeLog,...(x.logs||[])]}:x));
-    setTesting(null);
-    toast.success('Payload de test envoyé avec succès ✓');
+    toast.warning('Test réseau non disponible : aucune requête HTTP ne sera simulée.');
   };
 
   const retryDelivery = async (whId:string, logId:string)=>{
-    await new Promise(r=>setTimeout(r,600));
-    setWebhooks(w=>w.map(wh=>wh.id===whId?{...wh,logs:(wh.logs||[]).map((l:any)=>l.id===logId?{...l,status:200}:l)}:wh));
-    toast.success('Renvoi effectué');
+    toast.warning('Renvoi non disponible : aucun événement n’a été envoyé.');
   };
 
   const totalDeliveries = webhooks.reduce((s,w)=>s+(w.deliveries||0),0);
   const activeCount = webhooks.filter(w=>w.status==='active').length;
-  const avgSuccess = webhooks.length>0 ? Math.round(webhooks.reduce((s,w)=>s+(w.successRate||100),0)/webhooks.length) : 100;
+  const avgSuccess = webhooks.length>0 ? Math.round(webhooks.reduce((s,w)=>s+(Number(w.successRate)||0),0)/webhooks.length) : 0;
 
   return (
     <div style={{ minHeight:'100vh', padding:24, background:'var(--body-bg)' }}>

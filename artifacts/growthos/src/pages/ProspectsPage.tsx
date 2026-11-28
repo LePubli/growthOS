@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
-  Search, Plus, Star, Mail, Phone, Upload, FileText,
+  Search, Plus, Star, Mail, Phone, Upload,
   Download, RefreshCw, ChevronRight, Building2, Loader2,
   CheckCircle, AlertCircle, X, Trash2, Tag, ArchiveX, CheckSquare, Square, MapPin, MapPinOff, GitMerge,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
 import { AddressAutocomplete } from '@/components/common/AddressAutocomplete';
+import { ProspectQuickPreview } from '@/components/atlas/ProspectQuickPreview';
 
 const STATUS_OPTIONS = [
   {value:'all',label:'Tous'},{value:'new',label:'Nouveau'},{value:'contacted',label:'Contacté'},
@@ -22,7 +23,7 @@ const STATUS_COLORS: Record<string,string> = {
 };
 
 function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void }) {
-  const [form, setForm] = useState({ firstName:'', lastName:'', email:'', phone:'', company:'', jobTitle:'', website:'', address:'', status:'new' });
+  const [form, setForm] = useState({ firstName:'', lastName:'', email:'', phone:'', company:'', jobTitle:'', website:'', address:'', status:'new', apeCode:'', nafLabel:'', nafVersion:'' });
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string|null>(null);
@@ -46,8 +47,8 @@ function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void })
           <button onClick={onClose}><X className="w-5 h-5 text-gray-400"/></button>
         </div>
         <div className="grid grid-cols-2 gap-3 mb-4">
-          {[{k:'firstName',l:'Prénom'},{k:'lastName',l:'Nom'},{k:'email',l:'Email'},{k:'phone',l:'Téléphone'},{k:'company',l:'Entreprise'},{k:'jobTitle',l:'Poste'},{k:'website',l:'Site web'}].map(f=>(
-            <div key={f.k} className={f.k==='website'?'col-span-2':''}>
+          {[{k:'firstName',l:'Prénom'},{k:'lastName',l:'Nom'},{k:'email',l:'Email'},{k:'phone',l:'Téléphone'},{k:'company',l:'Entreprise'},{k:'jobTitle',l:'Poste'},{k:'website',l:'Site web'},{k:'apeCode',l:'Code APE / NAF'},{k:'nafLabel',l:'Libellé d’activité NAF'},{k:'nafVersion',l:'Nomenclature'}].map(f=>(
+            <div key={f.k} className={['website','nafLabel'].includes(f.k)?'col-span-2':''}>
               <label className="block text-xs font-medium text-gray-500 mb-1">{f.l}</label>
               <input value={(form as any)[f.k]} onChange={e=>set(f.k,e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
             </div>
@@ -91,123 +92,6 @@ function CreateModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void })
   );
 }
 
-function ImportCSVModal({ onClose, onSave }: { onClose:()=>void; onSave:()=>void }) {
-  const [file, setFile] = useState<File|null>(null);
-  const [preview, setPreview] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
-  const [count, setCount] = useState(0);
-  const [error, setError] = useState<string|null>(null);
-  const ref = useRef<HTMLInputElement>(null);
-
-  const CSV_TEMPLATE = `firstName,lastName,email,phone,company,jobTitle,website,address,status
-Marie,Dupont,m.dupont@acme.fr,+33612345678,Acme Corp,Directrice Marketing,https://acme.fr,"12 Rue de la Paix, Paris",new
-Thomas,Martin,t.martin@techvision.io,,TechVision,CTO,https://techvision.io,"5 Place de la République, Lyon",new`;
-
-  const downloadTemplate = () => {
-    const blob = new Blob([CSV_TEMPLATE],{type:'text/csv'});
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'prospects_template.csv'; a.click();
-  };
-
-  const parseCSV = (text:string) => {
-    const lines = text.trim().split('\n');
-    const headers = lines[0].split(',').map(h=>h.trim());
-    return lines.slice(1).map(line=>{
-      const vals = line.split(',');
-      return headers.reduce((obj,h,i)=>({...obj,[h]:vals[i]?.trim()||''}),{} as any);
-    }).filter((r:any)=>r.firstName||r.email||r.company);
-  };
-
-  const handleFile = (f:File) => {
-    setFile(f); setError(null);
-    const reader = new FileReader();
-    reader.onload = e => {
-      try { const rows = parseCSV(e.target?.result as string); setPreview(rows.slice(0,3)); setCount(rows.length); }
-      catch { setError('Fichier CSV invalide'); }
-    };
-    reader.readAsText(f);
-  };
-
-  const importData = async () => {
-    if (!file) return;
-    setLoading(true); setError(null);
-    try {
-      const text = await file.text();
-      const prospects = parseCSV(text);
-      await apiClient.post('/prospects/bulk', { prospects });
-      setDone(true);
-      setTimeout(()=>{onSave();onClose();},2000);
-    } catch(e:any) { setError(e.message || 'Erreur lors de l\'import'); }
-    finally { setLoading(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-gray-900">Importer depuis CSV</h2>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-400"/></button>
-        </div>
-        {done ? (
-          <div className="text-center py-8">
-            <CheckCircle className="w-16 h-16 text-teal-600 mx-auto mb-3"/>
-            <p className="text-xl font-bold text-gray-900">Import réussi !</p>
-            <p className="text-gray-400 mt-1">{count} prospects importés</p>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-gray-500">Importez vos prospects depuis un fichier CSV.</p>
-              <button onClick={downloadTemplate} className="flex items-center gap-1.5 text-xs text-teal-600 hover:text-teal-700">
-                <Download className="w-3.5 h-3.5"/>Télécharger le modèle
-              </button>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs font-mono text-gray-500">
-              <span className="font-sans text-gray-700 font-medium text-xs block mb-1">Colonnes attendues :</span>
-              firstName, lastName, email, phone, company, jobTitle, website, status
-            </div>
-            <div onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f);}} onDragOver={e=>e.preventDefault()}
-              onClick={()=>ref.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all mb-4 ${file?'border-teal-400 bg-teal-50':'border-gray-200 hover:border-teal-300 hover:bg-gray-50'}`}>
-              <input ref={ref} type="file" accept=".csv,.tsv,.txt" className="hidden" onChange={e=>e.target.files?.[0]&&handleFile(e.target.files[0])}/>
-              {file ? (
-                <div className="flex items-center justify-center gap-3">
-                  <FileText className="w-8 h-8 text-teal-600"/>
-                  <div className="text-left">
-                    <div className="font-medium text-gray-900">{file.name}</div>
-                    <div className="text-sm text-gray-400">{count} prospect{count>1?'s':''} détecté{count>1?'s':''}</div>
-                  </div>
-                </div>
-              ) : (
-                <><Upload className="w-10 h-10 text-gray-300 mx-auto mb-3"/><p className="text-sm font-medium text-gray-600">Glissez votre .csv ici</p><p className="text-xs text-gray-400 mt-1">ou cliquez pour sélectionner</p></>
-              )}
-            </div>
-            {preview.length>0 && (
-              <div className="mb-4">
-                <p className="text-xs font-medium text-gray-500 mb-2">Aperçu ({count} lignes) :</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-50"><tr>{['Prénom','Nom','Email','Entreprise'].map(h=><th key={h} className="text-left px-2 py-1 text-gray-500">{h}</th>)}</tr></thead>
-                    <tbody>{preview.map((r,i)=><tr key={i} className="border-t border-gray-100"><td className="px-2 py-1">{r.firstName}</td><td className="px-2 py-1">{r.lastName}</td><td className="px-2 py-1 text-teal-600">{r.email}</td><td className="px-2 py-1">{r.company}</td></tr>)}</tbody>
-                  </table>
-                  {count>3&&<p className="text-xs text-gray-400 mt-1">... et {count-3} autres</p>}
-                </div>
-              </div>
-            )}
-            {error && <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2 mb-3"><AlertCircle className="w-4 h-4"/>{error}</div>}
-            <div className="flex gap-3">
-              <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600">Annuler</button>
-              <button onClick={importData} disabled={!file||loading} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-                {loading?<Loader2 className="w-4 h-4 animate-spin"/>:<Upload className="w-4 h-4"/>}Importer
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function BulkStatusModal({ count, onClose, onConfirm }: { count: number; onClose: () => void; onConfirm: (s: string) => void }) {
   const [status, setStatus] = useState('contacted');
   return (
@@ -233,12 +117,16 @@ export default function ProspectsPage() {
   const [status, setStatus] = useState('all');
   const [noGeo, setNoGeo] = useState(false);
   const [search, setSearch] = useState('');
+  const [apeFilter, setApeFilter] = useState('');
+  const [activitySearch, setActivitySearch] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDir, setSortDir] = useState('desc');
   const [showCreate, setShowCreate] = useState(false);
-  const [showImport, setShowImport] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkStatus, setShowBulkStatus] = useState(false);
+  const [previewProspect, setPreviewProspect] = useState<any | null>(null);
   const [geocodingAll, setGeocodingAll] = useState(false);
   const [geocodeProgress, setGeocodeProgress] = useState({ done: 0, total: 0 });
 
@@ -248,12 +136,16 @@ export default function ProspectsPage() {
       const params: Record<string,string> = { page: String(page), limit: '50' };
       if (status !== 'all') params.status = status;
       if (search) params.search = search;
+      if (apeFilter.trim()) params.apeCode = apeFilter.trim();
+      if (activitySearch.trim()) params.activitySearch = activitySearch.trim();
+      params.sortBy = sortBy;
+      params.sortDir = sortDir;
       if (noGeo) params.noGeo = 'true';
       const result = await apiClient.get('/prospects', { params });
       const data = Array.isArray(result) ? result : (result as any).data || [];
       setProspects(data);
-      setTotal((result as any).meta?.total || 0);
-    } catch { setProspects([]); } finally { setLoading(false); }
+      setTotal(Number((result as any).total ?? (result as any).meta?.total ?? data.length));
+    } catch { setProspects([]); setTotal(0); } finally { setLoading(false); }
   };
 
   useEffect(()=>{
@@ -261,8 +153,8 @@ export default function ProspectsPage() {
     window.addEventListener('growthos:nouveau', onNouveau);
     return () => window.removeEventListener('growthos:nouveau', onNouveau);
   }, []);
-  useEffect(()=>{ fetchProspects(); },[status, page, noGeo]);
-  useEffect(()=>{ const t=setTimeout(fetchProspects,400); return()=>clearTimeout(t); },[search]);
+  useEffect(()=>{ fetchProspects(); },[status, page, noGeo, sortBy, sortDir]);
+  useEffect(()=>{ const t=setTimeout(fetchProspects,400); return()=>clearTimeout(t); },[search,apeFilter,activitySearch]);
 
   const geocodeAll = async () => {
     const targets = prospects.filter(p => p.address && !p.lat);
@@ -304,12 +196,16 @@ export default function ProspectsPage() {
   const clearSelection = () => setSelected(new Set());
 
   const exportCSV = () => {
-    const headers = ['Prénom','Nom','Email','Téléphone','Entreprise','Poste','Site','Statut','Score'];
+    const headers = ['Prénom','Nom','Email','Téléphone','Entreprise','Poste','Site','Code APE / NAF','Libellé NAF','Nomenclature','Statut','Score'];
     const rows = prospects.map(p => [
       p.firstName||'', p.lastName||'', p.email||'', p.phone||'',
-      p.company||'', p.jobTitle||'', p.website||'', p.status||'', p.score||0,
+      p.company||'', p.jobTitle||'', p.website||'', p.apeCode||'', p.nafLabel||'', p.nafVersion||'', p.status||'', p.score||0,
     ]);
-    const csv = [headers, ...rows].map(r => r.map((v: any) => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const csv = [headers, ...rows].map(r => r.map((v: any) => {
+      const raw = String(v);
+      const safe = /^[\s]*[=+\-@]/.test(raw) ? "'" + raw : raw;
+      return `"${safe.replace(/"/g,'""')}"`;
+    }).join(',')).join('\n');
     const blob = new Blob(['\uFEFF'+csv], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -374,10 +270,11 @@ export default function ProspectsPage() {
   const someSelected = selected.size > 0 && selected.size < prospects.length;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="atlas-prospect-page min-h-screen bg-gray-50 p-6">
       {showCreate && <CreateModal onClose={()=>setShowCreate(false)} onSave={()=>{fetchProspects();toast.success('Prospect créé ✓');}}/>}
-      {showImport && <ImportCSVModal onClose={()=>setShowImport(false)} onSave={()=>{fetchProspects();toast.success('Import réussi ✓');}}/>}
       {showBulkStatus && <BulkStatusModal count={selected.size} onClose={()=>setShowBulkStatus(false)} onConfirm={bulkChangeStatus}/>}
+      {previewProspect && <ProspectQuickPreview prospect={previewProspect} onClose={()=>setPreviewProspect(null)}
+        onOpen360={()=>{const targetId=previewProspect.id;setPreviewProspect(null);navigate('/prospects/' + targetId);}}/>}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -389,7 +286,7 @@ export default function ProspectsPage() {
           <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300 hover:text-teal-600">
             <Download className="w-4 h-4"/>Exporter CSV
           </button>
-          <button onClick={()=>setShowImport(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300 hover:text-teal-600">
+          <button onClick={()=>navigate('/import')} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-teal-300 hover:text-teal-600">
             <Upload className="w-4 h-4"/>Importer CSV
           </button>
           <button onClick={fetchProspects} disabled={loading} className="p-2 bg-white border border-gray-200 rounded-xl text-gray-500 hover:border-teal-300">
@@ -454,8 +351,36 @@ export default function ProspectsPage() {
       {/* Recherche */}
       <div className="relative mb-4 max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher par nom, email, entreprise..."
+        <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="Nom, entreprise, email, activité…"
           className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+      </div>
+      <div className="flex gap-2 mb-5 flex-wrap items-end" aria-label="Filtres par secteur d’activité">
+        <label className="text-xs text-gray-600 flex flex-col gap-1">
+          Code APE / NAF (préfixe accepté)
+          <input value={apeFilter} onChange={e=>{setApeFilter(e.target.value);setPage(1);}}
+            placeholder="Ex. 43 ou 43.22A" className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-48"/>
+        </label>
+        <label className="text-xs text-gray-600 flex flex-col gap-1">
+          Activité / libellé NAF
+          <input value={activitySearch} onChange={e=>{setActivitySearch(e.target.value);setPage(1);}}
+            placeholder="Ex. plomberie" className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-56"/>
+        </label>
+        <label className="text-xs text-gray-600 flex flex-col gap-1">
+          Trier par
+          <select value={sortBy} onChange={e=>{setSortBy(e.target.value);setPage(1);}} className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
+            <option value="createdAt">Date d’ajout</option>
+            <option value="company">Entreprise</option>
+            <option value="apeCode">Code APE / NAF</option>
+            <option value="nafLabel">Libellé NAF</option>
+          </select>
+        </label>
+        <label className="text-xs text-gray-600 flex flex-col gap-1">
+          Ordre
+          <select value={sortDir} onChange={e=>{setSortDir(e.target.value);setPage(1);}} className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
+            <option value="asc">Croissant</option><option value="desc">Décroissant</option>
+          </select>
+        </label>
+        {(apeFilter || activitySearch) && <button onClick={()=>{setApeFilter('');setActivitySearch('');setPage(1);}} className="text-sm text-teal-700 px-2 py-2.5">Effacer les filtres</button>}
       </div>
 
       {/* Bulk action bar */}
@@ -479,7 +404,7 @@ export default function ProspectsPage() {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="atlas-prospect-table bg-white rounded-2xl border border-gray-200 overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -492,31 +417,31 @@ export default function ProspectsPage() {
                     : <Square className="w-4 h-4 text-gray-300"/>}
                 </button>
               </th>
-              {['','Nom','Entreprise','Email / Tél','Statut','Score','Actions'].map(h=>(
+              {['','Nom','Entreprise','APE / NAF','Email / Tél','Statut','Score','Actions'].map(h=>(
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading && prospects.length===0 && (
-              <tr><td colSpan={8} className="text-center py-16">
+              <tr><td colSpan={9} className="text-center py-16">
                 <Loader2 className="w-8 h-8 animate-spin text-teal-600 mx-auto"/>
               </td></tr>
             )}
             {!loading && prospects.length===0 && (
-              <tr><td colSpan={8} className="text-center py-16">
+              <tr><td colSpan={9} className="text-center py-16">
                 <Building2 className="w-10 h-10 text-gray-200 mx-auto mb-3"/>
                 <p className="text-gray-400">Aucun prospect</p>
                 <div className="flex gap-3 justify-center mt-3">
                   <button onClick={()=>setShowCreate(true)} className="px-4 py-2 bg-teal-600 text-white rounded-xl text-sm">+ Créer</button>
-                  <button onClick={()=>setShowImport(true)} className="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl text-sm">Importer CSV</button>
+                  <button onClick={()=>navigate('/import')} className="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl text-sm">Importer CSV</button>
                 </div>
               </td></tr>
             )}
             {prospects.map(p=>(
               <tr key={p.id}
                 className={`hover:bg-gray-50 cursor-pointer transition-colors ${selected.has(p.id)?'bg-teal-50':''}`}
-                onClick={()=>navigate(`/prospects/${p.id}`)}>
+                onClick={()=>setPreviewProspect(p)}>
                 <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
                   <button onClick={()=>toggleSelect(p.id)} className="flex items-center">
                     {selected.has(p.id)
@@ -541,6 +466,10 @@ export default function ProspectsPage() {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-700">{p.company||'—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700 max-w-56">
+                  <div className="font-semibold text-teal-700">{p.apeCode || '—'}</div>
+                  {p.nafLabel && <div className="text-xs text-gray-500 truncate" title={p.nafLabel}>{p.nafLabel}</div>}
+                </td>
                 <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
                   <div className="flex flex-col gap-0.5">
                     {p.email && <a href={`mailto:${p.email}`} className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700"><Mail className="w-3 h-3"/>{p.email}</a>}
@@ -571,7 +500,7 @@ export default function ProspectsPage() {
                         <GitMerge className="w-3 h-3"/>Deal
                       </button>
                     )}
-                    <button onClick={()=>navigate(`/prospects/${p.id}`)} className="text-gray-300 hover:text-teal-600">
+                    <button onClick={()=>setPreviewProspect(p)} aria-label="Aperçu rapide du prospect" className="text-gray-300 hover:text-teal-600">
                       <ChevronRight className="w-5 h-5"/>
                     </button>
                   </div>
