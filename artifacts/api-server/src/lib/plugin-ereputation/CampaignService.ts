@@ -235,6 +235,12 @@ export class CampaignService {
     if (typeof patch.name === "string") normalized.name = patch.name.trim();
     if (typeof patch.targetName === "string") normalized.targetName = patch.targetName.trim();
     const after: CampaignInput = { ...before, ...normalized };
+    // Une personne physique reste une personne : sinon la purge RGPD et
+    // l'expurgation de l'historique (qui se fondent sur target_type) ne
+    // s'appliqueraient plus aux données déjà collectées.
+    if (before.targetType === "B2C" && after.targetType !== "B2C") {
+      throw new CampaignError("Une campagne personne physique ne peut pas devenir une entité : créez une nouvelle campagne entité");
+    }
     this.validate(after);
 
     const changes: Record<string, { before: unknown; after: unknown }> = {};
@@ -304,6 +310,18 @@ export class CampaignService {
                 (SELECT COUNT(*) FROM erep_audits WHERE campaign_id = $1)::int AS audits`,
         [campaignId],
       );
+      // Copies indexées dans la mémoire IA (audits, variations de score) : pas de
+      // clé étrangère, donc supprimées explicitement avant la cascade des audits.
+      const memory = await client.query(
+        `DELETE FROM memory_documents
+          WHERE tenant_id = $2
+            AND (metadata->>'campaignId' = $1::text
+                 OR (source_type IN ('ereputation_audit', 'erep_audit')
+                     AND (source_id = $1::text
+                          OR source_id IN (SELECT id::text FROM erep_audits WHERE campaign_id = $1::text::uuid))))`,
+        [campaignId, tenantId],
+      );
+      counts.rows[0].memoryDocuments = memory.rowCount ?? 0;
       // Les sites PBN appartiennent à l'agence : ils sont détachés, pas supprimés (ON DELETE SET NULL).
       await client.query(`DELETE FROM erep_campaigns WHERE id = $1 AND tenant_id = $2`, [campaignId, tenantId]);
       if (person) await changeLog.redactCampaign(client, tenantId, campaignId);
@@ -355,8 +373,9 @@ export class CampaignService {
   /** Lecture des composantes mesurées ; null = composante sans mesure. */
   private async readComponents(campaignId: string, sinceDays?: number) {
     const serpRes = await pool.query(
-      `SELECT AVG(CASE WHEN position <= 3 THEN 100 WHEN position <= 10 THEN 70 WHEN position <= 20 THEN 40 ELSE 10 END) AS score
-       FROM erep_serp_tracking WHERE campaign_id = $1 AND position IS NOT NULL
+      // position NULL = absence constatée du top 100 : mesure réelle, notée 0.
+      `SELECT AVG(CASE WHEN position IS NULL THEN 0 WHEN position <= 3 THEN 100 WHEN position <= 10 THEN 70 WHEN position <= 20 THEN 40 ELSE 10 END) AS score
+       FROM erep_serp_tracking WHERE campaign_id = $1
        ${sinceDays ? `AND date >= CURRENT_DATE - INTERVAL '${Number(sinceDays)} days'` : ""}`,
       [campaignId],
     );
