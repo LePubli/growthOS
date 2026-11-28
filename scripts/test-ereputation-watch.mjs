@@ -101,6 +101,8 @@ const fakeWorker = createServer(async (req, res) => {
   worker.calls.push(input);
   await delay(worker.delayMs);
   if (req.url !== "/erep-collect") { send(404, { error: "Action introuvable" }); return; }
+  if (input.task === "serp" && worker.serpMode === "blocked") { send(200, { status: "awaiting_user", results: [], pages: 1, message: "La source demande votre consentement." }); return; }
+  if (input.task === "serp" && worker.serpMode === "empty") { send(200, { status: "completed", results: [], pages: 1 }); return; }
   if (input.task === "serp") {
     const urls = serpFor(worker.phase).slice(0, input.depth);
     send(200, { status: "completed", pages: 1, results: urls.map((url, i) => ({ url, title: `Titre ${url}`, snippet: url.includes("arnaque") ? "Acme Lille arnaque signalée" : "Acme Lille", position: i + 1 })) });
@@ -110,7 +112,7 @@ const fakeWorker = createServer(async (req, res) => {
     const reviews = [{ externalId: "g1", author: "Marie", rating: 5, date: "il y a 2 jours", text: "Excellent travail, je recommande", ownerResponse: false },
       { externalId: "g2", author: "Paul", rating: 1, date: "il y a 1 semaine", text: "Chantier abandonné", ownerResponse: true }];
     if (worker.phase >= 2) reviews.unshift({ externalId: "g3", author: "Lina", rating: 2, date: "il y a 1 heure", text: "Retard important", ownerResponse: false });
-    send(200, { status: "completed", summary: { name: "Acme Lille", rating: 4.2, count: 128 }, reviews });
+    send(200, { status: "completed", summary: { name: "Acme Lille", rating: 4.2, count: worker.phase >= 3 ? null : 128 }, reviews });
     return;
   }
   if (input.source === "pagesjaunes") {
@@ -162,7 +164,7 @@ try {
 
   // ── Schéma
   const tables = (await db.query(`SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'erep_%'`)).rows.map(r => r.table_name);
-  check(["erep_watch_settings", "erep_watch_runs", "erep_serp_snapshots", "erep_reviews", "erep_review_stats", "erep_mentions"].every(t => tables.includes(t)), "Tables de veille créées", tables);
+  check(["erep_watch_settings", "erep_watch_runs", "erep_serp_snapshots", "erep_serp_collections", "erep_reviews", "erep_review_stats", "erep_mentions"].every(t => tables.includes(t)), "Tables de veille créées", tables);
 
   // ── Campagne entité et réglages
   const campaign = (await request("POST", "/ereputation/campaigns", { name: "Veille Acme", targetType: "B2B", targetName: "Acme Lille",
@@ -268,6 +270,29 @@ try {
   check((await request("PATCH", `/ereputation/mentions/${target.id}`, { status: "ignored" }, otherToken)).status === 404, "Autre agence : qualification refusée");
   check((await request("PATCH", `/ereputation/mentions/${target.id}`, { status: "supprimée" }, token)).status === 400, "Statut de mention inconnu refusé");
 
+  // ── Relevé vide réussi, nombre d'avis illisible, captcha sans mesure fictive
+  worker.phase = 3; worker.serpMode = "empty";
+  await request("POST", `/ereputation/campaigns/${cid}/watch/run`, {}, token);
+  const done3 = await waitRun(cid, token);
+  const empty = done3.steps.find(s => s.type === "serp" && s.query === '"Acme Lille"');
+  check(done3.status === "completed" && empty.items === 0 && empty.dropped === 5, "Relevé vide réussi : enregistré, les 5 résultats précédents comptés disparus", empty);
+  const latestEmpty = (await request("GET", `/ereputation/campaigns/${cid}/watch/serp`, undefined, token)).body.filter(r => r.query === '"Acme Lille"');
+  check(latestEmpty.length === 1 && latestEmpty[0].url === null && latestEmpty[0].result_count === 0, "Dernier relevé affiché : vide, pas l'ancien", latestEmpty);
+  const statsNull = (await request("GET", `/ereputation/campaigns/${cid}/reviews`, undefined, token)).body.stats.find(x => x.source === "google_maps");
+  check(statsNull.rating === 4.2 && statsNull.review_count === null, "Nombre d'avis illisible conservé « inconnu » (pas 0)", statsNull);
+  worker.serpMode = "blocked";
+  const trackingBefore = (await db.query(`SELECT COUNT(*)::int AS n FROM erep_serp_tracking WHERE campaign_id = $1`, [cid])).rows[0].n;
+  const scoreBefore = (await request("GET", `/ereputation/campaigns/${cid}/dashboard`, undefined, token)).body.scoreBreakdown.serp;
+  await request("POST", `/ereputation/campaigns/${cid}/watch/run`, {}, token);
+  const blocked = await waitRun(cid, token);
+  const trackingAfter = (await db.query(`SELECT COUNT(*)::int AS n FROM erep_serp_tracking WHERE campaign_id = $1`, [cid])).rows[0].n;
+  const collections = (await db.query(`SELECT COUNT(*)::int AS n FROM erep_serp_collections WHERE run_id = $1`, [blocked.id])).rows[0].n;
+  const scoreAfter = (await request("GET", `/ereputation/campaigns/${cid}/dashboard`, undefined, token)).body.scoreBreakdown.serp;
+  check(blocked.status === "awaiting_user" && trackingAfter === trackingBefore && collections === 0 && scoreAfter === scoreBefore,
+    "Captcha / consentement : aucune mesure SERP ni position fictive, score inchangé", { status: blocked.status, trackingBefore, trackingAfter, collections, scoreBefore, scoreAfter });
+  check((await request("POST", `/ereputation/watch/runs/${blocked.id}/cancel`, {}, token)).status === 200, "Veille en attente annulée");
+  worker.serpMode = undefined;
+
   // ── La prospection a la priorité sur le navigateur partagé
   const profile = (await db.query(`SELECT id FROM cloud_browser_profiles WHERE tenant_id = $1 AND source = 'google_search'`, [me.tenantId])).rows[0].id;
   const job = (await db.query(`INSERT INTO cloud_browser_jobs (tenant_id, created_by, profile_id, query, status) VALUES ($1,$2,$3,'plombier lille','running') RETURNING id`, [me.tenantId, me.userId, profile])).rows[0].id;
@@ -310,7 +335,7 @@ try {
   const removed = await request("DELETE", `/ereputation/campaigns/${cid}`, undefined, token);
   check(removed.status === 200, "Campagne supprimée");
   const left = (await db.query(`SELECT (SELECT COUNT(*) FROM erep_mentions WHERE campaign_id = $1) + (SELECT COUNT(*) FROM erep_reviews WHERE campaign_id = $1)
-    + (SELECT COUNT(*) FROM erep_serp_snapshots WHERE campaign_id = $1) + (SELECT COUNT(*) FROM erep_watch_runs WHERE campaign_id = $1)
+    + (SELECT COUNT(*) FROM erep_serp_snapshots WHERE campaign_id = $1) + (SELECT COUNT(*) FROM erep_serp_collections WHERE campaign_id = $1) + (SELECT COUNT(*) FROM erep_watch_runs WHERE campaign_id = $1)
     + (SELECT COUNT(*) FROM erep_watch_settings WHERE campaign_id = $1) AS n`, [cid])).rows[0].n;
   check(Number(left) === 0, "Suppression : réglages, passages, relevés, avis et mentions effacés", left);
   const history = (await request("GET", `/ereputation/campaigns/${cid}/history`, undefined, token)).body;

@@ -46,7 +46,7 @@ scripts/test-ereputation.mjs                                tests d'intégration
 scripts/test-ereputation-ui.mjs                             tests de rendu et anti-valeurs fictives
 ```
 
-Tables : `erep_campaigns` (+ colonnes du lot 1), `erep_change_log` (nouvelle), lot 2 : `erep_watch_settings`, `erep_watch_runs`, `erep_serp_snapshots`, `erep_reviews`, `erep_review_stats`, `erep_mentions` (toutes supprimées en cascade avec la campagne), `erep_serp_tracking`, `erep_sentiment_logs`, `erep_content_posts`, `erep_audits`, `erep_pbn_sites`, `erep_alerts`, `erep_approvals`.
+Tables : `erep_campaigns` (+ colonnes du lot 1), `erep_change_log` (nouvelle), lot 2 : `erep_watch_settings`, `erep_watch_runs`, `erep_serp_snapshots`, `erep_serp_collections`, `erep_reviews`, `erep_review_stats`, `erep_mentions` (toutes supprimées en cascade avec la campagne), `erep_serp_tracking`, `erep_sentiment_logs`, `erep_content_posts`, `erep_audits`, `erep_pbn_sites`, `erep_alerts`, `erep_approvals`.
 
 ## Prérequis
 

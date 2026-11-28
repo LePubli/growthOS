@@ -24,7 +24,7 @@ interface Step { type: 'serp' | 'reviews' | 'news' | 'rss'; source: string; quer
 interface Run { id: string; kind: string; depth: number; status: RunStatus; steps: Step[]; stats: Record<string, number | boolean>; message: string | null; createdAt: string; finishedAt: string | null }
 interface Overview { settings: Settings; queries: string[]; cloudConfigured: boolean; profiles: Record<string, boolean>; lastRun: Run | null }
 interface Mention { id: string; kind: 'serp' | 'review' | 'news'; source: string; url: string | null; title: string | null; excerpt: string | null; sentiment: 'pos' | 'neg' | 'neu'; status: 'new' | 'qualified' | 'ignored'; baseline: boolean; first_seen_at: string }
-interface SerpRow { engine: Engine; query: string; position: number; url: string; title: string | null; previous_position: number | null; is_new: boolean; captured_at: string }
+interface SerpRow { engine: Engine; query: string; position: number | null; url: string | null; result_count?: number; title: string | null; previous_position: number | null; is_new: boolean; captured_at: string }
 interface ReviewsOverview { stats: { source: string; rating: number | null; review_count: number | null; captured_at: string }[]; reviews: { id: string; source: string; author: string | null; rating: number | null; review_date: string | null; text: string | null; sentiment: string; owner_response: boolean }[] }
 
 export const SOURCE_LABEL: Record<string, string> = { google_search: 'Google', bing: 'Bing', google_maps: 'Google Maps', pagesjaunes: 'PagesJaunes', google_news: 'Google Actualités', rss: 'Flux RSS' };
@@ -199,11 +199,12 @@ export function SerpTable({ rows }: { rows: SerpRow[] }) {
         <div key={k}>
           <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>{k} · {fmt(list[0].captured_at)}</p>
           <table className="w-full text-sm"><tbody>
-            {list.map(r => {
-              const delta = r.previous_position == null ? null : r.previous_position - r.position;
+            {list.filter(r => r.url).length === 0 && <tr><td className="py-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>Aucun résultat lu lors de ce relevé.</td></tr>}
+            {list.filter(r => r.url && r.position != null).map(r => {
+              const delta = r.previous_position == null ? null : r.previous_position - (r.position as number);
               const href = safeHref(r.url);
               return (
-                <tr key={r.url} className="border-t" style={{ borderColor: 'var(--card-border)' }}>
+                <tr key={r.url as string} className="border-t" style={{ borderColor: 'var(--card-border)' }}>
                   <td className="py-1.5 w-10 font-mono" style={{ color: 'var(--text-primary)' }}>{r.position}</td>
                   <td className="py-1.5 w-20 text-xs">{r.is_new ? <span className="font-semibold" style={{ color: '#2563EB' }}>Nouveau</span>
                     : delta ? <span style={{ color: delta > 0 ? '#059669' : '#DC2626' }}>{delta > 0 ? `▲ ${delta}` : `▼ ${-delta}`}</span> : <span style={{ color: 'var(--text-secondary)' }}>=</span>}</td>

@@ -120,6 +120,20 @@ CREATE TABLE IF NOT EXISTS erep_serp_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_erep_serp_snapshots_lookup ON erep_serp_snapshots(campaign_id, engine, query, captured_at DESC);
 
+-- Une ligne par requête lue avec succès, y compris un relevé vide.
+CREATE TABLE IF NOT EXISTS erep_serp_collections (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id  UUID        NOT NULL REFERENCES erep_campaigns(id) ON DELETE CASCADE,
+  run_id       UUID        NOT NULL REFERENCES erep_watch_runs(id) ON DELETE CASCADE,
+  engine       TEXT        NOT NULL,
+  query        TEXT        NOT NULL,
+  depth        INTEGER     NOT NULL,
+  result_count INTEGER     NOT NULL,
+  captured_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (run_id, engine, query)
+);
+CREATE INDEX IF NOT EXISTS idx_erep_serp_collections_lookup ON erep_serp_collections(campaign_id, engine, query, captured_at DESC);
+
 CREATE TABLE IF NOT EXISTS erep_reviews (
   id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id    UUID        NOT NULL REFERENCES erep_campaigns(id) ON DELETE CASCADE,

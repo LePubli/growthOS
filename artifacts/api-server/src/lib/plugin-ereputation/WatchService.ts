@@ -265,7 +265,7 @@ export class WatchService {
     const steps = run.steps as WatchStep[];
     const campaign = await campaignService.getCampaign(run.campaign_id, run.tenant_id);
     if (!campaign) return;
-    const isBaselineSerp = !(await pool.query(`SELECT 1 FROM erep_serp_snapshots WHERE campaign_id = $1 AND run_id <> $2 LIMIT 1`, [run.campaign_id, run.id])).rows[0];
+    const isBaselineSerp = !(await pool.query(`SELECT 1 FROM erep_serp_collections WHERE campaign_id = $1 AND run_id <> $2 LIMIT 1`, [run.campaign_id, run.id])).rows[0];
     const save = (fields: Record<string, unknown>) => {
       const keys = Object.keys(fields);
       return pool.query(`UPDATE erep_watch_runs SET ${keys.map((k, i) => `${k} = $${i + 3}`).join(", ")} WHERE id = $1 AND lease = $2`,
@@ -332,9 +332,14 @@ export class WatchService {
       ? { tenantId: run.tenant_id, profileId, source: step.source, task: "serp", query: step.query, depth: run.depth }
       : { tenantId: run.tenant_id, profileId, source: step.source, task: "reviews", url: step.url, limit: 20 };
     const data = await browserCall("/erep-collect", payload, 240_000, run.id);
+    if (data.status === "awaiting_user") {
+      // Lecture interrompue (contrôle de sécurité, consentement) : aucune mesure enregistrée,
+      // l'étape sera rejouée entièrement après « Reprendre ».
+      return { status: "awaiting_user", message: String(data.message ?? "Vérification requise dans le navigateur cloud.").slice(0, 300) };
+    }
     const stored = step.type === "serp" ? await this.storeSerp(run, campaign, step, data.results ?? [], baseline) : await this.storeReviews(run, campaign, step, data);
-    return data.status === "awaiting_user"
-      ? { ...stored, status: "awaiting_user", message: String(data.message ?? "Vérification requise dans le navigateur cloud.").slice(0, 300) }
+    return data.status !== "completed"
+      ? { ...stored, status: "failed", message: "Réponse du navigateur inattendue." }
       : { ...stored, status: "completed", message: null };
   }
 
@@ -351,13 +356,18 @@ export class WatchService {
 
   private async storeSerp(run: any, campaign: Campaign, step: WatchStep, results: Array<{ url: string; title?: string; snippet?: string; position: number }>, baseline: boolean) {
     const clean = results.filter(r => typeof r?.url === "string" && /^https?:\/\//.test(r.url) && Number.isInteger(r.position)).slice(0, 100);
+    // Le relevé précédent est lu dans les collectes (un relevé vide réussi compte aussi).
     const previousRun = (await pool.query(
-      `SELECT run_id FROM erep_serp_snapshots WHERE campaign_id = $1 AND engine = $2 AND query = $3 AND run_id <> $4 ORDER BY captured_at DESC LIMIT 1`,
+      `SELECT run_id FROM erep_serp_collections WHERE campaign_id = $1 AND engine = $2 AND query = $3 AND run_id <> $4 ORDER BY captured_at DESC LIMIT 1`,
       [run.campaign_id, step.source, step.query, run.id])).rows[0]?.run_id;
     const previous = previousRun ? (await pool.query(`SELECT url, position FROM erep_serp_snapshots WHERE run_id = $1 AND engine = $2 AND query = $3`, [previousRun, step.source, step.query])).rows : [];
     const seenBefore = new Set((await pool.query(`SELECT DISTINCT url FROM erep_serp_snapshots WHERE campaign_id = $1 AND engine = $2 AND query = $3 AND run_id <> $4`,
       [run.campaign_id, step.source, step.query, run.id])).rows.map(r => normalUrl(r.url)));
     await pool.query(`DELETE FROM erep_serp_snapshots WHERE run_id = $1 AND engine = $2 AND query = $3`, [run.id, step.source, step.query]);
+    await pool.query(
+      `INSERT INTO erep_serp_collections (campaign_id, run_id, engine, query, depth, result_count) VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (run_id, engine, query) DO UPDATE SET depth = EXCLUDED.depth, result_count = EXCLUDED.result_count, captured_at = NOW()`,
+      [run.campaign_id, run.id, step.source, step.query, run.depth, clean.length]);
     let newItems = 0, moved = 0;
     for (const r of clean) {
       await pool.query(`INSERT INTO erep_serp_snapshots (campaign_id, run_id, engine, query, position, url, title, snippet) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
@@ -371,7 +381,9 @@ export class WatchService {
         sentiment: sentiment.sentiment, score: sentiment.score, baseline });
     }
     const currentKeys = new Set(clean.map(r => normalUrl(r.url)));
-    const dropped = previous.filter(p => p.position <= Math.max(...clean.map(r => r.position), 0) && !currentKeys.has(normalUrl(p.url))).length;
+    // Comparaison limitée à la profondeur lue (un top 50 n'est pas comparé au-delà d'un top 20).
+    const bound = clean.length >= run.depth ? Math.max(...clean.map(r => r.position)) : run.depth;
+    const dropped = previous.filter(p => p.position <= bound && !currentKeys.has(normalUrl(p.url))).length;
     // Position du site de la cible (si renseigné) : alimente le suivi SERP et le score.
     if (campaign.targetUrl) {
       let host = ""; try { host = new URL(campaign.targetUrl).hostname.replace(/^www\./, ""); } catch { /* URL cible invalide */ }
@@ -387,7 +399,8 @@ export class WatchService {
   private async storeReviews(run: any, campaign: Campaign, step: WatchStep, data: any) {
     const summary = data?.summary;
     if (summary && (summary.rating != null || summary.count != null)) {
-      const rating = Number(summary.rating), count = Number(summary.count);
+      // null / absent = non lu : ne jamais le convertir en 0.
+      const rating = summary.rating == null ? NaN : Number(summary.rating), count = summary.count == null ? NaN : Number(summary.count);
       await pool.query(`INSERT INTO erep_review_stats (campaign_id, run_id, source, rating, review_count) VALUES ($1,$2,$3,$4,$5)`,
         [run.campaign_id, run.id, step.source, Number.isFinite(rating) && rating > 0 && rating <= 5 ? rating : null, Number.isInteger(count) && count >= 0 ? count : null]);
     }
@@ -466,17 +479,18 @@ export class WatchService {
   async latestSerp(campaignId: string) {
     const { rows } = await pool.query(
       `WITH latest AS (
-         SELECT DISTINCT ON (engine, query) engine, query, run_id, captured_at FROM erep_serp_snapshots WHERE campaign_id = $1 ORDER BY engine, query, captured_at DESC),
+         SELECT DISTINCT ON (engine, query) engine, query, run_id, captured_at, result_count FROM erep_serp_collections WHERE campaign_id = $1 ORDER BY engine, query, captured_at DESC),
        prev AS (
-         SELECT DISTINCT ON (s.engine, s.query) s.engine, s.query, s.run_id FROM erep_serp_snapshots s JOIN latest l ON l.engine = s.engine AND l.query = s.query
-          WHERE s.campaign_id = $1 AND s.run_id <> l.run_id ORDER BY s.engine, s.query, s.captured_at DESC)
-       SELECT s.engine, s.query, s.position, s.url, s.title, s.snippet, l.captured_at,
+         SELECT DISTINCT ON (c.engine, c.query) c.engine, c.query, c.run_id FROM erep_serp_collections c JOIN latest l ON l.engine = c.engine AND l.query = c.query
+          WHERE c.campaign_id = $1 AND c.run_id <> l.run_id ORDER BY c.engine, c.query, c.captured_at DESC)
+       SELECT l.engine, l.query, s.position, s.url, s.title, s.snippet, l.captured_at, l.result_count,
               p2.position AS previous_position,
-              (p.run_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM erep_serp_snapshots o WHERE o.campaign_id = $1 AND o.engine = s.engine AND o.query = s.query AND o.run_id <> s.run_id AND o.url = s.url)) AS is_new
-         FROM erep_serp_snapshots s JOIN latest l ON l.run_id = s.run_id AND l.engine = s.engine AND l.query = s.query
-         LEFT JOIN prev p ON p.engine = s.engine AND p.query = s.query
-         LEFT JOIN erep_serp_snapshots p2 ON p2.run_id = p.run_id AND p2.engine = s.engine AND p2.query = s.query AND p2.url = s.url
-        ORDER BY s.engine, s.query, s.position`, [campaignId]);
+              (s.url IS NOT NULL AND p.run_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM erep_serp_snapshots o WHERE o.campaign_id = $1 AND o.engine = s.engine AND o.query = s.query AND o.run_id <> s.run_id AND o.url = s.url)) AS is_new
+         FROM latest l
+         LEFT JOIN erep_serp_snapshots s ON s.run_id = l.run_id AND s.engine = l.engine AND s.query = l.query
+         LEFT JOIN prev p ON p.engine = l.engine AND p.query = l.query
+         LEFT JOIN erep_serp_snapshots p2 ON p2.run_id = p.run_id AND p2.engine = l.engine AND p2.query = l.query AND p2.url = s.url
+        ORDER BY l.engine, l.query, s.position NULLS FIRST`, [campaignId]);
     return rows;
   }
 
