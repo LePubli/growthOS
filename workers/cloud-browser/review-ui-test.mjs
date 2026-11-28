@@ -53,13 +53,13 @@ try{
    const choice=page.getByRole('checkbox',{name:'Remplacer par cette valeur'});await choice.waitFor();assert.equal(await choice.isChecked(),false,'Explicit replacement choices survive comparison refresh');
   }
   if(scenario!=='applied')await page.getByRole('button',{name:'Valider et enregistrer',exact:true}).click();
-  await page.waitForURL('**/prospects/10000000-0000-4000-8000-000000000001?view=enrichments&reviewedJob=10000000-0000-4000-8000-000000000002');
+  await page.waitForURL(url=>url.pathname==='/prospects/10000000-0000-4000-8000-000000000001'&&url.searchParams.get('view')==='enrichments'&&url.searchParams.get('reviewedJob')==='10000000-0000-4000-8000-000000000002');
   const tab=page.getByRole('button',{name:'Enrichissements',exact:true});await tab.waitFor();assert.equal(await tab.getAttribute('aria-current'),'page');
   await page.getByRole('status').filter({hasText:'Enregistré depuis'}).first().waitFor();
   assert.equal(await page.evaluate(()=>window.__reviewCalls.confirm),scenario==='applied'?0:scenario==='save_conflict'?2:1,'Exactly one explicit confirmation, none for already applied data');
+  if(['activities_fail','parent_fail'].includes(scenario))await page.getByRole('status').filter({hasText:'Certaines données de suivi'}).first().waitFor();
   await page.reload();await page.getByRole('button',{name:'Enrichissements',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Enrichissements',exact:true}).getAttribute('aria-current'),'page','The tab survives reload');
-  if(['activities_fail','parent_fail'].includes(scenario))await page.getByRole('status').filter({hasText:'Certaines données de suivi'}).first().waitFor();
   assert.deepEqual(errors,[]);console.log('✓ Source review scenario:',scenario);await page.close();
  }
  console.log('✓ Real React/Chromium: read → compare → one confirmation → correct prospect and enrichment tab; reload, alreadyApplied and 409/423 context retained');
