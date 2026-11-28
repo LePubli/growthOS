@@ -63,6 +63,9 @@ assert(!websiteInvestigationMatches(withPublishedIds([],['966777093']),researchC
 assert(!websiteInvestigationMatches(withPublishedIds(['96677709400027'],[]),researchCandidate),'Un autre établissement publié exige une vérification');
 assert(!websiteInvestigationMatches(withPublishedIds(['96677709400019'],['966777093']),researchCandidate),'Des identifiants publiés contradictoires bloquent le rapprochement');
 console.log('✓ Enquête : accueil et services, footer Gmail/horaires/profil personnel, lecture publique et indices non confirmés, recoupement officiel et refus des homonymes');
+const footerSocials=readSiteHtml(`<footer><a href='https://www.facebook.com/people/Atelier-59/100083348056733'><svg>Facebook</svg></a><a href='https://www.linkedin.com/in/alice-martin-12ab34cd'><svg>LinkedIn</svg></a></footer>`,root).socials;
+assert.equal(footerSocials.length,2);assert.equal(footerSocials[0].kind,'profile');assert.equal(footerSocials[0].url,'https://www.facebook.com/people/atelier-59/100083348056733/');assert.equal(footerSocials[1].kind,'person');assert(footerSocials.every(s=>s.sourceUrl===root));
+console.log('✓ Réseaux du footer : Facebook /people/ et LinkedIn personnel conservés avec preuve, sans déduire un rôle ou un type d’entreprise');
 
 await assert.rejects(()=>collectSite(root,{load:async()=>{throw Object.assign(Error('Site non lisible'),{status:503,code:'WEBSITE_HTTP_STATUS'});}}),error=>{
  const e=error as any;assert.equal(e.code,'WEBSITE_READ_FAILED');assert(e.readAttempts.length>0);assert.equal(e.readAttempts[0].httpStatus,503);assert.equal(e.readAttempts[0].errorCode,'WEBSITE_HTTP_STATUS');assert(!JSON.stringify(e.readAttempts).includes(root));return true;

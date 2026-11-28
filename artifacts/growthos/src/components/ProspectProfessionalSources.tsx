@@ -70,8 +70,10 @@ export function ProspectProfessionalSources({ prospect,onEnrich }: Props) {
                 <div key={link.url} className="text-sm space-y-1">
                   <a href={link.url} target="_blank" rel="noopener noreferrer"
                     className="atlas-360-link-button atlas-360-link-button-primary" title={link.url}>
-                    <ExternalLink size={13} /> Ouvrir la fiche collectée
+                    <ExternalLink size={13} /> {link.kind==='person'?'Ouvrir le profil personnel lié':link.kind==='profile'?'Ouvrir le profil lié':'Ouvrir la fiche collectée'}
                   </a>
+                  {link.kind==='person'&&<p className="text-xs" style={{color:'var(--text-muted)'}}>Profil personnel ; son lien avec l’entreprise et son rôle restent à confirmer.</p>}
+                  {link.kind==='profile'&&<p className="text-xs" style={{color:'var(--text-muted)'}}>Le type de profil et son lien avec l’entreprise restent à confirmer.</p>}
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                     {new URL(link.url).hostname.replace(/^www\./,'')} ·{' '}
                     {link.origins.join(" · ")}
@@ -85,6 +87,7 @@ export function ProspectProfessionalSources({ prospect,onEnrich }: Props) {
                       </>
                     )}
                   </p>
+                  {link.proofUrls.map(url=><a key={url} href={url} target="_blank" rel="noopener noreferrer" className="atlas-360-link-button atlas-360-link-button-secondary"><ExternalLink size={13}/> Page où le lien a été trouvé</a>)}
                 </div>
               ))}
               {query.trim() && (

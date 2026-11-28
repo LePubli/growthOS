@@ -14,7 +14,7 @@ try {
     import {createElement} from 'react';
     import {Router} from 'wouter';
     import {renderToStaticMarkup} from 'react-dom/server';
-    import {PROFESSIONAL_SOURCES,professionalSourceUrl} from '../../lib/api-zod/src/professional-sources';
+    import {PROFESSIONAL_SOURCES,professionalSourceUrl,publicSocialReference} from '../../lib/api-zod/src/professional-sources';
     import {prospectSourceLinks} from './src/lib/prospect-source-links';
     import {ProspectProfessionalSources} from './src/components/ProspectProfessionalSources';
     assert.equal(professionalSourceUrl('linkedin','https://linkedin.com/company/ATELIER/about/?trk=x#about'),'https://www.linkedin.com/company/atelier/');
@@ -70,6 +70,31 @@ try {
     assert.ok(!empty.includes('NaN') && !empty.includes('Invalid Date'));
     const unnamed=render({city:'Roubaix'});
     assert.ok(!unnamed.includes('google.com/search') && !unnamed.includes('bing.com/search'),'Une ville seule ne déclenche pas une recherche présentée comme un nom');
+    const person='https://www.linkedin.com/in/alice-martin-12ab34cd/';
+    const facebook='https://www.facebook.com/people/atelier-59/100083348056733/';
+    const page='https://atelier.test/services';
+    const site={sourceDetails:{website:{capturedAt:'2026-11-28T10:00:00Z',sourceUrl:'https://atelier.test/',snapshot:{identity:'matched',socials:[
+      {source:'linkedin',kind:'person',url:person,sourceUrl:page},
+      {source:'facebook',kind:'profile',url:facebook+'?tracking=1',sourceUrl:page},
+      {source:'linkedin',url:person,sourceUrl:'https://atelier.test/contact'},
+      {source:'facebook',url:'https://facebook.com.evil.example/people/atelier/100083348056733'},
+      {source:'instagram',url:person},
+    ]}}}};
+    const socialLinks=prospectSourceLinks(site);
+    assert.equal(socialLinks.length,2);
+    assert.equal(socialLinks.find(l=>l.source==='linkedin').kind,'person');
+    assert.deepEqual(socialLinks.find(l=>l.source==='linkedin').proofUrls,[page,'https://atelier.test/contact']);
+    assert.equal(socialLinks.find(l=>l.source==='facebook').url,facebook);
+    const socialHtml=render(site);
+    assert(socialHtml.includes(person)&&socialHtml.includes(facebook));
+    assert(socialHtml.includes('Ouvrir le profil personnel lié')&&socialHtml.includes('rôle restent à confirmer'));
+    assert(socialHtml.includes('Page où le lien a été trouvé')&&socialHtml.includes(page));
+    assert(!socialHtml.includes('evil.example'));
+    assert.equal((socialHtml.match(/Aucun lien collecté/g)||[]).length,3);
+    assert.equal(professionalSourceUrl('linkedin',person),null,'La visibilité du profil ne remplace pas la page entreprise');
+    assert.equal(publicSocialReference('https://facebook.com/profile.php?id=100083348056733&tracking=x').kind,'profile');
+    for(const url of ['https://facebook.com/people/atelier/abc','https://facebook.com/people/atelier/100083348056733/posts/1','https://facebook.com/profile.php?id=abc','javascript:alert(1)'])assert.equal(publicSocialReference(url),null);
+    assert.deepEqual(prospectSourceLinks({sourceDetails:{website:{snapshot:{...site.sourceDetails.website.snapshot,identity:'contradictory'}}}}),[]);
     console.log('✓ Sources professionnelles : URLs, refus des publications, provenance, dédoublonnage et rendu React des cinq sources');
   `},outfile:join(directory,'test.mjs'),platform:'node',format:'esm',bundle:true,jsx:'automatic',
     tsconfig:join(root,'artifacts/growthos/tsconfig.json'),

@@ -14,7 +14,7 @@ export type ProfessionalSource = (typeof PROFESSIONAL_SOURCES)[number]["id"];
 
 /** A website can link a person as well as a company. This does not turn a
  * personal profile into the company's LinkedIn URL, or prove a manager role. */
-export function publicSocialReference(value:unknown):{source:string;kind:'person'|'company';url:string;nameHint?:string}|null{
+export function publicSocialReference(value:unknown):{source:string;kind:'person'|'company'|'profile';url:string;nameHint?:string}|null{
   if(typeof value!=='string'||value.length>500)return null;
   try{
     const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||u.port)return null;
@@ -25,6 +25,13 @@ export function publicSocialReference(value:unknown):{source:string;kind:'person
         const nameHint=words.length>=2&&words.length<=5&&words.every(w=>/^[a-zÀ-ÿ]{2,30}$/i.test(w))?words.map(w=>w[0].toUpperCase()+w.slice(1)).join(' '):undefined;
         return {source:'linkedin',kind:'person',url:'https://www.linkedin.com/in/'+person[1].toLowerCase()+'/',...(nameHint?{nameHint}:{})};}
       u.hostname='www.linkedin.com';const company=professionalSourceUrl('linkedin',u.href);return company?{source:'linkedin',kind:'company',url:company}:null;
+    }
+    // Facebook uses /people/name/id for business pages too. The URL alone
+    // does not establish whether this is a person or a company.
+    if(host==='facebook.com'){
+      const people=u.pathname.match(/^\/people\/([a-z0-9.%_-]+)\/(\d{5,30})\/?$/i);
+      if(people)return {source:'facebook',kind:'profile',url:'https://www.facebook.com/people/'+people[1].toLowerCase()+'/'+people[2]+'/'};
+      if(u.pathname==='/profile.php'&&/^\d{5,30}$/.test(u.searchParams.get('id')||''))return {source:'facebook',kind:'profile',url:'https://www.facebook.com/profile.php?id='+u.searchParams.get('id')};
     }
     for(const source of ['facebook','instagram','tiktok']){const url=professionalSourceUrl(source,u.href);if(url)return {source,kind:'company',url};}
     return null;

@@ -1,5 +1,6 @@
 import {
   professionalSourceUrl,
+  publicSocialReference,
   type ProfessionalSource,
 } from "../../../../lib/api-zod/src/professional-sources";
 
@@ -14,6 +15,8 @@ export type ProspectSourceLink = {
   origins: string[];
   capturedAt: string | null;
   current: boolean;
+  kind: 'person' | 'company' | 'profile';
+  proofUrls: string[];
 };
 export type SourceLinkedProspect = {
   linkedinUrl?: string | null;
@@ -41,14 +44,20 @@ export function prospectSourceLinks(
     value: unknown,
     origin: string,
     capturedAt?: unknown,
+    proofUrl?: unknown,
   ) => {
-    const url = professionalSourceUrl(source, value);
+    const reference = publicSocialReference(value);
+    const social = reference?.source === source ? reference : null;
+    const url = social?.url || professionalSourceUrl(source, value);
     if (!url) return;
+    let proof: string | null = null;
+    if(typeof proofUrl==='string')try{const u=new URL(proofUrl);if(['https:','http:'].includes(u.protocol)&&!u.username&&!u.password)proof=u.href;}catch{}
     const key = source + ":" + url;
     const existing = links.get(key);
     const captured = date(capturedAt);
     if (existing) {
       if (!existing.origins.includes(origin)) existing.origins.push(origin);
+      if (proof && !existing.proofUrls.includes(proof)) existing.proofUrls.push(proof);
       if (captured && (!existing.capturedAt || captured > existing.capturedAt))
         existing.capturedAt = captured;
       return;
@@ -59,6 +68,8 @@ export function prospectSourceLinks(
       origins: [origin],
       capturedAt: captured,
       current: source === "linkedin" && url === currentLinkedin,
+      kind: social?.kind || 'company',
+      proofUrls: proof ? [proof] : [],
     });
   };
   add("linkedin", prospect.linkedinUrl, "Champ LinkedIn du CRM");
@@ -88,7 +99,7 @@ export function prospectSourceLinks(
   for (const [source, url] of Object.entries(record(pagesjaunes.socials)))
     add(source, url, "Relevé sur PagesJaunes", pagesjaunes.capturedAt);
   const website=record(details.website),snapshot=record(website.snapshot);
-  if(snapshot.identity!=='contradictory'&&Array.isArray(snapshot.socials))for(const value of snapshot.socials){const link=record(value);add(link.source,link.url,'Publié sur le site du prospect',website.capturedAt);}
+  if(snapshot.identity!=='contradictory'&&Array.isArray(snapshot.socials))for(const value of snapshot.socials){const link=record(value);add(link.source,link.url,'Publié sur le site du prospect',website.capturedAt,link.sourceUrl||website.sourceUrl);}
   return [...links.values()].sort(
     (a, b) =>
       Number(b.current) - Number(a.current) ||
