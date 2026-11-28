@@ -38,7 +38,10 @@ const chrome = {
       return copy(t);
     },
     get: async (id) => {
-      if (closed) throw Error("Closed");
+      if (closed) {
+        tabs.delete(id);
+        throw Error("Closed");
+      }
       if (!tabs.has(id)) throw Error("Unknown");
       return copy(tabs.get(id));
     },
@@ -226,7 +229,6 @@ assert.equal((await get()).status, "cancelled");
 // Recreate the service worker with its persisted queue state.
 listeners.length = 0;
 alarms.length = 0;
-const old = context;
 context = vm.createContext({
   chrome,
   URL,
@@ -254,11 +256,27 @@ await send("device-authorized", { runId: id(6) }, own);
 run = await settle();
 assert.equal(run.jobs[0].outcome.reasonCode, "TAB_CLOSED");
 assert.equal(run.jobs[0].outcome.captures.length, 0);
+const closedTab = run.jobs[0].tabId;
 await send("device-cancel", { runId: id(6) });
 closed = false;
-const tabCount = tabs.size;
+granted = true;
 await send("device-begin", plan(7));
-await send("device-denied", { runId: id(7) }, own);
+await send("device-authorized", { runId: id(7) }, own);
+run = await settle();
+assert.equal(run.jobs[0].outcome.status, "completed");
+assert.notEqual(
+  run.jobs[0].tabId,
+  closedTab,
+  "Un nouvel essai recrée un onglet fermé sans boucle TAB_CLOSED",
+);
+await send("device-ack", {
+  runId: id(7),
+  jobId: id(4),
+  receipt: { status: "completed", applied: true },
+});
+const tabCount = tabs.size;
+await send("device-begin", plan(8));
+await send("device-denied", { runId: id(8) }, own);
 run = await get();
 assert.equal(run.status, "finished");
 assert.equal(run.jobs[0].outcome.reasonCode, "PERMISSION_REQUIRED");

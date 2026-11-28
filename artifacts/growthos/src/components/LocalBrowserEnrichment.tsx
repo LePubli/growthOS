@@ -179,18 +179,20 @@ export function LocalBrowserEnrichment({
       setBusy(false);
     }
   };
-  const stop = async () => {
-    const target = run || preparation;
+  const stop = async (requested?: { runId: string; deviceId: string }) => {
+    const target = requested || run || preparation;
     if (!target) return;
     setBusy(true);
     try {
-      if (run) await localDeviceCommand("device-cancel", { runId: run.runId });
+      if (run && run.runId === target.runId)
+        await localDeviceCommand("device-cancel", { runId: run.runId });
       await apiClient.post("/browser/device-stop", {
         prospectId,
         deviceId: target.deviceId,
         runId: target.runId,
       });
-      if (run) setRun({ ...run, status: "cancelled" });
+      if (run && run.runId === target.runId)
+        setRun({ ...run, status: "cancelled" });
       stopped.current = target.runId;
       clearPreparation(target.runId);
     } catch (e) {
@@ -234,25 +236,33 @@ export function LocalBrowserEnrichment({
             )}{" "}
             Reprendre les sources sur cet appareil
           </button>
-          {run && run.status !== "cancelled" && (
+          {!isMobileConnectorRequired() && (
             <button
               type="button"
               className="atlas-360-link-button atlas-360-link-button-secondary"
               onClick={() =>
-                void localDeviceCommand("device-show", {
-                  runId: run.runId,
-                }).catch((e) => setError(e.message))
+                void (async () => {
+                  const current =
+                    run || (await localDeviceCommand("device-get")).deviceRun;
+                  if (!current)
+                    throw Error(
+                      "Aucun lot local disponible. Lancez la reprise depuis cette fiche.",
+                    );
+                  await localDeviceCommand("device-show", {
+                    runId: current.runId,
+                  });
+                })().catch((e) => setError(e.message))
               }
             >
               Ouvrir les commandes Chrome
             </button>
           )}
-          {!run && preparation && (
+          {preparation && preparation.runId !== run?.runId && (
             <button
               type="button"
               className="atlas-360-link-button atlas-360-link-button-secondary"
               disabled={busy}
-              onClick={() => void stop()}
+              onClick={() => void stop(preparation)}
             >
               Arrêter la préparation locale
             </button>

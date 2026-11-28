@@ -282,7 +282,7 @@ async function drRead(job, target) {
         : page.empty
           ? "NO_RESULTS"
           : "UNREADABLE",
-    captures,
+    captures: captures.map((c) => ({ ...c, capturedAt: Date.now() })),
     references: page.refs,
   };
 }
@@ -450,6 +450,15 @@ async function drAction(action, payload = {}, sender) {
         growthos_device_archives_v1: [old, ...archive].slice(0, 3),
       });
     }
+    for (const job of run.jobs)
+      if (job.tabId) {
+        try {
+          const tab = await chrome.tabs.get(job.tabId);
+          if (!drAllowed(job.source, tab.url)) delete job.tabId;
+        } catch {
+          delete job.tabId;
+        }
+      }
     await drSave(run, true);
     await chrome.tabs.create({
       url: chrome.runtime.getURL("device.html"),

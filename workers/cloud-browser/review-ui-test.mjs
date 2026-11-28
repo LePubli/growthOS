@@ -9,7 +9,7 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const origin='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CLOUD_TEST_BROWSER?{executablePath:process.env.CLOUD_TEST_BROWSER}:{})});
 try{
- for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery','save_conflict','mobile_long','mobile_blocked','activities_fail','parent_fail','finish_fail','duplicate','duplicate_mobile','device','device_server_retry','device_plan_retry']){
+ for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery','save_conflict','mobile_long','mobile_blocked','activities_fail','parent_fail','finish_fail','duplicate','duplicate_mobile','device','device_server_retry','device_plan_retry','device_navigation']){
   const mobile=scenario.startsWith('mobile_')||scenario.endsWith('_fail')||scenario.endsWith('_mobile');const page=await browser.newPage({viewport:mobile?{width:scenario==='mobile_long'?360:390,height:844}:{width:1280,height:900},isMobile:mobile,hasTouch:mobile});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>route.request().url().startsWith(origin)?route.continue():route.abort());
   const history=scenario==='history'||scenario==='discovery';
@@ -32,6 +32,8 @@ try{
    if(scenario==='device_plan_retry'){await local.getByRole('alert').waitFor();await local.getByRole('button',{name:'Reprendre les sources sur cet appareil',exact:true}).click();assert.equal(await page.evaluate(()=>new Set(window.__devicePlanRuns).size),1,'Le lot reste identique après une réponse de préparation perdue');}
    await local.getByText(/Autorisation requise dans le connecteur/).waitFor();
    assert.equal(await page.evaluate(()=>window.__reviewCalls.device),0,'Aucun résultat serveur avant lecture locale');
+   if(scenario==='device_navigation'){await page.evaluate(()=>{history.pushState(null,'','/prospects/10000000-0000-4000-8000-000000000004?view=enrichments&scenario=device_navigation');window.dispatchEvent(new PopStateEvent('popstate'));});await page.getByRole('heading',{name:'Prospect suivant',exact:true}).waitFor();const next=page.getByRole('region',{name:'Collecte sur cet appareil'});assert(await next.getByRole('button',{name:'Reprendre les sources sur cet appareil',exact:true}).isEnabled());assert.equal(await next.getByRole('button',{name:'Arrêter la collecte locale',exact:true}).count(),0,'La nouvelle fiche ne conserve pas les commandes d’arrêt du prospect précédent');assert.equal(await page.evaluate(()=>window.__deviceRun().prospect.id),'10000000-0000-4000-8000-000000000001');assert.deepEqual(errors,[]);await page.close();console.log('✓ Local device React scenario: navigation between prospects');continue;}
+
    await page.evaluate(()=>window.__authorizeDevice());
    if(scenario==='device_server_retry'){
     await local.getByRole('alert').waitFor();assert.equal(await page.evaluate(()=>window.__deviceRun().jobs[0].acked),false,'Une panne serveur ne libère pas la capture');

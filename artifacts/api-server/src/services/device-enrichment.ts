@@ -291,11 +291,23 @@ export async function deviceResult(
           400,
           "La capture appartient à une autre source.",
         );
+      const observed = (raw as any).capturedAt;
+      if (
+        observed !== undefined &&
+        (!Number.isSafeInteger(observed) ||
+          observed < Date.now() - 24 * 60 * 60_000 ||
+          observed > Date.now() + 5 * 60_000)
+      )
+        throw new CloudBrowserError(
+          400,
+          "Horodatage de capture invalide ou expiré. Relancez la lecture sur cet appareil.",
+        );
       const capture = {
         ...raw,
         id: "task_" + id,
         collectionMode: "visible",
-        capturedAt: Date.now(),
+        capturedAt:
+          observed === undefined ? Date.now() : Math.min(observed, Date.now()),
       };
       const preview = await targetCaptureReview(
         tenant,
@@ -330,6 +342,15 @@ export async function deviceResult(
       source,
       true,
     );
+    for (const entry of result.captures) {
+      const original = captures.find(
+        (c) =>
+          c.company === entry.company &&
+          c.sourceUrl === entry.sourceUrl &&
+          c.siret === entry.siret,
+      );
+      if (original) entry.capturedAt = original.capturedAt;
+    }
     result.deviceExecution = { ...e, state: "receiving", digest };
     await c.query(
       "UPDATE cloud_browser_jobs SET status='running',result=$2,lease=$3,lease_until=NOW()+INTERVAL '2 minutes',error=NULL,updated_at=NOW() WHERE id=$1",
@@ -381,7 +402,11 @@ export async function deviceResult(
           ...result.captureHistory,
           ...result.captures.filter((c: any) => c !== selected),
         ].slice(-20),
-        deviceExecution: { ...result.deviceExecution, state: "received" },
+        deviceExecution: {
+          ...result.deviceExecution,
+          state: "received",
+          receivedAt: new Date().toISOString(),
+        },
       };
       const saved = await applyTargetCapture(
         tenant,
@@ -420,7 +445,11 @@ export async function deviceResult(
     });
   }
   if (!applied) {
-    result.deviceExecution = { ...result.deviceExecution, state: "received" };
+    result.deviceExecution = {
+      ...result.deviceExecution,
+      state: "received",
+      receivedAt: new Date().toISOString(),
+    };
     const q = await pool.query(
       "UPDATE cloud_browser_jobs SET status=$3,result=$4,lease=NULL,lease_until=NULL,updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status='running' AND lease=$5 RETURNING id",
       [id, tenant, status, JSON.stringify(result), lease],

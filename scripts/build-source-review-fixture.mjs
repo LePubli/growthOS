@@ -28,6 +28,8 @@ const apiClient={
   if(url==='/browser/jobs')return [clone(job)];
   if(url==='/browser/jobs/'+jobId)return clone(job);
   if(url.startsWith('/browser/jobs/'+jobId+'/review'))return {version:p.updatedAt,expectedValues:{email:p.email},captureDigest:'a'.repeat(64),captureIndex:0,captureCount:1,alreadyApplied:!!job.result.applied,blocked:scenario==='mobile_blocked',legalOnly:false,message:scenario==='mobile_blocked'?'Le SIREN ou le SIRET contredit une identité déjà enregistrée. Cette confirmation ne peut pas l’écraser.':'Vérifiez qu’il s’agit bien de ce prospect. Les champs vides seront complétés.',prospect:clone(p),duplicate:scenario.startsWith('duplicate')&&!job.result.merged?{id:otherId,company:'Identité légale existante',siret:'96677710100019'}:null,source:{name:'societe_com',url:'https://www.societe.com/societe/fixture-966777002.html',company:p.company},fields:[{field:'email',before:p.email,after:capture.email,changed:!p.email},...(scenario==='mobile_long'?['address','city','postalCode','website','apeCode','nafLabel','siren','siret'].map(field=>({field,before:'Valeur CRM '+('ancienne '.repeat(10)),after:'Donnée publiée '+('information source longue '.repeat(25)),changed:true})):[]),...(scenario==='save_conflict'?[{field:'phone',before:p.phone,after:'0320998877',changed:true}]:[])]};
+  if(scenario==='device_navigation'&&url==='/prospects/'+otherId)return {...clone(p),id:otherId,company:'Prospect suivant'};
+  if(scenario==='device_navigation'&&url==='/prospects/'+otherId+'/enrichment')return run();
   if(url==='/prospects/'+id)return clone(p);
   if(url==='/prospects/'+id+'/enrichment')return run();
   if(url==='/prospects/'+id+'/monitoring')return {snapshot:null};
