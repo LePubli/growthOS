@@ -17,7 +17,7 @@ interface Campaign {
   name: string;
   targetType: 'B2B' | 'B2C';
   targetName: string;
-  reputationScore: number;
+  reputationScore: number | null;
   status: string;
   createdAt: string;
 }
@@ -54,8 +54,10 @@ export default function ERepDashboardPage() {
     queryFn: () => apiClient.get('/ereputation/campaigns') as Promise<Campaign[]>,
   });
 
-  const globalScore = campaigns.length
-    ? Math.round(campaigns.reduce((s, c) => s + c.reputationScore, 0) / campaigns.length)
+  // Moyenne des seules campagnes évaluées (un score null signifie « aucune mesure »).
+  const evaluated = campaigns.filter((c): c is Campaign & { reputationScore: number } => c.reputationScore != null);
+  const globalScore = evaluated.length
+    ? Math.round(evaluated.reduce((s, c) => s + c.reputationScore, 0) / evaluated.length)
     : 0;
 
   const activeCampaigns = campaigns.filter(c => c.status === 'active').length;
@@ -118,7 +120,7 @@ export default function ERepDashboardPage() {
         <div className="rounded-2xl border p-6 flex flex-col items-center justify-center" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
           <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-muted)' }}>SCORE DE RÉPUTATION GLOBAL</h2>
           {globalScore?<ScoreGauge score={globalScore}/>:<p className="text-sm text-slate-500">Non évalué : aucune mesure exploitable</p>}
-          <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>Basé sur {campaigns.length} campagne{campaigns.length > 1 ? 's' : ''}</p>
+          <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>Basé sur {evaluated.length} campagne{evaluated.length > 1 ? 's' : ''} évaluée{evaluated.length > 1 ? 's' : ''} sur {campaigns.length}</p>
         </div>
 
         {/* Score evolution */}
@@ -182,14 +184,14 @@ export default function ERepDashboardPage() {
                 <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--body-bg)' }}>
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
                     style={{ background: c.targetType === 'B2B' ? '#2563EB' : '#7C3AED' }}>
-                    {c.targetType}
+                    {c.targetType === 'B2C' ? 'P' : 'E'}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0" title={c.targetType === 'B2C' ? 'Personne physique' : 'Entité'}>
                     <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{c.name}</div>
                     <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{c.targetName}</div>
                   </div>
-                  <div className="text-sm font-bold flex-shrink-0" style={{ color: SCORE_COLOR(c.reputationScore) }}>
-                    {c.reputationScore}
+                  <div className="text-sm font-bold flex-shrink-0" style={{ color: c.reputationScore == null ? 'var(--text-muted)' : SCORE_COLOR(c.reputationScore) }}>
+                    {c.reputationScore ?? '—'}
                   </div>
                 </div>
               ))}

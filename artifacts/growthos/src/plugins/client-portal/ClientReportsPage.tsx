@@ -8,8 +8,8 @@ import apiClient from '@/lib/api-client';
 
 interface ReportData {
   generatedAt: string;
-  summary: { campaignCount: number; averageReputationScore: number; scoreColor: string };
-  campaigns: { id: string; name: string; targetName: string; reputationScore: number; status: string }[];
+  summary: { campaignCount: number; averageReputationScore: number | null; scoreColor: string };
+  campaigns: { id: string; name: string; targetName: string; reputationScore: number | null; status: string }[];
   alerts: { active: number; resolved: number; crisis: number; warnings: number };
   serp: { keywords: { keyword: string; avg_position: number; date: string }[] };
   sentiment: { positive: number; negative: number; neutral: number; total: number };
@@ -60,7 +60,7 @@ export default function ClientReportsPage() {
   if (!data) return <div style={{ padding: 40, color: 'var(--text-muted)' }}>Chargement du rapport…</div>;
 
   const avgScore = data.summary.averageReputationScore;
-  const scoreColor = avgScore >= 70 ? '#059669' : avgScore >= 40 ? '#D97706' : '#DC2626';
+  const scoreColor = avgScore == null ? '#9CA3AF' : avgScore >= 70 ? '#059669' : avgScore >= 40 ? '#D97706' : '#DC2626';
   const totalMentions = data.sentiment.total;
 
   const handleDownload = () => {
@@ -92,7 +92,7 @@ export default function ClientReportsPage() {
 
       {/* KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
-        <KPITile value={`${avgScore}/100`} label="Score moyen" color={scoreColor} icon={<Star size={14} />} />
+        <KPITile value={avgScore == null ? 'Non évalué' : `${avgScore}/100`} label="Score moyen" color={scoreColor} icon={<Star size={14} />} />
         <KPITile value={data.summary.campaignCount} label="Campagnes" color="#7C3AED" icon={<BarChart2 size={14} />} />
         <KPITile value={data.alerts.active} label="Alertes actives" color={data.alerts.active > 0 ? '#DC2626' : '#059669'} icon={<TrendingDown size={14} />} />
         <KPITile value={totalMentions} label="Mentions analysées" color="#2563EB" icon={<MessageCircle size={14} />} />
@@ -112,18 +112,18 @@ export default function ClientReportsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {data.campaigns.map(c => {
                 const c_score = c.reputationScore;
-                const c_color = c_score >= 70 ? '#059669' : c_score >= 40 ? '#D97706' : '#DC2626';
+                const c_color = c_score == null ? '#9CA3AF' : c_score >= 70 ? '#059669' : c_score >= 40 ? '#D97706' : '#DC2626';
                 return (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{c.name}</div>
                       <div style={{ height: 6, borderRadius: 4, background: 'var(--card-border)' }}>
-                        <div style={{ height: 6, borderRadius: 4, width: `${c_score}%`, background: c_color, transition: 'width 0.5s' }} />
+                        <div style={{ height: 6, borderRadius: 4, width: `${c_score ?? 0}%`, background: c_color, transition: 'width 0.5s' }} />
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 50 }}>
-                      {c_score >= 50 ? <TrendingUp size={12} color="#059669" /> : <TrendingDown size={12} color="#DC2626" />}
-                      <span style={{ fontSize: 13, fontWeight: 900, color: c_color }}>{c_score}</span>
+                      {c_score == null ? null : c_score >= 50 ? <TrendingUp size={12} color="#059669" /> : <TrendingDown size={12} color="#DC2626" />}
+                      <span style={{ fontSize: 13, fontWeight: 900, color: c_color }}>{c_score ?? '—'}</span>
                     </div>
                   </div>
                 );

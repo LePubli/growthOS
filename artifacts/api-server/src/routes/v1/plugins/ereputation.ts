@@ -1,79 +1,160 @@
-import { Router } from "express";
-import { requireAuth } from "../../../middlewares/auth";
-import { campaignService } from "../../../lib/plugin-ereputation/CampaignService";
+import { Router, type Request, type Response } from "express";
+import { z } from "zod";
+import { requireAuth, requireRole } from "../../../middlewares/auth";
+import { campaignService, CampaignError, CAMPAIGN_STATUSES } from "../../../lib/plugin-ereputation/CampaignService";
+import { changeLog } from "../../../lib/plugin-ereputation/ChangeLog";
+import { purgeExpiredPersonCampaigns } from "../../../lib/plugin-ereputation/RetentionService";
 import { strategyEngine } from "../../../lib/plugin-ereputation/StrategyEngine";
 import { sentimentAnalyzer } from "../../../lib/plugin-ereputation/SentimentAnalyzer";
-import { db } from "@workspace/db";
-import { signalsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { z } from "zod";
+import { logger } from "../../../lib/logger";
 
+/**
+ * API e-réputation (montée sur /api/v1/ereputation, authentification + tenant requis).
+ * Contrat détaillé : docs/ereputation/README.md.
+ */
 const router = Router();
 router.use(requireAuth);
 
-// All nested campaign endpoints must be tenant-scoped (not just the dashboard).
-router.param('id', async (req, res, next, id) => {
+const actorOf = (req: Request) => ({ userId: req.auth!.userId, email: req.auth!.email });
+
+function fail(res: Response, error: unknown, fallback: string): void {
+  if (error instanceof CampaignError) { res.status(error.status).json({ error: error.message }); return; }
+  logger.error({ reason: error instanceof Error ? error.message : "unknown" }, fallback);
+  res.status(500).json({ error: fallback });
+}
+
+function invalid(res: Response, error: z.ZodError): void {
+  const issue = error.issues[0];
+  res.status(400).json({ error: `Champ invalide : ${issue?.path.join(".") || "corps"} — ${issue?.message ?? "valeur refusée"}` });
+}
+
+// Toutes les routes imbriquées /campaigns/:id/* sont limitées à l'agence de l'utilisateur.
+router.param("id", async (req, res, next, id) => {
   try {
     const campaign = await campaignService.getCampaign(String(id), req.auth!.tenantId);
-    if (!campaign) { res.status(404).json({ error: 'Campagne introuvable' }); return; }
+    if (!campaign) { res.status(404).json({ error: "Campagne introuvable" }); return; }
     next();
-  } catch { res.status(500).json({ error: 'Vérification de campagne impossible' }); }
+  } catch { res.status(500).json({ error: "Vérification de campagne impossible" }); }
 });
 
-/* GET /ereputation/campaigns */
-router.get("/campaigns", requireAuth, async (req, res) => {
-  const tenantId = req.auth!.tenantId;
-  const campaigns = await campaignService.listCampaigns(tenantId);
-  res.json(campaigns);
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date AAAA-MM-JJ attendue")
+  .refine(v => { const d = new Date(`${v}T00:00:00Z`); return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v; }, "date inexistante");
+const optionalText = (max: number) => z.string().trim().max(max).nullish();
+const url = z.string().trim().max(2000).url("URL invalide").refine(v => /^https?:\/\//i.test(v), "URL http(s) attendue");
+
+const campaignFields = {
+  name: z.string().trim().min(1).max(200),
+  targetType: z.enum(["B2B", "B2C"]),
+  targetName: z.string().trim().min(1).max(200),
+  targetUrl: z.union([url, z.literal("")]).nullish(),
+  keywords: z.array(z.string().max(120)).max(100),
+  description: optionalText(4000),
+  prospectId: z.string().uuid().nullish(),
+  subjectAliases: z.array(z.string().max(200)).max(50),
+  subjectLocation: optionalText(200),
+  subjectRole: optionalText(200),
+  mandateReference: optionalText(200),
+  mandateSignatory: optionalText(200),
+  mandateSignedAt: date.nullish(),
+  mandateScope: optionalText(2000),
+  retentionUntil: date.nullish(),
+  status: z.enum(CAMPAIGN_STATUSES as [string, ...string[]]),
+};
+const createSchema = z.object({
+  ...campaignFields,
+  keywords: campaignFields.keywords.default([]),
+  subjectAliases: campaignFields.subjectAliases.default([]),
+  status: campaignFields.status.default("active"),
+}).strict();
+const updateSchema = z.object(campaignFields).partial().strict()
+  .refine(v => Object.keys(v).length > 0, "aucun champ à modifier");
+
+/* GET /ereputation/campaigns?includeArchived=true */
+router.get("/campaigns", async (req, res) => {
+  try {
+    res.json(await campaignService.listCampaigns(req.auth!.tenantId, { includeArchived: req.query.includeArchived === "true" }));
+  } catch (error) { fail(res, error, "Lecture des campagnes impossible"); }
 });
 
 /* POST /ereputation/campaigns */
-router.post("/campaigns", requireAuth, async (req, res) => {
-  const tenantId = req.auth!.tenantId;
-  const { name, targetType, targetName, targetUrl, keywords } = req.body;
-  if (!name || !targetType || !targetName) {
-    res.status(400).json({ error: "name, targetType, targetName requis" });
-    return;
-  }
+router.post("/campaigns", async (req, res) => {
+  const parsed = createSchema.safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
   try {
-    const campaign = await campaignService.createCampaign({ name, targetType, targetName, targetUrl, keywords: keywords ?? [], tenantId });
+    const campaign = await campaignService.createCampaign({ ...parsed.data, status: parsed.data.status as any, tenantId: req.auth!.tenantId, actor: actorOf(req) });
     res.status(201).json(campaign);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (error) { fail(res, error, "Création de la campagne impossible"); }
+});
+
+/* GET /ereputation/campaigns/:id */
+router.get("/campaigns/:id", async (req, res) => {
+  try { res.json(await campaignService.getCampaign(String(req.params.id), req.auth!.tenantId)); }
+  catch (error) { fail(res, error, "Lecture de la campagne impossible"); }
+});
+
+/* PATCH /ereputation/campaigns/:id — modification partielle, historisée */
+router.patch("/campaigns/:id", async (req, res) => {
+  const parsed = updateSchema.safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    res.json(await campaignService.updateCampaign(String(req.params.id), req.auth!.tenantId, parsed.data as any, actorOf(req)));
+  } catch (error) { fail(res, error, "Modification de la campagne impossible"); }
+});
+
+/* POST /ereputation/campaigns/:id/status { status: active|paused|archived } */
+router.post("/campaigns/:id/status", async (req, res) => {
+  const parsed = z.object({ status: campaignFields.status }).strict().safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    res.json(await campaignService.setStatus(String(req.params.id), req.auth!.tenantId, parsed.data.status as any, actorOf(req)));
+  } catch (error) { fail(res, error, "Changement de statut impossible"); }
+});
+
+/* DELETE /ereputation/campaigns/:id — suppression définitive + données collectées */
+router.delete("/campaigns/:id", async (req, res) => {
+  try { res.json(await campaignService.deleteCampaign(String(req.params.id), req.auth!.tenantId, actorOf(req))); }
+  catch (error) { fail(res, error, "Suppression de la campagne impossible"); }
+});
+
+/* GET /ereputation/campaigns/:campaignId/history — disponible aussi après suppression */
+router.get("/campaigns/:campaignId/history", async (req, res) => {
+  const id = String(req.params.campaignId);
+  if (!z.string().uuid().safeParse(id).success) { res.status(400).json({ error: "Identifiant invalide" }); return; }
+  try {
+    const entries = await changeLog.list(req.auth!.tenantId, id, Number(req.query.limit) || 200);
+    if (!entries.length && !(await campaignService.getCampaign(id, req.auth!.tenantId))) {
+      res.status(404).json({ error: "Campagne introuvable" }); return;
+    }
+    res.json(entries);
+  } catch (error) { fail(res, error, "Lecture de l'historique impossible"); }
+});
+
+/* POST /ereputation/retention/purge — purge immédiate des personnes dont la conservation a expiré (admin) */
+router.post("/retention/purge", requireRole("admin"), async (req, res) => {
+  try { res.json(await purgeExpiredPersonCampaigns(req.auth!.tenantId)); }
+  catch (error) { fail(res, error, "Purge RGPD impossible"); }
 });
 
 /* GET /ereputation/campaigns/:id/dashboard */
-router.get("/campaigns/:id/dashboard", requireAuth, async (req, res) => {
-  const tenantId = req.auth!.tenantId;
-  const dashboard = await campaignService.getDashboard(String(req.params.id), tenantId);
-  if (!dashboard) { res.status(404).json({ error: "Campagne introuvable" }); return; }
-  res.json(dashboard);
+router.get("/campaigns/:id/dashboard", async (req, res) => {
+  try { res.json(await campaignService.getDashboard(String(req.params.id), req.auth!.tenantId)); }
+  catch (error) { fail(res, error, "Tableau de bord indisponible"); }
 });
 
 /* POST /ereputation/campaigns/:id/audit */
-router.post("/campaigns/:id/audit", requireAuth, async (req, res) => {
-  const tenantId = req.auth!.tenantId;
-  try {
-    const result = await campaignService.runAudit(String(req.params.id), tenantId);
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+router.post("/campaigns/:id/audit", async (req, res) => {
+  try { res.json(await campaignService.runAudit(String(req.params.id), req.auth!.tenantId)); }
+  catch (error) { fail(res, error, "Audit impossible"); }
 });
 
 /* POST /ereputation/campaigns/:id/generate-strategy */
-router.post("/campaigns/:id/generate-strategy", requireAuth, async (req, res) => {
-  try {
-    const strategy = await strategyEngine.generateAutomatedStrategy(String(req.params.id), req.auth!.tenantId);
-    res.json({ strategy });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+router.post("/campaigns/:id/generate-strategy", async (req, res) => {
+  try { res.json({ strategy: await strategyEngine.generateAutomatedStrategy(String(req.params.id), req.auth!.tenantId) }); }
+  catch (err: any) { res.status(503).json({ error: err?.message ?? "Génération IA indisponible" }); }
 });
 
 /* POST /ereputation/campaigns/:id/generate-content */
-router.post("/campaigns/:id/generate-content", requireAuth, async (req, res) => {
+router.post("/campaigns/:id/generate-content", async (req, res) => {
   const parsed = z.object({
     platform: z.enum(["LinkedIn", "X", "Blog", "Newsletter", "Instagram"]),
     tone: z.enum(["professionnel", "inspirant", "éducatif", "storytelling"]).default("professionnel"),
@@ -82,129 +163,109 @@ router.post("/campaigns/:id/generate-content", requireAuth, async (req, res) => 
   try {
     const content = await strategyEngine.generateContent(String(req.params.id), req.auth!.tenantId, parsed.data.platform, parsed.data.tone);
     res.json({ content, status: "draft", published: false });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err: any) { res.status(503).json({ error: err?.message ?? "Génération IA indisponible" }); }
 });
 
 /* GET /ereputation/campaigns/:id/serp */
-router.get("/campaigns/:id/serp", requireAuth, async (req, res) => {
-  const data = await campaignService.getSerpData(String(req.params.id));
-  res.json(data);
+router.get("/campaigns/:id/serp", async (req, res) => {
+  try { res.json(await campaignService.getSerpData(String(req.params.id))); }
+  catch (error) { fail(res, error, "Lecture SERP impossible"); }
 });
 
-/* POST /ereputation/campaigns/:id/serp */
-router.post("/campaigns/:id/serp", requireAuth, async (req, res) => {
-  const { keyword, position, url, volume } = req.body;
-  await campaignService.addSerpEntry(String(req.params.id), keyword, position, url, volume);
-  res.json({ ok: true });
+/* POST /ereputation/campaigns/:id/serp — saisie d'une mesure observée (position null = absent du top 100) */
+router.post("/campaigns/:id/serp", async (req, res) => {
+  const parsed = z.object({
+    keyword: z.string().trim().min(1).max(200),
+    position: z.number().int().min(1).max(100).nullable(),
+    url: z.union([url, z.literal("")]).nullish(),
+    volume: z.number().int().min(0).nullish(),
+  }).safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    const { keyword, position, url: resultUrl, volume } = parsed.data;
+    await campaignService.addSerpEntry(String(req.params.id), keyword, position, resultUrl, volume);
+    res.status(201).json({ ok: true });
+  } catch (error) { fail(res, error, "Enregistrement SERP impossible"); }
 });
 
 /* GET /ereputation/campaigns/:id/sentiment */
-router.get("/campaigns/:id/sentiment", requireAuth, async (req, res) => {
-  const logs = await campaignService.getSentimentLogs(String(req.params.id));
-  res.json(logs);
+router.get("/campaigns/:id/sentiment", async (req, res) => {
+  try { res.json(await campaignService.getSentimentLogs(String(req.params.id))); }
+  catch (error) { fail(res, error, "Lecture des mentions impossible"); }
 });
 
 /* POST /ereputation/campaigns/:id/sentiment */
-router.post("/campaigns/:id/sentiment", requireAuth, async (req, res) => {
-  const { text, sourceUrl } = req.body;
-  if (!text) { res.status(400).json({ error: "text requis" }); return; }
-  await campaignService.addSentimentLog(String(req.params.id), text, sourceUrl);
-  const analysis = sentimentAnalyzer.analyzeText(text);
-  res.json({ ok: true, analysis });
+router.post("/campaigns/:id/sentiment", async (req, res) => {
+  const parsed = z.object({ text: z.string().trim().min(1).max(20000), sourceUrl: z.union([url, z.literal("")]).nullish() }).safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    const analysis = await campaignService.addSentimentLog(String(req.params.id), parsed.data.text, parsed.data.sourceUrl);
+    res.status(201).json({ ok: true, analysis });
+  } catch (error) { fail(res, error, "Enregistrement de la mention impossible"); }
 });
 
 /* POST /ereputation/campaigns/:id/sentiment/:logId/ai-response */
-router.post("/campaigns/:id/sentiment/:logId/ai-response", requireAuth, async (req, res) => {
+router.post("/campaigns/:id/sentiment/:logId/ai-response", async (_req, res) => {
   res.status(501).json({ error: "Réponse automatique indisponible : elle nécessiterait un fournisseur IA et une validation humaine." });
 });
 
 /* GET /ereputation/campaigns/:id/posts */
-router.get("/campaigns/:id/posts", requireAuth, async (req, res) => {
-  const posts = await campaignService.getPosts(String(req.params.id));
-  res.json(posts);
+router.get("/campaigns/:id/posts", async (req, res) => {
+  try { res.json(await campaignService.getPosts(String(req.params.id))); }
+  catch (error) { fail(res, error, "Lecture des contenus impossible"); }
 });
 
 /* POST /ereputation/campaigns/:id/posts */
-router.post("/campaigns/:id/posts", requireAuth, async (req, res) => {
-  const { platform, content, scheduledAt } = req.body;
+router.post("/campaigns/:id/posts", async (req, res) => {
+  const { platform, content, scheduledAt } = req.body ?? {};
   if (!platform || !content) { res.status(400).json({ error: "platform et content requis" }); return; }
   if (scheduledAt) { res.status(409).json({ error: "Planification non disponible sans moteur de publication. Enregistrez un brouillon sans date." }); return; }
-  const post = await campaignService.createPost(String(req.params.id), platform, content, scheduledAt);
-  res.status(201).json(post);
+  try { res.status(201).json(await campaignService.createPost(String(req.params.id), String(platform), String(content))); }
+  catch (error) { fail(res, error, "Enregistrement du contenu impossible"); }
 });
 
 /* GET /ereputation/pbn */
-router.get("/pbn", requireAuth, async (req, res) => {
-  const tenantId = req.auth!.tenantId;
-  const sites = await campaignService.getPbnSites(tenantId);
-  res.json(sites);
+router.get("/pbn", async (req, res) => {
+  try { res.json(await campaignService.getPbnSites(req.auth!.tenantId)); }
+  catch (error) { fail(res, error, "Lecture des sites impossible"); }
 });
 
 /* POST /ereputation/pbn */
-router.post("/pbn", requireAuth, async (req, res) => {
-  const tenantId = req.auth!.tenantId;
-  const { campaignId, url, daScore, paScore } = req.body;
-  if (!url) { res.status(400).json({ error: "url requis" }); return; }
-  const site = await campaignService.addPbnSite(tenantId, campaignId ?? null, url, daScore ?? 0, paScore ?? 0);
-  res.status(201).json(site);
+router.post("/pbn", async (req, res) => {
+  const parsed = z.object({
+    url, campaignId: z.string().uuid().nullish(),
+    daScore: z.number().int().min(0).max(100).nullish(), paScore: z.number().int().min(0).max(100).nullish(),
+  }).safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    const { url: siteUrl, campaignId, daScore, paScore } = parsed.data;
+    res.status(201).json(await campaignService.addPbnSite(req.auth!.tenantId, campaignId ?? null, siteUrl, daScore ?? null, paScore ?? null));
+  } catch (error) { fail(res, error, "Enregistrement du site impossible"); }
 });
 
 /* POST /ereputation/analyze-text */
-router.post("/analyze-text", requireAuth, async (req, res) => {
-  const { text } = req.body;
+router.post("/analyze-text", async (req, res) => {
+  const { text } = req.body ?? {};
   if (!text) { res.status(400).json({ error: "text requis" }); return; }
-  const result = sentimentAnalyzer.analyzeText(text);
-  res.json(result);
+  res.json(sentimentAnalyzer.analyzeText(String(text)));
 });
 
-/* GET /ereputation/score-global
- * Compute a global reputation score from signals + sentiment logs.
- * Returns: { score, grade, signals, trend, breakdown }
- */
-router.get("/score-global", requireAuth, async (req, res) => {
-  const tenantId = req.auth!.tenantId;
-
-  const signals = await db.select().from(signalsTable)
-    .where(eq(signalsTable.tenantId, tenantId));
-
-  const campaigns = await campaignService.listCampaigns(tenantId);
-
-  let sentimentScore: number | null = null;
-  if (campaigns.length > 0) {
-    const logs = await campaignService.getSentimentLogs(campaigns[0].id);
-    if (logs.length > 0) {
-      const avg = logs.reduce((s: number, l: any) => s + (Number(l.score) || 0), 0) / logs.length;
-      sentimentScore = Math.round((avg + 1) / 2 * 100);
-    }
-  }
-
-  // Signal impact scores are NOT sentiment polarity; using them as such produces
-  // a fictitious global reputation score. Only evaluated mentions can be scored.
-  const positiveSignals = 0;
-  const negativeSignals = 0;
-  const signalScore: number | null = null;
-  const score = sentimentScore;
-
-  const grade = score===null ? null : score >= 80 ? "A" : score >= 65 ? "B" : score >= 50 ? "C" : score >= 35 ? "D" : "F";
-  const label = score===null ? "Non évalué" : score >= 80 ? "Excellente" : score >= 65 ? "Bonne" : score >= 50 ? "Moyenne" : "À améliorer";
-  const trend = null; // No historical comparison; don't fabricate a trend.
-
-  res.json({
-    score,
-    grade,
-    label,
-    trend,
-    breakdown: {
-      sentimentScore,
-      signalScore,
-      totalSignals: signals.length,
-      positiveSignals,
-      negativeSignals,
-      campaigns: campaigns.length,
-    },
-  });
+/* GET /ereputation/score-global — moyenne des seules campagnes évaluées */
+router.get("/score-global", async (req, res) => {
+  try {
+    const g = await campaignService.getGlobalScore(req.auth!.tenantId);
+    const score = g.score;
+    const grade = score === null ? null : score >= 80 ? "A" : score >= 65 ? "B" : score >= 50 ? "C" : score >= 35 ? "D" : "F";
+    const label = score === null ? "Non évalué" : score >= 80 ? "Excellente" : score >= 65 ? "Bonne" : score >= 50 ? "Moyenne" : "À améliorer";
+    res.json({
+      score, grade, label,
+      trend: null, // pas encore d'historique de score : aucune tendance inventée
+      breakdown: {
+        campaigns: g.campaigns, evaluatedCampaigns: g.evaluated,
+        mentions: g.mentions.total, positiveMentions: g.mentions.pos, negativeMentions: g.mentions.neg,
+      },
+    });
+  } catch (error) { fail(res, error, "Score global indisponible"); }
 });
 
 export default router;

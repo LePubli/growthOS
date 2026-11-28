@@ -9,7 +9,7 @@ import apiClient from '@/lib/api-client';
 
 interface DashboardData {
   summary: {
-    averageReputationScore: number;
+    averageReputationScore: number | null;
     totalCampaigns: number;
     activeAlerts: number;
     crisisAlerts: number;
@@ -17,7 +17,7 @@ interface DashboardData {
     scoreColor: string;
     scoreLabel: string;
   };
-  recentCampaigns: { id: string; name: string; targetName: string; reputationScore: number; status: string; updatedAt: string }[];
+  recentCampaigns: { id: string; name: string; targetName: string; reputationScore: number | null; status: string; updatedAt: string }[];
   recentAlerts: { id: string; type: string; severity: string; title: string; score: number; createdAt: string }[];
 }
 
@@ -96,7 +96,9 @@ export default function ClientDashboardPage() {
         {/* Score gauge */}
         <div style={{ background: 'var(--card-bg)', border: '1.5px solid var(--card-border)', borderRadius: 16, padding: '20px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Score Global</div>
-          <ScoreGauge score={s?.averageReputationScore ?? 50} />
+          {s?.averageReputationScore == null
+            ? <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', padding: '24px 0' }}>Non évalué</div>
+            : <ScoreGauge score={s.averageReputationScore} />}
         </div>
 
         {/* Campagnes */}
@@ -171,7 +173,7 @@ export default function ClientDashboardPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {(data?.recentCampaigns ?? []).slice(0, 4).map(c => {
-                const scoreColor = c.reputationScore >= 70 ? '#059669' : c.reputationScore >= 40 ? '#D97706' : '#DC2626';
+                const scoreColor = c.reputationScore == null ? '#9CA3AF' : c.reputationScore >= 70 ? '#059669' : c.reputationScore >= 40 ? '#D97706' : '#DC2626';
                 return (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--body-bg)', border: '1px solid var(--card-border)' }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: scoreColor, flexShrink: 0 }} />
@@ -179,9 +181,9 @@ export default function ClientDashboardPage() {
                       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{c.name}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.targetName}</div>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 900, color: scoreColor }}>{c.reputationScore}/100</div>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: scoreColor }}>{c.reputationScore == null ? 'Non évalué' : `${c.reputationScore}/100`}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      {c.reputationScore >= 50 ? <TrendingUp size={12} color="#059669" /> : <TrendingDown size={12} color="#DC2626" />}
+                      {c.reputationScore == null ? null : c.reputationScore >= 50 ? <TrendingUp size={12} color="#059669" /> : <TrendingDown size={12} color="#DC2626" />}
                     </div>
                   </div>
                 );

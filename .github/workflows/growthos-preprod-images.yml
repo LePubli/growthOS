@@ -90,6 +90,7 @@ jobs:
           node scripts/test-prospect-completeness.mjs
           node scripts/test-prospect-logos.mjs
           node scripts/test-prospect-harmony.mjs
+          node scripts/test-ereputation-ui.mjs
 
       - name: Build API for integration tests
         run: pnpm --filter @workspace/api-server build
@@ -98,6 +99,11 @@ jobs:
         env:
           SMOKE_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
         run: node scripts/smoke-wizard.mjs
+
+      - name: Test e-reputation campaigns, GDPR mandate and change history
+        env:
+          EREP_POSTGRES_URL: postgresql://postgres:wizard_ci_only@127.0.0.1:5432/postgres
+        run: node scripts/test-ereputation.mjs
 
       - name: Test cloud AI connectors without real API calls
         run: pnpm --filter @workspace/api-server exec node --import tsx src/tests/ai-connector-probes.test.ts

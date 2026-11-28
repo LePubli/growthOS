@@ -13,7 +13,7 @@ export async function run(): Promise<SuiteResult> {
   await suite.test("Créer une campagne e-réputation → 201", async () => {
     const r = await api.post<{ id: string }>("/ereputation/campaigns", {
       name: `Campagne Test ${Date.now()}`,
-      targetType: "domain",
+      targetType: "B2B",
       targetName: "acme-corp-test.fr",
       targetUrl: "https://acme-corp-test.fr",
       keywords: ["Acme Corp", "acme.fr"],
