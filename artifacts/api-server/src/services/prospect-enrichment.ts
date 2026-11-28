@@ -43,8 +43,9 @@ export async function latestProspectEnrichment(tenant:string,id:string){
         let changed=false,identified=false;const steps=job.steps as Record<string,Step>;
         for(const [source,step] of Object.entries(steps)){
           if(!step.jobId||step.status==='completed')continue;
-          const child=(await client.query("SELECT result FROM cloud_browser_jobs WHERE id=$1 AND tenant_id=$2 AND status='completed'",[step.jobId,tenant])).rows[0];
-          if(!child?.result?.applied)continue;
+          const child=(await client.query("SELECT status,result,updated_at FROM cloud_browser_jobs WHERE id=$1 AND tenant_id=$2",[step.jobId,tenant])).rows[0];
+          if(child?.result?.deviceExecution?.state==='received'&&!child.result.applied){const stamp=new Date(child.updated_at).toISOString();if((step as any).deviceUpdatedAt!==stamp){steps[source]={...step,status:child.status==='completed'?'empty':child.status,message:child.result.message,deviceUpdatedAt:stamp} as Step;changed=true;}continue;}
+          if(!child?.result?.applied||child.status!=='completed')continue;
           steps[source]={...step,status:'completed',filled:child.result.applied.filled||[],conflicts:child.result.applied.conflicts||0,message:child.result.manualConfirmation?'Identité confirmée par l’utilisateur ; données comparées et enregistrées.':'Données concordantes enregistrées.'};
           changed=true;identified ||= (child.result.applied.filled||[]).some((f:string)=>['siren','siret'].includes(f));
         }

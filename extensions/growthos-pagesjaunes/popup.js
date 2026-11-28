@@ -369,9 +369,11 @@ $('open').addEventListener('click',async()=>{
   }catch(e){notice(e.message,true);}
 });
 $('capture').addEventListener('click',async()=>{
+  const origins={google_maps:['https://www.google.com/*','https://google.com/*','https://maps.google.com/*','https://www.google.fr/*','https://google.fr/*'],google_search:['https://www.google.com/*','https://google.com/*','https://www.google.fr/*','https://google.fr/*'],bing:['https://www.bing.com/*','https://bing.com/*'],societe_com:['https://www.societe.com/*','https://societe.com/*']}[source];
+  const permission=origins?chrome.permissions.request({origins}):Promise.resolve(true);
   setPhase('collect');
   $('capture').disabled=true;
-  try{const r=await message('capture-tab',{query:$('query').value.trim(),area:$('area').value.trim()});await refresh();
+  try{if(!(await permission))throw Error('Autorisez cette source dans Chrome avant de capturer les fiches.');const r=await message('capture-tab',{query:$('query').value.trim(),area:$('area').value.trim()});await refresh();
     notice(r.checked!==undefined ? `${r.checked} fiche(s) Maps examinée(s) · ${r.added} ajoutée(s).` : (r.added||r.draftAdded)
       ? `${r.added||0} fiche(s) prêtes · ${r.draftAdded||0} fiche(s) à compléter ci-dessous · ${(r.ignored||0)+(r.draftIgnored||0)} doublon(s)`
       : r.warning||'Aucune nouvelle fiche');

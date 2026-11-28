@@ -6,7 +6,7 @@
     if (event.source !== window || event.origin !== window.location.origin) return;
     const data = event.data;
     if (!data || data.channel !== CHANNEL || data.direction !== 'to-extension') return;
-    if (typeof data.requestId !== 'string' || data.requestId.length > 80 || !['ping', 'search', 'enrich', 'get-captures', 'get-drafts','ack-import','begin-task','get-task-result','ack-task'].includes(data.action)) return;
+    if (typeof data.requestId !== 'string' || data.requestId.length > 80 || !['ping', 'search', 'enrich', 'get-captures', 'get-drafts','ack-import','begin-task','get-task-result','ack-task','device-begin','device-get','device-ack','device-cancel','device-show'].includes(data.action)) return;
     chrome.runtime.sendMessage({ action: data.action, payload: data.payload }, (response) => {
       const failure = chrome.runtime.lastError?.message;
       window.postMessage({
@@ -16,6 +16,7 @@
         drafts: response?.drafts || [],
         profile: response?.profile || null,
         task: response?.task || null,
+        deviceRun: response?.deviceRun || null,
         warnings: response?.warnings || [],
         version: response?.version || chrome.runtime.getManifest().version,
         extensionId: response?.extensionId || chrome.runtime.id,

@@ -9,10 +9,41 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const origin='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CLOUD_TEST_BROWSER?{executablePath:process.env.CLOUD_TEST_BROWSER}:{})});
 try{
- for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery','save_conflict','mobile_long','mobile_blocked','activities_fail','parent_fail','finish_fail','duplicate','duplicate_mobile']){
+ for(const scenario of ['waiting','ready','applied','busy','lost','history','discovery','save_conflict','mobile_long','mobile_blocked','activities_fail','parent_fail','finish_fail','duplicate','duplicate_mobile','device','device_server_retry','device_plan_retry']){
   const mobile=scenario.startsWith('mobile_')||scenario.endsWith('_fail')||scenario.endsWith('_mobile');const page=await browser.newPage({viewport:mobile?{width:scenario==='mobile_long'?360:390,height:844}:{width:1280,height:900},isMobile:mobile,hasTouch:mobile});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>route.request().url().startsWith(origin)?route.continue():route.abort());
   const history=scenario==='history'||scenario==='discovery';
+  if(scenario.startsWith('device')){
+   await page.addInitScript(()=>{
+    let run=JSON.parse(sessionStorage.getItem('device-fixture')||'null');
+    const save=()=>sessionStorage.setItem('device-fixture',JSON.stringify(run));
+    window.__deviceRun=()=>run;
+    window.__authorizeDevice=()=>{run.status='finished';run.jobs[0].state='ready';run.jobs[0].outcome={status:'completed',captures:[{source:'societe_com',company:'Atelier de recette',email:'contact@atelier.example'}],references:[]};save();};
+    window.addEventListener('message',event=>{const m=event.data;if(m?.channel!=='growthos-pagesjaunes-device-v1'||m.direction!=='to-extension')return;
+     if(m.action==='device-begin'){run={...m.payload,status:'permission_required',jobs:m.payload.jobs.map(j=>({...j,state:'pending',acked:false}))};save();}
+     if(m.action==='device-ack'){run.jobs[0].acked=true;run.jobs[0].receipt=m.payload.receipt;delete run.jobs[0].outcome;save();}
+     if(m.action==='device-cancel'){run.status='cancelled';save();}
+     window.postMessage({channel:m.channel,direction:'from-extension',requestId:m.requestId,ok:true,version:'0.12.0',deviceRun:run},location.origin);
+    });
+   });
+   await page.goto(origin+'/prospects/10000000-0000-4000-8000-000000000001?view=enrichments&scenario='+scenario);
+   const local=page.getByRole('region',{name:'Collecte sur cet appareil'});await local.waitFor();
+   await local.getByRole('button',{name:'Reprendre les sources sur cet appareil',exact:true}).click();
+   if(scenario==='device_plan_retry'){await local.getByRole('alert').waitFor();await local.getByRole('button',{name:'Reprendre les sources sur cet appareil',exact:true}).click();assert.equal(await page.evaluate(()=>new Set(window.__devicePlanRuns).size),1,'Le lot reste identique après une réponse de préparation perdue');}
+   await local.getByText(/Autorisation requise dans le connecteur/).waitFor();
+   assert.equal(await page.evaluate(()=>window.__reviewCalls.device),0,'Aucun résultat serveur avant lecture locale');
+   await page.evaluate(()=>window.__authorizeDevice());
+   if(scenario==='device_server_retry'){
+    await local.getByRole('alert').waitFor();assert.equal(await page.evaluate(()=>window.__deviceRun().jobs[0].acked),false,'Une panne serveur ne libère pas la capture');
+    await local.getByRole('button',{name:'Réessayer la synchronisation'}).click();
+   }
+   await local.getByText(/1\/1 résultat/).waitFor({timeout:20000});
+   assert.equal(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('source-review-fixture')).p.email),'contact@atelier.example');
+   assert.equal(await page.evaluate(()=>window.__deviceRun().jobs[0].acked),true);
+   await page.reload();await page.getByRole('region',{name:'Collecte sur cet appareil'}).getByText(/1\/1 résultat/).waitFor();
+   assert.equal(await page.evaluate(()=>window.__reviewCalls.device),0,'Aucun nouvel enregistrement au rechargement après reçu');
+   assert.deepEqual(errors,[]);await page.close();console.log('✓ Local device React scenario: '+scenario);continue;
+  }
   await page.goto(origin+'/navigateur?source='+(scenario==='discovery'?'google_maps':'societe_com')+(history?'':'&prospectId=10000000-0000-4000-8000-000000000001&jobId=10000000-0000-4000-8000-000000000002')+'&scenario='+scenario);
   if(history)await page.locator('summary').filter({hasText:'Tâches récentes'}).click();
   if(scenario==='discovery'){

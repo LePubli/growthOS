@@ -190,6 +190,23 @@ try{
   await panel.waitForFunction(()=>window.connectorActions.includes('task-complete'));
   assert.deepEqual(await panel.evaluate(()=>window.connectorActions.filter(a=>['permission-request','task-preview','task-complete'].includes(a))),['permission-request','task-preview','task-complete']);
   assert.deepEqual(await panel.evaluate(()=>window.requestedOrigins),[['https://www.societe.com/*','https://societe.com/*']]);
+  const localBrowser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  try{
+   const devicePage=await localBrowser.newPage({viewport:{width:420,height:850}});
+   const deviceHtml=(await readFile(new URL('device.html',extensionRoot),'utf8')).replace(/<script[^>]*src="device-ui.js"[^>]*><\/script>/,'').replace(/<link[^>]*popup.css[^>]*>/,'');
+   await devicePage.setContent(deviceHtml);await devicePage.addStyleTag({content:await readFile(new URL('popup.css',extensionRoot),'utf8')});
+   await devicePage.evaluate(()=>{
+    const run={runId:'10000000-0000-4000-8000-000000000090',status:'permission_required',prospect:{id:'10000000-0000-4000-8000-000000000001',company:'Atelier local'},jobs:[{id:'10000000-0000-4000-8000-000000000002',source:'pappers',state:'pending'}]};
+    window.deviceActions=[];window.chrome={permissions:{request:async value=>{window.deviceActions.push({action:'permission',origins:value.origins});return true;}},runtime:{sendMessage:async m=>{window.deviceActions.push({action:m.action});if(m.action==='device-authorized')run.status='running';return {ok:true,deviceRun:run};}}};
+   });
+   await devicePage.addScriptTag({content:await readFile(new URL('device-ui.js',extensionRoot),'utf8')});
+   assert.equal(await devicePage.locator('#popupMain').evaluate(n=>getComputedStyle(n).overflowY),'auto','Les commandes et les sources restent défilables');
+   await devicePage.getByRole('button',{name:'Autoriser les sources et démarrer'}).click();
+   await devicePage.waitForFunction(()=>window.deviceActions.some(a=>a.action==='device-authorized'));
+   const actions=await devicePage.evaluate(()=>window.deviceActions.filter(a=>a.action==='permission'||a.action==='device-authorized'));
+   assert.equal(actions[0].action,'permission');assert.deepEqual(actions[0].origins,['https://www.pappers.fr/*','https://pappers.fr/*']);assert.equal(actions[1].action,'device-authorized');
+   console.log('✓ Extension locale Chromium : permissions du lot demandées avant lancement, état et commandes lisibles');
+  }finally{await localBrowser.close();}
   await panel.close();
   console.log('✓ Connecteur local réel : commandes visibles, permission limitée, lecture puis retour à la comparaison CRM sans seconde case de confirmation');
   console.log('✓ Pappers : fiche publique par SIREN, identité visible, données légales, finances datées et dirigeants ; contacts réservés laissés absents');

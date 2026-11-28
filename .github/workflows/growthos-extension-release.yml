@@ -34,7 +34,10 @@ jobs:
           node --check extensions/growthos-pagesjaunes/societe.js
           node --check extensions/growthos-pagesjaunes/capture.js
           node --check extensions/growthos-pagesjaunes/popup.js
+          node --check extensions/growthos-pagesjaunes/device-runner.js
+          node --check extensions/growthos-pagesjaunes/device-ui.js
           node scripts/test-multisource-extension.mjs
+          node scripts/test-device-runner.mjs
 
       - name: Package Chrome Web Store ZIP with monotonic release version
         env:
@@ -55,7 +58,7 @@ jobs:
           NODE
           cd extensions/growthos-pagesjaunes
           zip -q "$RUNNER_TEMP/growthos-connecteur-chrome.zip" \
-            manifest.json modules.json background.js bridge.js capture.js societe.js popup.html popup.css popup.js
+            manifest.json modules.json background.js bridge.js capture.js societe.js pappers.js device-runner.js device.html device-ui.js popup.html popup.css popup.js
 
       - name: Keep verified extension ZIP available from GitHub Actions
         uses: actions/upload-artifact@v4

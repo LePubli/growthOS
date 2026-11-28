@@ -92,7 +92,8 @@ let running=false;
 export async function tickCloudJobs(){
   if(running)return;running=true;
   try{
-    await pool.query(`UPDATE cloud_browser_jobs SET status='queued',lease=NULL,lease_until=NULL WHERE status='running' AND lease_until<NOW()`);
+    await pool.query(`UPDATE cloud_browser_jobs SET status='queued',lease=NULL,lease_until=NULL WHERE status='running' AND lease_until<NOW() AND result->'deviceExecution' IS NULL`);
+    await pool.query(`UPDATE cloud_browser_jobs SET status='awaiting_user',lease=NULL,lease_until=NULL WHERE status='running' AND lease_until<NOW() AND result->'deviceExecution' IS NOT NULL`);
     const next=await pool.query("SELECT id FROM cloud_browser_jobs WHERE status='queued' ORDER BY updated_at LIMIT 1");
     if(next.rows[0])await runCloudJob(next.rows[0].id);
   }finally{running=false;}

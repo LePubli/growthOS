@@ -1,3 +1,4 @@
+import {devicePlan,deviceResult,cancelDevicePlan,assertDeviceFree,DEVICE_REASONS} from '../../services/device-enrichment';
 import {randomUUID,createHash} from 'node:crypto';
 import {targetCaptureReview,applyTargetCapture} from './sourcing';
 import {Router} from 'express';
@@ -18,6 +19,16 @@ const expectedValuesSchema=z.object(Object.fromEntries(reviewFields.map(field=>[
 const idSchema=z.string().uuid();
 const schedule=()=>{if(process.env.GROWTHOS_SMOKE_TEST!=='true')void tickCloudJobs().catch(()=>logger.error('Cloud browser scheduler failed'));};
 router.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
+router.post('/device-plan',async(req,res)=>{
+ const d=z.object({prospectId:idSchema,deviceId:idSchema,runId:idSchema}).strict().parse(req.body);res.json(await devicePlan(req.auth!.tenantId,req.auth!.userId,d.prospectId,d.deviceId,d.runId));
+});
+router.post('/device-stop',async(req,res)=>{
+ const d=z.object({prospectId:idSchema,deviceId:idSchema,runId:idSchema}).strict().parse(req.body);res.json(await cancelDevicePlan(req.auth!.tenantId,req.auth!.userId,d.prospectId,d.deviceId,d.runId));
+});
+router.post('/jobs/:id/device-result',async(req,res)=>{
+ const d=z.object({deviceId:idSchema,runId:idSchema,status:z.enum(['completed','awaiting_user']),reasonCode:z.enum(DEVICE_REASONS).optional(),captures:z.array(z.unknown()).max(25).default([]),references:z.array(z.object({url:z.string().url().max(1000),label:z.string().max(180)}).strict()).max(20).default([])}).strict().parse(req.body);
+ res.locals.jobId=idSchema.parse(req.params.id);res.json(await deviceResult(req.auth!.tenantId,req.auth!.userId,res.locals.jobId,d));
+});
 router.get('/status',async(req,res)=>{
   if(!cloudConfigured()){res.json({configured:false,ready:false,sources:CLOUD_SOURCES,automatic:CLOUD_AUTOMATIC});return;}
   try{await browserCall('/healthz',undefined,4000,req.traceId);res.json({configured:true,ready:true,sources:CLOUD_SOURCES,automatic:CLOUD_AUTOMATIC});}
@@ -113,6 +124,7 @@ router.post('/local-review',async(req,res)=>{
     if(job&&(job.tenant_id!==tenant||job.created_by!==user||job.prospect_id!==data.prospectId))throw new CloudBrowserError(404,'Tâche introuvable.');
     if(data.cloudJobId&&!job)throw new CloudBrowserError(404,'Tâche cible introuvable.');
     if(job){
+      assertDeviceFree(job);
       const profile=(await client.query('SELECT source FROM cloud_browser_profiles WHERE id=$1 AND tenant_id=$2',[job.profile_id,tenant])).rows[0];
       if(profile?.source!==raw.source)throw new CloudBrowserError(409,'La capture appartient à une autre source.');
       if(['queued','running'].includes(job.status))throw new CloudBrowserError(409,'Annulez d’abord la collecte cloud en cours.');
@@ -162,11 +174,12 @@ router.post('/jobs/:id/confirm',async(req,res)=>{
   const sourceRow=await pool.query('SELECT source FROM cloud_browser_profiles WHERE id=$1 AND tenant_id=$2',[job.profile_id,tenant]);
   res.locals.source=sourceRow.rows[0]?.source||null;
   void recordDiagnosticEvent({tenantId:tenant,userId:user,traceId:req.traceId,level:'info',component:'crm-confirmation',code:'CONFIRMATION_STARTED',message:'Validation CRM demandée',source:res.locals.source,prospectId:job.prospect_id,jobId:id,details:{local:!!job.result?.localCapture}});
+  assertDeviceFree(job);
   if(job.result?.applied&&job.status==='completed'){res.json({job,alreadyApplied:true});return;}
   if(job.mode!=='enrich'||!job.prospect_id||!['needs_review','awaiting_user'].includes(job.status))throw new CloudBrowserError(409,'Cette tâche ne peut pas être confirmée dans son état actuel.');
   const capture=job.result?.captures?.[data.captureIndex];if(!capture)throw new CloudBrowserError(404,'Capture introuvable.');
   if(captureDigest(capture)!==data.expectedCaptureDigest)throw new CloudBrowserError(409,'La capture a changé depuis la comparaison. Rechargez les données avant de confirmer.');
-  const lease=randomUUID(),claimed=await pool.query("UPDATE cloud_browser_jobs SET status='running',lease=$3,lease_until=NOW()+INTERVAL '2 minutes' WHERE id=$1 AND tenant_id=$2 AND status=$4 AND result->'captures'->($5::integer)=$6::jsonb RETURNING id",[id,tenant,lease,job.status,data.captureIndex,JSON.stringify(capture)]);
+  const lease=randomUUID(),claimed=await pool.query("UPDATE cloud_browser_jobs SET status='running',lease=$3,lease_until=NOW()+INTERVAL '2 minutes' WHERE id=$1 AND tenant_id=$2 AND status=$4 AND result->'captures'->($5::integer)=$6::jsonb AND NOT (COALESCE(result->'deviceExecution'->>'state','') IN ('pending','receiving') AND (result->'deviceExecution'->>'expiresAt')::timestamptz>NOW()) RETURNING id",[id,tenant,lease,job.status,data.captureIndex,JSON.stringify(capture)]);
   if(!claimed.rows.length)throw new CloudBrowserError(409,'La tâche a changé d’état. Rechargez-la.');
   try{
     const applied=await applyTargetCapture(tenant,user,job.prospect_id,id,capture,false,{lease,result:{...job.result,manualConfirmation:{userId:user,captureIndex:data.captureIndex,confirmedAt:new Date().toISOString()}}},{expectedUpdatedAt:data.expectedUpdatedAt,confirmed:true,replaceFields:data.replaceFields,expectedValues:data.expectedValues});
@@ -178,8 +191,9 @@ router.post('/jobs/:id/confirm',async(req,res)=>{
 router.post('/jobs/:id/retry',async(req,res)=>{
   const id=idSchema.parse(req.params.id);const data=z.object({resume:z.boolean().default(true)}).strict().parse(req.body||{});
   const job=await cloudJob(req.auth!.tenantId,id,req.auth!.userId);
+  assertDeviceFree(job);
   if(!['awaiting_user','needs_review','failed','cancelled'].includes(job.status))throw new CloudBrowserError(409,'Cette tâche ne peut pas être reprise dans son état actuel.');
-  const q=await pool.query(`UPDATE cloud_browser_jobs SET status='queued',resume=$3,error=NULL,updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status IN ('awaiting_user','needs_review','failed','cancelled') RETURNING *`,[id,req.auth!.tenantId,data.resume]);
+  const q=await pool.query(`UPDATE cloud_browser_jobs SET status='queued',resume=$3,error=NULL,result=result-'deviceExecution',updated_at=NOW() WHERE id=$1 AND tenant_id=$2 AND status IN ('awaiting_user','needs_review','failed','cancelled') AND NOT (COALESCE(result->'deviceExecution'->>'state','') IN ('pending','receiving') AND (result->'deviceExecution'->>'expiresAt')::timestamptz>NOW()) RETURNING *`,[id,req.auth!.tenantId,data.resume]);
   if(!q.rows[0])throw new CloudBrowserError(409,'La tâche a changé d’état. Actualisez la liste.');
   res.json(q.rows[0]);schedule();
 });
@@ -195,7 +209,7 @@ router.use((error:unknown,req:any,res:any,_next:any)=>{
   const source=typeof res.locals.source==='string'?res.locals.source:null;
   const invalidInput=error instanceof z.ZodError;
   const identityDuplicate=isProspectIdentityDuplicate(error),identityConstraint=prospectIdentityConstraint(error);
-  const saving=/\/jobs\/[^/]+\/confirm$|\/local-review$/.test(req.path);
+  const saving=/\/jobs\/[^/]+\/(?:confirm|device-result)$|\/local-review$/.test(req.path);
   const errorDetails=errorDiagnosticDetails(error);
   if(identityDuplicate||identityConstraint){
     void recordDiagnosticEvent({tenantId:req.auth?.tenantId,userId:req.auth?.userId,traceId:req.traceId,level:'warn',component:'crm-confirmation',code:identityDuplicate?'CRM_IDENTITY_DUPLICATE':'CRM_IDENTITY_INCONSISTENT',message:'Validation CRM bloquée par une contrainte d’identité',source,prospectId:res.locals.prospectId,jobId:res.locals.jobId,details:{...errorDetails,causeCode:identityDuplicate?'CRM_IDENTITY_DUPLICATE':'CRM_IDENTITY_INCONSISTENT',certainty:'observed',cause:identityDuplicate?'Un identifiant est déjà utilisé par une autre fiche de cette agence.':'Les identifiants légaux de la capture sont incohérents.',action:'Vérifier le doublon ou les identifiants dans le CRM avant de confirmer.'}});

@@ -17,7 +17,7 @@ assert.ok(manifest.host_permissions.includes('https://recherche-entreprises.api.
 assert.ok(manifest.host_permissions.includes('https://data.geopf.fr/*'),
   'La validation des rues partielles utilise le géocodeur officiel de la Géoplateforme');
 
-assert.ok(manifest.optional_host_permissions.every(host=>/^https:\/\/(?:www\.)?(?:societe\.com|google\.(?:com|fr)|bing\.com)\/\*$/.test(host)||host==='https://maps.google.com/*'),'Les permissions optionnelles restent limitées aux sources déclarées');
+assert.ok(manifest.optional_host_permissions.every(host=>/^https:\/\/(?:www\.)?(?:societe\.com|pappers\.fr|google\.(?:com|fr)|bing\.com)\/\*$/.test(host)||host==='https://maps.google.com/*'),'Les permissions optionnelles restent limitées aux sources déclarées');
 
 const captureScript=readFileSync(new URL('capture.js',root),'utf8');
 function capture(url,hasAddress=true,localPack=false,textOverride=null){
@@ -126,7 +126,7 @@ const chrome={
   scripting:{executeScript:async options=>[{result:options.func?mapLinks:(typeof injectedResult==='function'?injectedResult():injectedResult)}]},
 };
 vm.runInNewContext(readFileSync(new URL('background.js',root),'utf8'),
-  {chrome,URL,crypto:webcrypto,Date,setTimeout:(fn,ms)=>setTimeout(fn,ms>=4500?ms:0),clearTimeout,Promise,console,AbortController,
+  {chrome,URL,crypto:webcrypto,Date,importScripts:()=>{},setTimeout:(fn,ms)=>setTimeout(fn,ms>=4500?ms:0),clearTimeout,Promise,console,AbortController,
     fetch:async url=>{
       const request=new URL(url);
       if(request.hostname==='data.geopf.fr'){

@@ -1,6 +1,10 @@
-# Connecter GrowthOS à son navigateur — connecteur multisource 0.10.0
+# Connecter GrowthOS à son navigateur — connecteur multisource 0.12.0
 
 Ce connecteur fonctionne avec **Chrome ou Edge sur ordinateur**. Il garde les recherches et les éventuelles sessions des sites consultés **dans votre propre navigateur**, sans transmettre de mot de passe ni de cookie à GrowthOS. Il ne modifie ni DockPanel ni les autres conteneurs.
+
+## Reprise automatique sur cet appareil (0.12.0)
+
+Depuis la fiche prospect → Enrichissements, le nouveau bouton reprend les tâches navigateur du dernier bilan. Autoriser le lot dans l’écran Chrome dédié, puis suivre la lecture et la synchronisation dans GrowthOS. Le pilote concerne six sources prises en charge, sur ordinateur ; aucun accès garanti aux sites qui refusent la collecte. Mettre à jour l’extension et le Web/API. Voir [parcours, limites et recette](COLLECTE-NAVIGATEUR-UTILISATEUR.md).
 
 ## Import direct et fusion des sources
 
