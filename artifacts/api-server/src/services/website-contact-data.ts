@@ -48,7 +48,7 @@ export function readSiteHtml(html:string,url:string){
   const apeCodes=[...new Set([...text.matchAll(/(?:code\s+)?(?:APE|NAF)(?:\s*\/\s*(?:APE|NAF))?\s*[:：-]\s*(\d{2}[ .]?\d{2}[A-Z])/gi)].map(m=>m[1].replace(/[ .]/g,'').replace(/^(\d{2})(\d{2}[A-Z])$/,'$1.$2')))];
   const openingHours=[...new Set([...text.matchAll(/(?:du\s+)?(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)[^\n]{0,100}\d{1,2}\s*(?:h|:)\s*\d{0,2}[^\n]{0,40}/gi)].map(m=>clean(m[0])))];
   const addresses=[...text.matchAll(/\b\d{1,4}\s*(?:(?:bis|ter)\s+)?(?:rue|boulevard|bd\.?|avenue|av\.?|route|place|chemin|impasse|all[ée]e|quai)\s+[^\n]{3,180}?[, \n]+\b\d{5}[ \t]+[^\n,;]{2,70}/gi)].map(m=>clean(m[0]));
-  const socials:{source:string;kind:'person'|'company';url:string;sourceUrl:string;nameHint?:string}[]=[];
+  const socials:{source:string;kind:'person'|'company'|'profile';url:string;sourceUrl:string;nameHint?:string}[]=[];
   for(const link of links){let target:ReturnType<typeof publicSocialReference>=null;try{target=publicSocialReference(new URL(link.href,url).href);}catch{}if(target&&!socials.some(s=>s.url===target!.url))socials.push({...target,sourceUrl:url});}
 
   return {heading:clean(heading),text,publisherNames,apeCodes,openingHours,emails:[...emails].slice(0,30),phones:[...phones].slice(0,20),sirets:ids('SIRET',14),sirens:ids('SIREN',9),addresses:addresses.slice(0,10),socials,links};
@@ -89,7 +89,7 @@ export async function collectSite(raw:string,options:{load?:(url:URL)=>Promise<{
   const domainCheck=cache.get(host)!;
   return {url:initial.href,attempts,truncated:pending.length>0,openingHours:[...new Map(pages.flatMap(p=>p.read.openingHours.map((hours:string)=>[hours,{hours,sourceUrl:p.url}]))).values()] as {hours:string;sourceUrl:string}[],pages:pages.map(p=>({url:p.url,heading:p.read.heading})),publishers:pages.flatMap(p=>p.read.publisherNames.map((name:string)=>({name,sourceUrl:p.url}))),apeCodes:[...new Set(pages.flatMap(p=>p.read.apeCodes))] as string[],emails,
     phones:[...new Map(pages.flatMap(p=>p.read.phones.map((phone:string)=>[phone,{phone,sourceUrl:p.url}]))).values()] as {phone:string;sourceUrl:string}[],
-    socials:[...new Map<string,{source:string;kind:'person'|'company';url:string;sourceUrl:string;nameHint?:string}>(pages.flatMap(p=>p.read.socials.map((v:any)=>[v.source+':'+v.url,v] as [string,{source:string;kind:'person'|'company';url:string;sourceUrl:string;nameHint?:string}]))).values()],sirets:[...new Set(pages.flatMap(p=>p.read.sirets))] as string[],sirens:[...new Set(pages.flatMap(p=>p.read.sirens))] as string[],
+    socials:[...new Map<string,{source:string;kind:'person'|'company'|'profile';url:string;sourceUrl:string;nameHint?:string}>(pages.flatMap(p=>p.read.socials.map((v:any)=>[v.source+':'+v.url,v] as [string,{source:string;kind:'person'|'company'|'profile';url:string;sourceUrl:string;nameHint?:string}]))).values()],sirets:[...new Set(pages.flatMap(p=>p.read.sirets))] as string[],sirens:[...new Set(pages.flatMap(p=>p.read.sirens))] as string[],
     addresses:[...new Map(pages.flatMap(p=>p.read.addresses.map((address:string)=>[address,{address,sourceUrl:p.url}]))).values()] as {address:string;sourceUrl:string}[],
     text:pages.map(p=>p.read.text).join('\n'),domainCheck,
     suggestions:!emails.length&&domainCheck.status!=='no_mail'?['contact','info','bonjour','service-client'].map(local=>({email:local+'@'+host,origin:'hypothesis',mailboxStatus:'unconfirmed',check:domainCheck})):[]};
